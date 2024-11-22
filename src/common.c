@@ -1044,90 +1044,12 @@ sr_module_get_impl_inv_imports(const struct lys_module *ly_mod, struct ly_set *m
     return err_info;
 }
 
-const char *
-sr_shm_dir_get(void)
-{
-    static char sr_shm_dir_str[SR_PATH_MAX] = "";
-    const char *tmp = NULL;
-
-    if (sr_shm_dir_str[0]) {
-        return sr_shm_dir_str;
-    }
-
-    /* first time only */
-    if (!(tmp = getenv("SYSREPO_SHM_DIR"))) {
-        tmp = NULL;
-    } else if (strlen(tmp) >= SR_PATH_MAX) {
-        SR_LOG_WRN("SYSREPO_SHM_DIR env variable longer than %u, using default %s instead",
-                SR_PATH_MAX, SR_SHM_DIR);
-        tmp = NULL;
-    }
-
-    if (!tmp) {
-        tmp = SR_SHM_DIR;
-        if (strlen(tmp) >= SR_PATH_MAX) {
-            tmp = "/dev/shm";
-            sr_log(SR_LL_ERR, "SR_SHM_DIR (%s) is longer than maximum allowed %u - defaulting to %s",
-                    SR_SHM_DIR, SR_PATH_MAX, tmp);
-        }
-    }
-
-    snprintf(sr_shm_dir_str, SR_PATH_MAX, "%s", tmp);
-
-    return sr_shm_dir_str;
-}
-
-/**
- * @brief Get global SHM prefix prepended to all SHM files.
- *
- * @param[out] prefix SHM prefix to use.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_shm_prefix(const char **prefix)
-{
-    static char sr_shm_prefix_val[SR_PATH_MAX] = "";
-    const char *tmp = NULL;
-    sr_error_info_t *err_info = NULL;
-
-    if (sr_shm_prefix_val[0]) {
-        *prefix = sr_shm_prefix_val;
-        return err_info;
-    }
-
-    /* first time */
-    tmp = getenv(SR_SHM_PREFIX_ENV);
-    if (tmp == NULL) {
-        tmp = SR_SHM_PREFIX_DEFAULT;
-    }
-
-    if (strlen(tmp) >= SR_PATH_MAX) {
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "%s cannot be longer than %u.", SR_SHM_PREFIX_ENV, SR_PATH_MAX);
-    } else if (strchr(tmp, '/') != NULL) {
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "%s cannot contain slashes.", SR_SHM_PREFIX_ENV);
-    }
-
-    if (err_info) {
-        *prefix = NULL;
-    } else {
-        snprintf(sr_shm_prefix_val, SR_PATH_MAX, "%s", tmp);
-        *prefix = sr_shm_prefix_val;
-    }
-    return err_info;
-}
-
 sr_error_info_t *
 sr_path_main_shm(char **path)
 {
     sr_error_info_t *err_info = NULL;
-    const char *prefix;
 
-    err_info = sr_shm_prefix(&prefix);
-    if (err_info) {
-        return err_info;
-    }
-
-    if (asprintf(path, "%s/%s_main", sr_shm_dir_get(), prefix) == -1) {
+    if (asprintf(path, "%s/%s_main", sr_get_shm_path(), sr_get_shm_prefix()) == -1) {
         SR_ERRINFO_MEM(&err_info);
         *path = NULL;
     }
@@ -1139,14 +1061,8 @@ sr_error_info_t *
 sr_path_mod_shm(char **path)
 {
     sr_error_info_t *err_info = NULL;
-    const char *prefix;
 
-    err_info = sr_shm_prefix(&prefix);
-    if (err_info) {
-        return err_info;
-    }
-
-    if (asprintf(path, "%s/%s_mod", sr_shm_dir_get(), prefix) == -1) {
+    if (asprintf(path, "%s/%s_mod", sr_get_shm_path(), sr_get_shm_prefix()) == -1) {
         SR_ERRINFO_MEM(&err_info);
         *path = NULL;
     }
@@ -1158,14 +1074,8 @@ sr_error_info_t *
 sr_path_ext_shm(char **path)
 {
     sr_error_info_t *err_info = NULL;
-    const char *prefix;
 
-    err_info = sr_shm_prefix(&prefix);
-    if (err_info) {
-        return err_info;
-    }
-
-    if (asprintf(path, "%s/%s_ext", sr_shm_dir_get(), prefix) == -1) {
+    if (asprintf(path, "%s/%s_ext", sr_get_shm_path(), sr_get_shm_prefix()) == -1) {
         SR_ERRINFO_MEM(&err_info);
         *path = NULL;
     }
@@ -1177,18 +1087,13 @@ sr_error_info_t *
 sr_path_sub_shm(const char *mod_name, const char *suffix1, int64_t suffix2, char **path)
 {
     sr_error_info_t *err_info = NULL;
-    const char *prefix;
     int ret;
 
-    err_info = sr_shm_prefix(&prefix);
-    if (err_info) {
-        return err_info;
-    }
-
     if (suffix2 > -1) {
-        ret = asprintf(path, "%s/%ssub_%s.%s.%08" PRIx32, sr_shm_dir_get(), prefix, mod_name, suffix1, (uint32_t)suffix2);
+        ret = asprintf(path, "%s/%ssub_%s.%s.%08" PRIx32, sr_get_shm_path(), sr_get_shm_prefix(), mod_name, suffix1,
+                (uint32_t)suffix2);
     } else {
-        ret = asprintf(path, "%s/%ssub_%s.%s", sr_shm_dir_get(), prefix, mod_name, suffix1);
+        ret = asprintf(path, "%s/%ssub_%s.%s", sr_get_shm_path(), sr_get_shm_prefix(), mod_name, suffix1);
     }
 
     if (ret == -1) {
@@ -1201,18 +1106,13 @@ sr_error_info_t *
 sr_path_sub_data_shm(const char *mod_name, const char *suffix1, int64_t suffix2, char **path)
 {
     sr_error_info_t *err_info = NULL;
-    const char *prefix;
     int ret;
 
-    err_info = sr_shm_prefix(&prefix);
-    if (err_info) {
-        return err_info;
-    }
-
     if (suffix2 > -1) {
-        ret = asprintf(path, "%s/%ssub_data_%s.%s.%08" PRIx32, sr_shm_dir_get(), prefix, mod_name, suffix1, (uint32_t)suffix2);
+        ret = asprintf(path, "%s/%ssub_data_%s.%s.%08" PRIx32, sr_get_shm_path(), sr_get_shm_prefix(), mod_name, suffix1,
+                (uint32_t)suffix2);
     } else {
-        ret = asprintf(path, "%s/%ssub_data_%s.%s", sr_shm_dir_get(), prefix, mod_name, suffix1);
+        ret = asprintf(path, "%s/%ssub_data_%s.%s", sr_get_shm_path(), sr_get_shm_prefix(), mod_name, suffix1);
     }
 
     if (ret == -1) {

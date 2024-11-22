@@ -35,7 +35,6 @@
 
 #include <libyang/libyang.h>
 
-#include "common.h"
 #include "common_json.h"
 #include "sysrepo.h"
 
@@ -685,15 +684,15 @@ srpds_json_access_set(const struct lys_module *mod, sr_datastore_t ds, const cha
     assert(mod && (owner || group || perm));
 
     if (ds == SR_DS_OPERATIONAL) {
-        dir = opendir(sr_shm_dir_get());
+        dir = opendir(sr_get_shm_path());
         if (!dir) {
             srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_SYS, "Failed to open dir \"%s\" (%s).",
-                    sr_shm_dir_get(), strerror(errno));
+                    sr_get_shm_path(), strerror(errno));
             goto cleanup;
         }
 
         /* update all the operational data files */
-        while (!srpjson_dir_oper_file_iter(srpds_name, dir, sr_shm_dir_get(), mod->name, &path)) {
+        while (!srpjson_dir_oper_file_iter(srpds_name, dir, sr_get_shm_path(), mod->name, &path)) {
             if ((err_info = srpjson_chmodown(srpds_name, path, owner, group, perm))) {
                 goto cleanup;
             }
@@ -902,15 +901,15 @@ srpds_json_last_modif(const struct lys_module *mod, sr_datastore_t ds, void *UNU
     mtime->tv_nsec = 0;
 
     if (ds == SR_DS_OPERATIONAL) {
-        dir = opendir(sr_shm_dir_get());
+        dir = opendir(sr_get_shm_path());
         if (!dir) {
             srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_SYS, "Failed to open dir \"%s\" (%s).",
-                    sr_shm_dir_get(), strerror(errno));
+                    sr_get_shm_path(), strerror(errno));
             goto cleanup;
         }
 
         /* iterate over all the operational data files */
-        while (!srpjson_dir_oper_file_iter(srpds_name, dir, sr_shm_dir_get(), mod->name, &path)) {
+        while (!srpjson_dir_oper_file_iter(srpds_name, dir, sr_get_shm_path(), mod->name, &path)) {
             if (stat(path, &st) == -1) {
                 srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_SYS, "Stat of \"%s\" failed (%s).", path,
                         strerror(errno));

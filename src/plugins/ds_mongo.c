@@ -31,7 +31,6 @@
 #include <mongoc/mongoc.h>
 
 #include "common_db.h"
-#include "common_json.h"
 #include "compat.h"
 #include "config.h"
 #include "plugins_datastore.h"
@@ -217,17 +216,12 @@ srpds_data_init(const struct lys_module *mod, sr_datastore_t ds, int installed, 
 {
     sr_error_info_t *err_info = NULL;
     bson_error_t error;
-    char *shm_prefix = NULL;
 
     mdata->client = mongoc_client_pool_pop(pdata->pool);
     mdata->datastore = mongoc_client_get_database(mdata->client, srpds_ds2database(ds));
 
     /* get the module name */
-    if ((err_info = srpjson_shm_prefix(plugin_name, &shm_prefix))) {
-        goto cleanup;
-    }
-
-    if (asprintf(&(mdata->module_name), "%s_%s", shm_prefix ? shm_prefix : "", mod->name) == -1) {
+    if (asprintf(&(mdata->module_name), "%s_%s", sr_get_shm_prefix(), mod->name) == -1) {
         ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno))
         goto cleanup;
     }
@@ -2929,8 +2923,8 @@ cleanup:
  *
  */
 sr_error_info_t *
-srpds_mongo_store(const struct lys_module *mod, sr_datastore_t ds, const struct lyd_node *mod_diff,
-        const struct lyd_node *mod_data, void *plg_data)
+srpds_mongo_store(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, uint32_t sid,
+        const struct lyd_node *mod_diff, const struct lyd_node *mod_data, void *plg_data)
 {
     mongo_data_t mdata;
     mongo_plg_conn_data_t *pdata = (mongo_plg_conn_data_t *)plg_data;
@@ -2938,6 +2932,8 @@ srpds_mongo_store(const struct lys_module *mod, sr_datastore_t ds, const struct 
     int modified = 1;
 
     assert(mod);
+    (void)cid;
+    (void)sid;
 
     /* for candidate ds learn if modified */
     if (ds == SR_DS_CANDIDATE) {
@@ -3349,8 +3345,8 @@ cleanup:
  *
  */
 sr_error_info_t *
-srpds_mongo_load(const struct lys_module *mod, sr_datastore_t ds, const char **xpaths, uint32_t xpath_count, void *plg_data,
-        struct lyd_node **mod_data)
+srpds_mongo_load(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, uint32_t sid, const char **xpaths,
+        uint32_t xpath_count, void *plg_data, struct lyd_node **mod_data)
 {
     mongo_data_t mdata;
     mongo_plg_conn_data_t *pdata = (mongo_plg_conn_data_t *)plg_data;
@@ -3359,6 +3355,9 @@ srpds_mongo_load(const struct lys_module *mod, sr_datastore_t ds, const char **x
     int is_valid = 0;
 
     assert(mod && mod_data);
+    (void)cid;
+    (void)sid;
+
     *mod_data = NULL;
 
     if ((err_info = srpds_data_init(mod, ds, 1, pdata, &mdata))) {
@@ -3388,18 +3387,6 @@ cleanup:
     bson_destroy(&xpath_filter);
     srpds_data_destroy(pdata, &mdata);
     return err_info;
-}
-
-/**
- * @brief Comment for this function can be found in "plugins_datastore.h".
- *
- */
-void
-srpds_mongo_recover(const struct lys_module *mod, sr_datastore_t ds, void *plg_data)
-{
-    (void) plg_data;
-    (void) mod;
-    (void) ds;
 }
 
 /**
@@ -3508,7 +3495,6 @@ const struct srplg_ds_s srpds_mongo = {
     .conn_init_cb = srpds_mongo_conn_init,
     .conn_destroy_cb = srpds_mongo_conn_destroy,
     .store_cb = srpds_mongo_store,
-    .recover_cb = srpds_mongo_recover,
     .load_cb = srpds_mongo_load,
     .copy_cb = srpds_mongo_copy,
     .candidate_modified_cb = srpds_mongo_candidate_modified,

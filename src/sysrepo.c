@@ -1091,34 +1091,105 @@ API const char *
 sr_get_repo_path(void)
 {
     static char sr_repo_path[SR_PATH_MAX] = "";
-    char *value;
+    const char *value;
 
     if (sr_repo_path[0]) {
         return sr_repo_path;
     }
 
+    /* env var */
     value = getenv(SR_REPO_PATH_ENV);
-    if (value) {
-        if (strlen(value) < SR_PATH_MAX) {
-            snprintf(sr_repo_path, SR_PATH_MAX, "%s", value);
-        } else {
-            SR_LOG_WRN(SR_REPO_PATH_ENV " (%s) longer than %u, using default %s instead",
-                    value, SR_PATH_MAX, SR_REPO_PATH);
-        }
+    if (value && (strlen(value) >= SR_PATH_MAX)) {
+        SR_LOG_WRN(SR_REPO_PATH_ENV " \"%s\" canot be used, longer than %u characters.", value, SR_PATH_MAX);
+        value = NULL;
     }
-    if (!sr_repo_path[0]) {
+
+    /* compile var */
+    if (!value) {
+        value = SR_REPO_PATH;
         if (strlen(SR_REPO_PATH) >= SR_PATH_MAX) {
-            value = "/etc/sysrepo";
-            sr_log(SR_LL_ERR, "SR_REPO_PATH (%s) is longer than maximum allowed %u - defaulting to %s",
-                    SR_REPO_PATH, SR_PATH_MAX, value);
-
-        } else {
-            value = SR_REPO_PATH;
+            SR_LOG_WRN("Repository path \"%s\" cannot be used, longer than %u characters.", value, SR_PATH_MAX);
+            value = NULL;
         }
-        snprintf(sr_repo_path, SR_PATH_MAX, "%s", value);
     }
 
+    /* hard default */
+    if (!value) {
+        value = "/etc/sysrepo";
+    }
+
+    /* cache the value for the process */
+    snprintf(sr_repo_path, SR_PATH_MAX, "%s", value);
     return sr_repo_path;
+}
+
+API const char *
+sr_get_shm_path(void)
+{
+    static char sr_shm_dir_str[SR_PATH_MAX] = "";
+    const char *value;
+
+    if (sr_shm_dir_str[0]) {
+        return sr_shm_dir_str;
+    }
+
+    /* env var */
+    value = getenv(SR_SHM_PATH_ENV);
+    if (value && (strlen(value) >= SR_PATH_MAX)) {
+        SR_LOG_WRN(SR_SHM_PATH_ENV " \"%s\" cannot be used, longer than %u characters.", value, SR_PATH_MAX);
+        value = NULL;
+    }
+
+    /* compile var */
+    if (!value) {
+        value = SR_SHM_PATH;
+        if (strlen(value) >= SR_PATH_MAX) {
+            SR_LOG_WRN("SHM path \"%s\" cannot be used, longer than %u characters.", value, SR_PATH_MAX);
+            value = NULL;
+        }
+    }
+
+    /* hard default */
+    if (!value) {
+        value = "/dev/shm";
+    }
+
+    /* cache the value for the process */
+    snprintf(sr_shm_dir_str, SR_PATH_MAX, "%s", value);
+    return sr_shm_dir_str;
+}
+
+API const char *
+sr_get_shm_prefix(void)
+{
+    static char sr_shm_prefix_val[SR_PATH_MAX] = "";
+    const char *value;
+
+    if (sr_shm_prefix_val[0]) {
+        return sr_shm_prefix_val;
+    }
+
+    /* env var */
+    value = getenv(SR_SHM_PREFIX_ENV);
+    if (value && (strlen(value) >= SR_PATH_MAX)) {
+        SR_LOG_WRN(SR_SHM_PREFIX_ENV " \"%s\" cannot be used, longer than %u characters.", value, SR_PATH_MAX);
+        value = NULL;
+    }
+
+    /* slashes check */
+    if (value && strchr(value, '/')) {
+        SR_LOG_WRN(SR_SHM_PREFIX_ENV " \"%s\" cannot be used, contains slashes.", value);
+        value = NULL;
+    }
+
+    /* hard default */
+    if (!value) {
+        value = SR_SHM_PREFIX_DEFAULT;
+    }
+
+    /* cache the value for the process */
+    snprintf(sr_shm_prefix_val, SR_PATH_MAX, "%s", value);
+    return sr_shm_prefix_val;
 }
 
 /**

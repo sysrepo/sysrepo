@@ -122,37 +122,6 @@ srpjson_file_exists(const char *plg_name, const char *path)
     return 1;
 }
 
-sr_error_info_t *
-srpjson_shm_prefix(const char *plg_name, const char **prefix)
-{
-    static char sr_shm_prefix_val[SR_PATH_MAX] = "";
-    const char *tmp = NULL;
-    sr_error_info_t *err_info = NULL;
-
-    if (sr_shm_prefix_val[0]) {
-        *prefix = sr_shm_prefix_val;
-        return err_info;
-    }
-
-    /* first time */
-    tmp = getenv(SR_SHM_PREFIX_ENV);
-    if (!tmp) {
-        tmp = SR_SHM_PREFIX_DEFAULT;
-    }
-
-    if (strlen(tmp) >= SR_PATH_MAX) {
-        srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_INVAL_ARG, "%s cannot be longer than %u.", SR_SHM_PREFIX_ENV, SR_PATH_MAX);
-        tmp = "";
-    } else if (strchr(tmp, '/') != NULL) {
-        srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_INVAL_ARG, "%s cannot contain slashes.", SR_SHM_PREFIX_ENV);
-        tmp = "";
-    }
-    snprintf(sr_shm_prefix_val, SR_PATH_MAX, "%s", tmp);
-    *prefix = sr_shm_prefix_val;
-
-    return err_info;
-}
-
 const char *
 srpjson_ds2str(sr_datastore_t ds)
 {
@@ -652,7 +621,6 @@ srpjson_get_path(const char *plg_name, const char *mod_name, sr_datastore_t ds, 
 {
     sr_error_info_t *err_info = NULL;
     int r = 0;
-    const char *prefix;
 
     *path = NULL;
 
@@ -673,11 +641,7 @@ srpjson_get_path(const char *plg_name, const char *mod_name, sr_datastore_t ds, 
         break;
     case SR_DS_RUNNING:
     case SR_DS_CANDIDATE:
-        if ((err_info = srpjson_shm_prefix(plg_name, &prefix))) {
-            return err_info;
-        }
-
-        r = asprintf(path, "%s/%s_%s.%s", sr_shm_dir_get(), prefix, mod_name, srpjson_ds2str(ds));
+        r = asprintf(path, "%s/%s_%s.%s", sr_get_shm_path(), sr_get_shm_prefix(), mod_name, srpjson_ds2str(ds));
         break;
     case SR_DS_OPERATIONAL:
         srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_INTERNAL, "Internal error.");
@@ -697,15 +661,11 @@ sr_error_info_t *
 srpjson_get_oper_path(const char *plg_name, const char *mod_name, sr_cid_t cid, uint32_t sid, char **path)
 {
     sr_error_info_t *err_info = NULL;
-    const char *prefix;
 
     *path = NULL;
 
-    if ((err_info = srpjson_shm_prefix(plg_name, &prefix))) {
-        return err_info;
-    }
-
-    if (asprintf(path, "%s/%s_%s.operational.%" PRIu32 "-%" PRIu32, sr_shm_dir_get(), prefix, mod_name, cid, sid) == -1) {
+    if (asprintf(path, "%s/%s_%s.operational.%" PRIu32 "-%" PRIu32, sr_get_shm_path(), sr_get_shm_prefix(), mod_name,
+            cid, sid) == -1) {
         *path = NULL;
         srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_NO_MEMORY, "Memory allocation failed.");
         return err_info;
@@ -808,20 +768,14 @@ int
 srpjson_dir_oper_file_iter(const char *plg_name, DIR *dir, const char *dir_path, const char *mod_name, char **path)
 {
     sr_error_info_t *err_info = NULL;
-    const char *prefix;
     struct dirent *ent;
     int len;
     char *file_prefix = NULL;
 
     *path = NULL;
 
-    if ((err_info = srpjson_shm_prefix(plg_name, &prefix))) {
-        srplg_errinfo_free(&err_info);
-        return 1;
-    }
-
     /* prepare file prefix */
-    len = asprintf(&file_prefix, "%s_%s.operational.", prefix, mod_name);
+    len = asprintf(&file_prefix, "%s_%s.operational.", sr_get_shm_prefix(), mod_name);
     if (len == -1) {
         srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_NO_MEMORY, "Memory allocation failed.");
         srplg_errinfo_free(&err_info);

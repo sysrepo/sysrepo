@@ -422,12 +422,6 @@ int sr_module_has_data(const struct lys_module *ly_mod, int state_data);
 sr_error_info_t *sr_module_get_impl_inv_imports(const struct lys_module *ly_mod, struct ly_set *mod_set);
 
 /**
- * @brief Get the SHM dir as determined by SYSREPO_SHM_DIR env var else default SR_SHM_DIR
- * @return Path to the current SHM directory.
- */
-const char *sr_shm_dir_get(void);
-
-/**
  * @brief Get the path of the main SHM.
  *
  * @param[out] path Created path. Should be freed by the caller.

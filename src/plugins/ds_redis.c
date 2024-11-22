@@ -532,14 +532,8 @@ static sr_error_info_t *
 srpds_get_mod_ns(sr_datastore_t ds, const char *module_name, char **mod_ns)
 {
     sr_error_info_t *err_info = NULL;
-    char *shm_prefix = NULL;
 
-    /* get the shm prefix */
-    if ((err_info = srpjson_shm_prefix(plugin_name, &shm_prefix))) {
-        return err_info;
-    }
-
-    if (asprintf(mod_ns, "%s:%s:%s", srpds_ds2dsprefix(ds), shm_prefix ? shm_prefix : "", module_name) == -1) {
+    if (asprintf(mod_ns, "%s:%s:%s", srpds_ds2dsprefix(ds), sr_get_shm_prefix(), module_name) == -1) {
         ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno))
     }
     return err_info;
@@ -3454,8 +3448,8 @@ cleanup:
  *
  */
 sr_error_info_t *
-srpds_redis_store(const struct lys_module *mod, sr_datastore_t ds, const struct lyd_node *mod_diff,
-        const struct lyd_node *mod_data, void *plg_data)
+srpds_redis_store(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, uint32_t sid,
+        const struct lyd_node *mod_diff, const struct lyd_node *mod_data, void *plg_data)
 {
     redis_plg_conn_data_t *pdata = (redis_plg_conn_data_t *)plg_data;
     redisContext *ctx = NULL;
@@ -3467,6 +3461,8 @@ srpds_redis_store(const struct lys_module *mod, sr_datastore_t ds, const struct 
     struct redis_bulk bulk = {0};
 
     assert(mod);
+    (void)cid;
+    (void)sid;
 
     /* for candidate ds learn if modified */
     if (ds == SR_DS_CANDIDATE) {
@@ -3857,8 +3853,8 @@ cleanup:
  *
  */
 sr_error_info_t *
-srpds_redis_load(const struct lys_module *mod, sr_datastore_t ds, const char **xpaths, uint32_t xpath_count, void *plg_data,
-        struct lyd_node **mod_data)
+srpds_redis_load(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, uint32_t sid, const char **xpaths,
+        uint32_t xpath_count, void *plg_data, struct lyd_node **mod_data)
 {
     redis_plg_conn_data_t *pdata = (redis_plg_conn_data_t *)plg_data;
     redisContext *ctx = NULL;
@@ -3866,6 +3862,9 @@ srpds_redis_load(const struct lys_module *mod, sr_datastore_t ds, const char **x
     sr_error_info_t *err_info = NULL;
 
     assert(mod && mod_data);
+    (void)cid;
+    (void)sid;
+
     *mod_data = NULL;
 
     if ((err_info = srpds_data_init(pdata, &ctx))) {
@@ -3894,19 +3893,6 @@ cleanup:
     free(xpath_filter);
     free(mod_ns);
     return err_info;
-}
-
-/**
- * @brief Comment for this function can be found in "plugins_datastore.h".
- *
- */
-void
-srpds_redis_recover(const struct lys_module *mod, sr_datastore_t ds, void *plg_data)
-{
-    (void)mod;
-    (void)ds;
-    (void)plg_data;
-    return;
 }
 
 /**
@@ -4053,7 +4039,6 @@ const struct srplg_ds_s srpds_redis = {
     .conn_init_cb = srpds_redis_conn_init,
     .conn_destroy_cb = srpds_redis_conn_destroy,
     .store_cb = srpds_redis_store,
-    .recover_cb = srpds_redis_recover,
     .load_cb = srpds_redis_load,
     .copy_cb = srpds_redis_copy,
     .candidate_modified_cb = srpds_redis_candidate_modified,

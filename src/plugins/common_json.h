@@ -70,15 +70,6 @@ sr_error_info_t *srpjson_read(const char *plg_name, int fd, void *buf, size_t co
 int srpjson_file_exists(const char *plg_name, const char *path);
 
 /**
- * @brief Get global SHM prefix prepended to all SHM files.
- *
- * @param[in] plg_name Plugin name.
- * @param[out] prefix SHM prefix to use.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *srpjson_shm_prefix(const char *plg_name, const char **prefix);
-
-/**
  * @brief Get datastore string name.
  *
  * @param[in] ds Datastore to transform.

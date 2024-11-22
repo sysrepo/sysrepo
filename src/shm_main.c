@@ -469,7 +469,7 @@ sr_shmmain_open(sr_shm_t *shm, int *created)
         }
 
         /* make sure the directory exists */
-        shm_dir = strdup(sr_shm_dir_get());
+        shm_dir = strdup(sr_get_shm_path());
         if ((err_info = sr_mkpath(shm_dir, SR_DIR_PERM))) {
             goto cleanup;
         }

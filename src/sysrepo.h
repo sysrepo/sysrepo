@@ -453,7 +453,7 @@ sr_conn_ctx_t *sr_session_get_connection(sr_session_ctx_t *session);
  */
 
 /**
- * @brief Get the common path prefix for all sysrepo files.
+ * @brief Get the path (directory) for all persistent sysrepo files.
  *
  * @note If a specific path was changed during compilation, it does not use this
  * path prefix.
@@ -461,6 +461,20 @@ sr_conn_ctx_t *sr_session_get_connection(sr_session_ctx_t *session);
  * @return Sysrepo repository path.
  */
 const char *sr_get_repo_path(void);
+
+/**
+ * @brief Get the path (directory) for all volatile sysrepo files, created as SHM files.
+ *
+ * @return Sysrepo SHM path.
+ */
+const char *sr_get_shm_path(void);
+
+/**
+ * @brief Get the common SHM file prefix prepended to all SHM files.
+ *
+ * @return Sysrepo SHM files prefix.
+ */
+const char *sr_get_shm_prefix(void);
 
 /**
  * @brief Install a new schema (module) into sysrepo.
