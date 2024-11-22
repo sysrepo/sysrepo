@@ -52,8 +52,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 # Generic version of not only the library. Major version is reserved for really big changes of the project,
 # minor version changes with added functionality (new tool, functionality of the tool or library, ...) and
 # micro version is changed with a set of small changes or bugfixes anywhere in the project.
-set(SYSREPO_MAJOR_VERSION 2)
-set(SYSREPO_MINOR_VERSION 12)
+set(SYSREPO_MAJOR_VERSION 3)
+set(SYSREPO_MINOR_VERSION 0)
 set(SYSREPO_MICRO_VERSION 0)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
 
