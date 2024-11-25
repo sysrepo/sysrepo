@@ -212,6 +212,16 @@ char *sr_xpath_node_name(const char *xpath);
 int sr_xpath_node_name_eq(const char *xpath, const char *node_str);
 
 /**
+ * @brief Returns the parent path of the specified xpath string.
+ *
+ * @param [in] xpath Input xpath string.
+ * @return Pointer to a newly allocated string containing the parent xpath,
+ *         or NULL if the input xpath has no parent or an error occurred.
+ *         The caller is responsible for freeing the allocated memory.
+ */
+char *sr_xpath_parent(const char *xpath);
+
+/**
  * @brief Recovers the xpath string to the original state (puts back the character
  * that was replaced by termination zero).
  *

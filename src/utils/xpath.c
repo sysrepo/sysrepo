@@ -582,6 +582,52 @@ sr_xpath_node_name_eq(const char *xpath, const char *node_name)
     }
 }
 
+API char *
+sr_xpath_parent(const char *xpath)
+{
+    const char *last_slash = NULL, *quot = NULL;
+    size_t parent_length = 0;
+    char *parent_xpath = NULL;
+
+    if ((NULL == xpath) || ('\0' == *xpath)) {
+        return NULL;
+    }
+
+    last_slash = xpath + strlen(xpath) - 1;
+
+    // find the last `/` while skipping quoted parts
+    quot = NULL;
+    while (last_slash != xpath && ((NULL != quot) || ('/' !=  *last_slash ))) {
+        if ((NULL != quot) && (*last_slash == *quot)) {
+            // quote ended
+            quot = NULL;
+        } else if ((NULL == quot) && (('\'' == *last_slash ) || ('\"' == *last_slash))) {
+            // quote started
+            quot = last_slash;
+        }
+        --last_slash;
+    }
+
+    if (last_slash == xpath) {
+        // no parent xpath, return NULL
+        return NULL;
+    }
+
+    parent_length = last_slash - xpath;
+
+    // allocate memory for the parent xpath
+    parent_xpath = (char *)malloc(parent_length + 1);
+    if (parent_xpath == NULL) {
+        return NULL;
+    }
+
+    // copy the parent xpath
+    strncpy(parent_xpath, xpath, parent_length);
+    parent_xpath[parent_length] = '\0';
+
+    return parent_xpath;
+}
+
 API void
 sr_xpath_recover(sr_xpath_ctx_t *state)
 {
