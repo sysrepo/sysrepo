@@ -585,14 +585,15 @@ next_mod:
 }
 
 sr_error_info_t *
-sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *edit, int create_diff)
+sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *edit, int create_diff,
+        sr_error_info_t **val_err_info)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
     struct sr_mod_info_mod_s *mod;
     const struct lyd_node *node;
     uint32_t *aux = NULL;
-    int change;
+    int change = 0;
 
     assert(!mod_info->data_cached);
 
@@ -600,13 +601,13 @@ sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *edi
         ly_mod = lyd_node_module(node);
         if (!ly_mod) {
             /* invalid opaque data */
-            return sr_lyd_parse_opaq_error(node);
+            sr_errinfo_merge(val_err_info, sr_lyd_parse_opaq_error(node));
+            continue;
         }
 
         /* invalid sysrepo data */
         if (!strcmp(ly_mod->name, "sysrepo")) {
-            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Data of internal module \"sysrepo\" cannot be modified.");
-            return err_info;
+            sr_errinfo_new(val_err_info, SR_ERR_UNSUPPORTED, "Data of internal module \"sysrepo\" cannot be modified.");
         }
     }
 
@@ -616,7 +617,7 @@ sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *edi
 
         /* apply relevant edit changes */
         if ((err_info = sr_edit_mod_apply(edit, mod->ly_mod, &mod_info->data, create_diff ? &mod_info->diff : NULL,
-                &change))) {
+                &change, val_err_info))) {
             goto cleanup;
         }
 
@@ -2993,9 +2994,9 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_modinfo_validate(struct sr_mod_info_s *mod_info, uint32_t mod_state, int finish_diff)
+sr_modinfo_validate(struct sr_mod_info_s *mod_info, uint32_t mod_state, int finish_diff, sr_error_info_t **val_err_info)
 {
-    sr_error_info_t *err_info = NULL;
+    sr_error_info_t *err_info = NULL, *tmp_err;
     struct sr_mod_info_mod_s *mod;
     struct lyd_node *diff = NULL, *iter;
     uint32_t i;
@@ -3006,18 +3007,17 @@ sr_modinfo_validate(struct sr_mod_info_s *mod_info, uint32_t mod_state, int fini
 
     /* validate all the modules individually */
     if (SR_IS_CONVENTIONAL_DS(mod_info->ds)) {
-        val_opts = LYD_VALIDATE_NO_STATE;
+        val_opts = LYD_VALIDATE_NO_STATE | LYD_VALIDATE_MULTI_ERROR;
     } else {
-        val_opts = LYD_VALIDATE_OPERATIONAL | LYD_VALIDATE_NO_DEFAULTS;
+        val_opts = LYD_VALIDATE_OPERATIONAL | LYD_VALIDATE_NO_DEFAULTS | LYD_VALIDATE_MULTI_ERROR;
     }
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
         if (mod->state & mod_state) {
             /* validate this module */
-            if ((err_info = sr_lyd_validate_module(&mod_info->data, mod->ly_mod, val_opts | LYD_VALIDATE_NOT_FINAL,
+            if ((tmp_err = sr_lyd_validate_module(&mod_info->data, mod->ly_mod, val_opts | LYD_VALIDATE_NOT_FINAL,
                     finish_diff ? &diff : NULL))) {
-                SR_ERRINFO_VALID(&err_info);
-                goto cleanup;
+                sr_errinfo_merge(val_err_info, tmp_err);
             }
 
             if (diff) {
@@ -3049,9 +3049,8 @@ sr_modinfo_validate(struct sr_mod_info_s *mod_info, uint32_t mod_state, int fini
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
         if (mod->state & mod_state) {
-            if ((err_info = sr_lyd_validate_module_final(mod_info->data, mod->ly_mod, val_opts))) {
-                SR_ERRINFO_VALID(&err_info);
-                goto cleanup;
+            if ((tmp_err = sr_lyd_validate_module_final(mod_info->data, mod->ly_mod, val_opts))) {
+                sr_errinfo_merge(val_err_info, tmp_err);
             }
         }
     }
@@ -3078,7 +3077,6 @@ sr_modinfo_add_defaults(struct sr_mod_info_s *mod_info, int finish_diff)
             /* add default values for this module */
             if ((err_info = sr_lyd_new_implicit_module(&mod_info->data, mod->ly_mod, LYD_IMPLICIT_NO_STATE,
                     finish_diff ? &diff : NULL))) {
-                SR_ERRINFO_VALID(&err_info);
                 goto cleanup;
             }
             mod_info->data = lyd_first_sibling(mod_info->data);
@@ -3114,7 +3112,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_modinfo_check_state_data(struct sr_mod_info_s *mod_info)
+sr_modinfo_check_state_data(struct sr_mod_info_s *mod_info, sr_error_info_t **val_err_info)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
@@ -3140,17 +3138,14 @@ sr_modinfo_check_state_data(struct sr_mod_info_s *mod_info)
 
             LYD_TREE_DFS_BEGIN(root, node) {
                 if (node->schema->flags & LYS_CONFIG_R) {
-                    sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, "Unexpected data state node \"%s\" found.",
+                    sr_errinfo_new(val_err_info, SR_ERR_VALIDATION_FAILED, "Unexpected data state node \"%s\" found.",
                             LYD_NAME(node));
-                    SR_ERRINFO_VALID(&err_info);
-                    goto cleanup;
                 }
                 LYD_TREE_DFS_END(root, node);
             }
         }
     }
 
-cleanup:
     return err_info;
 }
 
@@ -3258,7 +3253,7 @@ sr_error_info_t *
 sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_session_ctx_t *session,
         struct ly_set **result)
 {
-    sr_error_info_t *err_info = NULL;
+    sr_error_info_t *err_info = NULL, *val_err_info = NULL;
     struct sr_mod_info_mod_s *mod;
     struct lyd_node *edit = NULL, *diff = NULL;
     uint32_t i;
@@ -3313,7 +3308,10 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
                         is_oper_ds ? sr_lyd_diff_apply_cb : NULL))) {
                     goto cleanup;
                 }
-                if ((err_info = sr_edit_mod_apply(edit, mod->ly_mod, &mod_info->data, NULL, NULL))) {
+                if ((err_info = sr_edit_mod_apply(edit, mod->ly_mod, &mod_info->data, NULL, NULL, &val_err_info))) {
+                    goto cleanup;
+                } else if (val_err_info) {
+                    sr_errinfo_merge(&err_info, val_err_info);
                     goto cleanup;
                 }
             }
@@ -3383,18 +3381,16 @@ sr_modinfo_update_is_foreign(const struct sr_mod_info_s *mod_info, const struct 
 
 sr_error_info_t *
 sr_modinfo_change_notify_update(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session, uint32_t timeout_ms,
-        sr_lock_mode_t *change_sub_lock, sr_error_info_t **cb_err_info)
+        sr_lock_mode_t *change_sub_lock, sr_error_info_t **err_info2)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *update_edit = NULL, *old_diff = NULL, *new_diff = NULL;
     char *orig_name = NULL;
     void *orig_data = NULL;
-    uint32_t mi_opts;
+    uint32_t mi_opts, err_count;
 
     assert(mod_info->diff);
     assert(*change_sub_lock == SR_LOCK_READ);
-
-    *cb_err_info = NULL;
 
     /* get session info */
     if (session) {
@@ -3403,10 +3399,11 @@ sr_modinfo_change_notify_update(struct sr_mod_info_s *mod_info, sr_session_ctx_t
     }
 
     /* publish current diff in an "update" event for the subscribers to update it */
-    if ((err_info = sr_shmsub_change_notify_update(mod_info, orig_name, orig_data, timeout_ms, &update_edit, cb_err_info))) {
+    err_count = *err_info2 ? (*err_info2)->err_count : 0;
+    if ((err_info = sr_shmsub_change_notify_update(mod_info, orig_name, orig_data, timeout_ms, &update_edit, err_info2))) {
         goto cleanup;
     }
-    if (*cb_err_info) {
+    if (*err_info2 && ((*err_info2)->err_count > err_count)) {
         /* "update" event failed, just clear the sub SHM and finish */
         err_info = sr_shmsub_change_notify_clear(mod_info);
         goto cleanup;
@@ -3445,7 +3442,7 @@ sr_modinfo_change_notify_update(struct sr_mod_info_s *mod_info, sr_session_ctx_t
         if (mod_info->ds == SR_DS_OPERATIONAL) {
             err_info = sr_modinfo_oper_edit_apply(mod_info, update_edit, 1);
         } else {
-            err_info = sr_modinfo_edit_apply(mod_info, update_edit, 1);
+            err_info = sr_modinfo_edit_apply(mod_info, update_edit, 1, err_info2);
         }
         if (err_info) {
             goto cleanup;
@@ -3465,7 +3462,7 @@ sr_modinfo_change_notify_update(struct sr_mod_info_s *mod_info, sr_session_ctx_t
             }
 
             /* validate */
-            if ((err_info = sr_modinfo_validate(mod_info, MOD_INFO_CHANGED | MOD_INFO_INV_DEP, 1))) {
+            if ((err_info = sr_modinfo_validate(mod_info, MOD_INFO_CHANGED | MOD_INFO_INV_DEP, 1, err_info2))) {
                 goto cleanup;
             }
             break;
@@ -3473,7 +3470,7 @@ sr_modinfo_change_notify_update(struct sr_mod_info_s *mod_info, sr_session_ctx_t
             if ((err_info = sr_modinfo_add_defaults(mod_info, 1))) {
                 goto cleanup;
             }
-            if ((err_info = sr_modinfo_check_state_data(mod_info))) {
+            if ((err_info = sr_modinfo_check_state_data(mod_info, err_info2))) {
                 goto cleanup;
             }
             break;

@@ -1,0 +1,23 @@
+module valid {
+    namespace "urn:valid";
+    prefix v;
+
+    container cont {
+        leaf l1 {
+            type string {
+                length "1..10";
+            }
+        }
+        leaf l2 {
+            type uint8;
+        }
+        leaf l3 {
+            type string;
+            must ". = 'value'";
+        }
+        leaf-list l4 {
+            type string;
+            max-elements 1;
+        }
+    }
+}

@@ -1679,11 +1679,13 @@ sr_edit_created_subtree_apply_move(struct lyd_node *match_subtree)
  * @param[out] next_op Next operation to be performed with these nodes.
  * @param[in,out] flags_r Modified flags for the rest of recursive applying of this operation.
  * @param[out] change Whether some data change occured.
+ * @param[in,out] val_err_info Validation error info to add validation errors to.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_edit_apply_replace(struct lyd_node *data_match, int val_equal, const struct lyd_node *edit_node, struct lyd_node *diff_parent,
-        struct lyd_node **diff_root, struct lyd_node **diff_node, enum edit_op *next_op, int *flags_r, int *change)
+sr_edit_apply_replace(struct lyd_node *data_match, int val_equal, const struct lyd_node *edit_node,
+        struct lyd_node *diff_parent, struct lyd_node **diff_root, struct lyd_node **diff_node, enum edit_op *next_op,
+        int *flags_r, int *change, sr_error_info_t **val_err_info)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node_any *any;
@@ -1691,7 +1693,9 @@ sr_edit_apply_replace(struct lyd_node *data_match, int val_equal, const struct l
     uintptr_t prev_dflt;
 
     if (!edit_node->schema) {
-        return sr_lyd_parse_opaq_error(edit_node);
+        sr_errinfo_merge(val_err_info, sr_lyd_parse_opaq_error(edit_node));
+        *next_op = EDIT_CONTINUE;
+        return NULL;
     }
 
     if (!data_match) {
@@ -1782,17 +1786,20 @@ sr_edit_apply_replace(struct lyd_node *data_match, int val_equal, const struct l
  * @param[out] diff_node Created diff node.
  * @param[out] next_op Next operation to be performed with these nodes.
  * @param[out] change Whether some data change occured.
+ * @param[in,out] val_err_info Validation error info to add validation errors to.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_edit_apply_create(struct lyd_node **data_root, struct lyd_node *data_parent, struct lyd_node **data_match,
         int val_equal, const struct lyd_node *edit_node, struct lyd_node *diff_parent, struct lyd_node **diff_root,
-        struct lyd_node **diff_node, enum edit_op *next_op, int *change)
+        struct lyd_node **diff_node, enum edit_op *next_op, int *change, sr_error_info_t **val_err_info)
 {
     sr_error_info_t *err_info = NULL;
 
     if (!edit_node->schema) {
-        return sr_lyd_parse_opaq_error(edit_node);
+        sr_errinfo_merge(val_err_info, sr_lyd_parse_opaq_error(edit_node));
+        *next_op = EDIT_CONTINUE;
+        return NULL;
     }
 
     if (*data_match) {
@@ -1812,9 +1819,10 @@ sr_edit_apply_create(struct lyd_node **data_root, struct lyd_node *data_parent, 
             return NULL;
         }
 
-        sr_errinfo_new(&err_info, SR_ERR_EXISTS, "Node \"%s\" to be created already exists.",
+        sr_errinfo_new(val_err_info, SR_ERR_EXISTS, "Node \"%s\" to be created already exists.",
                 edit_node->schema->name);
-        return err_info;
+        *next_op = EDIT_CONTINUE;
+        return NULL;
     }
 
     if (lysc_is_userordered(edit_node->schema)) {
@@ -1892,13 +1900,13 @@ sr_edit_apply_merge(struct lyd_node *data_match, int val_equal, const struct lyd
  * @param[in] data_match Matching data tree node.
  * @param[in] edit_node Current edit node.
  * @param[out] next_op Next operation to be performed with these nodes.
+ * @param[in,out] val_err_info Validation error info to add validation errors to.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_edit_apply_delete(struct lyd_node *data_match, const struct lyd_node *edit_node, enum edit_op *next_op)
+sr_edit_apply_delete(struct lyd_node *data_match, const struct lyd_node *edit_node, enum edit_op *next_op,
+        sr_error_info_t **val_err_info)
 {
-    sr_error_info_t *err_info = NULL;
-
     if (data_match && !lysc_is_np_cont(data_match->schema) && (data_match->schema->nodetype & LYD_NODE_TERM) &&
             (data_match->flags & LYD_DEFAULT)) {
         /* default term nodes were not explicitly created */
@@ -1906,8 +1914,9 @@ sr_edit_apply_delete(struct lyd_node *data_match, const struct lyd_node *edit_no
     }
 
     if (!data_match) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Node \"%s\" to be deleted does not exist.", LYD_NAME(edit_node));
-        return err_info;
+        sr_errinfo_new(val_err_info, SR_ERR_NOT_FOUND, "Node \"%s\" to be deleted does not exist.", LYD_NAME(edit_node));
+        *next_op = EDIT_CONTINUE;
+        return NULL;
     }
 
     *next_op = EDIT_REMOVE;
@@ -2013,18 +2022,6 @@ cleanup:
 }
 
 /**
- * @brief Generate operation failed to be applied error.
- *
- * @param[in,out] err_info Error info to use.
- * @param[in] op Operation that failed.
- */
-static void
-sr_edit_apply_op_error(sr_error_info_t **err_info, enum edit_op op)
-{
-    sr_errinfo_new(err_info, (*err_info)->err[0].err_code, "Applying operation \"%s\" failed.", sr_edit_op2str(op));
-}
-
-/**
  * @brief Apply sysrepo edit subtree on data tree nodes, recursively. Optionally,
  * sysrepo diff is being also created/updated.
  *
@@ -2036,11 +2033,13 @@ sr_edit_apply_op_error(sr_error_info_t **err_info, enum edit_op op)
  * @param[in,out] diff_root Sysrepo diff root node.
  * @param[in] flags Flags modifying the behavior.
  * @param[out] change Set if there are some data changes.
+ * @param[in,out] val_err_info Validation error info to add validation errors to.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_edit_apply_r(struct lyd_node **data_root, struct lyd_node *data_parent, const struct lyd_node *edit_node,
-        enum edit_op parent_op, struct lyd_node *diff_parent, struct lyd_node **diff_root, int flags, int *change)
+        enum edit_op parent_op, struct lyd_node *diff_parent, struct lyd_node **diff_root, int flags, int *change,
+        sr_error_info_t **val_err_info)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *data_match = NULL, *child, *next, *edit_match, *diff_node = NULL, *data_del = NULL;
@@ -2064,7 +2063,6 @@ sr_edit_apply_r(struct lyd_node **data_root, struct lyd_node *data_parent, const
             sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED,
                     "Key \"%s\" operation \"%s\" differs from its parent list operation \"%s\".",
                     LYD_NAME(edit_node), sr_edit_op2str(op), sr_edit_op2str(parent_op));
-            sr_edit_apply_op_error(&err_info, op);
         }
         goto cleanup;
     }
@@ -2091,34 +2089,29 @@ reapply:
         switch (next_op) {
         case EDIT_REPLACE:
             if ((err_info = sr_edit_apply_replace(data_match, val_equal, edit_node, diff_parent, diff_root, &diff_node,
-                    &next_op, &flags, change))) {
-                sr_edit_apply_op_error(&err_info, op);
+                    &next_op, &flags, change, val_err_info))) {
                 goto cleanup;
             }
             break;
         case EDIT_CREATE:
             if ((err_info = sr_edit_apply_create(data_root, data_parent, &data_match, val_equal, edit_node, diff_parent,
-                    diff_root, &diff_node, &next_op, change))) {
-                sr_edit_apply_op_error(&err_info, op);
+                    diff_root, &diff_node, &next_op, change, val_err_info))) {
                 goto cleanup;
             }
             break;
         case EDIT_MERGE:
             if ((err_info = sr_edit_apply_merge(data_match, val_equal, edit_node, &next_op))) {
-                sr_edit_apply_op_error(&err_info, op);
                 goto cleanup;
             }
             break;
         case EDIT_DELETE:
-            if ((err_info = sr_edit_apply_delete(data_match, edit_node, &next_op))) {
-                sr_edit_apply_op_error(&err_info, op);
+            if ((err_info = sr_edit_apply_delete(data_match, edit_node, &next_op, val_err_info))) {
                 goto cleanup;
             }
             break;
         case EDIT_DFLT_CHANGE:
             if ((err_info = sr_edit_apply_dflt_change(data_match, edit_node, diff_parent, diff_root, &diff_node,
                     &next_op, change))) {
-                sr_edit_apply_op_error(&err_info, op);
                 goto cleanup;
             }
             break;
@@ -2129,26 +2122,22 @@ reapply:
         case EDIT_REMOVE:
             if ((err_info = sr_edit_apply_remove(data_match, diff_parent, diff_root, &diff_node, &next_op, &flags,
                     change, &data_del))) {
-                sr_edit_apply_op_error(&err_info, op);
                 goto cleanup;
             }
             break;
         case EDIT_MOVE:
             if ((err_info = sr_edit_apply_move(data_root, data_parent, edit_node, &data_match, insert, key_or_value,
                     diff_parent, diff_root, &diff_node, &next_op, change))) {
-                sr_edit_apply_op_error(&err_info, op);
                 goto cleanup;
             }
             break;
         case EDIT_NONE:
             if ((err_info = sr_edit_apply_none(data_match, edit_node, diff_parent, diff_root, &diff_node, &next_op))) {
-                sr_edit_apply_op_error(&err_info, op);
                 goto cleanup;
             }
             break;
         case EDIT_ETHER:
             if ((err_info = sr_edit_apply_ether(data_match, &next_op))) {
-                sr_edit_apply_op_error(&err_info, op);
                 goto cleanup;
             }
             break;
@@ -2202,7 +2191,7 @@ reapply:
                 goto cleanup;
             }
             if (!edit_match && (err_info = sr_edit_apply_r(data_root, data_match, child, EDIT_REMOVE, diff_parent,
-                    diff_root, flags, change))) {
+                    diff_root, flags, change, val_err_info))) {
                 goto cleanup;
             }
         }
@@ -2211,7 +2200,8 @@ reapply:
     /* apply edit recursively, keys are being checked, in case we were called by the recursion above,
      * edit_node and data_match are the same and so child will be freed, hence the safe loop */
     LY_LIST_FOR_SAFE(lyd_child(edit_node), next, child) {
-        if ((err_info = sr_edit_apply_r(data_root, data_match, child, op, diff_parent, diff_root, flags, change))) {
+        if ((err_info = sr_edit_apply_r(data_root, data_match, child, op, diff_parent, diff_root, flags, change,
+                val_err_info))) {
             goto cleanup;
         }
     }
@@ -2231,7 +2221,7 @@ cleanup:
 
 sr_error_info_t *
 sr_edit_mod_apply(const struct lyd_node *edit, const struct lys_module *ly_mod, struct lyd_node **data,
-        struct lyd_node **diff, int *change)
+        struct lyd_node **diff, int *change, sr_error_info_t **val_err_info)
 {
     sr_error_info_t *err_info = NULL;
     const struct lyd_node *root;
@@ -2248,7 +2238,8 @@ sr_edit_mod_apply(const struct lyd_node *edit, const struct lys_module *ly_mod, 
         }
 
         /* apply relevant nodes from the edit datatree */
-        if ((err_info = sr_edit_apply_r(data, NULL, root, EDIT_CONTINUE, NULL, diff ? &mod_diff : NULL, 0, change))) {
+        if ((err_info = sr_edit_apply_r(data, NULL, root, EDIT_CONTINUE, NULL, diff ? &mod_diff : NULL, 0, change,
+                val_err_info))) {
             goto cleanup;
         }
 

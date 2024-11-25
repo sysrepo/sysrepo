@@ -128,10 +128,11 @@ sr_error_info_t *sr_edit_created_subtree_apply_move(struct lyd_node *match_subtr
  * @param[in,out] data Data tree to modify.
  * @param[in,out] diff Optionally create the diff of the original data tree and the new one (or merge into diff).
  * @param[out] change Optional, set if there were some module changes.
+ * @param[in,out] val_err_info Validation error info to add validation errors to.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_edit_mod_apply(const struct lyd_node *edit, const struct lys_module *ly_mod,
-        struct lyd_node **data, struct lyd_node **diff, int *change);
+        struct lyd_node **data, struct lyd_node **diff, int *change, sr_error_info_t **val_err_info);
 
 /**
  * @brief Apply sysrepo operational edit on a specific module data tree.

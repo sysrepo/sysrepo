@@ -26,7 +26,6 @@
 #define SR_ERRINFO_COND(err_info, func, ret) sr_errinfo_new(err_info, (ret == ETIMEDOUT) ? SR_ERR_TIME_OUT : SR_ERR_INTERNAL, \
         "Waiting on a conditional variable failed (%s: %s).", func, strerror(ret))
 #define SR_ERRINFO_SYSERRNO(err_info, func) sr_errinfo_new(err_info, SR_ERR_SYS, "%s() failed (%s).", func, strerror(errno))
-#define SR_ERRINFO_VALID(err_info) sr_errinfo_new(err_info, SR_ERR_VALIDATION_FAILED, "Validation failed.")
 #define SR_ERRINFO_SYSERRPATH(err_info, func, path) sr_errinfo_new(err_info, SR_ERR_SYS, "%s() on \"%s\" failed (%s).", \
         func, path, strerror(errno))
 

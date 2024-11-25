@@ -3740,7 +3740,7 @@ cleanup:
 API int
 sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t timeout_ms)
 {
-    sr_error_info_t *err_info = NULL;
+    sr_error_info_t *err_info = NULL, *err_info2 = NULL;
     const struct lys_module *ly_mod = NULL;
     const struct lyd_node *node, *edit;
     struct sr_mod_info_s mod_info;
@@ -3824,7 +3824,7 @@ sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t timeout
     }
 
     /* apply any changes */
-    if ((err_info = sr_modinfo_edit_apply(&mod_info, edit, 0))) {
+    if ((err_info = sr_modinfo_edit_apply(&mod_info, edit, 0, &err_info2))) {
         goto cleanup;
     }
 
@@ -3843,14 +3843,14 @@ sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t timeout
     case SR_DS_STARTUP:
     case SR_DS_RUNNING:
         /* validate only changed modules and any that can become invalid because of the changes */
-        if ((err_info = sr_modinfo_validate(&mod_info, MOD_INFO_CHANGED | MOD_INFO_INV_DEP, 0))) {
+        if ((err_info = sr_modinfo_validate(&mod_info, MOD_INFO_CHANGED | MOD_INFO_INV_DEP, 0, &err_info2))) {
             goto cleanup;
         }
         break;
     case SR_DS_CANDIDATE:
     case SR_DS_OPERATIONAL:
         /* validate all the modules because they may be invalid without any changes */
-        if ((err_info = sr_modinfo_validate(&mod_info, MOD_INFO_REQ | MOD_INFO_INV_DEP, 0))) {
+        if ((err_info = sr_modinfo_validate(&mod_info, MOD_INFO_REQ | MOD_INFO_INV_DEP, 0, &err_info2))) {
             goto cleanup;
         }
         break;
@@ -3867,6 +3867,11 @@ cleanup:
 
     /* CONTEXT UNLOCK */
     sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
+
+    if (err_info2) {
+        /* return validation errors if some were generated */
+        sr_errinfo_merge(&err_info, err_info2);
+    }
     return sr_api_ret(session, err_info);
 }
 
@@ -3893,16 +3898,14 @@ sr_changes_has_notify_diff(const struct sr_mod_info_s *mod_info)
 
 sr_error_info_t *
 sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session, int shmmod_session_del,
-        uint32_t timeout_ms, sr_error_info_t **cb_err_info)
+        uint32_t timeout_ms, sr_error_info_t **err_info2)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_denied denied = {0};
     sr_lock_mode_t change_sub_lock = SR_LOCK_NONE;
-    uint32_t sid = 0;
+    uint32_t sid = 0, err_count;
     char *orig_name = NULL;
     void *orig_data = NULL;
-
-    *cb_err_info = NULL;
 
     /* get session info */
     if (session) {
@@ -3954,7 +3957,11 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
             goto cleanup;
         }
 
-        if ((err_info = sr_modinfo_validate(mod_info, MOD_INFO_CHANGED | MOD_INFO_INV_DEP, 1))) {
+        /* finish on validation errors */
+        err_count = *err_info2 ? (*err_info2)->err_count : 0;
+        if ((err_info = sr_modinfo_validate(mod_info, MOD_INFO_CHANGED | MOD_INFO_INV_DEP, 1, err_info2))) {
+            goto cleanup;
+        } else if (*err_info2 && ((*err_info2)->err_count > err_count)) {
             goto cleanup;
         }
         break;
@@ -3963,7 +3970,12 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
         if ((err_info = sr_modinfo_add_defaults(mod_info, 1))) {
             goto cleanup;
         }
-        if ((err_info = sr_modinfo_check_state_data(mod_info))) {
+
+        /* finish on validation errors */
+        err_count = *err_info2 ? (*err_info2)->err_count : 0;
+        if ((err_info = sr_modinfo_check_state_data(mod_info, err_info2))) {
+            goto cleanup;
+        } else if (*err_info2 && ((*err_info2)->err_count > err_count)) {
             goto cleanup;
         }
         break;
@@ -3993,8 +4005,8 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
     change_sub_lock = SR_LOCK_READ;
 
     /* first publish "update" event for the diff to be updated */
-    if ((err_info = sr_modinfo_change_notify_update(mod_info, session, timeout_ms, &change_sub_lock, cb_err_info)) ||
-            *cb_err_info) {
+    if ((err_info = sr_modinfo_change_notify_update(mod_info, session, timeout_ms, &change_sub_lock, err_info2)) ||
+            *err_info2) {
         goto cleanup;
     }
 
@@ -4004,10 +4016,10 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
     }
 
     /* publish final diff in a "change" event for any subscribers and wait for them */
-    if ((err_info = sr_shmsub_change_notify_change(mod_info, orig_name, orig_data, timeout_ms, cb_err_info))) {
+    if ((err_info = sr_shmsub_change_notify_change(mod_info, orig_name, orig_data, timeout_ms, err_info2))) {
         goto cleanup;
     }
-    if (*cb_err_info) {
+    if (*err_info2) {
         /* "change" event failed, publish "abort" event and finish */
         err_info = sr_shmsub_change_notify_change_abort(mod_info, orig_name, orig_data, timeout_ms);
         goto cleanup;
@@ -4059,7 +4071,7 @@ cleanup:
 API int
 sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms)
 {
-    sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
+    sr_error_info_t *err_info = NULL, *err_info2 = NULL;
     struct sr_mod_info_s mod_info;
     uint32_t mi_opts, i;
     int update_sm_data = 0;
@@ -4105,13 +4117,15 @@ sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms)
             }
         }
     } else {
-        if ((err_info = sr_modinfo_edit_apply(&mod_info, session->dt[session->ds].edit->tree, 1))) {
+        if ((err_info = sr_modinfo_edit_apply(&mod_info, session->dt[session->ds].edit->tree, 1, &err_info2))) {
             goto cleanup;
         }
     }
 
     /* notify all the subscribers and store the changes */
-    if ((err_info = sr_changes_notify_store(&mod_info, session, 0, timeout_ms, &cb_err_info))) {
+    if ((err_info = sr_changes_notify_store(&mod_info, session, 0, timeout_ms, &err_info2))) {
+        goto cleanup;
+    } else if (err_info2) {
         goto cleanup;
     }
 
@@ -4127,15 +4141,14 @@ cleanup:
     sr_shmmod_modinfo_unlock(&mod_info);
     sr_modinfo_erase(&mod_info);
 
-    if (!err_info && !cb_err_info) {
+    if (!err_info && !err_info2) {
         /* free applied edit */
         sr_release_data(session->dt[session->ds].edit);
         session->dt[session->ds].edit = NULL;
     }
-    if (cb_err_info) {
+    if (err_info2) {
         /* return callback error if some was generated */
-        assert(!err_info);
-        err_info = cb_err_info;
+        sr_errinfo_merge(&err_info, err_info2);
     }
     SR_LOG_DBG("Applying \"%s\" datastore changes %s.", sr_ds2str(session->ds), err_info ? "failed" : "success");
     return sr_api_ret(session, err_info);

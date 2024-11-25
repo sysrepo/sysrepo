@@ -43,6 +43,7 @@ setup_f(void **state)
         TESTS_SRC_DIR "/files/test.yang",
         TESTS_SRC_DIR "/files/simple.yang",
         TESTS_SRC_DIR "/files/refs.yang",
+        TESTS_SRC_DIR "/files/valid.yang",
         NULL
     };
 
@@ -71,6 +72,7 @@ teardown_f(void **state)
 {
     struct state *st = (struct state *)*state;
     const char *module_names[] = {
+        "valid",
         "refs",
         "simple",
         "test",
@@ -272,6 +274,48 @@ test_operational(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 }
 
+static void
+test_multi_error(void **state)
+{
+    struct state *st = (struct state *)*state;
+    const char *xml;
+    struct lyd_node *edit;
+    int ret;
+    const sr_error_info_t *err_info;
+
+    xml = "<cont xmlns=\"urn:valid\">"
+            "<l1>string is too long</l1>"
+            "<l2>should be a number</l2>"
+            "<l3>must be value</l3>"
+            "<l4>there can be</l4>"
+            "<l4>max one instance</l4>"
+            "</cont>";
+
+    /* perform an inalid edit */
+    ret = lyd_parse_data_mem(st->ly_ctx, xml, LYD_XML, LYD_PARSE_ONLY | LYD_PARSE_OPAQ, 0, &edit);
+    assert_int_equal(ret, LY_SUCCESS);
+    ret = sr_edit_batch(st->sess, edit, "merge");
+    assert_int_equal(ret, SR_ERR_OK);
+    lyd_free_tree(edit);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
+
+    /* check the errors */
+    ret = sr_session_get_error(st->sess, &err_info);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(err_info->err_count, 4);
+    assert_string_equal(err_info->err[0].message, "Unsatisfied length - string \"string is too long\""
+            " length is not allowed. (path \"/valid:cont/l1\")");
+    assert_string_equal(err_info->err[1].message, "Invalid non-number-encoded uint8 value \"should be a number\"."
+            " (path \"/valid:cont/l2\")");
+    assert_string_equal(err_info->err[2].message, "Must condition \". = 'value'\" not satisfied. (path \"/valid:cont/l3\")");
+    assert_string_equal(err_info->err[3].message, "Too many \"l4\" instances. (path \"/valid:cont/l4[.='there can be']\")");
+
+    /* cleanup */
+    ret = sr_discard_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
 int
 main(void)
 {
@@ -279,6 +323,7 @@ main(void)
         cmocka_unit_test_teardown(test_leafref, clear_test_refs),
         cmocka_unit_test_teardown(test_instid, clear_test_refs),
         cmocka_unit_test(test_operational),
+        cmocka_unit_test(test_multi_error),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
