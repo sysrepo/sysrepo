@@ -601,12 +601,21 @@ sr_lyd_validate_module_final(struct lyd_node *data, const struct lys_module *mod
 {
     sr_error_info_t *err_info = NULL;
     uint32_t temp_lo = LY_LOSTORE;
+    const struct ly_err_item *e;
 
     ly_temp_log_options(&temp_lo);
+
+    /* clear any previous errors and warnings */
+    ly_err_clean(mod->ctx, NULL);
 
     if (lyd_validate_module_final(data, mod, options)) {
         sr_errinfo_new_ly(&err_info, mod->ctx, NULL, SR_ERR_VALIDATION_FAILED);
         goto cleanup;
+    }
+
+    /* print any warnings (such as about obsolete data being instantiated) */
+    for (e = ly_err_first(mod->ctx); e; e = e->next) {
+        SR_LOG_WRN("%s", e->msg);
     }
 
 cleanup:
@@ -619,12 +628,21 @@ sr_lyd_validate_op(struct lyd_node *op, const struct lyd_node *oper_data, enum l
 {
     sr_error_info_t *err_info = NULL;
     uint32_t temp_lo = LY_LOSTORE;
+    const struct ly_err_item *e;
 
     ly_temp_log_options(&temp_lo);
+
+    /* clear any previous errors and warnings */
+    ly_err_clean((struct ly_ctx *)LYD_CTX(op), NULL);
 
     if (lyd_validate_op(op, oper_data, op_type, NULL)) {
         sr_errinfo_new_ly(&err_info, LYD_CTX(op), op, SR_ERR_VALIDATION_FAILED);
         goto cleanup;
+    }
+
+    /* print any warnings (such as about obsolete data being instantiated) */
+    for (e = ly_err_first(LYD_CTX(op)); e; e = e->next) {
+        SR_LOG_WRN("%s", e->msg);
     }
 
 cleanup:
