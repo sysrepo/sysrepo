@@ -524,16 +524,25 @@ cleanup:
  *
  * @param[in] ds Given datastore.
  * @param[in] module_name Given module name.
+ * @param[in] cid Connection ID, for @p ds ::SR_DS_OPERATIONAL.
+ * @param[in] sid Session ID, for @p ds ::SR_DS_OPERATIONAL.
  * @param[out] mod_ns Database prefix for the module.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_get_mod_ns(sr_datastore_t ds, const char *module_name, char **mod_ns)
+srpds_get_mod_ns(sr_datastore_t ds, const char *module_name, sr_cid_t cid, uint32_t sid, char **mod_ns)
 {
     sr_error_info_t *err_info = NULL;
+    int r;
 
-    if (asprintf(mod_ns, "%s:%s:%s", srpds_ds2dsprefix(ds), sr_get_shm_prefix(), module_name) == -1) {
+    if ((ds == SR_DS_OPERATIONAL) && cid && sid) {
+        r = asprintf(mod_ns, "%s:%s:%s-%" PRIu32 "-%" PRIu32, srpds_ds2dsprefix(ds), sr_get_shm_prefix(), module_name, cid, sid);
+    } else {
+        r = asprintf(mod_ns, "%s:%s:%s", srpds_ds2dsprefix(ds), sr_get_shm_prefix(), module_name);
+    }
+
+    if (r == -1) {
         ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
     }
     return err_info;
@@ -2392,6 +2401,76 @@ cleanup:
 }
 
 /**
+ * @brief Create all necessary indices.
+ *
+ * @param[in] ctx Redis context.
+ * @param[in] mod_ns Database prefix for the module.
+ * @param[in] is_oper Whether the indices are created for Operational datastore.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_create_indices(redisContext *ctx, const char *mod_ns, int is_oper)
+{
+    sr_error_info_t *err_info = NULL;
+    redisReply *reply = NULL;
+
+    /* index for data */
+    if (is_oper) {
+        reply = redisCommand(ctx, "FT.CREATE %s:data "
+                "ON HASH PREFIX 1 %s:data: "
+                "STOPWORDS 0 "
+                "SCHEMA path TAG CASESENSITIVE "
+                "name TAG CASESENSITIVE "
+                "type NUMERIC "
+                "order NUMERIC SORTABLE "
+                "module_name TAG CASESENSITIVE "
+                "value TAG CASESENSITIVE "
+                "valtype NUMERIC "
+                "keys TAG CASESENSITIVE "
+                "dflt_flag NUMERIC ", mod_ns, mod_ns);
+    } else {
+        reply = redisCommand(ctx, "FT.CREATE %s:data "
+                "ON HASH PREFIX 1 %s:data: "
+                "STOPWORDS 0 "
+                "SCHEMA path TAG CASESENSITIVE "
+                "name TAG CASESENSITIVE "
+                "type NUMERIC "
+                "module_name TAG CASESENSITIVE "
+                "dflt_flag NUMERIC "
+                "keys TAG CASESENSITIVE "
+                "value TAG CASESENSITIVE "
+                "valtype NUMERIC "
+                "order NUMERIC "
+                "path_no_pred TAG CASESENSITIVE "
+                "prev TAG CASESENSITIVE "
+                "is_prev_empty NUMERIC "
+                "path_modif TAG CASESENSITIVE SORTABLE UNF ", mod_ns, mod_ns);
+    }
+    if (reply->type == REDIS_REPLY_ERROR) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Creating index", reply->str);
+        goto cleanup;
+    }
+
+    /* index for maxorder */
+    if (!is_oper) {
+        freeReplyObject(reply);
+        reply = redisCommand(ctx, "FT.CREATE %s:meta "
+                "ON HASH PREFIX 1 %s:meta: "
+                "STOPWORDS 0 "
+                "SCHEMA value NUMERIC", mod_ns, mod_ns);
+        if (reply->type == REDIS_REPLY_ERROR) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Creating index", reply->str);
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    freeReplyObject(reply);
+    return err_info;
+}
+
+/**
  * @brief Load data from the database and execute a command on them.
  *
  * @param[in] ctx Redis context.
@@ -2430,7 +2509,10 @@ srpds_load_and_del(redisContext *ctx, const char *mod_ns, const char *index_type
             "return 0; ",
             mod_ns, index_type);
 
-    if ((reply->type == REDIS_REPLY_ERROR) || (reply->type == REDIS_REPLY_STRING)) {
+    if ((reply->type == REDIS_REPLY_STRING) && strstr(mod_ns, "operational") && strstr(reply->str, "no such index")) {
+        /* empty data, the index has not been created yet, do so now BUG is never deleted */
+        err_info = srpds_create_indices(ctx, mod_ns, 1);
+    } else if ((reply->type == REDIS_REPLY_ERROR) || (reply->type == REDIS_REPLY_STRING)) {
         ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "EVAL", reply->str);
         goto cleanup;
     }
@@ -3162,76 +3244,6 @@ cleanup:
 }
 
 /**
- * @brief Create all necessary indices.
- *
- * @param[in] ctx Redis context.
- * @param[in] mod_ns Database prefix for the module.
- * @param[in] is_oper Whether the indices are created for Operational datastore.
- * @return NULL on success;
- * @return Sysrepo error info on error.
- */
-static sr_error_info_t *
-srpds_create_indices(redisContext *ctx, char *mod_ns, int is_oper)
-{
-    sr_error_info_t *err_info = NULL;
-    redisReply *reply = NULL;
-
-    /* index for data */
-    if (is_oper) {
-        reply = redisCommand(ctx, "FT.CREATE %s:data "
-                "ON HASH PREFIX 1 %s:data: "
-                "STOPWORDS 0 "
-                "SCHEMA path TAG CASESENSITIVE "
-                "name TAG CASESENSITIVE "
-                "type NUMERIC "
-                "order NUMERIC SORTABLE "
-                "module_name TAG CASESENSITIVE "
-                "value TAG CASESENSITIVE "
-                "valtype NUMERIC "
-                "keys TAG CASESENSITIVE "
-                "dflt_flag NUMERIC ", mod_ns, mod_ns);
-    } else {
-        reply = redisCommand(ctx, "FT.CREATE %s:data "
-                "ON HASH PREFIX 1 %s:data: "
-                "STOPWORDS 0 "
-                "SCHEMA path TAG CASESENSITIVE "
-                "name TAG CASESENSITIVE "
-                "type NUMERIC "
-                "module_name TAG CASESENSITIVE "
-                "dflt_flag NUMERIC "
-                "keys TAG CASESENSITIVE "
-                "value TAG CASESENSITIVE "
-                "valtype NUMERIC "
-                "order NUMERIC "
-                "path_no_pred TAG CASESENSITIVE "
-                "prev TAG CASESENSITIVE "
-                "is_prev_empty NUMERIC "
-                "path_modif TAG CASESENSITIVE SORTABLE UNF ", mod_ns, mod_ns);
-    }
-    if (reply->type == REDIS_REPLY_ERROR) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Creating index", reply->str);
-        goto cleanup;
-    }
-
-    /* index for maxorder */
-    if (!is_oper) {
-        freeReplyObject(reply);
-        reply = redisCommand(ctx, "FT.CREATE %s:meta "
-                "ON HASH PREFIX 1 %s:meta: "
-                "STOPWORDS 0 "
-                "SCHEMA value NUMERIC", mod_ns, mod_ns);
-        if (reply->type == REDIS_REPLY_ERROR) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Creating index", reply->str);
-            goto cleanup;
-        }
-    }
-
-cleanup:
-    freeReplyObject(reply);
-    return err_info;
-}
-
-/**
  * @brief Destroy all created indices.
  *
  * @param[in] ctx Redis context.
@@ -3373,7 +3385,7 @@ srpds_redis_candidate_modified(const struct lys_module *mod, void *plg_data, int
         goto cleanup;
     }
 
-    if ((err_info = srpds_get_mod_ns(SR_DS_CANDIDATE, mod->name, &mod_ns))) {
+    if ((err_info = srpds_get_mod_ns(SR_DS_CANDIDATE, mod->name, 0, 0, &mod_ns))) {
         goto cleanup;
     }
 
@@ -3411,12 +3423,12 @@ srpds_redis_copy(const struct lys_module *mod, sr_datastore_t trg_ds, sr_datasto
     }
 
     /* get module namespace (+ module name) for source datastore */
-    if ((err_info = srpds_get_mod_ns(src_ds, mod->name, &mod_ns_src))) {
+    if ((err_info = srpds_get_mod_ns(src_ds, mod->name, 0, 0, &mod_ns_src))) {
         goto cleanup;
     }
 
     /* get module namespace (+ module name) for target datastore */
-    if ((err_info = srpds_get_mod_ns(trg_ds, mod->name, &mod_ns_trg))) {
+    if ((err_info = srpds_get_mod_ns(trg_ds, mod->name, 0, 0, &mod_ns_trg))) {
         goto cleanup;
     }
 
@@ -3461,8 +3473,6 @@ srpds_redis_store(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid,
     struct redis_bulk bulk = {0};
 
     assert(mod);
-    (void)cid;
-    (void)sid;
 
     /* for candidate ds learn if modified */
     if (ds == SR_DS_CANDIDATE) {
@@ -3486,7 +3496,7 @@ srpds_redis_store(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid,
         goto cleanup;
     }
 
-    if ((err_info = srpds_get_mod_ns(ds, mod->name, &mod_ns))) {
+    if ((err_info = srpds_get_mod_ns(ds, mod->name, cid, sid, &mod_ns))) {
         goto cleanup;
     }
 
@@ -3537,7 +3547,7 @@ srpds_redis_access_get(const struct lys_module *mod, sr_datastore_t ds, void *pl
         goto cleanup;
     }
 
-    if ((err_info = srpds_get_mod_ns(ds, mod->name, &mod_ns))) {
+    if ((err_info = srpds_get_mod_ns(ds, mod->name, 0, 0, &mod_ns))) {
         goto cleanup;
     }
 
@@ -3573,7 +3583,7 @@ srpds_redis_access_set(const struct lys_module *mod, sr_datastore_t ds, const ch
         goto cleanup;
     }
 
-    if ((err_info = srpds_get_mod_ns(ds, mod->name, &mod_ns))) {
+    if ((err_info = srpds_get_mod_ns(ds, mod->name, 0, 0, &mod_ns))) {
         goto cleanup;
     }
 
@@ -3661,7 +3671,7 @@ srpds_redis_access_check(const struct lys_module *mod, sr_datastore_t ds, void *
         goto cleanup;
     }
 
-    if ((err_info = srpds_get_mod_ns(ds, mod->name, &mod_ns))) {
+    if ((err_info = srpds_get_mod_ns(ds, mod->name, 0, 0, &mod_ns))) {
         goto cleanup;
     }
 
@@ -3767,7 +3777,7 @@ srpds_redis_install(const struct lys_module *mod, sr_datastore_t ds, const char 
         goto cleanup;
     }
 
-    if ((err_info = srpds_get_mod_ns(ds, mod->name, &mod_ns))) {
+    if ((err_info = srpds_get_mod_ns(ds, mod->name, 0, 0, &mod_ns))) {
         goto cleanup;
     }
 
@@ -3829,7 +3839,7 @@ srpds_redis_uninstall(const struct lys_module *mod, sr_datastore_t ds, void *plg
         goto cleanup;
     }
 
-    if ((err_info = srpds_get_mod_ns(ds, mod->name, &mod_ns))) {
+    if ((err_info = srpds_get_mod_ns(ds, mod->name, 0, 0, &mod_ns))) {
         goto cleanup;
     }
 
@@ -3862,8 +3872,6 @@ srpds_redis_load(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, 
     sr_error_info_t *err_info = NULL;
 
     assert(mod && mod_data);
-    (void)cid;
-    (void)sid;
 
     *mod_data = NULL;
 
@@ -3871,7 +3879,7 @@ srpds_redis_load(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, 
         goto cleanup;
     }
 
-    if ((err_info = srpds_get_mod_ns(ds, mod->name, &mod_ns))) {
+    if ((err_info = srpds_get_mod_ns(ds, mod->name, cid, sid, &mod_ns))) {
         goto cleanup;
     }
 
@@ -3914,7 +3922,7 @@ srpds_redis_last_modif(const struct lys_module *mod, sr_datastore_t ds, void *pl
         goto cleanup;
     }
 
-    if ((err_info = srpds_get_mod_ns(ds, mod->name, &mod_ns))) {
+    if ((err_info = srpds_get_mod_ns(ds, mod->name, 0, 0, &mod_ns))) {
         goto cleanup;
     }
 
@@ -3961,7 +3969,7 @@ srpds_redis_candidate_reset(const struct lys_module *mod, void *plg_data)
         goto cleanup;
     }
 
-    if ((err_info = srpds_get_mod_ns(SR_DS_CANDIDATE, mod->name, &mod_ns))) {
+    if ((err_info = srpds_get_mod_ns(SR_DS_CANDIDATE, mod->name, 0, 0, &mod_ns))) {
         goto cleanup;
     }
 
