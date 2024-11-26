@@ -53,14 +53,14 @@ srpds_concat_key_values(const char *plg_name, const struct lyd_node *node, char 
     }
     if (num_of_keys > (UINT8_MAX >> 1)) {
         ERRINFO(&err_info, plg_name, SR_ERR_INTERNAL, "srpds_concat_key_values()",
-                "Number of keys is bigger than (UINT8_MAX >> 1)")
+                "Number of keys is bigger than (UINT8_MAX >> 1)");
         goto cleanup;
     }
 
     /* store the number of keys */
     *keys = malloc(1);
     if (!*keys) {
-        ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "malloc()", strerror(errno))
+        ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "malloc()", strerror(errno));
         goto cleanup;
     }
     (*keys)[0] = num_of_keys;
@@ -75,7 +75,7 @@ srpds_concat_key_values(const char *plg_name, const struct lyd_node *node, char 
          * therefore length cannot be bigger than (UINT16_MAX >> 2) */
         if (keylen > (UINT16_MAX >> 2)) {
             ERRINFO(&err_info, plg_name, SR_ERR_INTERNAL, "srpds_concat_key_values()",
-                    "Key length is bigger than (UINT16_MAX >> 2)")
+                    "Key length is bigger than (UINT16_MAX >> 2)");
             goto cleanup;
         }
 
@@ -87,7 +87,7 @@ srpds_concat_key_values(const char *plg_name, const struct lyd_node *node, char 
         *keys_length += keylen + SRPDS_DB_LIST_KEY_LEN_BYTES;
         tmp = malloc(*keys_length);
         if (!tmp) {
-            ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "malloc()", strerror(errno))
+            ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "malloc()", strerror(errno));
             goto cleanup;
         }
 
@@ -126,13 +126,13 @@ srpds_parse_keys(const char *plg_name, const char *keys, char ***parsed, uint32_
 
     *parsed = malloc(num_of_keys * sizeof **parsed);
     if (!*parsed) {
-        ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "malloc()", "")
+        ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "malloc()", "");
         goto cleanup;
     }
 
     *lengths = malloc(num_of_keys * sizeof **lengths);
     if (!*lengths) {
-        ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "malloc()", "")
+        ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "malloc()", "");
         goto cleanup;
     }
 
@@ -225,7 +225,7 @@ srpds_get_modif_path(const char *plg_name, const char *path, char **out)
     char *it = NULL;
 
     if (asprintf(out, "%s ", path) == -1) {
-        ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno))
+        ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
         goto cleanup;
     }
 
@@ -275,12 +275,12 @@ srpds_get_predicate(const char *plg_name, const struct lyd_node *node, const cha
 
     *standard = lyd_path(node, LYD_PATH_STD, NULL, 0);
     if (!*standard) {
-        ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_path()", "")
+        ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_path()", "");
         return err_info;
     }
     *no_predicate = lyd_path(node, LYD_PATH_STD_NO_LAST_PRED, NULL, 0);
     if (!*no_predicate) {
-        ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_path()", "")
+        ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_path()", "");
         return err_info;
     }
     *predicate = *standard + strlen(*no_predicate);
@@ -313,7 +313,7 @@ srpds_uid2usr(const char *plg_name, uid_t uid, char **username)
         // allocate some buffer
         mem = realloc(buf, buflen);
         if (!mem) {
-            ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "realloc()", "")
+            ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "realloc()", "");
             goto cleanup;
         }
         buf = mem;
@@ -323,16 +323,16 @@ srpds_uid2usr(const char *plg_name, uid_t uid, char **username)
     } while (r == ERANGE);
 
     if (r) {
-        ERRINFO(&err_info, plg_name, SR_ERR_INTERNAL, "Retrieving UID passwd entry", strerror(r))
+        ERRINFO(&err_info, plg_name, SR_ERR_INTERNAL, "Retrieving UID passwd entry", strerror(r));
         goto cleanup;
     } else if (!pwd_p) {
-        ERRINFO(&err_info, plg_name, SR_ERR_NOT_FOUND, "Retrieving UID passwd entry", "No such UID")
+        ERRINFO(&err_info, plg_name, SR_ERR_NOT_FOUND, "Retrieving UID passwd entry", "No such UID");
         goto cleanup;
     }
 
     *username = strdup(pwd.pw_name);
     if (!*username) {
-        ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "strdup()", strerror(errno))
+        ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "strdup()", strerror(errno));
         goto cleanup;
     }
 
@@ -367,7 +367,7 @@ srpds_gid2grp(const char *plg_name, gid_t gid, char **group)
         // allocate some buffer
         mem = realloc(buf, buflen);
         if (!mem) {
-            ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "realloc()", "")
+            ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "realloc()", "");
             goto cleanup;
         }
         buf = mem;
@@ -377,17 +377,17 @@ srpds_gid2grp(const char *plg_name, gid_t gid, char **group)
     } while (r == ERANGE);
 
     if (r) {
-        ERRINFO(&err_info, plg_name, SR_ERR_INTERNAL, "Retrieving GID grp entry", strerror(r))
+        ERRINFO(&err_info, plg_name, SR_ERR_INTERNAL, "Retrieving GID grp entry", strerror(r));
         goto cleanup;
     } else if (!grp_p) {
-        ERRINFO(&err_info, plg_name, SR_ERR_NOT_FOUND, "Retrieving GID grp entry", "No such GID")
+        ERRINFO(&err_info, plg_name, SR_ERR_NOT_FOUND, "Retrieving GID grp entry", "No such GID");
         goto cleanup;
     }
 
     // assign group
     *group = strdup(grp.gr_name);
     if (!*group) {
-        ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "strdup()", strerror(errno))
+        ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "strdup()", strerror(errno));
         goto cleanup;
     }
 
@@ -404,7 +404,7 @@ srpds_escape_string(const char *plg_name, const char *string, char **escaped_str
 
     *escaped_string = calloc(2 * len + 1, sizeof(char));
     if (!(*escaped_string)) {
-        ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "calloc()", "")
+        ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "calloc()", "");
         return err_info;
     }
     for (i = 0, count = 0; i < len; ++i, ++count) {
@@ -444,7 +444,7 @@ srpds_add_uo_lists(const char *plg_name, struct lyd_node *new_node, int64_t orde
             size = uo_lists->lists[i].size;
             data = realloc(uo_lists->lists[i].data, (size + 1) * sizeof *data);
             if (!data) {
-                ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "realloc()", "")
+                ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "realloc()", "");
                 goto cleanup;
             }
             uo_lists->lists[i].data = data;
@@ -457,20 +457,20 @@ srpds_add_uo_lists(const char *plg_name, struct lyd_node *new_node, int64_t orde
         size = uo_lists->size;
         list = realloc(uo_lists->lists, (size + 1) * sizeof *list);
         if (!list) {
-            ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "realloc()", "")
+            ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "realloc()", "");
             goto cleanup;
         }
         uo_lists->lists = list;
         uo_lists->size = size + 1;
 
         if (!(uo_lists->lists[size].name = strdup(path_no_pred))) {
-            ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "strdup()", strerror(errno))
+            ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "strdup()", strerror(errno));
             goto cleanup;
         }
 
         data = calloc(1, sizeof *data);
         if (!data) {
-            ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "calloc()", "")
+            ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "calloc()", "");
             goto cleanup;
         }
         uo_lists->lists[size].data = data;
@@ -497,7 +497,7 @@ srpds_order_uo_lists(const char *plg_name, const srpds_db_userordered_lists_t *u
         qsort(data, size, sizeof *data, srpds_uo_elem_comp);
         for (j = 1; j < size; ++j) {
             if (lyd_insert_after(data[0].ptr, data[size - j].ptr) != LY_SUCCESS) {
-                ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_insert_after()", "")
+                ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_insert_after()", "");
                 goto cleanup;
             }
         }
@@ -538,7 +538,7 @@ srpds_add_conv_mod_data(const char *plg_name, sr_datastore_t ds, const char *pat
     switch (type) {
     case SRPDS_DB_LY_CONTAINER:    /* containers */
         if (lyd_new_inner(parent_node, node_module, name, 0, &new_node) != LY_SUCCESS) {
-            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_inner()", "")
+            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_inner()", "");
             goto cleanup;
         }
         break;
@@ -546,7 +546,7 @@ srpds_add_conv_mod_data(const char *plg_name, sr_datastore_t ds, const char *pat
     case SRPDS_DB_LY_LIST_UO:  /* user-ordered lists */
         if (lyd_new_list3(parent_node, node_module, name, (const char **)keys, lengths, LYD_NEW_VAL_STORE_ONLY,
                 &new_node) != LY_SUCCESS) {
-            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_list3()", "")
+            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_list3()", "");
             goto cleanup;
         }
         break;
@@ -554,14 +554,14 @@ srpds_add_conv_mod_data(const char *plg_name, sr_datastore_t ds, const char *pat
     case SRPDS_DB_LY_LEAFLIST_UO:  /* user-ordered leaf-lists */
         if (lyd_new_term(parent_node, node_module, name, value, LYD_NEW_VAL_STORE_ONLY,
                 &new_node) != LY_SUCCESS) {
-            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_term()", "")
+            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_term()", "");
             goto cleanup;
         }
         break;
     case SRPDS_DB_LY_ANY:   /* anydata and anyxml */
         if (lyd_new_any(parent_node, node_module, name, value, valtype ? LYD_ANYDATA_JSON : LYD_ANYDATA_XML,
                 LYD_NEW_VAL_STORE_ONLY, &new_node) != LY_SUCCESS) {
-            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_any()", "")
+            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_any()", "");
             goto cleanup;
         }
         break;
@@ -573,7 +573,7 @@ srpds_add_conv_mod_data(const char *plg_name, sr_datastore_t ds, const char *pat
     if (node_idx >= *pnodes_size) {
         tmp_pnodes = realloc(*parent_nodes, (++*pnodes_size) * sizeof **parent_nodes);
         if (!tmp_pnodes) {
-            ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "realloc()", "")
+            ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "realloc()", "");
             goto cleanup;
         }
         *parent_nodes = tmp_pnodes;
@@ -581,7 +581,7 @@ srpds_add_conv_mod_data(const char *plg_name, sr_datastore_t ds, const char *pat
     (*parent_nodes)[node_idx] = new_node;
     if (!node_idx) {
         if (lyd_insert_sibling(*mod_data, new_node, mod_data) != LY_SUCCESS) {
-            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_insert_sibling()", "")
+            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_insert_sibling()", "");
             goto cleanup;
         }
     }
@@ -642,11 +642,11 @@ srpds_add_oper_mod_data(const char *plg_name, struct ly_ctx *ctx, const char *pa
         parent_node = node_idx ? (*parent_nodes)[node_idx - 1] : NULL;
     } else { /* get node to which we want to add the metadata or attribute */
         if (lyd_find_xpath(*mod_data, path, &meta_match_nodes) != LY_SUCCESS) {
-            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_find_xpath()", "")
+            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_find_xpath()", "");
             goto cleanup;
         }
         if (!meta_match_nodes->count) {
-            ERRINFO(&err_info, plg_name, SR_ERR_NOT_FOUND, "lyd_find_xpath()", "Path not found")
+            ERRINFO(&err_info, plg_name, SR_ERR_NOT_FOUND, "lyd_find_xpath()", "Path not found");
             goto cleanup;
         }
         meta_match = meta_match_nodes->dnodes[0];
@@ -657,47 +657,47 @@ srpds_add_oper_mod_data(const char *plg_name, struct ly_ctx *ctx, const char *pa
     /* tree metadata (e.g. 'nc:operation="merge"' or 'or:origin="unknown"') */
     case SRPDS_DB_LY_META:         /* metadata */
         if (lyd_new_meta(LYD_CTX(meta_match), meta_match, NULL, name, value, LYD_NEW_VAL_STORE_ONLY, NULL) != LY_SUCCESS) {
-            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_meta()", "")
+            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_meta()", "");
             goto cleanup;
         }
         break;
     /* attributes of opaque nodes (e.g. 'operation="delete"') */
     case SRPDS_DB_LY_ATTR:         /* attributes */
         if (lyd_new_attr(meta_match, NULL, name, value, NULL) != LY_SUCCESS) {
-            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_attr()", "")
+            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_attr()", "");
             goto cleanup;
         }
         break;
     case SRPDS_DB_LY_CONTAINER:    /* containers */
         if (lyd_new_inner(parent_node, node_module, name, 0, &new_node) != LY_SUCCESS) {
-            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_inner()", "")
+            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_inner()", "");
             goto cleanup;
         }
         break;
     case SRPDS_DB_LY_LIST:         /* lists */
         if (lyd_new_list3(parent_node, node_module, name, keys, lengths, LYD_NEW_VAL_STORE_ONLY,
                 &new_node) != LY_SUCCESS) {
-            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_list3()", "")
+            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_list3()", "");
             goto cleanup;
         }
         break;
     case SRPDS_DB_LY_TERM:         /* leafs and leaf-lists */
         if (lyd_new_term(parent_node, node_module, name, value, LYD_NEW_VAL_STORE_ONLY,
                 &new_node) != LY_SUCCESS) {
-            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_term()", "")
+            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_term()", "");
             goto cleanup;
         }
         break;
     case SRPDS_DB_LY_ANY:          /* anydata and anyxml */
         if (lyd_new_any(parent_node, node_module, name, value, valtype ? LYD_ANYDATA_JSON : LYD_ANYDATA_XML,
                 LYD_NEW_VAL_STORE_ONLY, &new_node) != LY_SUCCESS) {
-            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_any()", "")
+            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_any()", "");
             goto cleanup;
         }
         break;
     case SRPDS_DB_LY_OPAQUE:       /* opaque nodes */
         if (lyd_new_opaq(parent_node, ctx, name, value, NULL, module_name, &new_node) != LY_SUCCESS) {
-            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_opaq()", "")
+            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_opaq()", "");
             goto cleanup;
         }
         break;
@@ -710,7 +710,7 @@ srpds_add_oper_mod_data(const char *plg_name, struct ly_ctx *ctx, const char *pa
         if (node_idx >= *pnodes_size) {
             tmp_pnodes = realloc((*parent_nodes), (++*pnodes_size) * sizeof **parent_nodes);
             if (!tmp_pnodes) {
-                ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "realloc()", "")
+                ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "realloc()", "");
                 goto cleanup;
             }
             *parent_nodes = tmp_pnodes;
@@ -718,7 +718,7 @@ srpds_add_oper_mod_data(const char *plg_name, struct ly_ctx *ctx, const char *pa
         (*parent_nodes)[node_idx] = new_node;
         if (!node_idx) {
             if (lyd_insert_sibling(*mod_data, new_node, mod_data) != LY_SUCCESS) {
-                ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_insert_sibling()", "")
+                ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_insert_sibling()", "");
                 goto cleanup;
             }
         }
@@ -754,7 +754,7 @@ srpds_get_values(const char *plg_name, struct lyd_node *node, const char **value
 
         /* lyd_node_any */
         if (lyd_any_value_str(node, any_value) != LY_SUCCESS) {
-            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_any_value_str()", "")
+            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_any_value_str()", "");
             goto cleanup;
         }
         *value = *any_value;
@@ -765,14 +765,14 @@ srpds_get_values(const char *plg_name, struct lyd_node *node, const char **value
             if (*prev && !strlen(*prev)) {
                 *prev_pred = (char *)*prev;
             } else if (asprintf(prev_pred, "[.='%s']", *prev) == -1) {
-                ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno))
+                ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
                 goto cleanup;
             }
             *orig_prev = lyd_get_meta_value(lyd_find_meta(node->meta, NULL, "yang:orig-value"));
             if (*orig_prev && !strlen(*orig_prev)) {
                 *orig_prev_pred = (char *)*orig_prev;
             } else if (asprintf(orig_prev_pred, "[.='%s']", *orig_prev) == -1) {
-                ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno))
+                ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
                 goto cleanup;
             }
             *value = lyd_get_value(node);
