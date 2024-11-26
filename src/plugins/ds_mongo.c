@@ -105,6 +105,36 @@ srpds_ds2database(sr_datastore_t ds)
 }
 
 /**
+ * @brief Get the name of the collection.
+ *
+ * @param[in] mod_name Mdoule name.
+ * @param[in] cid Connection ID.
+ * @param[in] sid Session ID.
+ * @param[in] is_oper Whether the collection is for operational data and unique for @p cid and @p sid.
+ * @param[out] collection_name Generated collection name.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_get_oper_collection_name(const char *mod_name, sr_cid_t cid, uint32_t sid, int is_oper, char **collection_name)
+{
+    sr_error_info_t *err_info = NULL;
+    int r;
+
+    if (is_oper) {
+        r = asprintf(collection_name, "%s_%s-%" PRIu32 " - %" PRIu32, sr_get_shm_prefix(), mod_name, cid, sid);
+    } else {
+        r = asprintf(collection_name, "%s_%s", sr_get_shm_prefix(), mod_name);
+    }
+    if (r == -1) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
+        return err_info;
+    }
+
+    return NULL;
+}
+
+/**
  * @brief Try a general command in order to establish whether authentication is required.
  *
  * @param[in] client Connected client.
@@ -205,6 +235,8 @@ cleanup:
  *
  * @param[in] mod Given module.
  * @param[in] ds Given datastore.
+ * @param[in] cid Connection ID.
+ * @param[in] sid Session ID.
  * @param[in] installed Whether module was already installed.
  * @param[in] pdata Plugin connection data.
  * @param[out] mdata Module data.
@@ -212,17 +244,19 @@ cleanup:
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_data_init(const struct lys_module *mod, sr_datastore_t ds, int installed, mongo_plg_conn_data_t *pdata, mongo_data_t *mdata)
+srpds_data_init(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, uint32_t sid, int installed,
+        mongo_plg_conn_data_t *pdata, mongo_data_t *mdata)
 {
     sr_error_info_t *err_info = NULL;
     bson_error_t error;
+    int is_oper;
 
     mdata->client = mongoc_client_pool_pop(pdata->pool);
     mdata->datastore = mongoc_client_get_database(mdata->client, srpds_ds2database(ds));
 
-    /* get the module name */
-    if (asprintf(&(mdata->module_name), "%s_%s", sr_get_shm_prefix(), mod->name) == -1) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno))
+    /* get the module name (collection name) */
+    is_oper = ((ds == SR_DS_OPERATIONAL) && cid && sid) ? 1 : 0;
+    if ((err_info = srpds_get_oper_collection_name(mod->name, cid, sid, is_oper, &mdata->module_name))) {
         goto cleanup;
     }
 
@@ -2814,7 +2848,7 @@ srpds_mongo_candidate_modified(const struct lys_module *mod, void *plg_data, int
 
     assert(mod && modified);
 
-    if ((err_info = srpds_data_init(mod, SR_DS_CANDIDATE, 1, pdata, &mdata))) {
+    if ((err_info = srpds_data_init(mod, SR_DS_CANDIDATE, 0, 0, 1, pdata, &mdata))) {
         goto cleanup;
     }
 
@@ -2867,7 +2901,7 @@ srpds_mongo_copy(const struct lys_module *mod, sr_datastore_t trg_ds, sr_datasto
 
     assert(mod);
 
-    if ((err_info = srpds_data_init(mod, src_ds, 1, pdata, &mdata))) {
+    if ((err_info = srpds_data_init(mod, src_ds, 0, 0, 1, pdata, &mdata))) {
         goto cleanup;
     }
 
@@ -2896,7 +2930,7 @@ srpds_mongo_copy(const struct lys_module *mod, sr_datastore_t trg_ds, sr_datasto
         goto cleanup;
     }
     srpds_data_destroy(pdata, &mdata);
-    if ((err_info = srpds_data_init(mod, trg_ds, 1, pdata, &mdata))) {
+    if ((err_info = srpds_data_init(mod, trg_ds, 0, 0, 1, pdata, &mdata))) {
         goto cleanup;
     }
 
@@ -2932,8 +2966,6 @@ srpds_mongo_store(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid,
     int modified = 1;
 
     assert(mod);
-    (void)cid;
-    (void)sid;
 
     /* for candidate ds learn if modified */
     if (ds == SR_DS_CANDIDATE) {
@@ -2949,7 +2981,7 @@ srpds_mongo_store(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid,
         }
     }
 
-    if ((err_info = srpds_data_init(mod, ds, 1, pdata, &mdata))) {
+    if ((err_info = srpds_data_init(mod, ds, cid, sid, 1, pdata, &mdata))) {
         goto cleanup;
     }
 
@@ -3068,7 +3100,7 @@ srpds_mongo_install(const struct lys_module *mod, sr_datastore_t ds, const char 
 
     assert(mod && perm);
 
-    if ((err_info = srpds_data_init(mod, ds, 0, pdata, &mdata))) {
+    if ((err_info = srpds_data_init(mod, ds, 0, 0, 0, pdata, &mdata))) {
         goto cleanup;
     }
 
@@ -3150,7 +3182,7 @@ srpds_mongo_access_get(const struct lys_module *mod, sr_datastore_t ds, void *pl
 
     assert(mod);
 
-    if ((err_info = srpds_data_init(mod, ds, 1, pdata, &mdata))) {
+    if ((err_info = srpds_data_init(mod, ds, 0, 0, 1, pdata, &mdata))) {
         goto cleanup;
     }
 
@@ -3178,7 +3210,7 @@ srpds_mongo_access_set(const struct lys_module *mod, sr_datastore_t ds, const ch
 
     assert(mod);
 
-    if ((err_info = srpds_data_init(mod, ds, 1, pdata, &mdata))) {
+    if ((err_info = srpds_data_init(mod, ds, 0, 0, 1, pdata, &mdata))) {
         goto cleanup;
     }
 
@@ -3238,7 +3270,7 @@ srpds_mongo_access_check(const struct lys_module *mod, sr_datastore_t ds, void *
 
     assert(mod);
 
-    if ((err_info = srpds_data_init(mod, ds, 1, pdata, &mdata))) {
+    if ((err_info = srpds_data_init(mod, ds, 0, 0, 1, pdata, &mdata))) {
         goto cleanup;
     }
 
@@ -3325,7 +3357,7 @@ srpds_mongo_uninstall(const struct lys_module *mod, sr_datastore_t ds, void *plg
 
     assert(mod);
 
-    if ((err_info = srpds_data_init(mod, ds, 1, pdata, &mdata))) {
+    if ((err_info = srpds_data_init(mod, ds, 0, 0, 1, pdata, &mdata))) {
         goto cleanup;
     }
 
@@ -3355,12 +3387,10 @@ srpds_mongo_load(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, 
     int is_valid = 0;
 
     assert(mod && mod_data);
-    (void)cid;
-    (void)sid;
 
     *mod_data = NULL;
 
-    if ((err_info = srpds_data_init(mod, ds, 1, pdata, &mdata))) {
+    if ((err_info = srpds_data_init(mod, ds, cid, sid, 1, pdata, &mdata))) {
         goto cleanup;
     }
 
@@ -3407,7 +3437,7 @@ srpds_mongo_last_modif(const struct lys_module *mod, sr_datastore_t ds, void *pl
 
     assert(mod && mtime);
 
-    if ((err_info = srpds_data_init(mod, ds, 1, pdata, &mdata))) {
+    if ((err_info = srpds_data_init(mod, ds, 0, 0, 1, pdata, &mdata))) {
         goto cleanup;
     }
 
@@ -3461,7 +3491,7 @@ srpds_mongo_candidate_reset(const struct lys_module *mod, void *plg_data)
 
     assert(mod);
 
-    if ((err_info = srpds_data_init(mod, SR_DS_CANDIDATE, 1, pdata, &mdata))) {
+    if ((err_info = srpds_data_init(mod, SR_DS_CANDIDATE, 0, 0, 1, pdata, &mdata))) {
         goto cleanup;
     }
 
