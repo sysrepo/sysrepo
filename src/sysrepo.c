@@ -6226,10 +6226,6 @@ sr_get_change_diff(sr_session_ctx_t *session)
         return NULL;
     }
 
-    if ((session->ev != SR_SUB_EV_ENABLED) && (session->ev != SR_SUB_EV_DONE)) {
-        return NULL;
-    }
-
     return session->dt[session->ds].diff;
 }
 
