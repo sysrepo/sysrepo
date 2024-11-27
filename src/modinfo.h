@@ -58,6 +58,7 @@ struct sr_mod_info_s {
         uint32_t xpath_count;   /**< Count of XPaths. */
         uint32_t state;         /**< Module state (flags). */
         uint32_t request_id;    /**< Request ID of the published event. */
+        uint32_t reuse_diff;    /**< Whether a reusable diff has been written into the shm for this request_id. */
     } *mods;                    /**< Relevant modules. */
     uint32_t mod_count;         /**< Modules count. */
 };
