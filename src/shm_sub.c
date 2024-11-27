@@ -1209,6 +1209,7 @@ sr_shmsub_change_notify_diff_has_changes(struct sr_mod_info_mod_s *mod, const st
  * @param[in] diff Full diff.
  * @param[in] ly_mod Module of the subscription.
  * @param[in] sub_opts Subscription options.
+ * @param[in,out] reuse_diff Whether diff is reusable, if requested.
  * @param[in,out] full_diff_lyb Printed full diff so that it can be reused.
  * @param[in,out] full_diff_lyb_len Length of @p full_diff_lyb.
  * @param[out] diff_lyb Printed diff to use.
@@ -1217,28 +1218,28 @@ sr_shmsub_change_notify_diff_has_changes(struct sr_mod_info_mod_s *mod, const st
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmsub_change_notify_get_diff(struct lyd_node *diff, const struct lys_module *ly_mod, int sub_opts,
+sr_shmsub_change_notify_get_diff(struct lyd_node *diff, const struct lys_module *ly_mod, int sub_opts, uint32_t *reuse_diff,
         char **full_diff_lyb, uint32_t *full_diff_lyb_len, char **diff_lyb, uint32_t *diff_lyb_len, int *free_diff)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *mod_diff;
+    int single_module = !(sub_opts & SR_SUBSCR_CHANGE_ALL_MODULES);
 
     /* free previous diff */
     if (*free_diff) {
         free(*diff_lyb);
-        *diff_lyb = NULL;
     }
 
-    if (sub_opts & SR_SUBSCR_CHANGE_ALL_MODULES) {
-        /* print the full diff if not before */
-        if (!*full_diff_lyb && (err_info = sr_lyd_print_data(diff, LYD_LYB, 0, -1, full_diff_lyb, full_diff_lyb_len))) {
-            goto cleanup;
-        }
+    /* clear any stale values */
+    *diff_lyb = NULL;
+    *diff_lyb_len = 0;
 
-        *diff_lyb = *full_diff_lyb;
-        *diff_lyb_len = *full_diff_lyb_len;
-        *free_diff = 0;
-    } else {
+    if (reuse_diff && *reuse_diff && single_module) {
+        /* nothing left to do, will reuse previous diff */
+        goto cleanup;
+    }
+
+    if (single_module) {
         /* separate the diff of this module */
         mod_diff = sr_module_data_unlink(&diff, ly_mod, 0);
         assert(mod_diff);
@@ -1253,8 +1254,20 @@ sr_shmsub_change_notify_get_diff(struct lyd_node *diff, const struct lys_module 
         if ((err_info = sr_lyd_insert_sibling(diff, mod_diff, &diff))) {
             goto cleanup;
         }
+    } else {
+        /* print the full diff if not before */
+        if (!*full_diff_lyb && (err_info = sr_lyd_print_data(diff, LYD_LYB, 0, -1, full_diff_lyb, full_diff_lyb_len))) {
+            goto cleanup;
+        }
+
+        *diff_lyb = *full_diff_lyb;
+        *diff_lyb_len = *full_diff_lyb_len;
+        *free_diff = 0;
     }
 
+    if (reuse_diff) {
+        *reuse_diff = single_module;
+    }
 cleanup:
     return err_info;
 }
@@ -1323,8 +1336,8 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, const char *orig_
             assert(subscriber_count == 1);
 
             /* prepare the diff to write into subscription SHM */
-            if ((err_info = sr_shmsub_change_notify_get_diff(mod_info->diff, mod->ly_mod, opts, &full_diff_lyb,
-                    &full_diff_lyb_len, &diff_lyb, &diff_lyb_len, &free_diff))) {
+            if ((err_info = sr_shmsub_change_notify_get_diff(mod_info->diff, mod->ly_mod, opts, NULL,
+                    &full_diff_lyb, &full_diff_lyb_len, &diff_lyb, &diff_lyb_len, &free_diff))) {
                 goto cleanup;
             }
 
@@ -1606,17 +1619,17 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, const char *orig_
             nsub->pending_event = 1;
             pending_events = 1;
 
-            /* prepare the diff to write into subscription SHM */
-            if ((err_info = sr_shmsub_change_notify_get_diff(mod_info->diff, nsub->mod->ly_mod, opts, &full_diff_lyb,
-                    &full_diff_lyb_len, &diff_lyb, &diff_lyb_len, &free_diff))) {
-                goto cleanup;
-            }
-
             /* open sub SHM and map it */
             if ((err_info = sr_shmsub_open_map(nsub->mod->ly_mod->name, sr_ds2str(mod_info->ds), -1, &nsub->shm_sub))) {
                 goto cleanup;
             }
             nsub->sub_shm = (sr_sub_shm_t *)nsub->shm_sub.addr;
+
+            /* prepare the diff to write into subscription SHM */
+            if ((err_info = sr_shmsub_change_notify_get_diff(mod_info->diff, nsub->mod->ly_mod, opts, &nsub->mod->reuse_diff,
+                    &full_diff_lyb, &full_diff_lyb_len, &diff_lyb, &diff_lyb_len, &free_diff))) {
+                goto cleanup;
+            }
 
             /* SUB WRITE LOCK */
             if ((err_info = sr_shmsub_notify_new_wrlock(nsub->sub_shm, nsub->mod->ly_mod->name, 0, cid))) {
@@ -1786,17 +1799,17 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, const char *
             nsub->pending_event = 1;
             pending_events = 1;
 
-            /* prepare the diff to write into subscription SHM */
-            if ((err_info = sr_shmsub_change_notify_get_diff(mod_info->diff, nsub->mod->ly_mod, opts, &full_diff_lyb,
-                    &full_diff_lyb_len, &diff_lyb, &diff_lyb_len, &free_diff))) {
-                goto cleanup;
-            }
-
             /* open sub SHM and map it */
             if ((err_info = sr_shmsub_open_map(nsub->mod->ly_mod->name, sr_ds2str(mod_info->ds), -1, &nsub->shm_sub))) {
                 goto cleanup;
             }
             nsub->sub_shm = (sr_sub_shm_t *)nsub->shm_sub.addr;
+
+            /* prepare the diff to write into subscription SHM */
+            if ((err_info = sr_shmsub_change_notify_get_diff(mod_info->diff, nsub->mod->ly_mod, opts, &nsub->mod->reuse_diff,
+                    &full_diff_lyb, &full_diff_lyb_len, &diff_lyb, &diff_lyb_len, &free_diff))) {
+                goto cleanup;
+            }
 
             /* SUB WRITE LOCK */
             if ((err_info = sr_shmsub_notify_new_wrlock(nsub->sub_shm, nsub->mod->ly_mod->name, 0, cid))) {
@@ -1976,6 +1989,9 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, const char 
         /* SUB WRITE UNLOCK */
         sr_rwunlock(&nsub->sub_shm->lock, 0, SR_LOCK_WRITE, cid, __func__);
         nsub->lock = SR_LOCK_NONE;
+
+        /* ABORT events cannot reuse diff from CHANGE/DONE events */
+        nsub->mod->reuse_diff = 0;
     }
 
     /* assign consolidated module priorities */
@@ -2011,18 +2027,18 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, const char 
             nsub->pending_event = 1;
             pending_events = 1;
 
-            /* prepare the diff to write into subscription SHM */
-            if ((err_info = sr_shmsub_change_notify_get_diff(abort_diff, nsub->mod->ly_mod, opts, &full_diff_lyb,
-                    &full_diff_lyb_len, &diff_lyb, &diff_lyb_len, &free_diff))) {
-                goto cleanup;
-            }
-
             /* open sub SHM and map it */
             if ((err_info = sr_shmsub_open_map(nsub->mod->ly_mod->name, sr_ds2str(mod_info->ds), -1, &nsub->shm_sub))) {
                 goto cleanup;
             }
             nsub->sub_shm = (sr_sub_shm_t *)nsub->shm_sub.addr;
             sub_shm = (sr_sub_shm_t *)nsub->shm_sub.addr;
+
+            /* prepare the diff to write into subscription SHM */
+            if ((err_info = sr_shmsub_change_notify_get_diff(abort_diff, nsub->mod->ly_mod, opts, &nsub->mod->reuse_diff,
+                    &full_diff_lyb, &full_diff_lyb_len, &diff_lyb, &diff_lyb_len, &free_diff))) {
+                goto cleanup;
+            }
 
             /* SUB WRITE LOCK */
             if ((err_info = sr_shmsub_notify_new_wrlock(nsub->sub_shm, nsub->mod->ly_mod->name, 0, cid))) {
@@ -2393,6 +2409,7 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
         mod_info.data = NULL;
         for (i = 0; i < mod_info.mod_count; ++i) {
             mod_info.mods[i].state = MOD_INFO_NEW;
+            mod_info.mods[i].reuse_diff = 0;
         }
 
         /* add modules with dependencies into mod_info */
