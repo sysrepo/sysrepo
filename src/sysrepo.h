@@ -968,9 +968,9 @@ int sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_op
 int sr_oper_delete_item_str(sr_session_ctx_t *session, const char *path, const char *value, const sr_edit_options_t opts);
 
 /**
- * @brief Prepare to discard nodes matching the specified xpath (or all if not set) previously set by the
- * session connection. Usable only for ::SR_DS_OPERATIONAL datastore. These changes are applied only
- * after calling ::sr_apply_changes().
+ * @brief Prepare to discard nodes matching the specified xpath in the operational datastore before applying
+ * the other push oper data of this sessions. Usable only for ::SR_DS_OPERATIONAL datastore. These changes are applied
+ * only after calling ::sr_apply_changes().
  *
  * Creates an opaque node `discard-items` in the `sysrepo` YANG module namespace with @p xpath used as the value.
  * Such a node can be a part of the edit in ::sr_edit_batch() and will discard nodes like this function does.
