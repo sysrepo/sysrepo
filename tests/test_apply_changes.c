@@ -7956,6 +7956,153 @@ test_list_replace(void **state)
     pthread_join(tid[1], NULL);
 }
 
+/* TEST */
+static int
+module_diff_reuse_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+    const struct lyd_node *diff = NULL;
+    int ret;
+    uint32_t cb_called = ATOMIC_INC_RELAXED(st->cb_called);
+
+    (void)sub_id;
+    (void)request_id;
+    char *diff_str = NULL;
+    const char *intf_diff =
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\" xmlns:yang=\"urn:ietf:params:xml:ns:yang:1\" yang:operation=\"none\">\n"
+            "  <interface yang:operation=\"create\">\n"
+            "    <name>eth52</name>\n"
+            "    <type yang:operation=\"create\" xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
+
+    const char *test_diff = "<l1 xmlns=\"urn:test\" xmlns:yang=\"urn:ietf:params:xml:ns:yang:1\" yang:key=\"\" yang:operation=\"create\">\n"
+            "  <k>key1</k>\n"
+            "  <v yang:operation=\"create\">1</v>\n"
+            "</l1>\n";
+    const char *full_diff =
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\" xmlns:yang=\"urn:ietf:params:xml:ns:yang:1\" yang:operation=\"none\">\n"
+            "  <interface yang:operation=\"create\">\n"
+            "    <name>eth52</name>\n"
+            "    <type yang:operation=\"create\" xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "  </interface>\n"
+            "</interfaces>\n"
+            "<l1 xmlns=\"urn:test\" xmlns:yang=\"urn:ietf:params:xml:ns:yang:1\" yang:key=\"\" yang:operation=\"create\">\n"
+            "  <k>key1</k>\n"
+            "  <v yang:operation=\"create\">1</v>\n"
+            "</l1>\n";
+
+    const size_t NUM_SUBS = 7;
+    const char *expected_diff_str[] = {
+        intf_diff, /* 0. ietf-interfaces priority 30 */
+        test_diff, /* 1. test priority priority 30 */
+        full_diff, /* 2. ietf-interfaces priority 20 (all-modules) */
+        full_diff, /* 3. ietf-interfaces priority 20 (all-modules even though we did not ask for it) */
+        test_diff, /* 4. test priority priority 20 (different module, so per-module) */
+        intf_diff, /* 5. ietf-interfaces priority 10 */
+        test_diff, /* 6. test priority priority 10 */
+    };
+
+    const char *expected_modname[] = {
+        "ietf-interfaces",
+        "test",
+        "ietf-interfaces",
+        "ietf-interfaces",
+        "test",
+        "ietf-interfaces",
+        "test",
+    };
+
+    const char *expected_xpath[] = {
+        NULL,
+        NULL,
+        "/ietf-interfaces:interfaces",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+    };
+
+    diff = sr_get_change_diff(session);
+    ret = lyd_print_mem(&diff_str, diff, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    assert_string_equal(module_name, expected_modname[cb_called % NUM_SUBS]);
+    if (expected_xpath[cb_called % NUM_SUBS]) {
+        assert_string_equal(xpath, expected_xpath[cb_called % NUM_SUBS]);
+    } else {
+        assert_null(xpath);
+    }
+    assert_string_equal(diff_str, expected_diff_str[cb_called % NUM_SUBS]);
+
+    if (cb_called < NUM_SUBS) {
+        assert_int_equal(event, SR_EV_CHANGE);
+    } else {
+        assert_int_equal(event, SR_EV_DONE);
+    }
+    free(diff_str);
+    return SR_ERR_OK;
+}
+
+static void
+test_diff_reuse(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr = NULL;
+    sr_session_ctx_t *sess;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+    /* create a subscription requesting an all-modules diff */
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", "/ietf-interfaces:interfaces", module_diff_reuse_cb, st, 20, SR_SUBSCR_CHANGE_ALL_MODULES, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* create normal subscriptions at different priorities */
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, module_diff_reuse_cb, st, 10, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, module_diff_reuse_cb, st, 20, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, module_diff_reuse_cb, st, 30, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_module_change_subscribe(sess, "test", NULL, module_diff_reuse_cb, st, 10, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_module_change_subscribe(sess, "test", NULL, module_diff_reuse_cb, st, 20, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_module_change_subscribe(sess, "test", NULL, module_diff_reuse_cb, st, 30, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* create changes for multiple modules */
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth52']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(sess, "/test:l1[k='key1']/v", "1", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 14);
+
+    ret = sr_unsubscribe(subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_delete_item(sess, "/ietf-interfaces:interfaces", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_delete_item(sess, "/test:l1", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_session_stop(sess);
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
 /* MAIN */
 int
 main(void)
@@ -7981,6 +8128,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_change_timeout, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_done_timeout, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_filter_orig, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_diff_reuse, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_order, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_userord, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_enabled, setup_f, teardown_f),
