@@ -257,11 +257,12 @@ step_load_data(const struct ly_ctx *ly_ctx, const char *file_path, LYD_FORMAT fo
     /* parse data */
     switch (data_type) {
     case DATA_CONFIG:
-        parse_flags = LYD_PARSE_NO_STATE | LYD_PARSE_ONLY | (not_strict ? 0 : LYD_PARSE_STRICT);
+        parse_flags = LYD_PARSE_NO_STATE | LYD_PARSE_ONLY | LYD_PARSE_STORE_ONLY | (not_strict ? 0 : LYD_PARSE_STRICT);
         lyrc = lyd_parse_data(ly_ctx, NULL, in, format, parse_flags, 0, data);
         break;
     case DATA_EDIT:
-        parse_flags = LYD_PARSE_NO_STATE | LYD_PARSE_ONLY | (opaq ? LYD_PARSE_OPAQ : (not_strict ? 0 : LYD_PARSE_STRICT));
+        parse_flags = LYD_PARSE_NO_STATE | LYD_PARSE_ONLY | LYD_PARSE_STORE_ONLY |
+                (opaq ? LYD_PARSE_OPAQ : (not_strict ? 0 : LYD_PARSE_STRICT));
         lyrc = lyd_parse_data(ly_ctx, NULL, in, format, parse_flags, 0, data);
         break;
     case DATA_RPC:
