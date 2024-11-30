@@ -1338,7 +1338,7 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, const char *orig_
             /* prepare the diff to write into subscription SHM */
             if ((err_info = sr_shmsub_change_notify_get_diff(mod_info->diff, mod->ly_mod, opts, NULL,
                     &full_diff_lyb, &full_diff_lyb_len, &diff_lyb, &diff_lyb_len, &free_diff))) {
-                goto cleanup;
+                goto cleanup_wrunlock;
             }
 
             /* write "update" event */
