@@ -1118,28 +1118,29 @@ cleanup:
 /**
  * @brief Write into change subscribers event pipe to notify them there is a new event.
  *
- * @param[in] conn Connection to use.
+ * @param[in] mod_info
  * @param[in] mod Mod info module to use.
- * @param[in] ds Datastore.
- * @param[in] diff Event diff.
  * @param[in] ev Change event.
  * @param[in] priority Priority of the subscribers with new event.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmsub_change_notify_evpipe(sr_conn_ctx_t *conn, struct sr_mod_info_mod_s *mod, sr_datastore_t ds,
-        const struct lyd_node *diff, sr_sub_event_t ev, uint32_t priority)
+sr_shmsub_change_notify_evpipe(struct sr_mod_info_s *mod_info, struct sr_mod_info_mod_s *mod,
+        sr_sub_event_t ev, uint32_t priority, uint32_t *sub_count)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_change_sub_t *shm_sub;
     uint32_t i;
+    sr_datastore_t ds = mod_info->ds;
+
+    *sub_count = 0;
 
     /* EXT READ LOCK */
-    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
+    if ((err_info = sr_shmext_conn_remap_lock(mod_info->conn, SR_LOCK_READ, 0, __func__))) {
         return err_info;
     }
 
-    shm_sub = (sr_mod_change_sub_t *)(conn->ext_shm.addr + mod->shm_mod->change_sub[ds].subs);
+    shm_sub = (sr_mod_change_sub_t *)(mod_info->conn->ext_shm.addr + mod->shm_mod->change_sub[ds].subs);
     for (i = 0; i < mod->shm_mod->change_sub[ds].sub_count; ++i) {
         if (!sr_shmsub_change_listen_event_is_valid(ev, shm_sub[i].opts)) {
             continue;
@@ -1152,22 +1153,28 @@ sr_shmsub_change_notify_evpipe(sr_conn_ctx_t *conn, struct sr_mod_info_mod_s *mo
 
         /* skip subscriptions that filter-out all the changes */
         if ((shm_sub[i].opts & SR_SUBSCR_FILTER_ORIG) &&
-                !sr_shmsub_change_filter_is_valid(conn->ext_shm.addr + shm_sub[i].xpath, diff)) {
+                !sr_shmsub_change_filter_is_valid(mod_info->conn->ext_shm.addr + shm_sub[i].xpath, mod_info->diff)) {
             continue;
         }
 
         /* valid subscription */
         if (shm_sub[i].priority == priority) {
             if ((err_info = sr_shmsub_notify_evpipe(shm_sub[i].evpipe_num))) {
-                goto cleanup;
+                /* If this CID is dead and ignore the error */
+                if (sr_conn_is_alive(shm_sub[i].cid)) {
+                    goto cleanup;
+                } else {
+                    sr_errinfo_free(&err_info);
+                    continue;
+                }
             }
+            (*sub_count)++;
         }
     }
 
 cleanup:
     /* EXT READ UNLOCK */
-    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
-
+    sr_shmext_conn_remap_unlock(mod_info->conn, SR_LOCK_READ, 0, __func__);
     return err_info;
 }
 
@@ -1352,9 +1359,13 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, const char *orig_
             }
 
             /* notify using event pipe and wait until all the subscribers have processed the event */
-            if ((err_info = sr_shmsub_change_notify_evpipe(mod_info->conn, mod, mod_info->ds, mod_info->diff,
-                    SR_SUB_EV_UPDATE, cur_priority))) {
+            if ((err_info = sr_shmsub_change_notify_evpipe(mod_info, mod, SR_SUB_EV_UPDATE,
+                    cur_priority, &subscriber_count))) {
                 goto cleanup_wrunlock;
+            }
+
+            if (!subscriber_count) {
+                goto notify_next_sub;
             }
 
             /* wait until the event is processed */
@@ -1386,6 +1397,7 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, const char *orig_
                 goto cleanup_wrunlock;
             }
 
+notify_next_sub:
             /* event fully processed */
             sub_shm->event = SR_SUB_EV_NONE;
             sub_shm->orig_cid = 0;
@@ -1616,9 +1628,6 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, const char *orig_
                 /* the subscription(s) was recovered just now so there are not any */
                 continue;
             }
-            nsub->pending_event = 1;
-            pending_events = 1;
-
             /* open sub SHM and map it */
             if ((err_info = sr_shmsub_open_map(nsub->mod->ly_mod->name, sr_ds2str(mod_info->ds), -1, &nsub->shm_sub))) {
                 goto cleanup;
@@ -1654,10 +1663,24 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, const char *orig_
             }
 
             /* notify the subscribers using an event pipe */
-            if ((err_info = sr_shmsub_change_notify_evpipe(mod_info->conn, nsub->mod, mod_info->ds, mod_info->diff,
-                    SR_SUB_EV_CHANGE, nsub->cur_priority))) {
+            if ((err_info = sr_shmsub_change_notify_evpipe(mod_info, nsub->mod, SR_SUB_EV_CHANGE,
+                    nsub->cur_priority, &subscriber_count))) {
                 goto cleanup;
             }
+
+            if (!subscriber_count) {
+                nsub->sub_shm->orig_cid = 0;
+                ATOMIC_STORE_RELAXED(nsub->sub_shm->event, SR_SUB_EV_NONE);
+
+                /* SUB WRITE UNLOCK */
+                sr_rwunlock(&nsub->sub_shm->lock, 0, SR_LOCK_WRITE, cid, __func__);
+                nsub->lock = SR_LOCK_NONE;
+                continue;
+            }
+
+            nsub->sub_shm->subscriber_count = subscriber_count;
+            nsub->pending_event = 1;
+            pending_events = 1;
         }
         if (!pending_events) {
             /* all module events generated and processed, next module priority, if any */
@@ -1796,8 +1819,6 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, const char *
             if (!subscriber_count) {
                 continue;
             }
-            nsub->pending_event = 1;
-            pending_events = 1;
 
             /* open sub SHM and map it */
             if ((err_info = sr_shmsub_open_map(nsub->mod->ly_mod->name, sr_ds2str(mod_info->ds), -1, &nsub->shm_sub))) {
@@ -1834,10 +1855,23 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, const char *
             }
 
             /* notify the subscribers using an event pipe */
-            if ((err_info = sr_shmsub_change_notify_evpipe(mod_info->conn, nsub->mod, mod_info->ds, mod_info->diff,
-                    SR_SUB_EV_DONE, nsub->cur_priority))) {
+            if ((err_info = sr_shmsub_change_notify_evpipe(mod_info, nsub->mod, SR_SUB_EV_DONE,
+                    nsub->cur_priority, &subscriber_count))) {
                 goto cleanup;
             }
+
+            if (!subscriber_count) {
+                nsub->sub_shm->orig_cid = 0;
+                ATOMIC_STORE_RELAXED(nsub->sub_shm->event, SR_SUB_EV_NONE);
+
+                /* SUB WRITE UNLOCK */
+                sr_rwunlock(&nsub->sub_shm->lock, 0, SR_LOCK_WRITE, cid, __func__);
+                nsub->lock = SR_LOCK_NONE;
+                continue;
+            }
+
+            nsub->pending_event = 1;
+            pending_events = 1;
         }
         if (!pending_events) {
             /* all module events generated and processed, next module priority, if any */
@@ -2024,8 +2058,6 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, const char 
             if (!subscriber_count) {
                 continue;
             }
-            nsub->pending_event = 1;
-            pending_events = 1;
 
             /* open sub SHM and map it */
             if ((err_info = sr_shmsub_open_map(nsub->mod->ly_mod->name, sr_ds2str(mod_info->ds), -1, &nsub->shm_sub))) {
@@ -2060,10 +2092,23 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, const char 
             }
 
             /* notify the subscribers using an event pipe */
-            if ((err_info = sr_shmsub_change_notify_evpipe(mod_info->conn, nsub->mod, mod_info->ds, mod_info->diff,
-                    SR_SUB_EV_ABORT, nsub->cur_priority))) {
+            if ((err_info = sr_shmsub_change_notify_evpipe(mod_info, nsub->mod, SR_SUB_EV_ABORT,
+                    nsub->cur_priority, &subscriber_count))) {
                 goto cleanup;
             }
+
+            if (!subscriber_count) {
+                nsub->sub_shm->orig_cid = 0;
+                ATOMIC_STORE_RELAXED(nsub->sub_shm->event, SR_SUB_EV_NONE);
+
+                /* SUB WRITE UNLOCK */
+                sr_rwunlock(&nsub->sub_shm->lock, 0, SR_LOCK_WRITE, cid, __func__);
+                nsub->lock = SR_LOCK_NONE;
+                continue;
+            }
+
+            nsub->pending_event = 1;
+            pending_events = 1;
         }
         if (!pending_events) {
             /* all module events generated and processed, next module priority, if any */
