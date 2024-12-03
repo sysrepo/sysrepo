@@ -3515,8 +3515,8 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     struct timespec notif_ts_mono, notif_ts_real;
     sr_mod_notif_sub_t *notif_subs;
     uint32_t idx = 0, notif_sub_count;
-    char *xpath;
-    const char *op_enum;
+    char *xpath, nc_sid_str[22];
+    const char *op_enum, *nc_user;
     sr_change_oper_t op;
     enum edit_op edit_op;
     int changes;
@@ -3597,12 +3597,29 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     }
 
     /* changed-by username */
-    if ((err_info = sr_lyd_new_term(root, NULL, "username", session->user))) {
+    if (session->orig_name && !strcmp(session->orig_name, "netopeer2")) {
+        /* 2 data chunks, NCID and user name */
+        assert(((uint32_t *)session->orig_data)[0] == 2);
+
+        /* number of chunks (uint32_t); length of chunk #1 (uint32_t), chunk #1 NCID (uint32_t),
+         * length of chunk #2 (uint32_t), chunk #2 NC user terminated by 0 (char *) */
+        nc_user = ((char *)session->orig_data) + 16;
+    } else {
+        /* use SR user */
+        nc_user = session->user;
+    }
+    if ((err_info = sr_lyd_new_term(root, NULL, "username", nc_user))) {
         goto cleanup;
     }
 
-    /* changed-by NETCONF session-id (unknown) */
-    if ((err_info = sr_lyd_new_term(root, NULL, "session-id", "0"))) {
+    /* changed-by NETCONF session-id */
+    if (session->orig_name && !strcmp(session->orig_name, "netopeer2")) {
+        sprintf(nc_sid_str, "%" PRIu32, ((uint32_t *)session->orig_data)[2]);
+    } else {
+        /* unknown */
+        strcpy(nc_sid_str, "0");
+    }
+    if ((err_info = sr_lyd_new_term(root, NULL, "session-id", nc_sid_str))) {
         goto cleanup;
     }
 
