@@ -290,6 +290,9 @@ srsn_yang_push_periodic(sr_session_ctx_t *session, sr_datastore_t ds, const char
     }
     pthread_mutex_init(&s->update_sntimer.lock, NULL);
     pthread_cond_init(&s->update_sntimer.cond, NULL);
+    if (session->nacm_user) {
+        s->nacm_user = strdup(session->nacm_user);
+    }
 
     /* schedule the periodic updates */
     if ((err_info = srsn_yp_schedule_periodic_update(s->period_ms, anchor_time, s, &s->update_sntimer))) {

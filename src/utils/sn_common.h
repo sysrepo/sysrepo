@@ -97,18 +97,24 @@ struct srsn_state {
             sr_datastore_t ds;
         };
         union {
+            /* subscribed-notifications */
             struct {
                 struct timespec start_time;
                 struct srsn_rt_notif *rt_notifs;    /* buffered realtime notifications received before replay complete */
                 uint32_t rt_notif_count;
                 ATOMIC_T replay_complete_count;     /* counter of special replay-complete notifications received */
             };
+
+            /* YANG push periodic */
             struct {
                 uint32_t period_ms;
                 struct timespec anchor_time;
                 struct srsn_timer update_sntimer;
                 int suspended;
+                char *nacm_user;
             };
+
+            /* YANG push on-change */
             struct {
                 uint32_t dampening_period_ms;
                 int sync_on_start;

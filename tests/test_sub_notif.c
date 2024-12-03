@@ -36,11 +36,13 @@
 #include "sysrepo.h"
 #include "tcommon.h"
 #include "utils/subscribed_notifications.h"
+#include "utils/netconf_acm.h"
 
 struct state {
     sr_conn_ctx_t *conn;
     const struct ly_ctx *ly_ctx;
     sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *sub;
     ATOMIC_T cb_called;
     pthread_barrier_t barrier;
 };
@@ -58,6 +60,7 @@ setup(void **state)
         TESTS_SRC_DIR "/../modules/subscribed_notifications/ietf-yang-push@2019-09-09.yang",
         TESTS_SRC_DIR "/files/ops-ref.yang",
         TESTS_SRC_DIR "/files/ops.yang",
+        TESTS_SRC_DIR "/files/test.yang",
         NULL
     };
     const char *sub_ntf_feats[] = {"replay", NULL};
@@ -69,6 +72,7 @@ setup(void **state)
         NULL,
         sub_ntf_feats,
         yang_push_feats,
+        NULL,
         NULL,
         NULL
     };
@@ -102,6 +106,7 @@ teardown(void **state)
     struct state *st = (struct state *)*state;
     int ret = 0;
     const char *module_names[] = {
+        "test",
         "ops",
         "ops-ref",
         "ietf-yang-push",
@@ -632,6 +637,134 @@ test_yp_on_change(void **state)
     close(fd);
 }
 
+/* TEST */
+static int
+setup_nacm_yp_periodic(void **state)
+{
+    struct state *st = *state;
+    const char *data;
+    struct lyd_node *edit;
+
+    /* init NACM */
+    if (sr_nacm_init(st->sess, 0, &st->sub)) {
+        return 1;
+    }
+
+    /* set NACM and some data */
+    data = "<nacm xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-acm\">\n"
+            "  <read-default>deny</read-default>\n"
+            "  <enable-external-groups>false</enable-external-groups>\n"
+            "  <groups>\n"
+            "    <group>\n"
+            "      <name>test-group</name>\n"
+            "      <user-name>test-user</user-name>\n"
+            "    </group>\n"
+            "  </groups>\n"
+            "  <rule-list>\n"
+            "    <name>rule1</name>\n"
+            "    <group>test-group</group>\n"
+            "    <rule>\n"
+            "      <name>allow-key</name>\n"
+            "      <module-name>test</module-name>\n"
+            "      <path xmlns:t=\"urn:test\">/t:cont/t:l2/t:k</path>\n"
+            "      <access-operations>read</access-operations>\n"
+            "      <action>permit</action>\n"
+            "    </rule>\n"
+            "  </rule-list>\n"
+            "</nacm>\n"
+            "<cont xmlns=\"urn:test\">\n"
+            "  <l2>\n"
+            "    <k>k1</k>\n"
+            "    <v>10</v>\n"
+            "  </l2>\n"
+            "  <ll2>25</ll2>\n"
+            "</cont>\n";
+    if (lyd_parse_data_mem(st->ly_ctx, data, LYD_XML, LYD_PARSE_STRICT | LYD_PARSE_ONLY, 0, &edit)) {
+        return 1;
+    }
+    if (sr_edit_batch(st->sess, edit, "merge")) {
+        return 1;
+    }
+    lyd_free_siblings(edit);
+    if (sr_apply_changes(st->sess, 0)) {
+        return 1;
+    }
+
+    /* set user */
+    if (sr_nacm_set_user(st->sess, "test-user")) {
+        return 1;
+    }
+
+    return 0;
+}
+
+static int
+teardown_nacm(void **state)
+{
+    struct state *st = (struct state *)*state;
+
+    /* clear user */
+    if (sr_nacm_set_user(st->sess, NULL)) {
+        return 1;
+    }
+
+    sr_unsubscribe(st->sub);
+    sr_nacm_destroy();
+
+    /* clear data */
+    if (sr_delete_item(st->sess, "/test:cont", 0)) {
+        return 1;
+    }
+    if (sr_delete_item(st->sess, "/ietf-netconf-acm:nacm", 0)) {
+        return 1;
+    }
+    if (sr_apply_changes(st->sess, 0)) {
+        return 1;
+    }
+
+    return 0;
+}
+
+static void
+test_nacm_yp_periodic(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *notif;
+    char *str, *exp;
+    int ret, fd;
+    uint32_t sub_id;
+    struct timespec ts;
+
+    /* subscribe */
+    ret = srsn_yang_push_periodic(st->sess, SR_DS_RUNNING, "/test:*", 5000, NULL, NULL, &fd, &sub_id);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read and check the notif */
+    assert_int_equal(SR_ERR_OK, srsn_poll(fd, 500));
+    assert_int_equal(SR_ERR_OK, srsn_read_notif(fd, st->ly_ctx, &ts, &notif));
+    lyd_print_mem(&str, notif, LYD_XML, 0);
+    ret = asprintf(&exp,
+            "<push-update xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-push\">\n"
+            "  <id>%" PRIu32 "</id>\n"
+            "  <datastore-contents>\n"
+            "    <cont xmlns=\"urn:test\">\n"
+            "      <l2>\n"
+            "        <k>k1</k>\n"
+            "      </l2>\n"
+            "    </cont>\n"
+            "  </datastore-contents>\n"
+            "</push-update>\n", sub_id);
+    assert_int_not_equal(ret, -1);
+    assert_string_equal(str, exp);
+    free(str);
+    free(exp);
+    lyd_free_tree(notif);
+
+    /* cleanup */
+    assert_int_equal(SR_ERR_OK, srsn_terminate(sub_id, NULL));
+    close(fd);
+}
+
 /* MAIN */
 int
 main(void)
@@ -643,6 +776,7 @@ main(void)
         cmocka_unit_test(test_suspend),
         cmocka_unit_test(test_yp_periodic),
         cmocka_unit_test(test_yp_on_change),
+        cmocka_unit_test_setup_teardown(test_nacm_yp_periodic, setup_nacm_yp_periodic, teardown_nacm),
     };
 
     test_log_init();

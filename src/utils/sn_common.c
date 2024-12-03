@@ -788,6 +788,7 @@ srsn_sub_free(struct srsn_sub *sub)
             sr_errinfo_free(&err_info);
         }
         pthread_cond_destroy(&sub->update_sntimer.cond);
+        free(sub->nacm_user);
         break;
     case SRSN_YANG_PUSH_ON_CHANGE:
         sr_release_data(sub->change_ntf);

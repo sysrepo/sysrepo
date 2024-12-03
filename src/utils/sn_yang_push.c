@@ -58,6 +58,12 @@ srsn_yp_ntf_update_send(struct srsn_sub *sub)
         goto cleanup;
     }
 
+    /* set the NACM user, if any */
+    if (sub->nacm_user) {
+        sr_sess->nacm_user = strdup(sub->nacm_user);
+        SR_CHECK_MEM_GOTO(!sr_sess->nacm_user, err_info, cleanup);
+    }
+
     /* get the data from sysrepo */
     if ((r = sr_get_data(sr_sess, sub->xpath_filter ? sub->xpath_filter : "/*", 0, 0, 0, &data))) {
         err_info = sr_sess->err_info;
