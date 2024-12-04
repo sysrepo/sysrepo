@@ -3046,11 +3046,6 @@ sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms,
         goto cleanup;
     }
 
-    /* trim unwanted data, after filtering */
-    if (session->ds == SR_DS_OPERATIONAL) {
-        sr_oper_data_trim(set, 0, &mod_info.data);
-    }
-
     /* apply NACM #1, get rid of whole denied results */
     if ((err_info = sr_nacm_get_node_set_read_filter(session, set))) {
         goto cleanup;
@@ -3061,6 +3056,11 @@ sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms,
         goto cleanup;
     } else if (!set->count) {
         goto cleanup;
+    }
+
+    /* trim unwanted data */
+    if (session->ds == SR_DS_OPERATIONAL) {
+        sr_oper_data_trim(set, 0, &mod_info.data);
     }
 
     /* set result, without origin */
@@ -3161,14 +3161,14 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
         goto cleanup;
     }
 
-    /* trim unwanted data, after filtering */
-    if (session->ds == SR_DS_OPERATIONAL) {
-        sr_oper_data_trim(set, opts, &mod_info.data);
-    }
-
     /* get rid of all redundant results that are descendants of another result */
     if ((err_info = sr_xpath_set_filter_subtrees(set))) {
         goto cleanup;
+    }
+
+    /* trim unwanted data, after filtering */
+    if (session->ds == SR_DS_OPERATIONAL) {
+        sr_oper_data_trim(set, opts, &mod_info.data);
     }
 
     /* create a hash table for finding existing parents */
@@ -3298,11 +3298,6 @@ sr_get_node(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
         goto cleanup;
     }
 
-    /* trim unwanted data, after filtering */
-    if (session->ds == SR_DS_OPERATIONAL) {
-        sr_oper_data_trim(set, 0, &mod_info.data);
-    }
-
     /* apply NACM */
     if ((err_info = sr_nacm_get_node_set_read_filter(session, set))) {
         goto cleanup;
@@ -3314,6 +3309,11 @@ sr_get_node(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
     } else if (!set->count) {
         /* not found */
         goto cleanup;
+    }
+
+    /* trim unwanted data */
+    if (session->ds == SR_DS_OPERATIONAL) {
+        sr_oper_data_trim(set, 0, &mod_info.data);
     }
 
     /* return found node */
