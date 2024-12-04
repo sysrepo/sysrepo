@@ -107,4 +107,8 @@ module test {
     rpc r2 {
         nacm:default-deny-all;
     }
+
+    notification notif1;
+
+    notification notif2;
 }

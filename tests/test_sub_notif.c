@@ -670,6 +670,13 @@ setup_nacm(void **state)
             "      <access-operations>read</access-operations>\n"
             "      <action>permit</action>\n"
             "    </rule>\n"
+            "    <rule>\n"
+            "      <name>allow-notif2</name>\n"
+            "      <module-name>test</module-name>\n"
+            "      <notification-name>notif2</notification-name>\n"
+            "      <access-operations>read</access-operations>\n"
+            "      <action>permit</action>\n"
+            "    </rule>\n"
             "  </rule-list>\n"
             "</nacm>\n"
             "<cont xmlns=\"urn:test\">\n"
@@ -727,9 +734,45 @@ teardown_nacm(void **state)
 }
 
 static void
+test_nacm_sub(void **state)
+{
+    struct state *st = *state;
+    struct lyd_node *notif;
+    int ret, fd;
+    uint32_t sub_id;
+    char *str;
+    struct timespec ts;
+
+    /* subscribe */
+    ret = srsn_subscribe(st->sess, "NETCONF", NULL, NULL, NULL, 0, NULL, NULL, &fd, &sub_id);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* send a notif, denied by NACM */
+    ret = sr_notif_send(st->sess, "/test:notif1", NULL, 0, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* send a notif, allowed by NACM */
+    ret = sr_notif_send(st->sess, "/test:notif2", NULL, 0, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read and check the notif */
+    assert_int_equal(SR_ERR_OK, srsn_poll(fd, 500));
+    assert_int_equal(SR_ERR_OK, srsn_read_notif(fd, st->ly_ctx, &ts, &notif));
+    lyd_print_mem(&str, notif, LYD_XML, 0);
+    assert_string_equal(str,
+            "<notif2 xmlns=\"urn:test\"/>\n");
+    free(str);
+    lyd_free_tree(notif);
+
+    /* cleanup */
+    assert_int_equal(SR_ERR_OK, srsn_terminate(sub_id, NULL));
+    close(fd);
+}
+
+static void
 test_nacm_yp_periodic(void **state)
 {
-    struct state *st = (struct state *)*state;
+    struct state *st = *state;
     struct lyd_node *notif;
     char *str, *exp;
     int ret, fd;
@@ -840,6 +883,7 @@ main(void)
         cmocka_unit_test(test_suspend),
         cmocka_unit_test(test_yp_periodic),
         cmocka_unit_test(test_yp_on_change),
+        cmocka_unit_test_setup_teardown(test_nacm_sub, setup_nacm, teardown_nacm),
         cmocka_unit_test_setup_teardown(test_nacm_yp_periodic, setup_nacm, teardown_nacm),
         cmocka_unit_test_setup_teardown(test_nacm_yp_onchange, setup_nacm, teardown_nacm),
     };
