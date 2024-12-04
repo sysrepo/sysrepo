@@ -35,8 +35,8 @@
 #include "common.h"
 #include "sysrepo.h"
 #include "tcommon.h"
-#include "utils/subscribed_notifications.h"
 #include "utils/netconf_acm.h"
+#include "utils/subscribed_notifications.h"
 
 struct state {
     sr_conn_ctx_t *conn;
