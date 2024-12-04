@@ -32,6 +32,7 @@
 #include "compat.h"
 #include "log.h"
 #include "ly_wrap.h"
+#include "nacm.h"
 #include "sn_common.h"
 #include "subscribed_notifications.h"
 #include "sysrepo.h"
@@ -336,23 +337,23 @@ cleanup:
  * @param[in] ly_yp YANG patch node to append to.
  * @param[in] yp_op yang-push operation.
  * @param[in] node Changed node.
+ * @param[in] path Node data path.
  * @param[in] prev_value Previous leaf-list value, if any.
  * @param[in] prev_list Previous list value, if any.
  * @param[in] sub Subscription to use.
+ * @param[in] groups Collected NACM groups.
+ * @param[in] group_count Count of @p groups.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 srsn_yp_ntf_change_edit_append(struct lyd_node *ly_yp, srsn_yp_change_t yp_op, const struct lyd_node *node,
-        const char *prev_value, const char *prev_list, struct srsn_sub *sub)
+        const char *path, const char *prev_value, const char *prev_list, struct srsn_sub *sub, char **groups,
+        uint32_t group_count)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *ly_edit, *value_tree = NULL;
-    char buf[26], *path = NULL, *point = NULL, quot, *xml;
+    char buf[26], *point = NULL, quot, *xml;
     uint32_t edit_id;
-
-    /* get the edit target path */
-    path = lyd_path(node, LYD_PATH_STD, NULL, 0);
-    SR_CHECK_MEM_GOTO(!path, err_info, cleanup);
 
     /* remove any previous change of this target */
     if ((err_info = srsn_yp_ntf_change_edit_clear_target(ly_yp, path))) {
@@ -420,6 +421,11 @@ srsn_yp_ntf_change_edit_append(struct lyd_node *ly_yp, srsn_yp_change_t yp_op, c
             goto cleanup;
         }
 
+        /* check 'value' NACM */
+        if ((err_info = sr_nacm_check_yp_change_value(sub->nacm_user, groups, group_count, value_tree))) {
+            goto cleanup;
+        }
+
         /* value, add as an XML subtree so that it can be printed in LYB */
         if ((err_info = sr_lyd_print_data(value_tree, LYD_XML, LYD_PRINT_SHRINK | LYD_PRINT_WD_ALL, -1, &xml, NULL))) {
             goto cleanup;
@@ -431,7 +437,6 @@ srsn_yp_ntf_change_edit_append(struct lyd_node *ly_yp, srsn_yp_change_t yp_op, c
     }
 
 cleanup:
-    free(path);
     free(point);
     lyd_free_tree(value_tree);
     if (err_info) {
@@ -449,7 +454,7 @@ srsn_yp_on_change_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const c
 {
     sr_error_info_t *err_info = NULL;
     struct srsn_sub *sub = private_data;
-    char *xp = NULL, buf[26];
+    char *xp = NULL, buf[26], **groups = NULL, *node_path = NULL;
     sr_change_iter_t *iter = NULL;
     sr_change_oper_t op, last_op = 0;
     const struct lyd_node *node, *par, *last_node = NULL;
@@ -457,11 +462,12 @@ srsn_yp_on_change_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const c
     struct lyd_node *ly_yp = NULL;
     const char *prev_value, *prev_list;
     srsn_yp_change_t yp_op;
-    int ready, r;
-    uint32_t patch_id;
+    int ready, r, denied;
+    uint32_t patch_id, group_count = 0;
 
     assert(sub->type == SRSN_YANG_PUSH_ON_CHANGE);
 
+    /* get the changes iterator */
     if (xpath) {
         r = asprintf(&xp, "%s//.", xpath);
     } else {
@@ -477,7 +483,26 @@ srsn_yp_on_change_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const c
     /* TIMER LOCK */
     pthread_mutex_lock(&sub->damp_sntimer.lock);
 
+    /* NACM begin */
+    if ((err_info = sr_nacm_check_yp_change_begin(sub->nacm_user, &groups, &group_count))) {
+        goto cleanup_unlock;
+    }
+
     while (!sr_get_change_tree_next(session, iter, &op, &node, &prev_value, &prev_list, NULL)) {
+        /* get the node path */
+        free(node_path);
+        node_path = lyd_path(node, LYD_PATH_STD, NULL, 0);
+        SR_CHECK_MEM_GOTO(!node_path, err_info, cleanup);
+
+        /* check 'target' NACM */
+        if ((err_info = sr_nacm_check_yp_change_target(sub->nacm_user, groups, group_count, node_path, node->schema,
+                &denied))) {
+            goto cleanup;
+        }
+        if (denied) {
+            continue;
+        }
+
         /* skip nested create edits */
         if ((op == SR_OP_CREATED) && (op == last_op)) {
             for (par = lyd_parent(node); par && (par != last_node); par = lyd_parent(par)) {}
@@ -532,7 +557,8 @@ srsn_yp_on_change_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const c
         }
 
         /* append a new edit */
-        if ((err_info = srsn_yp_ntf_change_edit_append(ly_yp, yp_op, node, prev_value, prev_list, sub))) {
+        if ((err_info = srsn_yp_ntf_change_edit_append(ly_yp, yp_op, node, node_path, prev_value, prev_list, sub,
+                groups, group_count))) {
             goto cleanup_unlock;
         }
     }
@@ -558,10 +584,14 @@ cleanup_unlock:
         sub->change_ntf = NULL;
     }
 
+    /* NACM end */
+    sr_nacm_check_yp_change_end(groups, group_count);
+
     /* TIMER UNLOCK */
     pthread_mutex_unlock(&sub->damp_sntimer.lock);
 
 cleanup:
+    free(node_path);
     free(xp);
     sr_free_change_iter(iter);
 

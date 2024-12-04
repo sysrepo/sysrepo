@@ -4623,7 +4623,7 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, request_id, valid_subscr_count;
-    struct lyd_node *orig_notif = NULL, *notif_dup = NULL, *notif, *notif_op;
+    struct lyd_node *notif = NULL, *notif_op;
     struct sr_denied denied = {0};
     struct timespec notif_ts_mono, notif_ts_real;
     char *shm_data_ptr;
@@ -4671,7 +4671,7 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
     shm_data_ptr += sizeof notif_ts_real;
 
     /* parse notification */
-    if ((err_info = sr_lyd_parse_op(conn->ly_ctx, shm_data_ptr, LYD_LYB, LYD_TYPE_NOTIF_YANG, &orig_notif))) {
+    if ((err_info = sr_lyd_parse_op(conn->ly_ctx, shm_data_ptr, LYD_LYB, LYD_TYPE_NOTIF_YANG, &notif))) {
         SR_ERRINFO_INT(&err_info);
         goto cleanup_rdunlock;
     }
@@ -4701,35 +4701,11 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
             continue;
         }
 
+        /* check NACM */
         free(denied.rule_name);
         memset(&denied, 0, sizeof denied);
-        if (sub->sess->nacm_user && !strcmp(orig_notif->schema->module->name, "ietf-yang-push") &&
-                !strcmp(LYD_NAME(orig_notif), "push-change-update")) {
-            if (i == notif_subs->sub_count) {
-                /* last subscription, we can modify the notification */
-                notif = orig_notif;
-            } else {
-                if (!notif_dup) {
-                    /* create notification duplicate */
-                    if ((err_info = sr_lyd_dup(orig_notif, NULL, LYD_DUP_RECURSIVE, 0, &notif_dup))) {
-                        goto cleanup;
-                    }
-                }
-                notif = notif_dup;
-            }
-
-            /* push-change-update notif is filtered specially by NACM */
-            if ((err_info = sr_nacm_check_push_update_notif(sub->sess->nacm_user, notif, &denied))) {
-                goto cleanup;
-            }
-        } else {
-            /* use notif directly */
-            notif = orig_notif;
-
-            /* check NACM */
-            if (sub->sess->nacm_user && (err_info = sr_nacm_check_operation(sub->sess->nacm_user, notif, &denied))) {
-                goto cleanup;
-            }
+        if (sub->sess->nacm_user && (err_info = sr_nacm_check_operation(sub->sess->nacm_user, notif, &denied))) {
+            goto cleanup;
         }
 
         /* find the notification */
@@ -4752,12 +4728,6 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
 
         /* processed */
         ++valid_subscr_count;
-
-        if (!denied.denied) {
-            /* may have been modified and is useless now */
-            lyd_free_all(notif_dup);
-            notif_dup = NULL;
-        }
     }
 
     /* remember request ID so that we do not process it again */
@@ -4794,8 +4764,7 @@ cleanup_rdunlock:
 cleanup:
     free(denied.rule_name);
     sr_session_stop(ev_sess);
-    lyd_free_all(orig_notif);
-    lyd_free_all(notif_dup);
+    lyd_free_all(notif);
     sr_shm_clear(&shm_data_sub);
     return err_info;
 }

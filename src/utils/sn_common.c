@@ -683,7 +683,7 @@ srsn_unlock(void)
 
 sr_error_info_t *
 srsn_sub_new(const char *xpath_filter, const struct timespec *stop_time, sr_subscription_ctx_t **sr_sub,
-        sr_conn_ctx_t *conn, struct srsn_sub **sub)
+        sr_conn_ctx_t *conn, const char *nacm_user, struct srsn_sub **sub)
 {
     sr_error_info_t *err_info = NULL;
     struct srsn_sub *s = NULL;
@@ -715,6 +715,9 @@ srsn_sub_new(const char *xpath_filter, const struct timespec *stop_time, sr_subs
         s->stop_time = *stop_time;
     }
     s->conn = conn;
+    if (nacm_user) {
+        s->nacm_user = strdup(nacm_user);
+    }
 
     *sub = s;
 
@@ -773,6 +776,7 @@ srsn_sub_free(struct srsn_sub *sub)
         sr_errinfo_free(&err_info);
     }
     pthread_cond_destroy(&sub->stop_sntimer.cond);
+    free(sub->nacm_user);
 
     switch (sub->type) {
     case SRSN_SUB_NOTIF:
@@ -788,7 +792,6 @@ srsn_sub_free(struct srsn_sub *sub)
             sr_errinfo_free(&err_info);
         }
         pthread_cond_destroy(&sub->update_sntimer.cond);
-        free(sub->nacm_user);
         break;
     case SRSN_YANG_PUSH_ON_CHANGE:
         sr_release_data(sub->change_ntf);

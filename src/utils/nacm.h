@@ -168,18 +168,6 @@ sr_error_info_t *sr_nacm_get_node_set_read_filter(sr_session_ctx_t *session, str
 sr_error_info_t *sr_nacm_get_subtree_read_filter(sr_session_ctx_t *session, struct lyd_node *subtree, int *denied);
 
 /**
- * @brief Check whether the notification is allowed for a user and filter out any edits the user
- * does not have R access to.
- *
- * @param[in] nacm_user NACM username to use.
- * @param[in,out] notif Top-level node of the notification tree to filter.
- * @param[in,out] denied Deny details, if applicable. If allowed, @p notif was not modified.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_nacm_check_push_update_notif(const char *nacm_user, struct lyd_node *notif,
-        struct sr_denied *denied);
-
-/**
  * @brief Check whether a diff (simplified edit-config tree) can be applied by a user.
  *
  * According to https://tools.ietf.org/html/rfc8341#section-3.2.5 check C access for created nodes,
@@ -192,6 +180,51 @@ sr_error_info_t *sr_nacm_check_push_update_notif(const char *nacm_user, struct l
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_nacm_check_diff(const char *nacm_user, const struct lyd_node *diff, struct sr_denied *denied);
+
+/**
+ * @brief Start the NACM check of a YANG Push 'push-update-change' notification.
+ *
+ * @param[in] nacm_user NACM user to use, if any.
+ * @param[out] groups Collected NACM groups.
+ * @param[out] group_count Count of @p groups.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_nacm_check_yp_change_begin(const char *nacm_user, char ***groups, uint32_t *group_count);
+
+/**
+ * @brief NACM check of a YANG Push 'push-update-change' notification 'target' node.
+ *
+ * @param[in] nacm_user NACM user to use, if any.
+ * @param[in] groups Collected NACM groups.
+ * @param[in] group_count Count of @p groups.
+ * @param[in] path Data path of the changed 'target' node.
+ * @param[in] schema Schemanode of the changed 'target' node.
+ * @param[out] denied Set to 1 if the NACM check failed, otherwise 0.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_nacm_check_yp_change_target(const char *nacm_user, char **groups, uint32_t group_count,
+        const char *path, const struct lysc_node *schema, int *denied);
+
+/**
+ * @brief NACM check of a YANG Push 'push-update-change' notification 'value' node.
+ *
+ * @param[in] nacm_user NACM user to use, if any.
+ * @param[in] groups Collected NACM groups.
+ * @param[in] group_count Count of @p groups.
+ * @param[in,out] tree Tree to filter, denied nodes are freed.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_nacm_check_yp_change_value(const char *nacm_user, char **groups, uint32_t group_count,
+        struct lyd_node *tree);
+
+/**
+ * @brief End the NACM check of a YANG Push 'push-update-change' notification.
+ *
+ * @param[in] groups Collected NACM groups.
+ * @param[in] group_count Count of @p groups.
+ * @return err_info, NULL on success.
+ */
+void sr_nacm_check_yp_change_end(char **groups, uint32_t group_count);
 
 /**
  * @brief Create a NETCONF error info structure for a NACM error.

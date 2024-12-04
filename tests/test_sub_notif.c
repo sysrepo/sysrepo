@@ -639,7 +639,7 @@ test_yp_on_change(void **state)
 
 /* TEST */
 static int
-setup_nacm_yp_periodic(void **state)
+setup_nacm(void **state)
 {
     struct state *st = *state;
     const char *data;
@@ -690,7 +690,7 @@ setup_nacm_yp_periodic(void **state)
         return 1;
     }
 
-    /* set user */
+    /* set NACM user */
     if (sr_nacm_set_user(st->sess, "test-user")) {
         return 1;
     }
@@ -701,14 +701,15 @@ setup_nacm_yp_periodic(void **state)
 static int
 teardown_nacm(void **state)
 {
-    struct state *st = (struct state *)*state;
+    struct state *st = *state;
 
-    /* clear user */
+    /* clear NACM user */
     if (sr_nacm_set_user(st->sess, NULL)) {
         return 1;
     }
 
     sr_unsubscribe(st->sub);
+    st->sub = NULL;
     sr_nacm_destroy();
 
     /* clear data */
@@ -765,6 +766,69 @@ test_nacm_yp_periodic(void **state)
     close(fd);
 }
 
+static void
+test_nacm_yp_onchange(void **state)
+{
+    struct state *st = *state;
+    sr_session_ctx_t *sess;
+    struct lyd_node *notif;
+    char *str, *exp;
+    int ret, fd;
+    uint32_t sub_id;
+    struct timespec ts;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe */
+    ret = srsn_yang_push_on_change(st->sess, SR_DS_RUNNING, "/test:*", 0, 0, NULL, NULL, 0, &st->sub, &fd, &sub_id);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* modify some data unreadable by NACM, generates no notification */
+    ret = sr_set_item_str(sess, "/test:cont/ll2", "125", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* modify some data readable by NACM */
+    ret = sr_set_item_str(sess, "/test:cont/l2[k='k2']/v", "11", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read and check the notif */
+    assert_int_equal(SR_ERR_OK, srsn_poll(fd, 500));
+    assert_int_equal(SR_ERR_OK, srsn_read_notif(fd, st->ly_ctx, &ts, &notif));
+    lyd_print_mem(&str, notif, LYD_XML, 0);
+    ret = asprintf(&exp,
+            "<push-change-update xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-push\">\n"
+            "  <id>%" PRIu32 "</id>\n"
+            "  <datastore-changes>\n"
+            "    <yang-patch>\n"
+            "      <patch-id>patch-1</patch-id>\n"
+            "      <edit>\n"
+            "        <edit-id>edit-1</edit-id>\n"
+            "        <operation>create</operation>\n"
+            "        <target>/test:cont/l2[k='k2']/k</target>\n"
+            "        <value>\n"
+            "          <k xmlns=\"urn:test\">k2</k>\n"
+            "        </value>\n"
+            "      </edit>\n"
+            "    </yang-patch>\n"
+            "  </datastore-changes>\n"
+            "</push-change-update>\n", sub_id);
+    assert_int_not_equal(ret, -1);
+    assert_string_equal(str, exp);
+    free(str);
+    free(exp);
+    lyd_free_tree(notif);
+
+    /* cleanup */
+    assert_int_equal(SR_ERR_OK, srsn_terminate(sub_id, NULL));
+    close(fd);
+    sr_session_stop(sess);
+}
+
 /* MAIN */
 int
 main(void)
@@ -776,7 +840,8 @@ main(void)
         cmocka_unit_test(test_suspend),
         cmocka_unit_test(test_yp_periodic),
         cmocka_unit_test(test_yp_on_change),
-        cmocka_unit_test_setup_teardown(test_nacm_yp_periodic, setup_nacm_yp_periodic, teardown_nacm),
+        cmocka_unit_test_setup_teardown(test_nacm_yp_periodic, setup_nacm, teardown_nacm),
+        cmocka_unit_test_setup_teardown(test_nacm_yp_onchange, setup_nacm, teardown_nacm),
     };
 
     test_log_init();

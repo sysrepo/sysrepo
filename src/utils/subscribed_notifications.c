@@ -220,7 +220,8 @@ srsn_subscribe(sr_session_ctx_t *session, const char *stream, const char *xpath_
     }
 
     /* prepare the subscription structure */
-    if ((err_info = srsn_sub_new(xpath_filter, stop_time, sub, sr_session_get_connection(session), &s))) {
+    if ((err_info = srsn_sub_new(xpath_filter, stop_time, sub, sr_session_get_connection(session), session->nacm_user,
+            &s))) {
         goto cleanup;
     }
     s->type = SRSN_SUB_NOTIF;
@@ -279,7 +280,8 @@ srsn_yang_push_periodic(sr_session_ctx_t *session, sr_datastore_t ds, const char
     }
 
     /* prepare the subscription structure */
-    if ((err_info = srsn_sub_new(xpath_filter, stop_time, NULL, sr_session_get_connection(session), &s))) {
+    if ((err_info = srsn_sub_new(xpath_filter, stop_time, NULL, sr_session_get_connection(session), session->nacm_user,
+            &s))) {
         goto cleanup;
     }
     s->type = SRSN_YANG_PUSH_PERIODIC;
@@ -290,9 +292,6 @@ srsn_yang_push_periodic(sr_session_ctx_t *session, sr_datastore_t ds, const char
     }
     pthread_mutex_init(&s->update_sntimer.lock, NULL);
     pthread_cond_init(&s->update_sntimer.cond, NULL);
-    if (session->nacm_user) {
-        s->nacm_user = strdup(session->nacm_user);
-    }
 
     /* schedule the periodic updates */
     if ((err_info = srsn_yp_schedule_periodic_update(s->period_ms, anchor_time, s, &s->update_sntimer))) {
@@ -342,7 +341,7 @@ srsn_yang_push_on_change(sr_session_ctx_t *session, sr_datastore_t ds, const cha
     }
 
     /* prepare the subscription structure */
-    if ((err_info = srsn_sub_new(xpath_filter, stop_time, sub, sr_session_get_connection(session), &s))) {
+    if ((err_info = srsn_sub_new(xpath_filter, stop_time, sub, sr_session_get_connection(session), session->nacm_user, &s))) {
         goto cleanup;
     }
     s->type = SRSN_YANG_PUSH_ON_CHANGE;
