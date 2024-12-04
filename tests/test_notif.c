@@ -344,7 +344,7 @@ test_input_parameters(void **state)
     assert_int_equal(ret, SR_ERR_NOT_FOUND);
 
     /* non-existing notification in module */
-    ret = sr_notif_subscribe(st->sess, "test", NULL, 0, 0, notif_dummy_cb, NULL, 0, &subscr);
+    ret = sr_notif_subscribe(st->sess, "ietf-interfaces", NULL, 0, 0, notif_dummy_cb, NULL, 0, &subscr);
     assert_int_equal(ret, SR_ERR_NOT_FOUND);
 
     /* non-existing notification node in xpath */

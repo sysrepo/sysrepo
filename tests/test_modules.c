@@ -254,6 +254,8 @@ test_data_deps(void **state)
             "<inverse-deps>refs</inverse-deps>"
             "<rpc><path xmlns:t=\"urn:test\">/t:r1</path></rpc>"
             "<rpc><path xmlns:t=\"urn:test\">/t:r2</path></rpc>"
+            "<notification><path xmlns:t=\"urn:test\">/t:notif1</path></notification>"
+            "<notification><path xmlns:t=\"urn:test\">/t:notif2</path></notification>"
             "</module>");
     cmp_int_data(st->conn, "ietf-interfaces",
             "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
@@ -707,6 +709,8 @@ test_change_feature(void **state)
             "<inverse-deps>features</inverse-deps>"
             "<rpc><path xmlns:t=\"urn:test\">/t:r1</path></rpc>"
             "<rpc><path xmlns:t=\"urn:test\">/t:r2</path></rpc>"
+            "<notification><path xmlns:t=\"urn:test\">/t:notif1</path></notification>"
+            "<notification><path xmlns:t=\"urn:test\">/t:notif2</path></notification>"
             "</module>");
 
     /* enable feat2 and feat3 */
@@ -786,6 +790,8 @@ test_change_feature(void **state)
             "<plugin><datastore>notification</datastore><name>" SR_DEFAULT_NOTIFICATION_DS "</name></plugin>"
             "<rpc><path xmlns:t=\"urn:test\">/t:r1</path></rpc>"
             "<rpc><path xmlns:t=\"urn:test\">/t:r2</path></rpc>"
+            "<notification><path xmlns:t=\"urn:test\">/t:notif1</path></notification>"
+            "<notification><path xmlns:t=\"urn:test\">/t:notif2</path></notification>"
             "</module>");
 
     /* check that the conditional data were removed */
@@ -846,6 +852,8 @@ test_replay_support(void **state)
             "<plugin><datastore>notification</datastore><name>" SR_DEFAULT_NOTIFICATION_DS "</name></plugin>"
             "<rpc><path xmlns:t=\"urn:test\">/t:r1</path></rpc>"
             "<rpc><path xmlns:t=\"urn:test\">/t:r2</path></rpc>"
+            "<notification><path xmlns:t=\"urn:test\">/t:notif1</path></notification>"
+            "<notification><path xmlns:t=\"urn:test\">/t:notif2</path></notification>"
             "</module>");
     cmp_int_data(st->conn, "ietf-interfaces",
             "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
@@ -898,6 +906,8 @@ test_replay_support(void **state)
             "<replay-support>00000000000000000000000000000000000</replay-support>"
             "<rpc><path xmlns:t=\"urn:test\">/t:r1</path></rpc>"
             "<rpc><path xmlns:t=\"urn:test\">/t:r2</path></rpc>"
+            "<notification><path xmlns:t=\"urn:test\">/t:notif1</path></notification>"
+            "<notification><path xmlns:t=\"urn:test\">/t:notif2</path></notification>"
             "</module>");
     cmp_int_data(st->conn, "ietf-interfaces",
             "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
@@ -950,6 +960,8 @@ test_replay_support(void **state)
             "<plugin><datastore>notification</datastore><name>" SR_DEFAULT_NOTIFICATION_DS "</name></plugin>"
             "<rpc><path xmlns:t=\"urn:test\">/t:r1</path></rpc>"
             "<rpc><path xmlns:t=\"urn:test\">/t:r2</path></rpc>"
+            "<notification><path xmlns:t=\"urn:test\">/t:notif1</path></notification>"
+            "<notification><path xmlns:t=\"urn:test\">/t:notif2</path></notification>"
             "</module>");
     cmp_int_data(st->conn, "ietf-interfaces",
             "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
