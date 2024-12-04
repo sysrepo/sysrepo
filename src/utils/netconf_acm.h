@@ -63,7 +63,8 @@ void sr_nacm_destroy(void);
  * - reading data - unaccesible data are silently filtered out from the returned data;
  * - editing data - on an attempt to edit data without the proper access NETCONF error is returned;
  * - sending RPC/action - on an attempt to send RPC/action without the proper access NETCONF error is returned;
- * - receiving notifications - notifications without the proper access are silently dropped.
+ * - receiving notifications - notifications without the proper access are silently dropped;
+ * - subscribing to YANG Push - unreadable data are silently filtered out from the received notifications.
  *
  * @param[in] session Session to use.
  * @param[in] user NACM username to use. If NULL, the username is cleared disabling NACM.
