@@ -14,7 +14,7 @@ Using a combination of discarding items and merging data, it should be possible 
 _operational_ datastore.
 
 Push oper data set by a session are owned by it. If the session is **stopped**, all its push oper data are
-automatically **discarded**. You can do so also manually using ::sr_discard_changes().
+automatically **discarded**. You can do so also manually using ::sr_discard_oper_changes().
 
 ## Order
 
