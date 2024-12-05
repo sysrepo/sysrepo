@@ -4185,14 +4185,48 @@ sr_get_changes(sr_session_ctx_t *session)
 API int
 sr_discard_changes(sr_session_ctx_t *session)
 {
+    return sr_discard_changes_xpath(session, NULL);
+}
+
+API int
+sr_discard_changes_xpath(sr_session_ctx_t *session, const char *xpath)
+{
     sr_error_info_t *err_info = NULL;
+    struct ly_set *set = NULL;
+    uint32_t i;
 
     SR_CHECK_ARG_APIRET(!session || !SR_IS_STANDARD_DS(session->ds), session, err_info);
 
-    sr_release_data(session->dt[session->ds].edit);
-    session->dt[session->ds].edit = NULL;
+    if (!session->dt[session->ds].edit) {
+        /* nothing to do */
+        goto cleanup;
+    }
 
-    return sr_api_ret(session, NULL);
+    if (!xpath) {
+        /* discard all the changes */
+        sr_release_data(session->dt[session->ds].edit);
+        session->dt[session->ds].edit = NULL;
+        goto cleanup;
+    }
+
+    /* select all the changes */
+    if ((err_info = sr_lyd_find_xpath(session->dt[session->ds].edit->tree, xpath, &set))) {
+        goto cleanup;
+    }
+
+    /* get rid of all redundant results that are descendants of another result */
+    if ((err_info = sr_xpath_set_filter_subtrees(set))) {
+        goto cleanup;
+    }
+
+    /* free the selected changes */
+    for (i = 0; i < set->count; ++i) {
+        lyd_free_tree(set->dnodes[i]);
+    }
+
+cleanup:
+    ly_set_free(set, NULL);
+    return sr_api_ret(session, err_info);
 }
 
 /**

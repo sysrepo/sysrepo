@@ -1085,6 +1085,15 @@ const struct lyd_node *sr_get_changes(sr_session_ctx_t *session);
 int sr_discard_changes(sr_session_ctx_t *session);
 
 /**
+ * @brief Discard prepared changes made in the current session matching an XPath expression.
+ *
+ * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to discard changes from.
+ * @param[in] xpath XPatch selecting the changes to discard, NULL to discard all the changes.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_discard_changes_xpath(sr_session_ctx_t *session, const char *xpath);
+
+/**
  * @brief Replace a datastore with the contents of a data tree. If the module is specified, limit
  * the operation only to the specified module. If it is not specified, the operation is performed on all modules.
  *

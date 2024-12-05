@@ -323,6 +323,14 @@ test_create2(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
+
+    /* set and discard a change */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth10']/type",
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_discard_changes_xpath(st->sess, "/ietf-interfaces:interfaces/interface[name='eth10']//.");
+    assert_int_equal(ret, SR_ERR_OK);
+
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
