@@ -1527,9 +1527,10 @@ sr_module_oper_data_get_enabled(sr_conn_ctx_t *conn, struct lyd_node **data, str
     shm_changesubs = (sr_mod_change_sub_t *)(conn->ext_shm.addr + mod->shm_mod->change_sub[SR_DS_RUNNING].subs);
 
     if (!data_ready) {
-        /* try to find a subscription for the whole module */
+        /* try to find an "alive" and "active" subscription for the whole module */
         for (i = 0; i < mod->shm_mod->change_sub[SR_DS_RUNNING].sub_count; ++i) {
-            if (!shm_changesubs[i].xpath && !(shm_changesubs[i].opts & SR_SUBSCR_PASSIVE)) {
+            if (!shm_changesubs[i].xpath && !(shm_changesubs[i].opts & SR_SUBSCR_PASSIVE) &&
+                    sr_conn_is_alive(shm_changesubs[i].cid)) {
                 /* the whole module is enabled */
                 if ((err_info = sr_lyd_get_module_data(data, mod->ly_mod, 1, dup, enabled_mod_data))) {
                     goto error_ext_sub_unlock;
@@ -1544,7 +1545,8 @@ sr_module_oper_data_get_enabled(sr_conn_ctx_t *conn, struct lyd_node **data, str
         /* collect all enabled subtress in the form of xpaths */
         xpaths = NULL;
         for (i = 0, xp_i = 0; i < mod->shm_mod->change_sub[SR_DS_RUNNING].sub_count; ++i) {
-            if (shm_changesubs[i].xpath && !(shm_changesubs[i].opts & SR_SUBSCR_PASSIVE)) {
+            if (shm_changesubs[i].xpath && !(shm_changesubs[i].opts & SR_SUBSCR_PASSIVE) &&
+                    sr_conn_is_alive(shm_changesubs[i].cid)) {
                 xpaths = sr_realloc(xpaths, (xp_i + 1) * sizeof *xpaths);
                 SR_CHECK_MEM_GOTO(!xpaths, err_info, error_ext_sub_unlock);
 
