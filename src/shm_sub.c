@@ -2051,9 +2051,13 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, const char 
                 goto cleanup;
             }
 
-            if (subscriber_count && nsub->change_error && (nsub->err_priority == nsub->cur_priority)) {
-                /* do not notify subscribers that did not process the previous event */
-                subscriber_count -= nsub->err_subscriber_count;
+            if (nsub->change_error && (nsub->err_priority == nsub->cur_priority)) {
+                /* current priority change event failed so no lower priority events could have been generated */
+                last_priority = 1;
+                if (subscriber_count) {
+                    /* do not notify subscribers that did not process the previous event */
+                    subscriber_count -= nsub->err_subscriber_count;
+                }
             }
             if (!subscriber_count) {
                 continue;
@@ -2128,12 +2132,6 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, const char 
 
         for (i = 0; i < notify_count; ++i) {
             nsub = &notify_subs[i];
-
-            if (nsub->change_error && (nsub->err_priority == nsub->cur_priority)) {
-                /* current priority change event failed so no lower priority events could have been generated */
-                last_priority = 1;
-            }
-
             if (!nsub->pending_event) {
                 continue;
             }
