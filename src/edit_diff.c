@@ -2262,6 +2262,11 @@ cleanup:
     return err_info;
 }
 
+struct sr_oper_edit_arg {
+    struct lyd_node *mod_diff;
+    int change;
+};
+
 /**
  * @brief Callback for merging data.
  */
@@ -2269,50 +2274,105 @@ static LY_ERR
 sr_oper_edit_mod_apply_cb(struct lyd_node *trg_node, const struct lyd_node *src_node, void *cb_data)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node **mod_diff = cb_data;
+    struct sr_oper_edit_arg *arg = cb_data;
     char *any_val = NULL;
+    const char *src_origin, *trg_origin;
 
     if (!src_node) {
         /* trg_node subtree is merged, add it to the diff */
-        if ((err_info = sr_edit_diff_append(trg_node, EDIT_CREATE, NULL, 1, mod_diff))) {
-            sr_errinfo_free(&err_info);
-            return LY_EOTHER;
+        if ((err_info = sr_edit_diff_append(trg_node, EDIT_CREATE, NULL, 1, &arg->mod_diff))) {
+            goto cleanup;
         }
+        arg->change = 1;
 
-        return LY_SUCCESS;
+        goto cleanup;
     }
 
     /* merged nodes existing in both the trees and are equal */
     if (!lyd_compare_single(trg_node, src_node, 0)) {
-        return LY_SUCCESS;
+        /* check the origin equality */
+        sr_edit_diff_get_origin(src_node, 1, &src_origin, NULL);
+        sr_edit_diff_get_origin(trg_node, 1, &trg_origin, NULL);
+        if (strcmp(src_origin, trg_origin)) {
+            if ((err_info = sr_edit_diff_set_origin(trg_node, src_origin, 1))) {
+                goto cleanup;
+            }
+            arg->change = 1;
+        }
+
+        goto cleanup;
     } else if (!src_node->schema) {
         /* ignore changes in opaque nodes */
-        return LY_SUCCESS;
+        goto cleanup;
     }
 
     /* cases when merging 2 nodes but adding to diff */
     switch (src_node->schema->nodetype) {
     case LYS_LEAF:
-        err_info = sr_edit_diff_append(src_node, EDIT_REPLACE, lyd_get_value(trg_node), 0, mod_diff);
+        if ((err_info = sr_edit_diff_append(src_node, EDIT_REPLACE, lyd_get_value(trg_node), 0, &arg->mod_diff))) {
+            goto cleanup;
+        }
         break;
     case LYS_ANYDATA:
     case LYS_ANYXML:
         if ((err_info = sr_lyd_any_value_str(trg_node, &any_val))) {
-            break;
+            goto cleanup;
         }
-        err_info = sr_edit_diff_append(src_node, EDIT_REPLACE, any_val, 0, mod_diff);
+        if ((err_info = sr_edit_diff_append(src_node, EDIT_REPLACE, any_val, 0, &arg->mod_diff))) {
+            goto cleanup;
+        }
         break;
     default:
         SR_ERRINFO_INT(&err_info);
         break;
     }
+    arg->change = 1;
 
+cleanup:
     free(any_val);
     if (err_info) {
         sr_errinfo_free(&err_info);
         return LY_EOTHER;
     }
     return LY_SUCCESS;
+}
+
+/**
+ * @brief Compare origin of equal data trees, recursively.
+ *
+ * @param[in] sibling1 First sibling of the first data tree.
+ * @param[in] sibling2 Second sibling of the second data tree.
+ * @param[out] change Set if a difference was found.
+ */
+static void
+sr_oper_edit_mod_diff_origin_r(const struct lyd_node *sibling1, const struct lyd_node *sibling2, int *change)
+{
+    const struct lyd_node *iter1, *iter2;
+    const char *origin1, *origin2;
+
+    iter1 = sibling1;
+    iter2 = sibling2;
+    while (iter1 && iter2 && iter1->schema && iter2->schema) {
+        assert(iter1->schema == iter2->schema);
+
+        /* compare origin of the nodes */
+        sr_edit_diff_get_origin(iter1, 1, &origin1, NULL);
+        sr_edit_diff_get_origin(iter2, 1, &origin2, NULL);
+        if (origin1 != origin2) {
+            *change = 1;
+            break;
+        }
+
+        /* compare children recursively */
+        sr_oper_edit_mod_diff_origin_r(lyd_child_no_keys(iter1), lyd_child_no_keys(iter2), change);
+        if (*change) {
+            break;
+        }
+
+        /* next iter */
+        iter1 = iter1->next;
+        iter2 = iter2->next;
+    }
 }
 
 /**
@@ -2323,22 +2383,27 @@ sr_oper_edit_mod_apply_cb(struct lyd_node *trg_node, const struct lyd_node *src_
  * @param[in] ly_mod Module to process.
  * @param[in] op Operation to apply.
  * @param[in,out] data Oper data to modify.
- * @param[in,out] diff Diff tree to add to.
+ * @param[out] mod_diff Created diff tree.
+ * @param[out] change Set if there are some data (origin) changes.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_oper_edit_mod_apply_data(const struct lyd_node *mod_first, struct ly_set *opaq_set, const struct lys_module *ly_mod,
-        enum edit_op op, struct lyd_node **data, struct lyd_node **mod_diff)
+        enum edit_op op, struct lyd_node **data, struct lyd_node **mod_diff, int *change)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *node, *dup, *src_tree = NULL, *trg_tree = NULL;
     const struct lyd_node *root;
     struct ly_set data_opaq_set = {0};
+    struct sr_oper_edit_arg arg = {0};
     const char *xpath;
     uint32_t i, j;
     int found;
 
     assert((op == EDIT_MERGE) || (op == EDIT_REPLACE));
+
+    *mod_diff = NULL;
+    *change = 0;
 
     /* collect relevant data opaque nodes */
     node = *data;
@@ -2361,10 +2426,11 @@ sr_oper_edit_mod_apply_data(const struct lyd_node *mod_first, struct ly_set *opa
 
     if (op == EDIT_MERGE) {
         /* merge module data and generate diff */
-        if ((err_info = sr_lyd_merge_module(data, mod_first, ly_mod, sr_oper_edit_mod_apply_cb, mod_diff,
-                LYD_MERGE_DEFAULTS))) {
+        if ((err_info = sr_lyd_merge_module(data, mod_first, ly_mod, sr_oper_edit_mod_apply_cb, &arg, LYD_MERGE_DEFAULTS))) {
             goto cleanup;
         }
+        *mod_diff = arg.mod_diff;
+        *change = arg.change;
     } else {
         /* get source and target data of the module */
         LY_LIST_FOR(mod_first, root) {
@@ -2385,6 +2451,12 @@ sr_oper_edit_mod_apply_data(const struct lyd_node *mod_first, struct ly_set *opa
         /* generate diff and replace module data */
         if ((err_info = sr_lyd_diff_siblings(trg_tree, src_tree, LYD_DIFF_DEFAULTS, mod_diff))) {
             goto cleanup;
+        }
+        if (*mod_diff) {
+            *change = 1;
+        } else {
+            /* check that all origin values are the same */
+            sr_oper_edit_mod_diff_origin_r(trg_tree, src_tree, change);
         }
         if ((err_info = sr_lyd_insert_sibling(*data, src_tree, data))) {
             goto cleanup;
@@ -2427,6 +2499,8 @@ sr_oper_edit_mod_apply_data(const struct lyd_node *mod_first, struct ly_set *opa
             if ((err_info = sr_lyd_insert_sibling(*mod_diff, node, mod_diff))) {
                 goto cleanup;
             }
+
+            *change = 1;
         }
     }
 
@@ -2452,6 +2526,8 @@ sr_oper_edit_mod_apply_data(const struct lyd_node *mod_first, struct ly_set *opa
         if ((err_info = sr_lyd_insert_sibling(*mod_diff, dup, mod_diff))) {
             goto cleanup;
         }
+
+        *change = 1;
     }
 
     /* delete all the operations, there are no nested */
@@ -2535,12 +2611,8 @@ sr_oper_edit_mod_apply(const struct lyd_node *tree, const struct lys_module *ly_
     } while (root != tree);
 
     /* apply the edit to oper data and generate diff */
-    if ((err_info = sr_oper_edit_mod_apply_data(mod_first, &opaq_set, ly_mod, op, data, &mod_diff))) {
+    if ((err_info = sr_oper_edit_mod_apply_data(mod_first, &opaq_set, ly_mod, op, data, &mod_diff, change))) {
         goto cleanup;
-    }
-
-    if (mod_diff && change) {
-        *change = 1;
     }
 
     if (diff && mod_diff) {
@@ -3155,10 +3227,18 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
             goto error_safe;
         }
         if (match) {
-            /* node exists, nothing to create, just merge operations if possible */
-            if ((session->ds != SR_DS_OPERATIONAL) && (err_info = sr_edit_add_merge_op(match,
-                    &session->dt[session->ds].edit->tree, value, sr_edit_str2op(operation)))) {
-                goto error_safe;
+            /* node exists, nothing to create */
+            if (session->ds == SR_DS_OPERATIONAL) {
+                /* update origin if differs */
+                if (origin && (err_info = sr_edit_diff_set_origin(match, origin, 1))) {
+                    goto error_safe;
+                }
+            } else {
+                /* merge operations if possible */
+                if ((err_info = sr_edit_add_merge_op(match, &session->dt[session->ds].edit->tree, value,
+                        sr_edit_str2op(operation)))) {
+                    goto error_safe;
+                }
             }
             goto success;
         }

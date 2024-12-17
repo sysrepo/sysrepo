@@ -2599,6 +2599,109 @@ test_oper_list_enabled(void **state)
     sr_unsubscribe(subscr);
 }
 
+/* TEST */
+static void
+test_origin(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_data_t *data;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    /* switch to operational DS */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* #1 set some operational data with origin */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth0']/type",
+            "iana-if-type:ethernetCsmacd", "system", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth0']/description",
+            "system interface", "system", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the operational data */
+    ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+    sr_release_data(data);
+
+    str2 =
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <interface>\n"
+            "    <name>eth0</name>\n"
+            "    <description or:origin=\"or:system\">system interface</description>\n"
+            "    <type or:origin=\"or:system\" xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* #2 change only the origin of the operational data by merging data */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth0']", NULL, "learned", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth0']/type",
+            "iana-if-type:ethernetCsmacd", "learned", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the operational data */
+    ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+    sr_release_data(data);
+
+    str2 =
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <interface or:origin=\"or:learned\">\n"
+            "    <name>eth0</name>\n"
+            "    <description or:origin=\"or:system\">system interface</description>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* #3 change only the origin of the operational data by replacing data */
+    ret = sr_get_oper_changes(st->sess, "ietf-interfaces", &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_edit_batch(st->sess, data->tree, "replace");
+    assert_int_equal(ret, SR_ERR_OK);
+    sr_release_data(data);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth0']/description",
+            "system interface", "dynamic", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the operational data */
+    ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+    sr_release_data(data);
+
+    str2 =
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <interface or:origin=\"or:learned\">\n"
+            "    <name>eth0</name>\n"
+            "    <description or:origin=\"or:dynamic\">system interface</description>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
+    assert_string_equal(str1, str2);
+    free(str1);
+}
+
 int
 main(void)
 {
@@ -2620,6 +2723,7 @@ main(void)
         cmocka_unit_test_teardown(test_change_cb, clear_up),
         cmocka_unit_test_teardown(test_change_filter, clear_up),
         cmocka_unit_test_teardown(test_oper_list_enabled, clear_up),
+        cmocka_unit_test_teardown(test_origin, clear_up),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
