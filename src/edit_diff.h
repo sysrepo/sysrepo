@@ -100,7 +100,7 @@ enum edit_op sr_edit_diff_find_oper(const struct lyd_node *edit, int recursive, 
  * @param[out] origin Found origin.
  * @param[out] origin_own Whether the found origin is owned or inherited.
  */
-void sr_edit_diff_get_origin(const struct lyd_node *node, int recursive, char **origin, int *origin_own);
+void sr_edit_diff_get_origin(const struct lyd_node *node, int recursive, const char **origin, int *origin_own);
 
 /**
  * @brief Set origin of a node.

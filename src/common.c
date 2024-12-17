@@ -3950,7 +3950,8 @@ sr_error_info_t *
 sr_val_ly2sr(const struct lyd_node *node, int with_origin, sr_val_t *sr_val)
 {
     sr_error_info_t *err_info = NULL;
-    char *ptr, *origin = NULL;
+    char *ptr;
+    const char *origin = NULL;
     const struct lyd_node_term *leaf;
     const struct lyd_value *val;
     struct lyd_node_any *any;
@@ -4117,7 +4118,7 @@ store_value:
     if (with_origin) {
         sr_edit_diff_get_origin(node, 1, &origin, NULL);
     }
-    sr_val->origin = origin;
+    sr_val->origin = origin ? strdup(origin) : NULL;
 
     return NULL;
 

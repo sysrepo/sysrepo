@@ -674,15 +674,13 @@ LY_ERR
 sr_lyd_diff_apply_cb(const struct lyd_node *diff_node, struct lyd_node *data_node, void *user_data)
 {
     sr_error_info_t *err_info = NULL;
-    char *origin;
+    const char *origin;
 
     (void)user_data;
 
     /* copy origin */
     sr_edit_diff_get_origin(diff_node, 1, &origin, NULL);
-    err_info = sr_edit_diff_set_origin(data_node, origin, 1);
-    free(origin);
-    if (err_info) {
+    if ((err_info = sr_edit_diff_set_origin(data_node, origin, 1))) {
         sr_errinfo_free(&err_info);
         return LY_EINT;
     }
@@ -1153,7 +1151,7 @@ sr_edit_diff_find_oper(const struct lyd_node *edit, int recursive, int *own_oper
 }
 
 void
-sr_edit_diff_get_origin(const struct lyd_node *node, int recursive, char **origin, int *origin_own)
+sr_edit_diff_get_origin(const struct lyd_node *node, int recursive, const char **origin, int *origin_own)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_meta *meta = NULL, *attr_meta = NULL;
@@ -1201,7 +1199,7 @@ sr_edit_diff_get_origin(const struct lyd_node *node, int recursive, char **origi
     }
 
     if (meta) {
-        *origin = strdup(lyd_get_meta_value(meta));
+        *origin = lyd_get_meta_value(meta);
         if (origin_own && (parent == node)) {
             *origin_own = 1;
         }
@@ -1213,7 +1211,7 @@ sr_error_info_t *
 sr_edit_diff_set_origin(struct lyd_node *node, const char *origin, int overwrite)
 {
     sr_error_info_t *err_info = NULL;
-    char *cur_origin;
+    const char *cur_origin;
     int cur_origin_own;
 
     if (!origin) {
@@ -1224,10 +1222,8 @@ sr_edit_diff_set_origin(struct lyd_node *node, const char *origin, int overwrite
 
     if (cur_origin && (!strcmp(origin, cur_origin) || (!overwrite && cur_origin_own))) {
         /* already set */
-        free(cur_origin);
         return NULL;
     }
-    free(cur_origin);
 
     /* our origin is wrong, remove it */
     if (cur_origin_own) {
@@ -2045,8 +2041,7 @@ sr_edit_apply_r(struct lyd_node **data_root, struct lyd_node *data_parent, const
     struct lyd_node *data_match = NULL, *child, *next, *edit_match, *diff_node = NULL, *data_del = NULL;
     enum edit_op op, next_op, prev_op = 0;
     enum insert_val insert;
-    const char *key_or_value;
-    char *origin = NULL;
+    const char *key_or_value, *origin = NULL;
     int val_equal;
 
     /* if data node is set, it must be the first sibling */
@@ -2171,8 +2166,6 @@ reapply:
         diff_node = NULL;
         sr_lyd_free_tree_safe(data_del, data_root);
         data_del = NULL;
-        free(origin);
-        origin = NULL;
         goto reapply;
     } else if (next_op == EDIT_FINISH) {
         goto cleanup;
@@ -2215,7 +2208,6 @@ reapply:
 
 cleanup:
     sr_lyd_free_tree_safe(data_del, data_root);
-    free(origin);
     return err_info;
 }
 

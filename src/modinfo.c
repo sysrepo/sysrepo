@@ -1169,7 +1169,7 @@ static LY_ERR
 sr_oper_data_merge_cb(struct lyd_node *trg_node, const struct lyd_node *src_node, void *UNUSED(cb_data))
 {
     sr_error_info_t *err_info = NULL;
-    char *or = NULL;
+    const char *or = NULL;
 
     if (!src_node) {
         /* trg_node subtree is merged with metadata */
@@ -1181,14 +1181,12 @@ sr_oper_data_merge_cb(struct lyd_node *trg_node, const struct lyd_node *src_node
 
     if (or) {
         /* ovewrite any previous origin */
-        err_info = sr_edit_diff_set_origin(trg_node, or, 1);
-        free(or);
+        if ((err_info = sr_edit_diff_set_origin(trg_node, or, 1))) {
+            sr_errinfo_free(&err_info);
+            return LY_EOTHER;
+        }
     }
 
-    if (err_info) {
-        sr_errinfo_free(&err_info);
-        return LY_EOTHER;
-    }
     return LY_SUCCESS;
 }
 

@@ -3655,7 +3655,8 @@ sr_shmsub_oper_get_listen_process_module_events(struct modsub_operget_s *oper_ge
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, data_len = 0, request_id;
-    char *data = NULL, *request_xpath = NULL, *shm_data_ptr, *origin;
+    char *data = NULL, *request_xpath = NULL, *shm_data_ptr;
+    const char *origin;
     sr_error_t err_code = SR_ERR_OK;
     struct modsub_opergetsub_s *oper_get_sub;
     struct lyd_node *parent = NULL, *orig_parent, *node;
@@ -3742,7 +3743,6 @@ sr_shmsub_oper_get_listen_process_module_events(struct modsub_operget_s *oper_ge
                         (err_info = sr_edit_diff_set_origin(node, SR_OPER_ORIGIN, 0))) {
                     goto error;
                 }
-                free(origin);
             }
 
             while (parent->parent) {
