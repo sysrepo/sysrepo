@@ -4737,10 +4737,11 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
         goto cleanup;
     }
 
-    /* no error/timeout should be possible */
+    /* check for timeout, if originator waited */
     if ((ATOMIC_LOAD_RELAXED(sub_shm->event) != SR_SUB_EV_NOTIF) ||
             (ATOMIC_LOAD_RELAXED(sub_shm->request_id) != ATOMIC_LOAD_RELAXED(notif_subs->request_id))) {
-        SR_ERRINFO_INT(&err_info);
+        SR_LOG_INF("EV LISTEN: \"%s\" ID %" PRIu32 " processing success (after timeout).", sr_ev2str(SR_SUB_EV_NOTIF),
+                (uint32_t)ATOMIC_LOAD_RELAXED(notif_subs->request_id));
         goto cleanup_wrunlock;
     }
 
