@@ -1228,6 +1228,13 @@ sr_edit_diff_set_origin(struct lyd_node *node, const char *origin, int overwrite
     /* our origin is wrong, remove it */
     if (cur_origin_own) {
         sr_edit_del_meta_attr(node, "origin");
+
+        /* learn parent origin */
+        sr_edit_diff_get_origin(lyd_parent(node), 1, &cur_origin, NULL);
+        if (cur_origin && !strcmp(origin, cur_origin)) {
+            /* inherited the correct parent origin */
+            return NULL;
+        }
     }
 
     /* set correct origin */
