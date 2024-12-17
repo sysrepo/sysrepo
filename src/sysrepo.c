@@ -4221,7 +4221,12 @@ sr_discard_changes_xpath(sr_session_ctx_t *session, const char *xpath)
 
     /* free the selected changes */
     for (i = 0; i < set->count; ++i) {
-        lyd_free_tree(set->dnodes[i]);
+        sr_lyd_free_tree_safe(set->dnodes[i], &session->dt[session->ds].edit->tree);
+    }
+    if (!session->dt[session->ds].edit->tree) {
+        /* free the envelope if no edit left */
+        sr_release_data(session->dt[session->ds].edit);
+        session->dt[session->ds].edit = NULL;
     }
 
 cleanup:
