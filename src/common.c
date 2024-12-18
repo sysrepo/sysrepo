@@ -228,7 +228,7 @@ sr_ds_handle_init(struct sr_ds_handle_s **ds_handles, uint32_t *ds_handle_count)
     dir = opendir(plugins_dir);
     if (!dir) {
         if (errno != ENOENT) {
-            SR_ERRINFO_SYSERRNO(&err_info, "opendir");
+            sr_errinfo_new(&err_info, SR_ERR_SYS, "Opening dir \"%s\" failed (%s).", plugins_dir, strerror(errno));
         }
         goto cleanup;
     }
@@ -411,7 +411,7 @@ sr_ntf_handle_init(struct sr_ntf_handle_s **ntf_handles, uint32_t *ntf_handle_co
     dir = opendir(plugins_dir);
     if (!dir) {
         if (errno != ENOENT) {
-            SR_ERRINFO_SYSERRNO(&err_info, "opendir");
+            sr_errinfo_new(&err_info, SR_ERR_SYS, "Opening dir \"%s\" failed (%s).", plugins_dir, strerror(errno));
         }
         goto cleanup;
     }
@@ -1200,7 +1200,7 @@ sr_remove_evpipes(void)
 
     dir = opendir(sr_get_repo_path());
     if (!dir) {
-        SR_ERRINFO_SYSERRNO(&err_info, "opendir");
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Opening dir \"%s\" failed (%s).", sr_get_repo_path(), strerror(errno));
         goto cleanup;
     }
 
@@ -5470,7 +5470,7 @@ sr_conn_info(sr_cid_t **cids, pid_t **pids, uint32_t *count, sr_cid_t **dead_cid
             goto cleanup;
         }
 
-        sr_errinfo_new(&err_info, SR_ERR_SYS, "Opening directory \"%s\" failed (%s).", path, strerror(errno));
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Opening dir \"%s\" failed (%s).", path, strerror(errno));
         goto cleanup;
     }
 
