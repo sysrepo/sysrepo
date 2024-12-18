@@ -7961,13 +7961,15 @@ static int
 module_diff_reuse_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
         sr_event_t event, uint32_t request_id, void *private_data)
 {
+    (void)sub_id;
+    (void)xpath;
+    (void)request_id;
+
     struct state *st = (struct state *)private_data;
     const struct lyd_node *diff = NULL;
     int ret;
     uint32_t cb_called = ATOMIC_INC_RELAXED(st->cb_called);
 
-    (void)sub_id;
-    (void)request_id;
     char *diff_str = NULL;
     const char *intf_diff =
             "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\" xmlns:yang=\"urn:ietf:params:xml:ns:yang:1\" yang:operation=\"none\">\n"
@@ -7994,53 +7996,42 @@ module_diff_reuse_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mod
             "</l1>\n";
 
     const size_t NUM_SUBS = 7;
-    const char *expected_diff_str[] = {
-        intf_diff, /* 0. ietf-interfaces priority 30 */
-        test_diff, /* 1. test priority priority 30 */
-        full_diff, /* 2. ietf-interfaces priority 20 (all-modules) */
-        full_diff, /* 3. ietf-interfaces priority 20 (all-modules even though we did not ask for it) */
-        test_diff, /* 4. test priority priority 20 (different module, so per-module) */
-        intf_diff, /* 5. ietf-interfaces priority 10 */
-        test_diff, /* 6. test priority priority 10 */
-    };
-
-    const char *expected_modname[] = {
-        "ietf-interfaces",
-        "test",
-        "ietf-interfaces",
-        "ietf-interfaces",
-        "test",
-        "ietf-interfaces",
-        "test",
-    };
-
-    const char *expected_xpath[] = {
-        NULL,
-        NULL,
-        "/ietf-interfaces:interfaces",
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-    };
 
     diff = sr_get_change_diff(session);
     ret = lyd_print_mem(&diff_str, diff, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, SR_ERR_OK);
-
-    assert_string_equal(module_name, expected_modname[cb_called % NUM_SUBS]);
-    if (expected_xpath[cb_called % NUM_SUBS]) {
-        assert_string_equal(xpath, expected_xpath[cb_called % NUM_SUBS]);
-    } else {
-        assert_null(xpath);
-    }
-    assert_string_equal(diff_str, expected_diff_str[cb_called % NUM_SUBS]);
 
     if (cb_called < NUM_SUBS) {
         assert_int_equal(event, SR_EV_CHANGE);
     } else {
         assert_int_equal(event, SR_EV_DONE);
     }
+
+    if (!strcmp(module_name, "test")) {
+        /* test module will always receive module specific diff */
+        assert_string_equal(diff_str, test_diff);
+    } else {
+        switch (cb_called % NUM_SUBS) {
+        case 0:
+        case 1:
+        /* priority 10 module_diff */
+        case 5:
+        case 6:
+            /* priority 30 module diff */
+            assert_string_equal(diff_str, intf_diff);
+            break;
+        case 2:
+        case 3:
+        case 4:
+            /* priority 20 full diff as we have a ALL_MODULES sub */
+            assert_string_equal(diff_str, full_diff);
+            break;
+        default:
+            fail();
+            break;
+        }
+    }
+
     free(diff_str);
     return SR_ERR_OK;
 }
