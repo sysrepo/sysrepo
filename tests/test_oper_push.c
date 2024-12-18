@@ -1905,6 +1905,30 @@ test_discard(void **state)
     free(str1);
 
     sr_session_stop(sess);
+
+    /* discard multiple nodes */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'eth1\']/type",
+            "ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'eth1\']/speed",
+            "0", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'eth2\']/type",
+            "ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'eth2\']/speed",
+            "0", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_discard_items(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'eth1\']/speed");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_discard_items(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'eth2\']/speed");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
 }
 
 /* TEST */
