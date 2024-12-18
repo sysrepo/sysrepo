@@ -3636,6 +3636,7 @@ API int
 sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char *default_operation)
 {
     sr_error_info_t *err_info = NULL;
+    const struct lyd_node *iter;
     struct lyd_node *dup_edit = NULL, *root, *elem, *dup;
     struct lyd_node_opaq *opaq;
     char *val_json;
@@ -3643,6 +3644,12 @@ sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char
     SR_CHECK_ARG_APIRET(!session || !edit || !default_operation || !SR_IS_STANDARD_DS(session->ds), session, err_info);
     SR_CHECK_ARG_APIRET(strcmp(default_operation, "merge") && strcmp(default_operation, "replace") &&
             ((session->ds == SR_DS_OPERATIONAL) || strcmp(default_operation, "none")), session, err_info);
+    LY_LIST_FOR(edit, iter) {
+        if (lysc_data_parent(iter->schema)) {
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Edit must be a top-level data tree.");
+            goto cleanup;
+        }
+    }
 
     if (session->dt[session->ds].edit) {
         /* do not allow merging NETCONF edits into sysrepo ones, it can cause some unexpected results */
