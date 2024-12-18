@@ -144,6 +144,7 @@ clear_up(void **state)
 {
     struct state *st = (struct state *)*state;
 
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     sr_discard_oper_changes(NULL, st->sess, NULL, 0);
 
     sr_session_switch_ds(st->sess, SR_DS_STARTUP);
@@ -2726,6 +2727,198 @@ test_origin(void **state)
     free(str1);
 }
 
+/* TEST */
+static int
+set_del_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath, sr_event_t event,
+        uint32_t request_id, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+
+    (void)session;
+    (void)sub_id;
+    (void)module_name;
+    (void)xpath;
+    (void)event;
+    (void)request_id;
+    char *str1 = NULL, *str2 = "";
+    const struct lyd_node *diff = sr_get_change_diff(session);
+    int ret;
+
+    ret = lyd_print_mem(&str1, diff, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+    switch (ATOMIC_INC_RELAXED(st->cb_called)) {
+    case 0:
+    case 1:
+    case 8:
+    case 9:
+        str2 = "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\" xmlns:yang=\"urn:ietf:params:xml:ns:yang:1\" yang:operation=\"create\">\n"
+                "  <interface yang:key=\"\">\n"
+                "    <name>eth1</name>\n"
+                "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+                "  </interface>\n"
+                "  <interface yang:key=\"[name='eth1']\">\n"
+                "    <name>eth2</name>\n"
+                "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+                "  </interface>\n"
+                "</interfaces-state>\n";
+        assert_string_equal(str1, str2);
+        break;
+    case 2:
+    case 3:
+        str2 = "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\" xmlns:yang=\"urn:ietf:params:xml:ns:yang:1\" yang:operation=\"none\">\n"
+                "  <interface yang:operation=\"create\" yang:key=\"[name='eth2']\">\n"
+                "    <name>eth3</name>\n"
+                "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+                "  </interface>\n"
+                "  <interface yang:operation=\"none\">\n"
+                "    <name>eth1</name>\n"
+                "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+                "  </interface>\n"
+                "  <interface yang:operation=\"delete\">\n"
+                "    <name>eth2</name>\n"
+                "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+                "  </interface>\n"
+                "</interfaces-state>\n";
+        assert_string_equal(str1, str2);
+
+        break;
+
+    case 4:
+    case 5:
+        str2 = "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\" xmlns:yang=\"urn:ietf:params:xml:ns:yang:1\" yang:operation=\"none\">\n"
+                "  <interface>\n"
+                "    <name>eth1</name>\n"
+                "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+                "  </interface>\n"
+                "  <interface yang:operation=\"delete\">\n"
+                "    <name>eth3</name>\n"
+                "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+                "  </interface>\n"
+                "</interfaces-state>\n";
+        assert_string_equal(str1, str2);
+        break;
+
+    case 6:
+    case 7:
+        str2 = "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\" xmlns:yang=\"urn:ietf:params:xml:ns:yang:1\" yang:operation=\"delete\">\n"
+                "  <interface>\n"
+                "    <name>eth1</name>\n"
+                "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+                "  </interface>\n"
+                "</interfaces-state>\n";
+        assert_string_equal(str1, str2);
+        break;
+    default:
+        /* called when not expected to be */
+        fail();
+    }
+    free(str1);
+    return SR_ERR_OK;
+}
+
+static void
+test_oper_set_delete(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr = NULL;
+    int ret;
+    sr_data_t *data;
+
+    /* switch to operational DS */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe to operational data changes */
+    ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", NULL,
+            set_del_change_cb, st, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
+    TLOG_INF("set eth1 and set eth2");
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth2']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
+
+    TLOG_INF("remove eth2 and set eth3");
+    const char *xpath_del = "/ietf-interfaces:interfaces-state/interface[name='eth2']";
+
+    ret = sr_discard_items(st->sess, xpath_del);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth3']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
+
+    xpath_del = "/ietf-interfaces:interfaces-state/interface[name='eth3']";
+
+    TLOG_INF("only remove eth3");
+    ret = sr_discard_items(st->sess, xpath_del);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 6);
+    TLOG_INF("Discarding everything");
+    ret = sr_discard_oper_changes(NULL, st->sess, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 8);
+
+    /* switch to running DS */
+    ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth0']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe to all configuration data just to enable them */
+    ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface",
+            dummy_change_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* switch to operational DS */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_discard_items(st->sess, "/ietf-interfaces:interfaces/interface");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check that enabled data is gone from operational datastore */
+    ret = sr_get_node(st->sess, "/ietf-interfaces:interfaces/interface[name='eth0']/type", 0, &data);
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+    ret = sr_discard_oper_changes(NULL, st->sess, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check that enabled data is back again in operational datastore */
+    ret = sr_get_node(st->sess, "/ietf-interfaces:interfaces/interface[name='eth0']/type", 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    sr_release_data(data);
+
+    /* check that no more callbacks have been called since */
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 8);
+
+    sr_unsubscribe(subscr);
+    subscr = NULL;
+}
+
 int
 main(void)
 {
@@ -2748,6 +2941,7 @@ main(void)
         cmocka_unit_test_teardown(test_change_filter, clear_up),
         cmocka_unit_test_teardown(test_oper_list_enabled, clear_up),
         cmocka_unit_test_teardown(test_origin, clear_up),
+        cmocka_unit_test_teardown(test_oper_set_delete, clear_up),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
