@@ -518,6 +518,7 @@ srpds_load_oper(mongoc_collection_t *module, const struct lys_module *mod, bson_
     sr_error_info_t *err_info = NULL;
     bson_error_t error;
     const char *path, *name, *module_name = NULL, *path_to_node, *value = NULL;
+    char *opaq_path;
     struct lys_module *node_module = NULL;
     enum srpds_db_ly_types type;
     int32_t valtype = 0;
@@ -589,6 +590,13 @@ srpds_load_oper(mongoc_collection_t *module, const struct lys_module *mod, bson_
         if (!bson_utf8_validate(path, strlen(path), 0)) {
             ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_utf8()", "");
             goto cleanup;
+        }
+
+        /* remove the opaque node index prefixed if any */
+        if ('O' == path[0]) {
+            path++;
+            strtoul(path, &opaq_path, 16);
+            path = opaq_path;
         }
 
         /* do not load, this is additional data
@@ -2663,13 +2671,14 @@ srpds_load_oper_recursively(const struct lyd_node *mod_data, struct mongo_diff_d
     const struct lyd_node *sibling = mod_data;
     struct lyd_node *child = NULL;
     struct lyd_node_opaq *opaque = NULL; // for opaque nodes
-    char *path = NULL;
+    char *path = NULL, *opaq_path = NULL;
     const char *value, *module_name;
     char *any_value = NULL;
     bson_t *bson_query = NULL;
 
     char *keys = NULL;
     uint32_t keys_length = 0;
+    uint32_t opaq_index = 0;
 
     while (sibling) {
         /* get path */
@@ -2749,8 +2758,16 @@ srpds_load_oper_recursively(const struct lyd_node *mod_data, struct mongo_diff_d
                 goto cleanup;
             }
         } else {
-            bson_query = BCON_NEW("_id", BCON_UTF8(path), "name", BCON_UTF8(opaque->name.name), "type", BCON_INT32(SRPDS_DB_LY_OPAQUE),
+            /* prefix paths with an opaq_index in hex prefixed with 'O' */
+            if (asprintf(&opaq_path, "O%x%s", ++opaq_index, path) == -1) {
+                ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
+                goto cleanup;
+            }
+
+            bson_query = BCON_NEW("_id", BCON_UTF8(opaq_path), "name", BCON_UTF8(opaque->name.name), "type", BCON_INT32(SRPDS_DB_LY_OPAQUE),
                     "module_name", BCON_UTF8(module_name), "value", BCON_UTF8(value));
+            free(opaq_path);
+            opaq_path = NULL;
 
             /* create new opaque node */
             if ((err_info = srpds_add_operation(bson_query, &(diff_data->cre)))) {
@@ -2777,6 +2794,7 @@ srpds_load_oper_recursively(const struct lyd_node *mod_data, struct mongo_diff_d
 
 cleanup:
     free(path);
+    free(opaq_path);
     free(keys);
     if (err_info) {
         bson_destroy(bson_query);
