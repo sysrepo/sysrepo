@@ -211,7 +211,7 @@ sr_ds_handle_init(struct sr_ds_handle_s **ds_handles, uint32_t *ds_handle_count)
 #ifdef SR_HAVE_DLOPEN
     if (!plugins_dir[0]) {
         /* get plugins dir from environment variable, or use default one */
-        tmp = getenv("SR_PLUGINS_PATH");
+        tmp = getenv(SR_PLG_PATH_ENV);
         if (!tmp) {
             tmp = SR_PLG_PATH;
         }
@@ -219,7 +219,7 @@ sr_ds_handle_init(struct sr_ds_handle_s **ds_handles, uint32_t *ds_handle_count)
         if ((len = strlen(tmp)) < SR_PATH_MAX) {
             snprintf(plugins_dir, SR_PATH_MAX, "%s", tmp);
         } else {
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "SR_PLUGINS_PATH (%s) cannot be longer than %u.", tmp, SR_PATH_MAX);
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, SR_PLG_PATH_ENV " (%s) cannot be longer than %u.", tmp, SR_PATH_MAX);
             goto cleanup;
         }
     }
@@ -227,7 +227,7 @@ sr_ds_handle_init(struct sr_ds_handle_s **ds_handles, uint32_t *ds_handle_count)
     /* open directory, if possible */
     dir = opendir(plugins_dir);
     if (!dir) {
-        if (errno != ENOENT) {
+        if ((errno != ENOENT) && (errno != ENOTDIR)) {
             sr_errinfo_new(&err_info, SR_ERR_SYS, "Opening dir \"%s\" failed (%s).", plugins_dir, strerror(errno));
         }
         goto cleanup;
@@ -394,7 +394,7 @@ sr_ntf_handle_init(struct sr_ntf_handle_s **ntf_handles, uint32_t *ntf_handle_co
 #ifdef SR_HAVE_DLOPEN
     if (!plugins_dir[0]) {
         /* get plugins dir from environment variable, or use default one */
-        tmp = getenv("SR_PLUGINS_PATH");
+        tmp = getenv(SR_PLG_PATH_ENV);
         if (!tmp) {
             tmp = SR_PLG_PATH;
         }
@@ -402,7 +402,7 @@ sr_ntf_handle_init(struct sr_ntf_handle_s **ntf_handles, uint32_t *ntf_handle_co
         if ((len = strlen(tmp)) < SR_PATH_MAX) {
             snprintf(plugins_dir, SR_PATH_MAX, "%s", tmp);
         } else {
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "SR_PLUGINS_PATH (%s) cannot be longer than %u.", tmp, SR_PATH_MAX);
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, SR_PLG_PATH_ENV " (%s) cannot be longer than %u.", tmp, SR_PATH_MAX);
             goto cleanup;
         }
     }
@@ -410,7 +410,7 @@ sr_ntf_handle_init(struct sr_ntf_handle_s **ntf_handles, uint32_t *ntf_handle_co
     /* open directory, if possible */
     dir = opendir(plugins_dir);
     if (!dir) {
-        if (errno != ENOENT) {
+        if ((errno != ENOENT) && (errno != ENOTDIR)) {
             sr_errinfo_new(&err_info, SR_ERR_SYS, "Opening dir \"%s\" failed (%s).", plugins_dir, strerror(errno));
         }
         goto cleanup;

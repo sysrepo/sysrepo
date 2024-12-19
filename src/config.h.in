@@ -138,6 +138,9 @@
 /** default permission of data files of internal modules with some data or features */
 #define SR_INTMOD_WITHDATA_FILE_PERM 00644
 
+/** environment variable overriding the compiled-in value for DS and notification plugins directory */
+#define SR_PLG_PATH_ENV "SYSREPO_PLUGINS_DIR"
+
 /** default plugin for startup datastore */
 #define SR_DEFAULT_STARTUP_DS "@DEFAULT_STARTUP_DS_PLG@"
 
