@@ -1889,7 +1889,8 @@ int srplg_errinfo_push_error_data(sr_error_info_t *err_info, uint32_t size, cons
 void srplg_errinfo_free(sr_error_info_t **err_info);
 
 /**
- * @brief Deprecated, use ::srplg_log_errinfo() instead.
+ * @brief Log a plugin error message with format arguments. Datastore and notification plugins should use
+ * ::srplg_log_errinfo() instead.
  */
 #define SRPLG_LOG_ERR(plg_name, ...) srplg_log(plg_name, SR_LL_ERR, __VA_ARGS__)
 
