@@ -606,7 +606,7 @@ sr_edit_diff_append(const struct lyd_node *edit, enum edit_op op, const char *pr
         struct lyd_node **diff)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *diff_parent, *new_diff_parent, *diff_subtree, *elem;
+    struct lyd_node *diff_parent, *new_diff_parent = NULL, *diff_subtree, *elem;
 
     if (!diff) {
         /* nothing to do, diff is not generated */
@@ -2047,8 +2047,8 @@ sr_edit_apply_r(struct lyd_node **data_root, struct lyd_node *data_parent, const
     sr_error_info_t *err_info = NULL;
     struct lyd_node *data_match = NULL, *child, *next, *edit_match, *diff_node = NULL, *data_del = NULL;
     enum edit_op op, next_op, prev_op = 0;
-    enum insert_val insert;
-    const char *key_or_value, *origin = NULL;
+    enum insert_val insert = 0;
+    const char *key_or_value = NULL, *origin = NULL;
     int val_equal;
 
     /* if data node is set, it must be the first sibling */
