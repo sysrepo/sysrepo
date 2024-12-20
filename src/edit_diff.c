@@ -2434,16 +2434,16 @@ sr_oper_edit_mod_apply_data(const struct lyd_node *mod_first, struct ly_set *opa
     } else {
         /* get source and target data of the module */
         LY_LIST_FOR(mod_first, root) {
+            if (lyd_owner_module(root) != ly_mod) {
+                /* done */
+                break;
+            }
+
             if ((err_info = sr_lyd_dup(root, NULL, LYD_DUP_RECURSIVE, 0, &dup))) {
                 goto cleanup;
             }
             if ((err_info = sr_lyd_insert_sibling(src_tree, dup, &src_tree))) {
                 goto cleanup;
-            }
-
-            if (lyd_owner_module(root) != ly_mod) {
-                /* done */
-                break;
             }
         }
         trg_tree = sr_module_data_unlink(data, ly_mod, 0);
