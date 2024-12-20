@@ -1363,7 +1363,7 @@ test_state_leaflist(void **state)
 
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ATOMIC_STORE_RELAXED(st->cb_called, 2);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
 
     /* read the operational data #1 */
     ret = sr_get_data(st->sess, "/alarms:active-alarm-list", 0, 0, 0, &data);
@@ -1406,7 +1406,7 @@ test_state_leaflist(void **state)
     /* delete oper data */
     ret = sr_discard_oper_changes(NULL, st->sess, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ATOMIC_STORE_RELAXED(st->cb_called, 4);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
 
     sr_unsubscribe(subscr);
 }
