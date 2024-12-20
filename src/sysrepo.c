@@ -3589,22 +3589,11 @@ cleanup:
 
 API int
 sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_position_t position, const char *list_keys,
-        const char *leaflist_value, const char *origin, const sr_edit_options_t opts)
+        const char *leaflist_value, const char *UNUSED(origin), const sr_edit_options_t opts)
 {
     sr_error_info_t *err_info = NULL;
-    char *pref_origin = NULL;
 
     SR_CHECK_ARG_APIRET(!session || !path || !SR_IS_CONVENTIONAL_DS(session->ds), session, err_info);
-
-    if (origin) {
-        if (!strchr(origin, ':')) {
-            /* add ietf-origin prefix if none used */
-            pref_origin = malloc(11 + 1 + strlen(origin) + 1);
-            sprintf(pref_origin, "ietf-origin:%s", origin);
-        } else {
-            pref_origin = strdup(origin);
-        }
-    }
 
     if (!session->dt[session->ds].edit) {
         /* CONTEXT LOCK */
@@ -3620,7 +3609,7 @@ sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_position
 
     /* add the operation into edit */
     err_info = sr_edit_add(session, path, NULL, opts & SR_EDIT_STRICT ? "create" : "merge",
-            opts & SR_EDIT_NON_RECURSIVE ? "none" : "merge", &position, list_keys, leaflist_value, pref_origin,
+            opts & SR_EDIT_NON_RECURSIVE ? "none" : "merge", &position, list_keys, leaflist_value, NULL,
             opts & SR_EDIT_ISOLATE);
 
 cleanup:
@@ -3628,7 +3617,6 @@ cleanup:
         sr_release_data(session->dt[session->ds].edit);
         session->dt[session->ds].edit = NULL;
     }
-    free(pref_origin);
     return sr_api_ret(session, err_info);
 }
 

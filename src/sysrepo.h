@@ -1003,8 +1003,7 @@ int sr_discard_items(sr_session_ctx_t *session, const char *xpath);
  * @param[in] list_keys Predicate identifying the relative list instance (example input `[key1="val1"][key2="val2"]...`).
  * @param[in] leaflist_value Value of the relative leaf-list instance (example input `val1`) used
  * to determine relative position, needed only if position argument is ::SR_MOVE_BEFORE or ::SR_MOVE_AFTER.
- * @param[in] origin Origin of the value, used only for ::SR_DS_OPERATIONAL edits. Module ietf-origin is assumed
- * if no prefix used.
+ * @param[in] origin Unused, deprecated.
  * @param[in] opts Options overriding default behavior of this call.
  * @return Error code (::SR_ERR_OK on success, ::SR_ERR_OPERATION_FAILED if the whole edit was discarded).
  */
