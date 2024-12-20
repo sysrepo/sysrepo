@@ -47,6 +47,14 @@ enum edit_op {
 };
 
 /**
+ * @brief Return operation from a string.
+ *
+ * @param[in] str Operation in string.
+ * @return Operation.
+ */
+enum edit_op sr_edit_str2op(const char *str);
+
+/**
  * @brief Callback for libyang diff apply.
  *
  * @param[in] diff_node Diff node.

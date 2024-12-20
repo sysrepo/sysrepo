@@ -1045,8 +1045,6 @@ test_state_list(void **state)
     assert_null(str1);
 
     /* invalid operations */
-    ret = sr_delete_item(st->sess, "/mixed-config:test-state/ll[.='val3']", 0);
-    assert_int_equal(ret, SR_ERR_INVAL_ARG);
     ret = sr_move_item(st->sess, "/mixed-config:test-state/ll[.='val3']", SR_MOVE_BEFORE, NULL, "val2", NULL, 0);
     assert_int_equal(ret, SR_ERR_INVAL_ARG);
     ret = sr_discard_changes(st->sess);
@@ -2162,10 +2160,8 @@ test_schema_mount(void **state)
     /* read the operational data */
     ret = sr_get_data(st->sess, "/sm:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-
     ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
-
     sr_release_data(data);
 
     str2 =
@@ -2178,7 +2174,6 @@ test_schema_mount(void **state)
             "    </interface>\n"
             "  </interfaces>\n"
             "</root>\n";
-
     assert_string_equal(str1, str2);
     free(str1);
 }

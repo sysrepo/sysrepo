@@ -3452,10 +3452,11 @@ sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *value, 
 {
     sr_error_info_t *err_info = NULL;
     char *pref_origin = NULL;
+    const char *op, *def_op;
+    struct lyd_node *node;
+    int rc;
 
     SR_CHECK_ARG_APIRET(!session || !path || SR_EDIT_DS_API_CHECK(session->ds, opts), session, err_info);
-
-    /* we do not need any lock, ext SHM is not accessed */
 
     if (origin) {
         if (!strchr(origin, ':')) {
@@ -3467,6 +3468,21 @@ sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *value, 
         }
     }
 
+    if (!session->dt[session->ds].edit && (session->ds == SR_DS_OPERATIONAL)) {
+        /* prepare the current stored oper data to be modified */
+        if ((rc = sr_get_oper_changes(session, NULL, &session->dt[session->ds].edit))) {
+            goto cleanup;
+        }
+
+        /* set the default replace operation on top-level nodes */
+        if (session->dt[session->ds].edit) {
+            LY_LIST_FOR(session->dt[session->ds].edit->tree, node) {
+                if ((err_info = sr_edit_set_oper(node, "replace"))) {
+                    goto cleanup;
+                }
+            }
+        }
+    }
     if (!session->dt[session->ds].edit) {
         /* CONTEXT LOCK */
         if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
@@ -3480,8 +3496,9 @@ sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *value, 
     }
 
     /* add the operation into edit */
-    err_info = sr_edit_add(session, path, value, opts & SR_EDIT_STRICT ? "create" : "merge",
-            opts & SR_EDIT_NON_RECURSIVE ? "none" : "merge", NULL, NULL, NULL, pref_origin, opts & SR_EDIT_ISOLATE);
+    op = (opts & SR_EDIT_STRICT) ? "create" : "merge";
+    def_op = (session->ds == SR_DS_OPERATIONAL) ? "replace" : ((opts & SR_EDIT_NON_RECURSIVE) ? "none" : "merge");
+    err_info = sr_edit_add(session, path, value, op, def_op, NULL, NULL, NULL, pref_origin, opts & SR_EDIT_ISOLATE);
 
 cleanup:
     if (session->dt[session->ds].edit && !session->dt[session->ds].edit->tree) {
@@ -3496,12 +3513,29 @@ API int
 sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_options_t opts)
 {
     sr_error_info_t *err_info = NULL;
-    const char *operation;
+    const char *op;
     const struct lysc_node *snode;
+    struct lyd_node *node;
     uint32_t temp_lo = 0;
+    int rc;
 
-    SR_CHECK_ARG_APIRET(!session || !path || !SR_IS_CONVENTIONAL_DS(session->ds), session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !path || SR_EDIT_DS_API_CHECK(session->ds, opts), session, err_info);
 
+    if (!session->dt[session->ds].edit && (session->ds == SR_DS_OPERATIONAL)) {
+        /* prepare the current stored oper data to be modified */
+        if ((rc = sr_get_oper_changes(session, NULL, &session->dt[session->ds].edit))) {
+            goto cleanup;
+        }
+
+        /* set the default replace operation on top-level nodes */
+        if (session->dt[session->ds].edit) {
+            LY_LIST_FOR(session->dt[session->ds].edit->tree, node) {
+                if ((err_info = sr_edit_set_oper(node, "replace"))) {
+                    goto cleanup;
+                }
+            }
+        }
+    }
     if (!session->dt[session->ds].edit) {
         /* CONTEXT LOCK */
         if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
@@ -3514,21 +3548,30 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
         }
     }
 
+    if (session->ds == SR_DS_OPERATIONAL) {
+        /* just delete the selected node */
+        if ((err_info = sr_lyd_find_path(session->dt[session->ds].edit->tree, path, 1, &node))) {
+            goto cleanup;
+        }
+        sr_lyd_free_tree_safe(node, &session->dt[session->ds].edit->tree);
+        goto cleanup;
+    }
+
     /* turn off logging */
     ly_temp_log_options(&temp_lo);
     if ((path[strlen(path) - 1] != ']') && (snode = lys_find_path(session->conn->ly_ctx, NULL, path, 0)) &&
             (snode->nodetype & (LYS_LEAFLIST | LYS_LIST)) &&
             !strcmp((path + strlen(path)) - strlen(snode->name), snode->name)) {
-        operation = "purge";
+        op = "purge";
     } else if (opts & SR_EDIT_STRICT) {
-        operation = "delete";
+        op = "delete";
     } else {
-        operation = "remove";
+        op = "remove";
     }
     ly_temp_log_options(NULL);
 
     /* add the operation into edit */
-    err_info = sr_edit_add(session, path, NULL, operation, opts & SR_EDIT_STRICT ? "none" : "ether", NULL, NULL, NULL,
+    err_info = sr_edit_add(session, path, NULL, op, opts & SR_EDIT_STRICT ? "none" : "ether", NULL, NULL, NULL,
             NULL, opts & SR_EDIT_ISOLATE);
 
 cleanup:
@@ -3550,11 +3593,25 @@ sr_discard_items(sr_session_ctx_t *session, const char *xpath)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *node;
+    int rc;
 
     SR_CHECK_ARG_APIRET(!session || (session->ds != SR_DS_OPERATIONAL) || !xpath, session, err_info);
 
-    /* we do not need any lock, ext SHM is not accessed */
+    if (!session->dt[session->ds].edit) {
+        /* prepare the current stored oper data to be modified */
+        if ((rc = sr_get_oper_changes(session, NULL, &session->dt[session->ds].edit))) {
+            goto cleanup;
+        }
 
+        /* set the default replace operation on top-level nodes */
+        if (session->dt[session->ds].edit) {
+            LY_LIST_FOR(session->dt[session->ds].edit->tree, node) {
+                if ((err_info = sr_edit_set_oper(node, "replace"))) {
+                    goto cleanup;
+                }
+            }
+        }
+    }
     if (!session->dt[session->ds].edit) {
         /* CONTEXT LOCK */
         if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
@@ -3571,7 +3628,7 @@ sr_discard_items(sr_session_ctx_t *session, const char *xpath)
     if ((err_info = sr_lyd_new_opaq(session->conn->ly_ctx, "discard-items", xpath, "sysrepo", "sysrepo", &node))) {
         goto cleanup;
     }
-    if ((err_info = sr_edit_set_oper(node, "merge"))) {
+    if ((err_info = sr_edit_set_oper(node, "replace"))) {
         goto cleanup;
     }
     if ((err_info = sr_lyd_insert_sibling(session->dt[session->ds].edit->tree, node, &session->dt[session->ds].edit->tree))) {
@@ -3627,6 +3684,7 @@ sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char
     const struct lyd_node *iter;
     struct lyd_node *dup_edit = NULL, *root, *elem, *dup;
     struct lyd_node_opaq *opaq;
+    enum edit_op op, def_op;
     char *val_json;
 
     SR_CHECK_ARG_APIRET(!session || !edit || !default_operation || !SR_IS_STANDARD_DS(session->ds), session, err_info);
@@ -3691,9 +3749,15 @@ sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char
     }
 
     /* add default operation and default origin */
+    def_op = sr_edit_str2op(default_operation);
     LY_LIST_FOR(dup_edit, root) {
-        /* set the default operation if none set */
-        if (!sr_edit_diff_find_oper(root, 0, NULL) && (err_info = sr_edit_set_oper(root, default_operation))) {
+        /* check operations and set the default operation if none set */
+        if (!(op = sr_edit_diff_find_oper(root, 0, NULL))) {
+            if ((err_info = sr_edit_set_oper(root, default_operation))) {
+                goto cleanup_unlock;
+            }
+        } else if ((session->ds == SR_DS_OPERATIONAL) && (op != def_op)) {
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Mixed operations for operational datastore changes.");
             goto cleanup_unlock;
         }
 

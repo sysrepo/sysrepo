@@ -1189,10 +1189,14 @@ sr_lyd_insert_sibling(struct lyd_node *sibling, struct lyd_node *node, struct ly
     sr_error_info_t *err_info = NULL;
     uint32_t temp_lo = LY_LOSTORE;
 
+    if (!node) {
+        return NULL;
+    }
+
     ly_temp_log_options(&temp_lo);
 
     if (lyd_insert_sibling(sibling, node, first)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(sibling), NULL, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, LYD_CTX(node), NULL, SR_ERR_LY);
         goto cleanup;
     }
 

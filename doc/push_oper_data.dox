@@ -1,12 +1,14 @@
 /**
 @page push_oper_data Push Operational Data
 
-Push operational data are commonly set using the standard ::sr_set_item() and ::sr_set_item_str() functions. These
-build a data tree in the session, which is then stored using ::sr_apply_changes(). That means it is **merged** into
-any previous push oper data of the session. Additionally, using ::sr_discard_items() an XPath can be set that will
-select all the nodes to be removed from **previous data**, which may be enabled *running* data or any push oper data
-with a lower order (higher priority). This mechanism should work well for simple edits and if it does not, use
-the advanced mechanism described further below.
+Push operational data are set normally using the standard ::sr_set_item(), ::sr_set_item_str(), and ::sr_delete_item()
+functions and finally applied and stored using ::sr_apply_changes(). What happens internally is that on the very first
+edit, all the currently stored oper push data of the session are loaded and then each edit modifies this data tree.
+When these changes are applied, the prepared data tree **replaces** the previous push oper data of the session.
+
+Additionally, using ::sr_discard_items() an XPath can be set that will select all the nodes to be removed from
+**previous data**, which may be enabled *running* data or any push oper data with a lower order (higher priority). This
+mechanism should work well for simple edits and if it does not, use the advanced mechanism described further below.
 
 When building the _operational_ datastore, all the stored push data are applied in a **specific** order. That means data
 for each session are loaded, previous items discarded (if any set), and then merged into the *operational* datastore.

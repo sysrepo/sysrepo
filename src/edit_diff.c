@@ -46,13 +46,7 @@ enum insert_val {
     INSERT_AFTER
 };
 
-/**
- * @brief Return operation from a string.
- *
- * @param[in] str Operation in string.
- * @return Operation.
- */
-static enum edit_op
+enum edit_op
 sr_edit_str2op(const char *str)
 {
     assert(str);
