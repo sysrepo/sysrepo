@@ -3228,6 +3228,13 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
         }
         if (match) {
             /* node exists, nothing to create */
+            if (match->schema && (match->schema->nodetype == LYS_LEAF)) {
+                /* update value */
+                if ((err_info = sr_lyd_change_term(match, value, 1))) {
+                    goto error_safe;
+                }
+            }
+
             if (session->ds == SR_DS_OPERATIONAL) {
                 /* update origin if differs */
                 if (origin && (err_info = sr_edit_diff_set_origin(match, origin, 1))) {
