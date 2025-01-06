@@ -120,6 +120,7 @@ typedef struct {
         sr_rwlock_t data_lock;  /**< Process-shared lock for accessing module instance data. */
 
         pthread_mutex_t ds_lock;    /**< Process-shared lock for accessing DS lock information. */
+        sr_cid_t ds_lock_cid;   /**< CID of the session holding the datastore lock. */
         uint32_t ds_lock_sid;   /**< SID of the module data datastore lock (NETCONF lock), the data can be modified only
                                      by this session. If 0, the DS lock is not held. */
         struct timespec ds_lock_ts; /**< Timestamp of the datastore lock. */

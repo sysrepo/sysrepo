@@ -1302,6 +1302,7 @@ sr_shmmod_lock(struct sr_mod_lock_s *shm_lock, uint32_t timeout_ms, sr_lock_mode
     sr_error_info_t *err_info = NULL, *tmp_err;
     int ds_locked;
     uint32_t sleep_ms;
+    sr_cid_t dead_cid;
 
     if (!timeout_ms) {
         /* default timeout */
@@ -1328,9 +1329,19 @@ ds_lock_retry:
             goto revert_lock;
         }
 
-        /* DS lock cannot be held for these lock modes */
         if (shm_lock->ds_lock_sid && (shm_lock->ds_lock_sid != sid)) {
+            /* DS lock cannot be held simultaneously for these lock modes */
             ds_locked = 1;
+        }
+        if (ds_locked && !sr_conn_is_alive(shm_lock->ds_lock_cid)) {
+            /* recover the DS lock */
+            dead_cid = shm_lock->ds_lock_cid;
+            shm_lock->ds_lock_cid = 0;
+            shm_lock->ds_lock_sid = 0;
+            memset(&shm_lock->ds_lock_ts, 0, sizeof shm_lock->ds_lock_ts);
+            SR_LOG_WRN("Recovered a DS lock of \"%s\" of CID %" PRIu32 ".", mod_name, dead_cid);
+
+            ds_locked = 0;
         }
 
         /* DS UNLOCK */

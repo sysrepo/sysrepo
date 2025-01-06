@@ -4811,9 +4811,11 @@ sr_change_dslock(struct sr_mod_info_s *mod_info, uint32_t sid, int lock)
 
         /* change DS lock state and remember the time */
         if (lock) {
+            shm_lock->ds_lock_cid = mod_info->conn->cid;
             shm_lock->ds_lock_sid = sid;
             sr_realtime_get(&shm_lock->ds_lock_ts);
         } else {
+            shm_lock->ds_lock_cid = 0;
             shm_lock->ds_lock_sid = 0;
             memset(&shm_lock->ds_lock_ts, 0, sizeof shm_lock->ds_lock_ts);
         }
