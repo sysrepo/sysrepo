@@ -73,7 +73,7 @@ sr_error_info_t *sr_shmmod_store_modules(sr_shm_t *shm_mod, const struct lyd_nod
  *
  * @param[in] conn Connection to use.
  * @param[in] ly_mod Module to use.
- * @param[in,out] mod_state Optional mod info mod state to update when using mod lock.
+ * @param[in,out] mod_state Mod info mod state to update when using mod lock.
  * @param[in] shm_mod Optional SHM mod if available.
  * @param[in] dead_only Whether to delete push oper data of only dead connection or all.
  * @return err_info, NULL on success.

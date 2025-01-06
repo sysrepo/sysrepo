@@ -1360,7 +1360,6 @@ test_state_leaflist(void **state)
     ret = sr_edit_batch(st->sess, edit, "merge");
     assert_int_equal(ret, SR_ERR_OK);
     lyd_free_siblings(edit);
-
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
@@ -1842,24 +1841,201 @@ test_top_leaf(void **state)
 }
 
 /* TEST */
+static int
+discard_items_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+    sr_change_oper_t op;
+    sr_change_iter_t *iter;
+    const struct lyd_node *node;
+    const char *prev_value;
+    int ret;
+
+    (void)sub_id;
+    (void)request_id;
+
+    assert_string_equal(module_name, "ietf-interfaces-new");
+    assert_null(xpath);
+    assert_int_equal(event, SR_EV_DONE);
+
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
+    case 0:
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/ietf-interfaces-new:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "interfaces");
+        assert_null(prev_value);
+
+        /* list instance */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "interface");
+        assert_null(prev_value);
+
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "name");
+        assert_null(prev_value);
+
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "description");
+        assert_null(prev_value);
+
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "type");
+        assert_null(prev_value);
+
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "speed");
+        assert_null(prev_value);
+
+        /* no more changes */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+        break;
+    case 1:
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/ietf-interfaces-new:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* list instance created and deleted nodes */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_string_equal(node->schema->name, "description");
+        assert_null(prev_value);
+
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "link-up-down-trap-enable");
+        assert_null(prev_value);
+
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "admin-status");
+        assert_null(prev_value);
+
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_string_equal(node->schema->name, "speed");
+        assert_null(prev_value);
+
+        /* no more changes */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+        break;
+    case 2:
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/ietf-interfaces-new:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* list instance created nodes */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "description");
+        assert_null(prev_value);
+
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "speed");
+        assert_null(prev_value);
+
+        /* no more changes */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+        break;
+    case 3:
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/ietf-interfaces-new:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* list instance created nodes */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "enabled");
+        assert_null(prev_value);
+
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_string_equal(node->schema->name, "link-up-down-trap-enable");
+        assert_null(prev_value);
+
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_string_equal(node->schema->name, "admin-status");
+        assert_null(prev_value);
+
+        /* no more changes */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+        break;
+    default:
+        fail();
+    }
+
+    ATOMIC_INC_RELAXED(st->cb_called);
+    return SR_ERR_OK;
+}
+
 static void
-test_discard(void **state)
+test_discard_items(void **state)
 {
     struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr = NULL;
     sr_data_t *data;
     sr_session_ctx_t *sess;
+    struct lyd_node *edit, *node;
+    const struct ly_ctx *ly_ctx;
     char *str1;
     const char *str2;
     int ret;
+
+    sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+
+    /* subscribe */
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
+    ret = sr_module_change_subscribe(st->sess, "ietf-interfaces-new", NULL, discard_items_change_cb, st, 0,
+            SR_SUBSCR_DONE_ONLY, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
 
     /* create another session */
     ret = sr_session_start(st->conn, SR_DS_OPERATIONAL, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
-    sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
-
     /* create an interface */
     ret = sr_set_item_str(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']/description",
+            "mixed interface", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']/type",
             "ethernetCsmacd", NULL, 0);
@@ -1869,8 +2045,9 @@ test_discard(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
-    /* on another session create more children and discard the speed */
+    /* on another session create more children and discard some nodes */
     ret = sr_set_item_str(sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']/link-up-down-trap-enable",
             "disabled", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -1879,8 +2056,11 @@ test_discard(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_discard_items(sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']/speed");
     assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_discard_items(sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']/description");
+    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
 
     /* read the data */
     ret = sr_get_data(st->sess, "/ietf-interfaces-new:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
@@ -1902,31 +2082,86 @@ test_discard(void **state)
     assert_string_equal(str1, str2);
     free(str1);
 
+    /* get rid of the discard items */
+    ret = sr_get_oper_changes(sess, "ietf-interfaces-new", &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_null(data->tree->prev->schema);
+    lyd_free_tree(data->tree->prev);
+    assert_null(data->tree->prev->schema);
+    lyd_free_tree(data->tree->prev);
+    ret = sr_edit_batch(sess, data->tree, "replace");
+    assert_int_equal(ret, SR_ERR_OK);
+    sr_release_data(data);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 3);
+
+    /* read the data */
+    ret = sr_get_data(st->sess, "/ietf-interfaces-new:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+    sr_release_data(data);
+
+    str2 =
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces-new\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <interface or:origin=\"or:unknown\">\n"
+            "    <name>mixed</name>\n"
+            "    <description>mixed interface</description>\n"
+            "    <type>ethernetCsmacd</type>\n"
+            "    <link-up-down-trap-enable or:origin=\"or:unknown\">disabled</link-up-down-trap-enable>\n"
+            "    <admin-status or:origin=\"or:unknown\">testing</admin-status>\n"
+            "    <speed>0</speed>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* use merge to add some nodes and discard-items */
+    ly_ctx = sr_acquire_context(st->conn);
+    ret = lyd_new_path(NULL, ly_ctx, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']/enabled", "false", 0, &edit);
+    assert_int_equal(ret, LY_SUCCESS);
+    ret = lyd_new_opaq(NULL, ly_ctx, "discard-items", "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']/admin-status",
+            NULL, "sysrepo", &node);
+    assert_int_equal(ret, LY_SUCCESS);
+    lyd_insert_sibling(edit, node, &edit);
+    ret = lyd_new_opaq(NULL, ly_ctx, "discard-items",
+            "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']/link-up-down-trap-enable", NULL, "sysrepo", &node);
+    assert_int_equal(ret, LY_SUCCESS);
+    lyd_insert_sibling(edit, node, &edit);
+    sr_release_context(st->conn);
+    ret = sr_edit_batch(sess, edit, "replace");
+    assert_int_equal(ret, SR_ERR_OK);
+    lyd_free_siblings(edit);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
+
+    /* read the data */
+    ret = sr_get_data(st->sess, "/ietf-interfaces-new:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+    sr_release_data(data);
+
+    str2 =
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces-new\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
+            "  <interface or:origin=\"or:unknown\">\n"
+            "    <name>mixed</name>\n"
+            "    <description>mixed interface</description>\n"
+            "    <type>ethernetCsmacd</type>\n"
+            "    <enabled>false</enabled>\n"
+            "    <speed>0</speed>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* cleanup */
+    sr_unsubscribe(subscr);
     sr_session_stop(sess);
-
-    /* discard multiple nodes */
-    ret = sr_set_item_str(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'eth1\']/type",
-            "ethernetCsmacd", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'eth1\']/speed",
-            "0", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = sr_set_item_str(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'eth2\']/type",
-            "ethernetCsmacd", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'eth2\']/speed",
-            "0", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = sr_discard_items(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'eth1\']/speed");
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_discard_items(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'eth2\']/speed");
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
 }
 
 /* TEST */
@@ -2734,7 +2969,7 @@ main(void)
         cmocka_unit_test_teardown(test_config, clear_up),
         cmocka_unit_test_teardown(test_top_list, clear_up),
         cmocka_unit_test_teardown(test_top_leaf, clear_up),
-        cmocka_unit_test_teardown(test_discard, clear_up),
+        cmocka_unit_test_teardown(test_discard_items, clear_up),
         cmocka_unit_test_teardown(test_invalid, clear_up),
         cmocka_unit_test_teardown(test_np_cont1, clear_up),
         cmocka_unit_test_teardown(test_np_cont2, clear_up),

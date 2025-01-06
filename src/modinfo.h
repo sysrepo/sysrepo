@@ -45,7 +45,8 @@
 struct sr_mod_info_s {
     sr_datastore_t ds;          /**< Main datastore we are working with. */
     sr_datastore_t ds2;         /**< Secondary datastore valid only if differs from the main one. Used only for locking. */
-    struct lyd_node *diff;      /**< Diff with previous data. */
+    struct lyd_node *notify_diff;   /**< Diff with previous data for notifying subscribers. */
+    struct lyd_node *ds_diff;   /**< Diff with previous data stored in the DS. */
     struct lyd_node *data;      /**< Data tree. */
     int data_cached;            /**< Whether the data are actually cached. */
     sr_conn_ctx_t *conn;        /**< Associated connection. */
@@ -182,14 +183,13 @@ sr_error_info_t *sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const str
         sr_error_info_t **val_err_info);
 
 /**
- * @brief Apply operational sysrepo edit on mod info data.
+ * @brief Apply operational data on current mod info data.
  *
  * @param[in] mod_info Mod info to use.
- * @param[in] data Sysrepo data to merge.
- * @param[in] create_diff Whether to also create diff with the original data tree.
+ * @param[in] oper_data Operational data to use.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_modinfo_oper_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *data, int create_diff);
+sr_error_info_t *sr_modinfo_oper_ds_diff(struct sr_mod_info_s *mod_info, const struct lyd_node *oper_data);
 
 /**
  * @brief Replace mod info data with new data.
@@ -199,6 +199,15 @@ sr_error_info_t *sr_modinfo_oper_edit_apply(struct sr_mod_info_s *mod_info, cons
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_modinfo_replace(struct sr_mod_info_s *mod_info, struct lyd_node **src_data);
+
+/**
+ * @brief Generate oper notify diff for subscribers.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @param[in] old_data Old (previous) oper DS data to use.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_modinfo_oper_notify_diff(struct sr_mod_info_s *mod_info, struct lyd_node **old_data);
 
 /**
  * @brief Read-lock all changed modules in mod info.
@@ -214,6 +223,17 @@ sr_error_info_t *sr_modinfo_changesub_rdlock(struct sr_mod_info_s *mod_info);
  * @param[in] mod_info Mod info to use.
  */
 void sr_modinfo_changesub_rdunlock(struct sr_mod_info_s *mod_info);
+
+/**
+ * @brief Get specific oper DS data based on the params.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @param[in] sid If set, do not load oper data of sessions after this one, otherwise load oper data of all the sessions.
+ * @param[in] oper_data Used only if @p sid is set. If set, replace the oper data of @p sid with these data, otherwise
+ * use the stored data of this session.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_modinfo_get_oper_data(struct sr_mod_info_s *mod_info, uint32_t sid, struct lyd_node **oper_data);
 
 #define SR_MI_NEW_DEPS          0x01    /**< new modules are not required (MOD_INFO_REQ) but only dpendencies (MOD_INFO_DEP) */
 #define SR_MI_INV_DEPS          0x02    /**< add inverse dependencies for added modules */

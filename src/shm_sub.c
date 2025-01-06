@@ -1153,7 +1153,7 @@ sr_shmsub_change_notify_evpipe(struct sr_mod_info_s *mod_info, struct sr_mod_inf
 
         /* skip subscriptions that filter-out all the changes */
         if ((shm_sub[i].opts & SR_SUBSCR_FILTER_ORIG) &&
-                !sr_shmsub_change_filter_is_valid(mod_info->conn->ext_shm.addr + shm_sub[i].xpath, mod_info->diff)) {
+                !sr_shmsub_change_filter_is_valid(mod_info->conn->ext_shm.addr + shm_sub[i].xpath, mod_info->notify_diff)) {
             continue;
         }
 
@@ -1294,25 +1294,26 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, const char *orig_
     sr_cid_t cid;
     int opts, lock_lost, free_diff = 0;
 
-    assert(mod_info->diff);
+    assert(mod_info->notify_diff);
+
     *update_edit = NULL;
     ly_ctx = mod_info->conn->ly_ctx;
     cid = mod_info->conn->cid;
 
-    while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->diff, &aux))) {
+    while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->notify_diff, &aux))) {
         /* first check that there actually are some value changes (and not only dflt changes) */
-        if (!sr_shmsub_change_notify_diff_has_changes(mod, mod_info->diff)) {
+        if (!sr_shmsub_change_notify_diff_has_changes(mod, mod_info->notify_diff)) {
             continue;
         }
 
         /* just find out whether there are any subscriptions and if so, what is the highest priority */
-        if (!sr_shmsub_change_notify_has_subscription(mod_info->conn, mod, mod_info->ds, mod_info->diff,
+        if (!sr_shmsub_change_notify_has_subscription(mod_info->conn, mod, mod_info->ds, mod_info->notify_diff,
                 SR_SUB_EV_UPDATE, &cur_priority)) {
             continue;
         }
 
         /* correctly start the loop, with fake last priority 1 higher than the actual highest */
-        if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, mod, mod_info->ds, mod_info->diff,
+        if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, mod, mod_info->ds, mod_info->notify_diff,
                 SR_SUB_EV_UPDATE, cur_priority + 1, &cur_priority, &subscriber_count, &opts))) {
             goto cleanup;
         }
@@ -1343,7 +1344,7 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, const char *orig_
             assert(subscriber_count == 1);
 
             /* prepare the diff to write into subscription SHM */
-            if ((err_info = sr_shmsub_change_notify_get_diff(mod_info->diff, mod->ly_mod, opts, NULL,
+            if ((err_info = sr_shmsub_change_notify_get_diff(mod_info->notify_diff, mod->ly_mod, opts, NULL,
                     &full_diff_lyb, &full_diff_lyb_len, &diff_lyb, &diff_lyb_len, &free_diff))) {
                 goto cleanup_wrunlock;
             }
@@ -1412,8 +1413,8 @@ notify_next_sub:
             }
 
             /* find out what is the next priority and how many subscribers have it */
-            if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, mod, mod_info->ds, mod_info->diff,
-                    SR_SUB_EV_UPDATE, cur_priority, &cur_priority, &subscriber_count, &opts))) {
+            if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, mod, mod_info->ds,
+                    mod_info->notify_diff, SR_SUB_EV_UPDATE, cur_priority, &cur_priority, &subscriber_count, &opts))) {
                 goto cleanup_wrunlock;
             }
         } while (subscriber_count);
@@ -1463,7 +1464,7 @@ sr_shmsub_change_notify_clear(struct sr_mod_info_s *mod_info)
 
     cid = mod_info->conn->cid;
 
-    while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->diff, &aux))) {
+    while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->notify_diff, &aux))) {
         /* open sub SHM and map it */
         if ((err_info = sr_shmsub_open_map(mod->ly_mod->name, sr_ds2str(mod_info->ds), -1, &shm_sub))) {
             goto cleanup;
@@ -1570,16 +1571,16 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, const char *orig_
 
     cid = mod_info->conn->cid;
 
-    while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->diff, &aux))) {
+    while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->notify_diff, &aux))) {
         /* first check that there actually are some value changes (and not only dflt changes) */
-        if (!sr_shmsub_change_notify_diff_has_changes(mod, mod_info->diff)) {
+        if (!sr_shmsub_change_notify_diff_has_changes(mod, mod_info->notify_diff)) {
             continue;
         }
 
         /* find out whether there are any subscriptions and if so, what is the highest priority */
-        if (!sr_shmsub_change_notify_has_subscription(mod_info->conn, mod, mod_info->ds, mod_info->diff,
+        if (!sr_shmsub_change_notify_has_subscription(mod_info->conn, mod, mod_info->ds, mod_info->notify_diff,
                 SR_SUB_EV_CHANGE, &max_priority)) {
-            if (!sr_shmsub_change_notify_has_subscription(mod_info->conn, mod, mod_info->ds, mod_info->diff,
+            if (!sr_shmsub_change_notify_has_subscription(mod_info->conn, mod, mod_info->ds, mod_info->notify_diff,
                     SR_SUB_EV_DONE, &max_priority)) {
                 if (mod_info->ds == SR_DS_RUNNING) {
                     SR_LOG_DBG("There are no subscribers for changes of the module \"%s\" in %s DS.",
@@ -1620,7 +1621,8 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, const char *orig_
 
             /* get next subscriber(s) priority and subscriber count */
             if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, nsub->mod, mod_info->ds,
-                    mod_info->diff, SR_SUB_EV_CHANGE, nsub->cur_priority, &nsub->cur_priority, &subscriber_count, &opts))) {
+                    mod_info->notify_diff, SR_SUB_EV_CHANGE, nsub->cur_priority, &nsub->cur_priority, &subscriber_count,
+                    &opts))) {
                 goto cleanup;
             }
 
@@ -1635,8 +1637,8 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, const char *orig_
             nsub->sub_shm = (sr_sub_shm_t *)nsub->shm_sub.addr;
 
             /* prepare the diff to write into subscription SHM */
-            if ((err_info = sr_shmsub_change_notify_get_diff(mod_info->diff, nsub->mod->ly_mod, opts, &nsub->mod->reuse_diff,
-                    &full_diff_lyb, &full_diff_lyb_len, &diff_lyb, &diff_lyb_len, &free_diff))) {
+            if ((err_info = sr_shmsub_change_notify_get_diff(mod_info->notify_diff, nsub->mod->ly_mod, opts,
+                    &nsub->mod->reuse_diff, &full_diff_lyb, &full_diff_lyb_len, &diff_lyb, &diff_lyb_len, &free_diff))) {
                 goto cleanup;
             }
 
@@ -1769,14 +1771,14 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, const char *
 
     cid = mod_info->conn->cid;
 
-    while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->diff, &aux))) {
+    while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->notify_diff, &aux))) {
         /* first check that there actually are some value changes (and not only dflt changes) */
-        if (!sr_shmsub_change_notify_diff_has_changes(mod, mod_info->diff)) {
+        if (!sr_shmsub_change_notify_diff_has_changes(mod, mod_info->notify_diff)) {
             continue;
         }
 
-        if (!sr_shmsub_change_notify_has_subscription(mod_info->conn, mod, mod_info->ds, mod_info->diff, SR_SUB_EV_DONE,
-                &max_priority)) {
+        if (!sr_shmsub_change_notify_has_subscription(mod_info->conn, mod, mod_info->ds, mod_info->notify_diff,
+                SR_SUB_EV_DONE, &max_priority)) {
             /* no subscriptions interested in this event */
             continue;
         }
@@ -1812,7 +1814,8 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, const char *
 
             /* get next subscriber(s) priority and subscriber count */
             if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, nsub->mod, mod_info->ds,
-                    mod_info->diff, SR_SUB_EV_DONE, nsub->cur_priority, &nsub->cur_priority, &subscriber_count, &opts))) {
+                    mod_info->notify_diff, SR_SUB_EV_DONE, nsub->cur_priority, &nsub->cur_priority, &subscriber_count,
+                    &opts))) {
                 goto cleanup;
             }
 
@@ -1827,8 +1830,8 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, const char *
             nsub->sub_shm = (sr_sub_shm_t *)nsub->shm_sub.addr;
 
             /* prepare the diff to write into subscription SHM */
-            if ((err_info = sr_shmsub_change_notify_get_diff(mod_info->diff, nsub->mod->ly_mod, opts, &nsub->mod->reuse_diff,
-                    &full_diff_lyb, &full_diff_lyb_len, &diff_lyb, &diff_lyb_len, &free_diff))) {
+            if ((err_info = sr_shmsub_change_notify_get_diff(mod_info->notify_diff, nsub->mod->ly_mod, opts,
+                    &nsub->mod->reuse_diff, &full_diff_lyb, &full_diff_lyb_len, &diff_lyb, &diff_lyb_len, &free_diff))) {
                 goto cleanup;
             }
 
@@ -1951,20 +1954,20 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, const char 
 
     cid = mod_info->conn->cid;
 
-    while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->diff, &aux))) {
+    while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->notify_diff, &aux))) {
         /* first check that there actually are some value changes (and not only dflt changes) */
-        if (!sr_shmsub_change_notify_diff_has_changes(mod, mod_info->diff)) {
+        if (!sr_shmsub_change_notify_diff_has_changes(mod, mod_info->notify_diff)) {
             continue;
         }
 
-        if (!sr_shmsub_change_notify_has_subscription(mod_info->conn, mod, mod_info->ds, mod_info->diff,
+        if (!sr_shmsub_change_notify_has_subscription(mod_info->conn, mod, mod_info->ds, mod_info->notify_diff,
                 SR_SUB_EV_CHANGE, &max_priority)) {
             /* no subscriptions whatsoever */
             continue;
         }
 
         /* whether there are some "abort" subscriptions or not, create the notify_sub */
-        sr_shmsub_change_notify_has_subscription(mod_info->conn, mod, mod_info->ds, mod_info->diff, SR_SUB_EV_ABORT,
+        sr_shmsub_change_notify_has_subscription(mod_info->conn, mod, mod_info->ds, mod_info->notify_diff, SR_SUB_EV_ABORT,
                 &max_priority);
 
         notify_subs = sr_realloc(notify_subs, (notify_count + 1) * sizeof *notify_subs);
@@ -2032,7 +2035,7 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, const char 
     sr_shmsub_change_notify_nsubs_set_mod_prio(notify_subs, notify_count, mod_info->ds, &cur_mpriority);
 
     /* first reverse change diff for abort */
-    if ((err_info = sr_lyd_diff_reverse_all(mod_info->diff, &abort_diff))) {
+    if ((err_info = sr_lyd_diff_reverse_all(mod_info->notify_diff, &abort_diff))) {
         goto cleanup;
     }
 
@@ -2047,7 +2050,8 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, const char 
 
             /* get next subscriber(s) priority and subscriber count */
             if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, nsub->mod, mod_info->ds,
-                    mod_info->diff, SR_SUB_EV_ABORT, nsub->cur_priority, &nsub->cur_priority, &subscriber_count, &opts))) {
+                    mod_info->notify_diff, SR_SUB_EV_ABORT, nsub->cur_priority, &nsub->cur_priority, &subscriber_count,
+                    &opts))) {
                 goto cleanup;
             }
 
@@ -2446,8 +2450,9 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
         /* re-init mod_info manually */
         mod_info.ds = ds;
         mod_info.ds2 = ds;
-        lyd_free_siblings(mod_info.diff);
-        mod_info.diff = NULL;
+        lyd_free_siblings(mod_info.notify_diff);
+        mod_info.notify_diff = NULL;
+        mod_info.ds_diff = NULL;
         lyd_free_siblings(mod_info.data);
         mod_info.data = NULL;
         for (i = 0; i < mod_info.mod_count; ++i) {
@@ -4027,11 +4032,11 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
         if (oper_poll_sub->opts & SR_SUBSCR_OPER_POLL_DIFF) {
             /* prepare mod info */
             mod_info.data = cache->data;
-            if ((err_info = sr_lyd_diff_siblings(cache->data, data->tree, LYD_DIFF_DEFAULTS, &mod_info.diff))) {
+            if ((err_info = sr_lyd_diff_siblings(cache->data, data->tree, LYD_DIFF_DEFAULTS, &mod_info.notify_diff))) {
                 goto finish_iter;
             }
 
-            if (mod_info.diff) {
+            if (mod_info.notify_diff) {
                 /* publish "update" event to update the data/diff */
                 if ((err_info = sr_modinfo_change_notify_update(&mod_info, NULL, SR_CHANGE_CB_TIMEOUT, &change_sub_lock,
                         &cb_err_info))) {
@@ -4073,7 +4078,7 @@ finish_iter:
             goto cleanup_unlock;
         }
 
-        if (mod_info.diff) {
+        if (mod_info.notify_diff) {
             /* publish "change" event, we do not care about callback failure */
             if ((err_info = sr_shmsub_change_notify_change(&mod_info, NULL, NULL, SR_CHANGE_CB_TIMEOUT, &cb_err_info))) {
                 goto cleanup_unlock;
@@ -4085,8 +4090,9 @@ finish_iter:
                 goto cleanup_unlock;
             }
 
-            lyd_free_siblings(mod_info.diff);
-            mod_info.diff = NULL;
+            lyd_free_siblings(mod_info.notify_diff);
+            mod_info.notify_diff = NULL;
+            mod_info.ds_diff = NULL;
         }
     }
 
@@ -4102,7 +4108,7 @@ cleanup_unlock:
     sr_rwunlock(&conn->oper_cache_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
 cleanup:
-    lyd_free_siblings(mod_info.diff);
+    lyd_free_siblings(mod_info.notify_diff);
     free(mod_info.mods);
     return err_info;
 }

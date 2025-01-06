@@ -55,6 +55,15 @@ enum edit_op {
 enum edit_op sr_edit_str2op(const char *str);
 
 /**
+ * @brief Check top-level operations in oper data and then delete them.
+ *
+ * @param[in] oper_data Oper data to check.
+ * @param[out] op Found operation.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_edit_oper_check_op(struct lyd_node *oper_data, enum edit_op *op);
+
+/**
  * @brief Callback for libyang diff apply.
  *
  * @param[in] diff_node Diff node.

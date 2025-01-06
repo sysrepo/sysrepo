@@ -914,9 +914,11 @@ sr_shmmod_del_module_oper_data(sr_conn_ctx_t *conn, const struct lys_module *ly_
     sr_error_info_t *err_info = NULL, *tmp_err;
     struct sr_mod_lock_s *shm_lock;
     sr_mod_oper_push_t *oper_push_l = NULL;
-    uint32_t oper_push_count, i;
+    uint32_t oper_push_count, i, mod_lock;
 
-    assert(!mod_state || (*mod_state & MOD_INFO_RLOCK));
+    assert(!(*mod_state & MOD_INFO_WLOCK));
+
+    mod_lock = *mod_state ? (*mod_state & (MOD_INFO_RLOCK | MOD_INFO_RLOCK_UPGR)) : 0;
 
     /* find SHM mod */
     if (!shm_mod) {
@@ -925,17 +927,24 @@ sr_shmmod_del_module_oper_data(sr_conn_ctx_t *conn, const struct lys_module *ly_
     }
     shm_lock = &shm_mod->data_lock_info[SR_DS_OPERATIONAL];
 
-    if (mod_state) {
-        /* MOD READ UNLOCK */
-        sr_rwunlock(&shm_lock->data_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
-        *mod_state &= ~MOD_INFO_RLOCK;
-    }
+    if (*mod_state & MOD_INFO_RLOCK_UPGR) {
+        /* MOD WRITE UPGRADE */
+        if ((err_info = sr_shmmod_lock(shm_lock, 0, SR_LOCK_WRITE_URGE, 0, conn->cid, 0, 1, ly_mod->name))) {
+            goto cleanup;
+        }
+        *mod_state &= ~MOD_INFO_RLOCK_UPGR;
+        *mod_state |= MOD_INFO_WLOCK;
+    } else {
+        if (*mod_state & MOD_INFO_RLOCK) {
+            /* MOD READ UNLOCK */
+            sr_rwunlock(&shm_lock->data_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+            *mod_state &= ~MOD_INFO_RLOCK;
+        }
 
-    /* MOD WRITE LOCK */
-    if ((err_info = sr_shmmod_lock(shm_lock, 0, SR_LOCK_WRITE, 0, conn->cid, 0, 0, ly_mod->name))) {
-        goto cleanup;
-    }
-    if (mod_state) {
+        /* MOD WRITE LOCK */
+        if ((err_info = sr_shmmod_lock(shm_lock, 0, SR_LOCK_WRITE, 0, conn->cid, 0, 0, ly_mod->name))) {
+            goto cleanup;
+        }
         *mod_state |= MOD_INFO_WLOCK;
     }
 
@@ -968,15 +977,26 @@ sr_shmmod_del_module_oper_data(sr_conn_ctx_t *conn, const struct lys_module *ly_
     }
 
 cleanup_unlock:
-    /* MOD WRITE UNLOCK */
-    sr_rwunlock(&shm_lock->data_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
-
-    if (mod_state) {
-        /* MOD READ LOCK */
-        if ((tmp_err = sr_shmmod_lock(shm_lock, 0, SR_LOCK_READ, 0, conn->cid, 0, 0, ly_mod->name))) {
+    if (mod_lock & MOD_INFO_RLOCK_UPGR) {
+        /* MOD WRITE DOWNGRADE */
+        if ((tmp_err = sr_shmmod_lock(shm_lock, 0, SR_LOCK_READ_UPGR, 0, conn->cid, 0, 1, ly_mod->name))) {
             sr_errinfo_merge(&err_info, tmp_err);
         } else {
-            *mod_state |= MOD_INFO_RLOCK;
+            *mod_state &= ~MOD_INFO_WLOCK;
+            *mod_state |= MOD_INFO_RLOCK_UPGR;
+        }
+    } else {
+        /* MOD WRITE UNLOCK */
+        sr_rwunlock(&shm_lock->data_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+        *mod_state &= ~MOD_INFO_WLOCK;
+
+        if (mod_lock & MOD_INFO_RLOCK) {
+            /* MOD READ LOCK */
+            if ((tmp_err = sr_shmmod_lock(shm_lock, 0, SR_LOCK_READ, 0, conn->cid, 0, 0, ly_mod->name))) {
+                sr_errinfo_merge(&err_info, tmp_err);
+            } else {
+                *mod_state |= MOD_INFO_RLOCK;
+            }
         }
     }
 

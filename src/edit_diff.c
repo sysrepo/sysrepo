@@ -235,6 +235,32 @@ sr_edit_del_meta_attr(struct lyd_node *edit, const char *name)
     }
 }
 
+sr_error_info_t *
+sr_edit_oper_check_op(struct lyd_node *oper_data, enum edit_op *op)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *root;
+
+    *op = 0;
+
+    LY_LIST_FOR(oper_data, root) {
+        if (!*op) {
+            /* learn the operation */
+            *op = sr_edit_diff_find_oper(root, 0, NULL);
+            SR_CHECK_INT_GOTO((*op != EDIT_MERGE) && (*op != EDIT_REPLACE), err_info, cleanup);
+        } else {
+            /* just check the rest of operations */
+            SR_CHECK_INT_GOTO(*op != sr_edit_diff_find_oper(root, 0, NULL), err_info, cleanup);
+        }
+
+        /* remove the operation */
+        sr_edit_del_meta_attr(root, "operation");
+    }
+
+cleanup:
+    return err_info;
+}
+
 /**
  * @brief Create a meta/attribute for an edit node.
  *
@@ -2262,7 +2288,7 @@ struct sr_oper_edit_arg {
 };
 
 /**
- * @brief Callback for merging data.
+ * @brief Callback for merging oper data.
  */
 static LY_ERR
 sr_oper_edit_mod_apply_cb(struct lyd_node *trg_node, const struct lyd_node *src_node, void *cb_data)
@@ -2542,13 +2568,19 @@ sr_oper_edit_mod_apply(const struct lyd_node *tree, const struct lys_module *ly_
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *mod_diff = NULL;
-    const struct lyd_node *root, *mod_first;
+    const struct lyd_node *root, *mod_first = NULL;
     struct ly_set opaq_set = {0};
     enum edit_op op = 0;
     const char *xpath;
 
     if (change) {
         *change = 0;
+    }
+
+    if (!tree) {
+        /* discarding the data by replacing them with empty data */
+        op = EDIT_REPLACE;
+        goto apply;
     }
 
     /* find the first node from the module */
@@ -2604,6 +2636,7 @@ sr_oper_edit_mod_apply(const struct lyd_node *tree, const struct lys_module *ly_
         }
     } while (root != tree);
 
+apply:
     /* apply the edit to oper data and generate diff */
     if ((err_info = sr_oper_edit_mod_apply_data(mod_first, &opaq_set, ly_mod, op, data, &mod_diff, change))) {
         goto cleanup;
