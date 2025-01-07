@@ -1175,6 +1175,7 @@ sr_module_oper_data_update_cached(struct sr_mod_info_mod_s *mod, const char *sub
     sr_error_info_t *err_info = NULL;
     struct sr_oper_poll_cache_s *cache = NULL;
     uint32_t i;
+    int len;
 
     *merged = 0;
 
@@ -1186,11 +1187,23 @@ sr_module_oper_data_update_cached(struct sr_mod_info_mod_s *mod, const char *sub
 
     /* try to get data from the cache */
     for (i = 0; i < conn->oper_cache_count; ++i) {
-        if (!strcmp(conn->oper_caches[i].module_name, mod->ly_mod->name) &&
-                !strcmp(conn->oper_caches[i].path, sub_xpath)) {
-            cache = &conn->oper_caches[i];
-            break;
+        /* module name */
+        if (strcmp(conn->oper_caches[i].module_name, mod->ly_mod->name)) {
+            continue;
         }
+
+        /* this subscription or any nested subscriptions are cached */
+        len = strlen(conn->oper_caches[i].path);
+        if (strncmp(conn->oper_caches[i].path, sub_xpath, len)) {
+            continue;
+        }
+        if ((sub_xpath[len] != '\0') && (sub_xpath[len] != '/')) {
+            continue;
+        }
+
+        /* cached subscription */
+        cache = &conn->oper_caches[i];
+        break;
     }
     if (!cache) {
         goto cleanup_cache_unlock;
