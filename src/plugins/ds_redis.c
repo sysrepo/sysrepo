@@ -1973,8 +1973,8 @@ srpds_store_oper_recursively(redisContext *ctx, const struct lyd_node *mod_data,
     const struct lyd_node *sibling = mod_data;
     struct lyd_node *child = NULL;
     struct lyd_node_opaq *opaque = NULL; // for opaque nodes
-    char *path = NULL, *any_value = NULL, *keys = NULL;
-    uint32_t keys_length = 0;
+    char *path = NULL, *any_value = NULL, *keys = NULL, idx_str[24];
+    uint32_t keys_length = 0, discard_items_idx = 1;
     const char *module_name = NULL, *value = NULL;
 
     while (sibling) {
@@ -1985,6 +1985,12 @@ srpds_store_oper_recursively(redisContext *ctx, const struct lyd_node *mod_data,
         if (!path) {
             ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_path()", "");
             return err_info;
+        }
+        if (!sibling->schema) {
+            /* add index */
+            sprintf(idx_str, "[%u]", discard_items_idx++);
+            path = realloc(path, strlen(path) + strlen(idx_str) + 1);
+            strcat(path, idx_str);
         }
 
         /* get value */
