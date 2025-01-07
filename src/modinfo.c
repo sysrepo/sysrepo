@@ -3601,13 +3601,13 @@ sr_modinfo_change_notify_update(struct sr_mod_info_s *mod_info, sr_session_ctx_t
         /* put the old diff back */
         new_diff = mod_info->notify_diff;
         mod_info->notify_diff = old_diff;
-        mod_info->ds_diff = old_diff;
         old_diff = NULL;
 
         /* merge diffs into one */
         if ((err_info = sr_modinfo_diff_merge(mod_info, new_diff))) {
             goto cleanup;
         }
+        mod_info->ds_diff = mod_info->notify_diff;
     }
 
 cleanup:
