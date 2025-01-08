@@ -3552,10 +3552,17 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
 
     if (session->ds == SR_DS_OPERATIONAL) {
         /* just delete the selected node */
-        if ((err_info = sr_lyd_find_path(session->dt[session->ds].edit->tree, path, 1, &node))) {
+        node = NULL;
+        if (session->dt[session->ds].edit->tree &&
+                (err_info = sr_lyd_find_path(session->dt[session->ds].edit->tree, path, 1, &node))) {
             goto cleanup;
         }
-        sr_lyd_free_tree_safe(node, &session->dt[session->ds].edit->tree);
+        if (node) {
+            sr_lyd_free_tree_safe(node, &session->dt[session->ds].edit->tree);
+        } else {
+            /* not found */
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Node \"%s\" not found in session push oper data.", path);
+        }
         goto cleanup;
     }
 
