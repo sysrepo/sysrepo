@@ -954,7 +954,8 @@ int sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *val
  * changes merged into the list, use ::SR_EDIT_ISOLATE in such a case.
  *
  * For ::SR_DS_OPERATIONAL, this function deletes the selected node from the session push oper data. To delete the node
- * from the final operational datastore, use ::sr_discard_items() instead. No option is allowed for this datastore.
+ * from the final operational datastore, use ::sr_discard_items() instead. Only ::SR_EDIT_STRICT option is allowed
+ * causing the function to return an error if the deleted node does not exist in the session push oper data.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] path [Path](@ref paths) identifier of the data element to be deleted.

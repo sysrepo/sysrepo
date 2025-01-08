@@ -3521,7 +3521,8 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
     uint32_t temp_lo = 0;
     int rc;
 
-    SR_CHECK_ARG_APIRET(!session || !path || SR_EDIT_DS_API_CHECK(session->ds, opts), session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !path || !SR_IS_STANDARD_DS(session->ds) || (!SR_IS_CONVENTIONAL_DS(session->ds) &&
+            (opts & (SR_EDIT_NON_RECURSIVE | SR_EDIT_ISOLATE))), session, err_info);
 
     if (!session->dt[session->ds].edit && (session->ds == SR_DS_OPERATIONAL)) {
         /* prepare the current stored oper data to be modified */
@@ -3559,7 +3560,7 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
         }
         if (node) {
             sr_lyd_free_tree_safe(node, &session->dt[session->ds].edit->tree);
-        } else {
+        } else if (opts & SR_EDIT_STRICT) {
             /* not found */
             sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Node \"%s\" not found in session push oper data.", path);
         }
