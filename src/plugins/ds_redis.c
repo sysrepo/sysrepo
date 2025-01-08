@@ -55,7 +55,7 @@
  *
  */
 #define REDIS_MAX_AGGREGATE_COUNT "50000"
-#define REDIS_MAX_AGGREGATE_LIMIT "1000000000000"
+#define REDIS_MAX_AGGREGATE_LIMIT "2147483648"
 
 /* context should be different for each thread */
 typedef struct redis_thread_data_s {
