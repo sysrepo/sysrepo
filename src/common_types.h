@@ -180,6 +180,7 @@ struct sr_session_ctx_s {
     char *user;                     /**< Session (system) user. */
     char *nacm_user;                /**< Optional NACM user. If set, NACM is applied. */
     sr_error_info_t *err_info;      /**< Session error information. */
+    int push_oper_data;             /**< Whether the session has stored any push operational data. */
 
     char *orig_name;                /**< Originator name used for all events sent on this session. */
     void *orig_data;                /**< Originator data used for all events sent on this session. */

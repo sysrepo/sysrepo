@@ -3895,6 +3895,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
             }
 
             if ((mod_info->ds == SR_DS_OPERATIONAL) && (mod_info->ds2 == SR_DS_OPERATIONAL)) {
+                assert(session);
                 if (shmmod_session_del) {
                     /* no stored oper data and session stopped, remove info from mod/ext SHM */
                     assert(!mod_data);
@@ -3908,6 +3909,9 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
                             sid, 0, mod_data ? 1 : 0, SR_LOCK_WRITE))) {
                         goto cleanup;
                     }
+
+                    /* remember to discard the push oper data on session stop */
+                    session->push_oper_data = 1;
                 }
             }
         }

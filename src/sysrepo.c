@@ -721,8 +721,10 @@ _sr_session_stop(sr_session_ctx_t *session)
     tmp_err = sr_session_notif_buf_stop(session);
     sr_errinfo_merge(&err_info, tmp_err);
 
-    /* free any stored operational data and the SHM ext push oper data entries */
-    _sr_discard_oper_changes(session, NULL, 1, 0);
+    if (session->push_oper_data) {
+        /* free any stored operational data and the SHM ext push oper data entries */
+        _sr_discard_oper_changes(session, NULL, 1, 0);
+    }
 
     /* remove ourselves from conn sessions */
     tmp_err = sr_ptr_del(&session->conn->ptr_lock, (void ***)&session->conn->sessions, &session->conn->session_count, session);
