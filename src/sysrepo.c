@@ -3565,7 +3565,7 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
                     (err_info = sr_lyd_find_xpath(session->dt[session->ds].edit->tree, path, &set))) {
                 goto cleanup;
             }
-            if (set->count) {
+            if (set && set->count) {
                 for (i = 0; i < set->count; ++i) {
                     sr_lyd_free_tree_safe(set->dnodes[i], &session->dt[session->ds].edit->tree);
                 }
