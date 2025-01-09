@@ -3518,7 +3518,9 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
     const char *op;
     const struct lysc_node *snode;
     struct lyd_node *node;
+    struct ly_set *set;
     uint32_t temp_lo = 0;
+    uint32_t i;
     int rc;
 
     SR_CHECK_ARG_APIRET(!session || !path || !SR_IS_STANDARD_DS(session->ds) || (!SR_IS_CONVENTIONAL_DS(session->ds) &&
@@ -3552,17 +3554,39 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
     }
 
     if (session->ds == SR_DS_OPERATIONAL) {
-        /* just delete the selected node */
-        node = NULL;
-        if (session->dt[session->ds].edit->tree &&
-                (err_info = sr_lyd_find_path(session->dt[session->ds].edit->tree, path, 1, &node))) {
+        if ((err_info = sr_lys_find_path(session->conn->ly_ctx, path, NULL, &snode))) {
+            /* invalid path */
             goto cleanup;
         }
-        if (node) {
-            sr_lyd_free_tree_safe(node, &session->dt[session->ds].edit->tree);
-        } else if (opts & SR_EDIT_STRICT) {
-            /* not found */
-            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Node \"%s\" not found in session push oper data.", path);
+        if ((snode->nodetype & (LYS_LIST | LYS_LEAFLIST)) && (path[strlen(path) - 1] != ']')) {
+            /* purge all the (leaf-)list instances */
+            set = NULL;
+            if (session->dt[session->ds].edit->tree &&
+                    (err_info = sr_lyd_find_xpath(session->dt[session->ds].edit->tree, path, &set))) {
+                goto cleanup;
+            }
+            if (set->count) {
+                for (i = 0; i < set->count; ++i) {
+                    sr_lyd_free_tree_safe(set->dnodes[i], &session->dt[session->ds].edit->tree);
+                }
+            } else if (opts & SR_EDIT_STRICT) {
+                /* not found */
+                sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "No nodes \"%s\" found in session push oper data.", path);
+            }
+            ly_set_free(set, NULL);
+        } else {
+            /* just delete the selected node */
+            node = NULL;
+            if (session->dt[session->ds].edit->tree &&
+                    (err_info = sr_lyd_find_path(session->dt[session->ds].edit->tree, path, 1, &node))) {
+                goto cleanup;
+            }
+            if (node) {
+                sr_lyd_free_tree_safe(node, &session->dt[session->ds].edit->tree);
+            } else if (opts & SR_EDIT_STRICT) {
+                /* not found */
+                sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Node \"%s\" not found in session push oper data.", path);
+            }
         }
         goto cleanup;
     }

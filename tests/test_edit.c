@@ -856,6 +856,16 @@ test_purge(void **state)
     ret = sr_get_subtree(st->sess, "/test:ll1", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
     assert_null(subtree);
+
+    /* operational ds */
+    sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    ret = sr_set_item_str(st->sess, "/test:ll1", "12", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_delete_item(st->sess, "/test:l1", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_delete_item(st->sess, "/test:ll1", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    sr_session_switch_ds(st->sess, SR_DS_RUNNING);
 }
 
 static void
