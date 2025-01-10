@@ -1459,6 +1459,11 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
         if ((err_info = sr_module_oper_data_load(mod, conn, 0, NULL, data))) {
             return err_info;
         }
+
+        /* add any missing NP containers in the data */
+        if ((err_info = sr_lyd_new_implicit_module(data, mod->ly_mod, LYD_IMPLICIT_NO_DEFAULTS, NULL))) {
+            return err_info;
+        }
     }
 
     if (get_oper_opts & SR_OPER_NO_SUBS) {
