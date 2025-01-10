@@ -3578,7 +3578,7 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
             /* just delete the selected node */
             node = NULL;
             if (session->dt[session->ds].edit->tree &&
-                    (err_info = sr_lyd_find_path(session->dt[session->ds].edit->tree, path, 1, &node))) {
+                    (err_info = sr_lyd_find_path(session->dt[session->ds].edit->tree, path, 0, &node))) {
                 goto cleanup;
             }
             if (node) {
