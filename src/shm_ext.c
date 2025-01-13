@@ -131,8 +131,8 @@ sr_shmext_conn_remap_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int ext_lo
 {
     sr_error_info_t *err_info = NULL;
     sr_ext_hole_t *iter, *last = NULL;
-    uint32_t last_size;
-    size_t shm_file_size = 0;
+    uint32_t new_size;
+    char *last_hole_end;
 
     /* make ext SHM smaller if there is a memory hole at its end */
     if (((mode == SR_LOCK_WRITE) || (mode == SR_LOCK_WRITE_URGE)) && ext_lock) {
@@ -140,17 +140,15 @@ sr_shmext_conn_remap_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int ext_lo
             last = iter;
         }
 
-        if (last && ((uint32_t)((char *)last - conn->ext_shm.addr) + last->size == conn->ext_shm.size)) {
-            if ((err_info = sr_file_get_size(conn->ext_shm.fd, &shm_file_size))) {
-                goto cleanup_unlock;
-            }
+        /* cast `last` as a char* for correct pointer arithmetic. */
+        last_hole_end = last ? ((char *)last + last->size) : NULL;
 
+        if (last_hole_end == conn->ext_shm.addr + conn->ext_shm.size) {
             /* remove the hole */
-            last_size = last->size;
+            new_size = conn->ext_shm.size - last->size;
             sr_ext_hole_del(SR_CONN_EXT_SHM(conn), last);
-
             /* remap (and truncate) ext SHM */
-            if ((err_info = sr_shm_remap(&conn->ext_shm, shm_file_size - last_size))) {
+            if ((err_info = sr_shm_remap(&conn->ext_shm, new_size))) {
                 goto cleanup_unlock;
             }
         }
