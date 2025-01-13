@@ -713,6 +713,7 @@ _sr_session_stop(sr_session_ctx_t *session)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     sr_datastore_t ds;
+    uint32_t i;
 
     /* subscriptions need to be freed before, with a WRITE lock */
     assert(!session->subscription_count && !session->subscriptions);
@@ -721,7 +722,7 @@ _sr_session_stop(sr_session_ctx_t *session)
     tmp_err = sr_session_notif_buf_stop(session);
     sr_errinfo_merge(&err_info, tmp_err);
 
-    if (session->push_oper_data) {
+    if (session->oper_push_mod_count) {
         /* free any stored operational data and the SHM ext push oper data entries */
         _sr_discard_oper_changes(session, NULL, 1, 0);
     }
@@ -755,6 +756,13 @@ _sr_session_stop(sr_session_ctx_t *session)
         sr_release_data(session->dt[ds].edit);
         lyd_free_all(session->dt[ds].diff);
     }
+
+    /* free any push oper module names */
+    for (i = 0; i < session->oper_push_mod_count; ++i) {
+        free(session->oper_push_mods[i].name);
+    }
+    free(session->oper_push_mods);
+
     sr_rwlock_destroy(&session->notif_buf.lock);
     free(session);
 
@@ -4707,6 +4715,10 @@ sr_get_oper_changes(sr_session_ctx_t *session, const char *module_name, sr_data_
     SR_CHECK_ARG_APIRET(!session || !data, NULL, err_info);
 
     *data = NULL;
+
+    if (!session->oper_push_mod_count) {
+        return sr_api_ret(session, err_info);
+    }
 
     SR_MODINFO_INIT(mod_info, conn, SR_DS_OPERATIONAL, SR_DS_OPERATIONAL);
 
