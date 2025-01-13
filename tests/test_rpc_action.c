@@ -1990,6 +1990,53 @@ test_factory_reset(void **state)
     sr_unsubscribe(subscr);
 }
 
+static void *
+test_rpc_extshm_race_thread(void *arg)
+{
+    sr_conn_ctx_t *conn = NULL;
+    sr_session_ctx_t *sess = NULL;
+    sr_subscription_ctx_t *subscr = NULL;
+    int i, ret;
+    struct state *st = (struct state *)arg;
+
+    ret = sr_connect(0, &conn);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_session_start(conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    for (i = 0; i < 10000; i++) {
+        /* subscribe */
+        ret = sr_rpc_subscribe(st->sess, "/ops:rpc1", rpc_rpc_cb, NULL, 0, 0, &subscr);
+        assert_int_equal(ret, SR_ERR_OK);
+        /* cleanup */
+        sr_unsubscribe(subscr);
+        subscr = NULL;
+    }
+    sr_disconnect(conn);
+    return NULL;
+}
+
+static void
+test_rpc_extshm_race(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr = NULL;
+    int i, ret;
+    pthread_t tid;
+
+    pthread_create(&tid, NULL, test_rpc_extshm_race_thread, *state);
+    for (i = 0; i < 10000; i++) {
+        /* subscribe */
+        ret = sr_rpc_subscribe(st->sess, "/ops:rpc2", rpc_rpc_cb, NULL, 0, 0, &subscr);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* cleanup */
+        sr_unsubscribe(subscr);
+        subscr = NULL;
+    }
+    pthread_join(tid, NULL);
+}
+
 /* MAIN */
 int
 main(void)
@@ -2009,6 +2056,7 @@ main(void)
         cmocka_unit_test(test_rpc_oper),
         cmocka_unit_test(test_schema_mount),
         cmocka_unit_test(test_factory_reset),
+        cmocka_unit_test_teardown(test_rpc_extshm_race, clear_ops),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

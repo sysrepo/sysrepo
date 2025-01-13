@@ -49,7 +49,7 @@ sr_shmext_conn_remap_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int ext_lock
 
     if (ext_lock) {
         /* EXT LOCK */
-        if ((err_info = sr_mlock(&SR_CONN_MAIN_SHM(conn)->ext_lock, SR_EXT_LOCK_TIMEOUT, func, NULL, NULL))) {
+        if ((err_info = sr_rwlock(&SR_CONN_MAIN_SHM(conn)->ext_lock, SR_EXT_LOCK_TIMEOUT, mode, conn->cid, func, NULL, NULL))) {
             return err_info;
         }
     }
@@ -121,7 +121,7 @@ error_ext_remap_unlock:
 error_ext_unlock:
     if (ext_lock) {
         /* EXT UNLOCK */
-        sr_munlock(&SR_CONN_MAIN_SHM(conn)->ext_lock);
+        sr_rwunlock(&SR_CONN_MAIN_SHM(conn)->ext_lock, SR_EXT_LOCK_TIMEOUT, mode, conn->cid, func);
     }
     return err_info;
 }
@@ -160,7 +160,7 @@ cleanup_unlock:
 
     if (ext_lock) {
         /* EXT UNLOCK */
-        sr_munlock(&SR_CONN_MAIN_SHM(conn)->ext_lock);
+        sr_rwunlock(&SR_CONN_MAIN_SHM(conn)->ext_lock, SR_EXT_LOCK_TIMEOUT, mode, conn->cid, func);
     }
 
     sr_errinfo_free(&err_info);
@@ -269,7 +269,13 @@ sr_shmext_print_add_item(struct shm_item **items, size_t *item_count, off_t star
     return SR_ERR_OK;
 }
 
-void
+/**
+ * @brief Debug print the contents of ext SHM.
+ *
+ * @param[in] mod_shm Mod SHM.
+ * @param[in] shm_ext Ext SHM.
+ */
+static void
 sr_shmext_print(sr_mod_shm_t *mod_shm, sr_shm_t *shm_ext)
 {
     sr_mod_t *shm_mod;
@@ -691,6 +697,11 @@ sr_shmext_change_sub_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t
 
     shm_sub = &((sr_mod_change_sub_t *)(conn->ext_shm.addr + shm_mod->change_sub[ds].subs))[del_idx];
 
+    /* EXT_HOLE WRITE LOCK */
+    if ((err_info = sr_rwlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock, SR_EXT_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL, NULL))) {
+        return err_info;
+    }
+
     SR_LOG_DBG("#SHM before (removing change sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
@@ -700,6 +711,9 @@ sr_shmext_change_sub_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t
 
     SR_LOG_DBG("#SHM after (removing change sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
+
+    /* EXT_HOLE WRITE UNLOCK */
+    sr_rwunlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock, SR_EXT_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
 
     if (!shm_mod->change_sub[ds].sub_count) {
         /* unlink the sub SHM */
@@ -969,13 +983,18 @@ sr_shmext_oper_get_sub_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del
     /* unlink the sub SHM (first, so that we can use xpath) */
     if ((err_info = sr_shmsub_unlink(conn->mod_shm.addr + shm_mod->name, "oper",
             sr_str_hash(conn->ext_shm.addr + shm_sub->xpath, xpath_sub->priority)))) {
-        goto cleanup;
+        return err_info;
     }
 
     /* unlink the sub data SHM */
     if ((err_info = sr_shmsub_data_unlink(conn->mod_shm.addr + shm_mod->name, "oper",
             sr_str_hash(conn->ext_shm.addr + shm_sub->xpath, xpath_sub->priority)))) {
-        goto cleanup;
+        return err_info;
+    }
+
+    /* EXT_HOLE WRITE LOCK */
+    if ((err_info = sr_rwlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock, SR_EXT_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL, NULL))) {
+        return err_info;
     }
 
     SR_LOG_DBG("#SHM before (removing xpath oper get sub)");
@@ -1000,7 +1019,9 @@ sr_shmext_oper_get_sub_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del
         sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
     }
 
-cleanup:
+    /* EXT_HOLE WRITE UNLOCK */
+    sr_rwunlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock, SR_EXT_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+
     return err_info;
 }
 
@@ -1182,9 +1203,15 @@ cleanup_unlock:
 static sr_error_info_t *
 sr_shmext_oper_poll_sub_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_idx)
 {
+    sr_error_info_t *err_info = NULL;
     sr_mod_oper_poll_sub_t *shm_sub;
 
     shm_sub = &((sr_mod_oper_poll_sub_t *)(conn->ext_shm.addr + shm_mod->oper_poll_subs))[del_idx];
+
+    /* EXT_HOLE WRITE LOCK */
+    if ((err_info = sr_rwlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock, SR_EXT_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL, NULL))) {
+        return err_info;
+    }
 
     SR_LOG_DBG("#SHM before (removing oper poll sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
@@ -1195,6 +1222,9 @@ sr_shmext_oper_poll_sub_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t de
 
     SR_LOG_DBG("#SHM after (removing oper poll sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
+
+    /* EXT_HOLE WRITE UNLOCK */
+    sr_rwunlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock, SR_EXT_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
 
     return NULL;
 }
@@ -1371,6 +1401,11 @@ sr_shmext_notif_sub_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_id
 
     shm_sub = &((sr_mod_notif_sub_t *)(conn->ext_shm.addr + shm_mod->notif_subs))[del_idx];
 
+    /* EXT_HOLE WRITE LOCK */
+    if ((err_info = sr_rwlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock, SR_EXT_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL, NULL))) {
+        return err_info;
+    }
+
     SR_LOG_DBG("#SHM before (removing notif sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
@@ -1380,6 +1415,9 @@ sr_shmext_notif_sub_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_id
 
     SR_LOG_DBG("#SHM after (removing notif sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
+
+    /* EXT_HOLE WRITE UNLOCK */
+    sr_rwunlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock, SR_EXT_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
 
     if (!shm_mod->notif_sub_count) {
         /* unlink the sub SHM */
@@ -1617,6 +1655,11 @@ sr_shmext_rpc_sub_free(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count, co
 
     shm_subs = (sr_mod_rpc_sub_t *)(conn->ext_shm.addr + *subs);
 
+    /* EXT_HOLE WRITE LOCK */
+    if ((err_info = sr_rwlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock, SR_EXT_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL, NULL))) {
+        return err_info;
+    }
+
     SR_LOG_DBG("#SHM before (removing rpc sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
@@ -1626,6 +1669,9 @@ sr_shmext_rpc_sub_free(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count, co
 
     SR_LOG_DBG("#SHM after (removing rpc sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
+
+    /* EXT_HOLE WRITE UNLOCK */
+    sr_rwunlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock, SR_EXT_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
 
     for (i = 0; i < *sub_count; ++i) {
         if (!shm_subs[i].cid) {
@@ -3105,8 +3151,16 @@ sr_shmext_oper_push_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *UNUS
     }
     SR_CHECK_INT_GOTO(i == shm_mod->oper_push_data_count, err_info, cleanup_ext_unlock);
 
+    /* EXT_HOLE WRITE LOCK */
+    if ((err_info = sr_rwlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock, SR_EXT_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL, NULL))) {
+        goto cleanup_ext_unlock;
+    }
+
     /* free the item */
     sr_shmrealloc_del(&conn->ext_shm, &shm_mod->oper_push_data, &shm_mod->oper_push_data_count, sizeof *oper_push, i, 0, 0);
+
+    /* EXT_HOLE WRITE UNLOCK */
+    sr_rwunlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock, SR_EXT_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
 
 cleanup_ext_unlock:
     /* EXT READ UNLOCK */
