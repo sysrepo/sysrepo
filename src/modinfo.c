@@ -1274,24 +1274,39 @@ sr_module_oper_data_load(struct sr_mod_info_mod_s *mod, sr_conn_ctx_t *conn, uin
         struct lyd_node **mod_oper_data, struct lyd_node **data)
 {
     sr_error_info_t *err_info = NULL;
-    sr_mod_oper_push_t *oper_push;
+    sr_mod_oper_push_t *oper_push = NULL, *oper_push_ext = NULL;
     struct lyd_node *mod_data = NULL, *next, *node;
     const struct lys_module *ly_mod;
     const char *xpath;
     struct ly_set *set;
-    uint32_t i, j, merge_opts;
+    uint32_t i, j, merge_opts, count;
     int last_sid = 0;
+    size_t oper_push_size;
 
-    /* EXT READ LOCK */
-    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 1, __func__))) {
-        return err_info;
+    count = mod->shm_mod->oper_push_data_count;
+    if (count) {
+        /* EXT READ LOCK */
+        if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 1, __func__))) {
+            return err_info;
+        }
+
+        oper_push_size = count * (sizeof *oper_push);
+
+        oper_push_ext = (sr_mod_oper_push_t *)(conn->ext_shm.addr + mod->shm_mod->oper_push_data);
+
+        oper_push = malloc(oper_push_size);
+        SR_CHECK_MEM_GOTO(!oper_push, err_info, cleanup_unlock);
+        memcpy(oper_push, oper_push_ext, oper_push_size);
+
+        /* EXT READ UNLOCK */
+        sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 1, __func__);
     }
 
-    oper_push = (sr_mod_oper_push_t *)(conn->ext_shm.addr + mod->shm_mod->oper_push_data);
-    for (i = 0; i < mod->shm_mod->oper_push_data_count; ++i) {
+    for (i = 0; i < count; ++i) {
         if (!sr_conn_is_alive(oper_push[i].cid)) {
-            /* EXT READ UNLOCK */
-            sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 1, __func__);
+            /* avoid holding onto malloc'd memory recursively */
+            free(oper_push);
+            oper_push = NULL;
 
             /* recover oper push data of all dead connections */
             if ((err_info = sr_shmmod_del_module_oper_data(conn, mod->ly_mod, &mod->state, mod->shm_mod, 1))) {
@@ -1316,7 +1331,7 @@ sr_module_oper_data_load(struct sr_mod_info_mod_s *mod, sr_conn_ctx_t *conn, uin
             /* load push oper data for the session */
             if ((err_info = sr_module_file_data_append(mod->ly_mod, mod->ds_handle, SR_DS_OPERATIONAL, oper_push[i].cid,
                     oper_push[i].sid, NULL, 0, &mod_data))) {
-                goto cleanup_unlock;
+                goto cleanup;
             }
         } else {
 use_mod_oper_data:
@@ -1344,12 +1359,12 @@ use_mod_oper_data:
 
             /* select the nodes to remove */
             if ((err_info = sr_lyd_find_xpath(*data, xpath, &set))) {
-                goto cleanup_unlock;
+                goto cleanup;
             }
 
             /* get rid of all redundant results that are descendants of another result */
             if ((err_info = sr_xpath_set_filter_subtrees(set))) {
-                goto cleanup_unlock;
+                goto cleanup;
             }
 
             /* free all the selected subtrees */
@@ -1366,7 +1381,7 @@ use_mod_oper_data:
             merge_opts = LYD_MERGE_WITH_FLAGS;
         }
         if ((err_info = sr_lyd_merge_module(data, mod_data, mod->ly_mod, sr_oper_data_merge_cb, NULL, merge_opts))) {
-            goto cleanup_unlock;
+            goto cleanup;
         }
         mod_data = NULL;
 
@@ -1382,12 +1397,15 @@ use_mod_oper_data:
         goto use_mod_oper_data;
     }
 
+cleanup:
+    lyd_free_siblings(mod_data);
+    free(oper_push);
+    return err_info;
+
 cleanup_unlock:
     /* EXT READ UNLOCK */
     sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 1, __func__);
 
-cleanup:
-    lyd_free_siblings(mod_data);
     return err_info;
 }
 
