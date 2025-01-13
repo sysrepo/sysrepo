@@ -4,8 +4,8 @@
  * @brief sysrepo API routines
  *
  * @copyright
- * Copyright (c) 2018 - 2024 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2024 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2025 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2025 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -1541,6 +1541,9 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
     SR_CONN_MAIN_SHM(conn)->content_id = ly_ctx_get_modules_hash(new_ctx);
     sr_conn_ctx_switch(conn, &new_ctx, &old_ctx);
 
+    /* send the notification */
+    sr_generate_notif_module_change_installed(conn, *new_mods, *new_mod_count);
+
     goto cleanup;
 
 error:
@@ -1859,6 +1862,9 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
     SR_CONN_MAIN_SHM(conn)->content_id = ly_ctx_get_modules_hash(new_ctx);
     sr_conn_ctx_switch(conn, &new_ctx, &old_ctx);
 
+    /* send the notification */
+    sr_generate_notif_module_change_uninstalled(conn, &mod_set);
+
 cleanup:
     sr_lycc_update_data_clear(&data_info);
     lyd_free_siblings(sr_mods);
@@ -2103,6 +2109,9 @@ sr_update_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *se
     /* update content ID and safely switch the context */
     SR_CONN_MAIN_SHM(conn)->content_id = ly_ctx_get_modules_hash(new_ctx);
     sr_conn_ctx_switch(conn, &new_ctx, &old_ctx);
+
+    /* send the notification */
+    sr_generate_notif_module_change_updated(conn, &old_mod_set, &upd_mod_set);
 
 cleanup:
     sr_lycc_update_data_clear(&data_info);
@@ -2606,6 +2615,9 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     SR_CONN_MAIN_SHM(conn)->content_id = ly_ctx_get_modules_hash(new_ctx);
     sr_conn_ctx_switch(conn, &new_ctx, &old_ctx);
 
+    /* send the notification */
+    sr_generate_notif_module_change_feature(conn, ly_mod, feature_name, enable);
+
 cleanup:
     sr_lycc_update_data_clear(&data_info);
     lyd_free_siblings(sr_mods);
@@ -2734,6 +2746,8 @@ sr_is_module_internal(const struct lys_module *ly_mod)
     } else if (!strcmp(ly_mod->name, "sysrepo-monitoring")) {
         return 1;
     } else if (!strcmp(ly_mod->name, "sysrepo-plugind")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "sysrepo-notifications")) {
         return 1;
     } else if (!strcmp(ly_mod->name, "ietf-netconf-acm")) {
         return 1;
@@ -7407,7 +7421,7 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
     }
 
     /* store the notification for a replay */
-    if ((err_info = sr_replay_store(session, notif_top, notif_ts_real))) {
+    if ((err_info = sr_replay_store(session->conn, session, notif_top, notif_ts_real))) {
         goto cleanup;
     }
 

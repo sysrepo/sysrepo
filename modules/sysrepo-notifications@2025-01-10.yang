@@ -1,0 +1,97 @@
+module sysrepo-notifications {
+    namespace "http://www.sysrepo.org/yang/sysrepo-notifications";
+    prefix srn;
+
+    yang-version 1.1;
+
+    import ietf-yang-library {
+        prefix yanglib;
+    }
+
+    organization
+        "CESNET";
+
+    contact
+        "Author: Michal Vasko
+                 <mvasko@cesnet.cz>";
+
+    description
+        "Sysrepo YANG notifications for various events.";
+
+    revision "2025-01-10" {
+        description
+            "Initial revision.";
+    }
+
+    typedef module-revision {
+        type union {
+            type yanglib:revision-identifier;
+            type string {
+                length "0";
+            }
+        }
+        description
+            "The YANG module revision date.
+             A zero-length string is used if no revision statement
+             is present in the YANG module.";
+    }
+
+    notification module-change {
+        description
+            "YANG module change occurred.";
+
+        leaf name {
+            type string;
+            mandatory true;
+            description
+                "Name of the changed module.";
+        }
+
+        leaf revision {
+            type module-revision;
+            mandatory true;
+            description
+                "Revision of the module.";
+        }
+
+        leaf change {
+            type enumeration {
+                enum installed {
+                    description
+                        "New module was installed.";
+                }
+                enum uninstalled {
+                    description
+                        "Module was uninstalled.";
+                }
+                enum updated {
+                    description
+                        "Module was updated to a newer revision.";
+                }
+                enum feature-enabled {
+                    description
+                        "Feature was enabled in a module.";
+                }
+                enum feature-disabled {
+                    description
+                        "Feature was disabled in a module.";
+                }
+            }
+            mandatory true;
+            description
+                "Type of the module change.";
+        }
+
+        leaf old-revision {
+            when "../change = 'updated'";
+            type module-revision;
+            mandatory true;
+        }
+
+        leaf feature-name {
+            when "../change = ('feature-enabled' or 'feature-disabled')";
+            type string;
+            mandatory true;
+        }
+    }
+}

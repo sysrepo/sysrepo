@@ -55,10 +55,12 @@
 #include "modinfo.h"
 #include "plugins_datastore.h"
 #include "plugins_notification.h"
+#include "replay.h"
 #include "shm_ext.h"
 #include "shm_main.h"
 #include "shm_mod.h"
 #include "shm_sub.h"
+#include "subscr.h"
 #include "sysrepo.h"
 
 #define SR_IS_YANG_ID_CHAR(c) (isalpha(c) || isdigit(c) || ((c) == '_') || ((c) == '-') || ((c) == '.'))
@@ -965,9 +967,9 @@ sr_module_default_mode(const struct lys_module *ly_mod)
     if (!strcmp(ly_mod->name, "sysrepo")) {
         return SR_INTMOD_MAIN_FILE_PERM;
     } else if (sr_is_module_internal(ly_mod)) {
-        if (!strcmp(ly_mod->name, "sysrepo-plugind") || !strcmp(ly_mod->name, "ietf-yang-schema-mount") ||
-                !strcmp(ly_mod->name, "ietf-yang-library") || !strcmp(ly_mod->name, "ietf-netconf-notifications") ||
-                !strcmp(ly_mod->name, "ietf-netconf")) {
+        if (!strcmp(ly_mod->name, "sysrepo-plugind") || !strcmp(ly_mod->name, "sysrepo-notifications") ||
+                !strcmp(ly_mod->name, "ietf-yang-schema-mount") || !strcmp(ly_mod->name, "ietf-yang-library") ||
+                !strcmp(ly_mod->name, "ietf-netconf-notifications") || !strcmp(ly_mod->name, "ietf-netconf")) {
             return SR_INTMOD_WITHDATA_FILE_PERM;
         } else if (!strcmp(ly_mod->name, "ietf-netconf-acm") || !strcmp(ly_mod->name, "sysrepo-monitoring")) {
             return SR_INTMOD_NACM_SRMON_FILE_PERM;
@@ -5550,4 +5552,291 @@ sr_is_prod_env(void)
         sr_prod_env = !getenv("SR_ENV_RUN_TESTS");
     }
     return sr_prod_env;
+}
+
+/**
+ * @brief Check whether a 'sysrepo-notifications' notification even need to be generated.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] shm_mod SHM mod.
+ * @param[out] subs_or_replay Set if there are any subscribers or replay is enabled for the module.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_generate_notif_has_subs_or_replay(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, int *subs_or_replay)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_mod_notif_sub_t *notif_subs;
+    uint32_t notif_sub_count;
+
+    /* EXT READ LOCK */
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
+        goto cleanup;
+    }
+
+    /* get subscriber count */
+    err_info = sr_notif_find_subscriber(conn, "sysrepo-notifications", &notif_subs, &notif_sub_count, NULL);
+
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
+
+    if (err_info) {
+        goto cleanup;
+    }
+
+    /* check replay support and subscribers */
+    if (!shm_mod->replay_supp && !notif_sub_count) {
+        /* no subscribers and replay off */
+        *subs_or_replay = 0;
+    } else {
+        *subs_or_replay = 1;
+    }
+
+cleanup:
+    return err_info;
+}
+
+/**
+ * @brief Send a generated notification.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] shm_mod SHM mod.
+ * @param[in] notif Notification to send.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_generate_notif_send(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const struct lyd_node *notif)
+{
+    sr_error_info_t *err_info = NULL;
+    struct timespec notif_ts_mono, notif_ts_real;
+
+    /* NOTIF SUB READ LOCK */
+    if ((err_info = sr_rwlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
+            __func__, NULL, NULL))) {
+        goto cleanup;
+    }
+
+    /* remember when the notification was generated */
+    sr_timeouttime_get(&notif_ts_mono, 0);
+    sr_realtime_get(&notif_ts_real);
+
+    /* send the notification (non-validated, must be valid) */
+    err_info = sr_shmsub_notif_notify(conn, notif, notif_ts_mono, notif_ts_real, NULL, NULL, 0, 0);
+
+    /* NOTIF SUB READ UNLOCK */
+    sr_rwunlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+
+    if (err_info) {
+        goto cleanup;
+    }
+
+    /* store the notification for a replay */
+    if ((err_info = sr_replay_store(conn, NULL, notif, notif_ts_real))) {
+        goto cleanup;
+    }
+
+cleanup:
+    return err_info;
+}
+
+void
+sr_generate_notif_module_change_installed(sr_conn_ctx_t *conn, sr_int_install_mod_t *new_mods, uint32_t new_mod_count)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *notif = NULL;
+    sr_mod_t *shm_mod;
+    uint32_t i;
+    int subs_or_replay;
+
+    /* get this module */
+    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), "sysrepo-notifications");
+    SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
+
+    /* check whether to even generate any notifications */
+    if ((err_info = sr_generate_notif_has_subs_or_replay(conn, shm_mod, &subs_or_replay)) || !subs_or_replay) {
+        goto cleanup;
+    }
+
+    for (i = 0; i < new_mod_count; ++i) {
+        /* generate the notifcation */
+        if ((err_info = sr_lyd_new_path(NULL, conn->ly_ctx, "/sysrepo-notifications:module-change", NULL, 0, NULL,
+                &notif))) {
+            goto cleanup;
+        }
+        if ((err_info = sr_lyd_new_term(notif, NULL, "name", new_mods[i].ly_mod->name))) {
+            goto cleanup;
+        }
+        if ((err_info = sr_lyd_new_term(notif, NULL, "revision", new_mods[i].ly_mod->revision))) {
+            goto cleanup;
+        }
+        if ((err_info = sr_lyd_new_term(notif, NULL, "change", "installed"))) {
+            goto cleanup;
+        }
+
+        /* send it */
+        if ((err_info = sr_generate_notif_send(conn, shm_mod, notif))) {
+            goto cleanup;
+        }
+
+        lyd_free_siblings(notif);
+        notif = NULL;
+    }
+
+cleanup:
+    lyd_free_siblings(notif);
+    sr_errinfo_free(&err_info);
+}
+
+void
+sr_generate_notif_module_change_uninstalled(sr_conn_ctx_t *conn, struct ly_set *mod_set)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *notif = NULL;
+    const struct lys_module *ly_mod;
+    sr_mod_t *shm_mod;
+    uint32_t i;
+    int subs_or_replay;
+
+    /* get this module */
+    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), "sysrepo-notifications");
+    SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
+
+    /* check whether to even generate any notifications */
+    if ((err_info = sr_generate_notif_has_subs_or_replay(conn, shm_mod, &subs_or_replay)) || !subs_or_replay) {
+        goto cleanup;
+    }
+
+    for (i = 0; i < mod_set->count; ++i) {
+        ly_mod = mod_set->objs[i];
+
+        /* generate the notifcation */
+        if ((err_info = sr_lyd_new_path(NULL, conn->ly_ctx, "/sysrepo-notifications:module-change", NULL, 0, NULL,
+                &notif))) {
+            goto cleanup;
+        }
+        if ((err_info = sr_lyd_new_term(notif, NULL, "name", ly_mod->name))) {
+            goto cleanup;
+        }
+        if ((err_info = sr_lyd_new_term(notif, NULL, "revision", ly_mod->revision))) {
+            goto cleanup;
+        }
+        if ((err_info = sr_lyd_new_term(notif, NULL, "change", "uninstalled"))) {
+            goto cleanup;
+        }
+
+        /* send it */
+        if ((err_info = sr_generate_notif_send(conn, shm_mod, notif))) {
+            goto cleanup;
+        }
+
+        lyd_free_siblings(notif);
+        notif = NULL;
+    }
+
+cleanup:
+    lyd_free_siblings(notif);
+    sr_errinfo_free(&err_info);
+}
+
+void
+sr_generate_notif_module_change_updated(sr_conn_ctx_t *conn, struct ly_set *old_mod_set, struct ly_set *upd_mod_set)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *notif = NULL;
+    const struct lys_module *ly_mod;
+    sr_mod_t *shm_mod;
+    uint32_t i;
+    int subs_or_replay;
+
+    /* get this module */
+    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), "sysrepo-notifications");
+    SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
+
+    /* check whether to even generate any notifications */
+    if ((err_info = sr_generate_notif_has_subs_or_replay(conn, shm_mod, &subs_or_replay)) || !subs_or_replay) {
+        goto cleanup;
+    }
+
+    for (i = 0; i < upd_mod_set->count; ++i) {
+        ly_mod = upd_mod_set->objs[i];
+
+        /* generate the notifcation */
+        if ((err_info = sr_lyd_new_path(NULL, conn->ly_ctx, "/sysrepo-notifications:module-change", NULL, 0, NULL,
+                &notif))) {
+            goto cleanup;
+        }
+        if ((err_info = sr_lyd_new_term(notif, NULL, "name", ly_mod->name))) {
+            goto cleanup;
+        }
+        if ((err_info = sr_lyd_new_term(notif, NULL, "revision", ly_mod->revision))) {
+            goto cleanup;
+        }
+        if ((err_info = sr_lyd_new_term(notif, NULL, "change", "updated"))) {
+            goto cleanup;
+        }
+
+        ly_mod = old_mod_set->objs[i];
+        if ((err_info = sr_lyd_new_term(notif, NULL, "old-revision", ly_mod->revision))) {
+            goto cleanup;
+        }
+
+        /* send it */
+        if ((err_info = sr_generate_notif_send(conn, shm_mod, notif))) {
+            goto cleanup;
+        }
+
+        lyd_free_siblings(notif);
+        notif = NULL;
+    }
+
+cleanup:
+    lyd_free_siblings(notif);
+    sr_errinfo_free(&err_info);
+}
+
+void
+sr_generate_notif_module_change_feature(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, const char *feature_name,
+        int enabled)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *notif = NULL;
+    sr_mod_t *shm_mod;
+    int subs_or_replay;
+
+    /* get this module */
+    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), "sysrepo-notifications");
+    SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
+
+    /* check whether to even generate any notifications */
+    if ((err_info = sr_generate_notif_has_subs_or_replay(conn, shm_mod, &subs_or_replay)) || !subs_or_replay) {
+        goto cleanup;
+    }
+
+    /* generate the notifcation */
+    if ((err_info = sr_lyd_new_path(NULL, conn->ly_ctx, "/sysrepo-notifications:module-change", NULL, 0, NULL,
+            &notif))) {
+        goto cleanup;
+    }
+    if ((err_info = sr_lyd_new_term(notif, NULL, "name", ly_mod->name))) {
+        goto cleanup;
+    }
+    if ((err_info = sr_lyd_new_term(notif, NULL, "revision", ly_mod->revision))) {
+        goto cleanup;
+    }
+    if ((err_info = sr_lyd_new_term(notif, NULL, "change", enabled ? "feature-enabled" : "feature-disabled"))) {
+        goto cleanup;
+    }
+
+    if ((err_info = sr_lyd_new_term(notif, NULL, "feature-name", feature_name))) {
+        goto cleanup;
+    }
+
+    /* send it */
+    if ((err_info = sr_generate_notif_send(conn, shm_mod, notif))) {
+        goto cleanup;
+    }
+
+cleanup:
+    lyd_free_siblings(notif);
+    sr_errinfo_free(&err_info);
 }

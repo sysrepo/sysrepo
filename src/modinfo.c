@@ -3824,7 +3824,7 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     }
 
     /* store the notification for a replay */
-    if ((err_info = sr_replay_store(session, notif, notif_ts_real))) {
+    if ((err_info = sr_replay_store(mod_info->conn, session, notif, notif_ts_real))) {
         goto cleanup;
     }
 

@@ -4,8 +4,8 @@
  * @brief common routines header
  *
  * @copyright
- * Copyright (c) 2018 - 2023 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2023 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2025 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2025 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -1370,5 +1370,43 @@ sr_error_info_t *sr_conn_info(sr_cid_t **cids, pid_t **pids, uint32_t *count, sr
  * @return 1 if SR_ENV_RUN_TESTS is set in the env, 0 otherwise.
  */
 int sr_is_prod_env(void);
+
+/**
+ * @brief Generate the 'module-change' notification for newly installed modules.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] new_mods Array of new modules.
+ * @param[in] new_mod_count Count of @p new_mods.
+ */
+void sr_generate_notif_module_change_installed(sr_conn_ctx_t *conn, sr_int_install_mod_t *new_mods,
+        uint32_t new_mod_count);
+
+/**
+ * @brief Generate the 'module-change' notification for uninstalled modules.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] mod_set Set of uninstalled modules.
+ */
+void sr_generate_notif_module_change_uninstalled(sr_conn_ctx_t *conn, struct ly_set *mod_set);
+
+/**
+ * @brief Generate the 'module-change' notification for updated modules.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] old_mod_set Set of old modules.
+ * @param[in] upd_mod_set Set of updated modules.
+ */
+void sr_generate_notif_module_change_updated(sr_conn_ctx_t *conn, struct ly_set *old_mod_set, struct ly_set *upd_mod_set);
+
+/**
+ * @brief Generate the 'module-change' notification for a module feature change.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] ly_mod Changed module.
+ * @param[in] feature_name Changed feature name.
+ * @param[in] enabled Whether the feature was enabled or disabled.
+ */
+void sr_generate_notif_module_change_feature(sr_conn_ctx_t *conn, const struct lys_module *ly_mod,
+        const char *feature_name, int enabled);
 
 #endif /* _COMMON_H */

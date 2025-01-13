@@ -127,7 +127,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_replay_store(sr_session_ctx_t *sess, const struct lyd_node *notif, struct timespec notif_ts)
+sr_replay_store(sr_conn_ctx_t *conn, sr_session_ctx_t *sess, const struct lyd_node *notif, struct timespec notif_ts)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
@@ -146,7 +146,7 @@ sr_replay_store(sr_session_ctx_t *sess, const struct lyd_node *notif, struct tim
     SR_CHECK_INT_RET(notif_op->schema->nodetype != LYS_NOTIF, err_info);
 
     /* find SHM mod for replay lock and check if replay is even supported */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(sess->conn), ly_mod->name);
+    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), ly_mod->name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
     if (!shm_mod->replay_supp) {
@@ -154,32 +154,34 @@ sr_replay_store(sr_session_ctx_t *sess, const struct lyd_node *notif, struct tim
         return NULL;
     }
 
-    /* MUTEX LOCK */
-    sr_timeouttime_get(&timeout_ts, SR_NOTIF_BUF_LOCK_TIMEOUT);
-    if ((r = pthread_mutex_clocklock(&sess->notif_buf.lock.mutex, COMPAT_CLOCK_ID, &timeout_ts))) {
-        SR_ERRINFO_LOCK(&err_info, __func__, r);
-        return err_info;
-    }
+    if (sess) {
+        /* MUTEX LOCK */
+        sr_timeouttime_get(&timeout_ts, SR_NOTIF_BUF_LOCK_TIMEOUT);
+        if ((r = pthread_mutex_clocklock(&sess->notif_buf.lock.mutex, COMPAT_CLOCK_ID, &timeout_ts))) {
+            SR_ERRINFO_LOCK(&err_info, __func__, r);
+            return err_info;
+        }
 
-    if (sess->notif_buf.thread_running) {
-        /* store the notification in the buffer */
-        has_buf = 1;
-        err_info = sr_notif_buf_store(sess, notif, notif_ts);
+        if (sess->notif_buf.thread_running) {
+            /* store the notification in the buffer */
+            has_buf = 1;
+            err_info = sr_notif_buf_store(sess, notif, notif_ts);
 
-        /* broadcast condition */
-        sr_cond_broadcast(&sess->notif_buf.lock.cond);
-    }
+            /* broadcast condition */
+            sr_cond_broadcast(&sess->notif_buf.lock.cond);
+        }
 
-    /* MUTEX UNLOCK */
-    pthread_mutex_unlock(&sess->notif_buf.lock.mutex);
+        /* MUTEX UNLOCK */
+        pthread_mutex_unlock(&sess->notif_buf.lock.mutex);
 
-    if (err_info) {
-        return err_info;
+        if (err_info) {
+            return err_info;
+        }
     }
 
     if (!has_buf) {
         /* write the notification to a replay file */
-        if ((err_info = sr_notif_write(sess->conn, shm_mod, notif, notif_ts))) {
+        if ((err_info = sr_notif_write(conn, shm_mod, notif, notif_ts))) {
             return err_info;
         }
     }
