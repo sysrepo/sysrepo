@@ -190,6 +190,10 @@ sr_shmext_open(sr_shm_t *shm, int zero)
     }
     if (zero) {
         ((sr_ext_shm_t *)shm->addr)->first_hole_off = 0;
+
+        /* check that ext SHM is properly initialized */
+        assert(shm->size == SR_SHM_SIZE(sizeof(sr_ext_shm_t)));
+        assert(!sr_ext_hole_next(NULL, ((sr_ext_shm_t *)shm->addr)));
     }
 
     return NULL;

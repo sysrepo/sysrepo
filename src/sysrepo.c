@@ -199,7 +199,6 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     struct lyd_node *sr_mods = NULL;
     int created = 0, initialized = 0;
     sr_main_shm_t *main_shm;
-    sr_ext_hole_t *hole;
     const char *rpc_path;
     sr_rpc_t *shm_rpc;
 
@@ -263,21 +262,6 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
         /* free sr_mods, conn ly_ctx may be recompiled later */
         lyd_free_all(sr_mods);
         sr_mods = NULL;
-
-        assert((conn->ext_shm.size == SR_SHM_SIZE(sizeof(sr_ext_shm_t))) || sr_ext_hole_next(NULL, SR_CONN_EXT_SHM(conn)));
-        if ((hole = sr_ext_hole_next(NULL, SR_CONN_EXT_SHM(conn)))) {
-            /* there is something in ext SHM, is it only a single memory hole? */
-            if (conn->ext_shm.size != SR_SHM_SIZE(sizeof(sr_ext_shm_t)) + hole->size) {
-                /* no, this should never happen */
-                SR_ERRINFO_INT(&err_info);
-            }
-
-            /* clear ext SHM */
-            if ((err_info = sr_shm_remap(&conn->ext_shm, SR_SHM_SIZE(sizeof(sr_ext_shm_t))))) {
-                goto cleanup_unlock;
-            }
-            SR_CONN_EXT_SHM(conn)->first_hole_off = 0;
-        }
 
         /* add internal RPC subscription into ext SHM */
         rpc_path = SR_RPC_FACTORY_RESET_PATH;
