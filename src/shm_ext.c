@@ -697,8 +697,8 @@ sr_shmext_change_sub_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t
 
     shm_sub = &((sr_mod_change_sub_t *)(conn->ext_shm.addr + shm_mod->change_sub[ds].subs))[del_idx];
 
-    /* EXT_HOLE WRITE LOCK */
-    if ((err_info = sr_rwlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock, SR_EXT_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL, NULL))) {
+    /* EXT_HOLE LOCK */
+    if ((err_info = sr_mlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock, SR_EXT_LOCK_TIMEOUT, __func__, NULL, NULL))) {
         return err_info;
     }
 
@@ -712,8 +712,8 @@ sr_shmext_change_sub_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t
     SR_LOG_DBG("#SHM after (removing change sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
-    /* EXT_HOLE WRITE UNLOCK */
-    sr_rwunlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock, SR_EXT_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    /* EXT_HOLE UNLOCK */
+    sr_munlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock);
 
     if (!shm_mod->change_sub[ds].sub_count) {
         /* unlink the sub SHM */
@@ -992,8 +992,8 @@ sr_shmext_oper_get_sub_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del
         return err_info;
     }
 
-    /* EXT_HOLE WRITE LOCK */
-    if ((err_info = sr_rwlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock, SR_EXT_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL, NULL))) {
+    /* EXT_HOLE LOCK */
+    if ((err_info = sr_mlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock, SR_EXT_LOCK_TIMEOUT, __func__, NULL, NULL))) {
         return err_info;
     }
 
@@ -1019,8 +1019,8 @@ sr_shmext_oper_get_sub_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del
         sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
     }
 
-    /* EXT_HOLE WRITE UNLOCK */
-    sr_rwunlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock, SR_EXT_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    /* EXT_HOLE UNLOCK */
+    sr_munlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock);
 
     return err_info;
 }
@@ -1208,8 +1208,8 @@ sr_shmext_oper_poll_sub_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t de
 
     shm_sub = &((sr_mod_oper_poll_sub_t *)(conn->ext_shm.addr + shm_mod->oper_poll_subs))[del_idx];
 
-    /* EXT_HOLE WRITE LOCK */
-    if ((err_info = sr_rwlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock, SR_EXT_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL, NULL))) {
+    /* EXT_HOLE LOCK */
+    if ((err_info = sr_mlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock, SR_EXT_LOCK_TIMEOUT, __func__, NULL, NULL))) {
         return err_info;
     }
 
@@ -1223,8 +1223,8 @@ sr_shmext_oper_poll_sub_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t de
     SR_LOG_DBG("#SHM after (removing oper poll sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
-    /* EXT_HOLE WRITE UNLOCK */
-    sr_rwunlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock, SR_EXT_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    /* EXT_HOLE UNLOCK */
+    sr_munlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock);
 
     return NULL;
 }
@@ -1401,8 +1401,8 @@ sr_shmext_notif_sub_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_id
 
     shm_sub = &((sr_mod_notif_sub_t *)(conn->ext_shm.addr + shm_mod->notif_subs))[del_idx];
 
-    /* EXT_HOLE WRITE LOCK */
-    if ((err_info = sr_rwlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock, SR_EXT_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL, NULL))) {
+    /* EXT_HOLE LOCK */
+    if ((err_info = sr_mlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock, SR_EXT_LOCK_TIMEOUT, __func__, NULL, NULL))) {
         return err_info;
     }
 
@@ -1416,8 +1416,8 @@ sr_shmext_notif_sub_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_id
     SR_LOG_DBG("#SHM after (removing notif sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
-    /* EXT_HOLE WRITE UNLOCK */
-    sr_rwunlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock, SR_EXT_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    /* EXT_HOLE UNLOCK */
+    sr_munlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock);
 
     if (!shm_mod->notif_sub_count) {
         /* unlink the sub SHM */
@@ -1656,7 +1656,7 @@ sr_shmext_rpc_sub_free(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count, co
     shm_subs = (sr_mod_rpc_sub_t *)(conn->ext_shm.addr + *subs);
 
     /* EXT_HOLE WRITE LOCK */
-    if ((err_info = sr_rwlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock, SR_EXT_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL, NULL))) {
+    if ((err_info = sr_mlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock, SR_EXT_LOCK_TIMEOUT, __func__, NULL, NULL))) {
         return err_info;
     }
 
@@ -1670,8 +1670,8 @@ sr_shmext_rpc_sub_free(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count, co
     SR_LOG_DBG("#SHM after (removing rpc sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
-    /* EXT_HOLE WRITE UNLOCK */
-    sr_rwunlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock, SR_EXT_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    /* EXT_HOLE UNLOCK */
+    sr_munlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock);
 
     for (i = 0; i < *sub_count; ++i) {
         if (!shm_subs[i].cid) {
@@ -3151,16 +3151,16 @@ sr_shmext_oper_push_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *UNUS
     }
     SR_CHECK_INT_GOTO(i == shm_mod->oper_push_data_count, err_info, cleanup_ext_unlock);
 
-    /* EXT_HOLE WRITE LOCK */
-    if ((err_info = sr_rwlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock, SR_EXT_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL, NULL))) {
+    /* EXT_HOLE LOCK */
+    if ((err_info = sr_mlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock, SR_EXT_LOCK_TIMEOUT, __func__, NULL, NULL))) {
         goto cleanup_ext_unlock;
     }
 
     /* free the item */
     sr_shmrealloc_del(&conn->ext_shm, &shm_mod->oper_push_data, &shm_mod->oper_push_data_count, sizeof *oper_push, i, 0, 0);
 
-    /* EXT_HOLE WRITE UNLOCK */
-    sr_rwunlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock, SR_EXT_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    /* EXT_HOLE UNLOCK */
+    sr_munlock(&SR_CONN_MAIN_SHM(conn)->ext_hole_lock);
 
 cleanup_ext_unlock:
     /* EXT READ UNLOCK */

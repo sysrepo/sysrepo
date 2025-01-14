@@ -499,7 +499,7 @@ sr_shmmain_open(sr_shm_t *shm, int *created)
         if ((err_info = sr_rwlock_init(&main_shm->ext_lock, 1))) {
             goto cleanup;
         }
-        if ((err_info = sr_rwlock_init(&main_shm->ext_hole_lock, 1))) {
+        if ((err_info = sr_mutex_init(&main_shm->ext_hole_lock, 1))) {
             goto cleanup;
         }
         if ((err_info = sr_rwlock_init(&main_shm->context_lock, 1))) {
