@@ -4,8 +4,8 @@
  * @brief routines for working with modinfo structure
  *
  * @copyright
- * Copyright (c) 2018 - 2023 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2023 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2025 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2025 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -1254,49 +1254,69 @@ sr_module_oper_data_load(struct sr_mod_info_mod_s *mod, sr_conn_ctx_t *conn, uin
         struct lyd_node **mod_oper_data, struct lyd_node **data)
 {
     sr_error_info_t *err_info = NULL;
-    sr_mod_oper_push_t *oper_push;
+    sr_mod_oper_push_t *oper_push_dup = NULL, *oper_push_ext;
     struct lyd_node *mod_data = NULL, *next, *node;
     const struct lys_module *ly_mod;
     const char *xpath;
     struct ly_set *set;
-    uint32_t i, j, merge_opts;
-    int last_sid = 0;
+    uint32_t i, j, merge_opts, oper_push_count = 0;
+    int last_sid = 0, dead_cid = 0;
 
     /* EXT READ LOCK */
     if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 1, __func__))) {
-        return err_info;
+        goto cleanup;
     }
 
-    oper_push = (sr_mod_oper_push_t *)(conn->ext_shm.addr + mod->shm_mod->oper_push_data);
-    for (i = 0; i < mod->shm_mod->oper_push_data_count; ++i) {
-        if (!sr_conn_is_alive(oper_push[i].cid)) {
-            /* EXT READ UNLOCK */
-            sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 1, __func__);
-
-            /* recover oper push data of all dead connections */
-            if ((err_info = sr_shmmod_del_module_oper_data(conn, mod->ly_mod, &mod->state, mod->shm_mod, 1))) {
-                goto cleanup;
+    if (mod->shm_mod->oper_push_data_count) {
+        /* make a local copy of the array, with only alive connections */
+        oper_push_dup = malloc(mod->shm_mod->oper_push_data_count * sizeof *oper_push_dup);
+        if (!oper_push_dup) {
+            SR_ERRINFO_MEM(&err_info);
+        } else {
+            oper_push_ext = (sr_mod_oper_push_t *)(conn->ext_shm.addr + mod->shm_mod->oper_push_data);
+            for (i = 0; i < mod->shm_mod->oper_push_data_count; ++i) {
+                if (!sr_conn_is_alive(oper_push_ext[i].cid)) {
+                    /* remember to remove the dead connections */
+                    dead_cid = 1;
+                } else {
+                    oper_push_dup[oper_push_count] = oper_push_ext[i];
+                    ++oper_push_count;
+                }
             }
+        }
+    }
 
-            /* call the function again */
-            err_info = sr_module_oper_data_load(mod, conn, sid, mod_oper_data, data);
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 1, __func__);
+
+    if (err_info) {
+        goto cleanup;
+    }
+
+    if (dead_cid) {
+        /* recover oper push data of all dead connections */
+        if ((err_info = sr_shmmod_del_module_oper_data(conn, mod->ly_mod, &mod->state, mod->shm_mod, 1))) {
             goto cleanup;
-        } else if (!oper_push[i].has_data) {
+        }
+    }
+
+    for (i = 0; i < oper_push_count; ++i) {
+        if (!oper_push_dup[i].has_data) {
             /* no push oper data */
             continue;
         }
 
         /* push data entries are ordered */
-        assert(!i || (oper_push[i].order > oper_push[i - 1].order));
+        assert(!i || (oper_push_dup[i].order > oper_push_dup[i - 1].order));
 
-        if (oper_push[i].sid == sid) {
+        if (oper_push_dup[i].sid == sid) {
             last_sid = 1;
         }
         if (!last_sid || !mod_oper_data) {
             /* load push oper data for the session */
-            if ((err_info = sr_module_file_data_append(mod->ly_mod, mod->ds_handle, SR_DS_OPERATIONAL, oper_push[i].cid,
-                    oper_push[i].sid, NULL, 0, &mod_data))) {
-                goto cleanup_unlock;
+            if ((err_info = sr_module_file_data_append(mod->ly_mod, mod->ds_handle, SR_DS_OPERATIONAL,
+                    oper_push_dup[i].cid, oper_push_dup[i].sid, NULL, 0, &mod_data))) {
+                goto cleanup;
             }
         } else {
 use_mod_oper_data:
@@ -1324,12 +1344,12 @@ use_mod_oper_data:
 
             /* select the nodes to remove */
             if ((err_info = sr_lyd_find_xpath(*data, xpath, &set))) {
-                goto cleanup_unlock;
+                goto cleanup;
             }
 
             /* get rid of all redundant results that are descendants of another result */
             if ((err_info = sr_xpath_set_filter_subtrees(set))) {
-                goto cleanup_unlock;
+                goto cleanup;
             }
 
             /* free all the selected subtrees */
@@ -1346,7 +1366,7 @@ use_mod_oper_data:
             merge_opts = LYD_MERGE_WITH_FLAGS;
         }
         if ((err_info = sr_lyd_merge_module(data, mod_data, mod->ly_mod, sr_oper_data_merge_cb, NULL, merge_opts))) {
-            goto cleanup_unlock;
+            goto cleanup;
         }
         mod_data = NULL;
 
@@ -1362,11 +1382,8 @@ use_mod_oper_data:
         goto use_mod_oper_data;
     }
 
-cleanup_unlock:
-    /* EXT READ UNLOCK */
-    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 1, __func__);
-
 cleanup:
+    free(oper_push_dup);
     lyd_free_siblings(mod_data);
     return err_info;
 }
