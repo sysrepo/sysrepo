@@ -3819,8 +3819,15 @@ cleanup:
     return err_info;
 }
 
-static
-sr_error_info_t *
+/**
+ * @brief Update push oper mod data in a session, add a new module if not yet present.
+ *
+ * @param[in] sess Session to update.
+ * @param[in] mod_name Module name.
+ * @param[in] has_data Flag to store.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
 sr_modinfo_push_oper_mod_update_sess(sr_session_ctx_t *sess, const char *mod_name, int has_data)
 {
     sr_error_info_t *err_info = NULL;
