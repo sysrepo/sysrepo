@@ -1476,8 +1476,8 @@ sr_shmext_rpc_sub_remove_dead(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_co
     sr_mod_rpc_sub_t *shm_sub;
     char *path = NULL;
 
-    /* EXT WRITE LOCK */
-    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_WRITE, 1, __func__))) {
+    /* EXT READ LOCK */
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 1, __func__))) {
         sr_errinfo_free(&err_info);
         return;
     }
@@ -1502,8 +1502,8 @@ sr_shmext_rpc_sub_remove_dead(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_co
         path = NULL;
     }
 
-    /* EXT WRITE UNLOCK */
-    sr_shmext_conn_remap_unlock(conn, SR_LOCK_WRITE, 1, __func__);
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 1, __func__);
 }
 
 sr_error_info_t *
