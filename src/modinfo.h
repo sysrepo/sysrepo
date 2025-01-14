@@ -50,6 +50,7 @@ struct sr_mod_info_s {
     struct lyd_node *data;      /**< Data tree. */
     int data_cached;            /**< Whether the data are actually cached. */
     sr_conn_ctx_t *conn;        /**< Associated connection. */
+    uint32_t operation_id;      /**< ID of the current operation for all the callbacks. */
 
     struct sr_mod_info_mod_s {
         sr_mod_t *shm_mod;      /**< Module SHM structure. */

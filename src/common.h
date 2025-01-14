@@ -189,7 +189,12 @@ extern const sr_module_ds_t sr_module_ds_disabled_run;
 #define SR_SHM_INITIALIZER {.fd = -1, .size = 0, .addr = NULL}
 
 /** initializer of mod_info structure */
-#define SR_MODINFO_INIT(mi, c, d, d2) memset(&(mi), 0, sizeof (mi)); (mi).ds = (d); (mi).ds2 = (d2); (mi).conn = (c)
+#define SR_MODINFO_INIT(mi, c, d, d2, op_id) \
+        memset(&(mi), 0, sizeof (mi)); \
+        (mi).ds = (d); \
+        (mi).ds2 = (d2); \
+        (mi).conn = (c); \
+        (mi).operation_id = (op_id) ? (op_id) : ATOMIC_INC_RELAXED(SR_CONN_MAIN_SHM(c)->new_operation_id)
 
 /**
  * @brief Internal information about a module to be installed.

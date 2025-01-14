@@ -25,7 +25,7 @@
 #include "common_types.h"
 #include "sysrepo_types.h"
 
-#define SR_SHM_VER 18   /**< Main, mod, and ext SHM version of their expected content structures. */
+#define SR_SHM_VER 19   /**< Main, mod, and ext SHM version of their expected content structures. */
 #define SR_MAIN_SHM_LOCK "sr_main_lock"     /**< Main SHM file lock name. */
 
 /**
@@ -201,6 +201,7 @@ typedef struct {
     ATOMIC_T new_sr_sid;        /**< SID for a new session. */
     ATOMIC_T new_sub_id;        /**< Subscription ID of a new subscription. */
     ATOMIC_T new_evpipe_num;    /**< Event pipe number for a new subscription. */
+    ATOMIC_T new_operation_id;  /**< Operation ID to use for each callback of every operation. */
 
     char repo_path[256];        /**< Repository path used when main SHM was created. */
 } sr_main_shm_t;
@@ -367,6 +368,7 @@ typedef struct {
 
     ATOMIC_T priority;          /**< Priority of the subscriber. */
     uint32_t subscriber_count;  /**< Number of subscribers to process this event. */
+    uint32_t operation_id;      /**< Operation ID for the callback. */
 } sr_sub_shm_t;
 
 #endif /* _SHM_TYPES_H */

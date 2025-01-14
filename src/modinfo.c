@@ -1053,6 +1053,7 @@ cleanup:
  * @param[in] req_xpath_count Count of @p request_xpaths.
  * @param[in] orig_name Event originator name.
  * @param[in] orig_data Event originator data.
+ * @param[in] operation_id Operation ID.
  * @param[in] shm_subs Subscription array.
  * @param[in] idx1 Index of the subscription array from where to read subscriptions with the same XPath.
  * @param[in] parent Data parent required for the subscription, NULL if top-level.
@@ -1063,9 +1064,9 @@ cleanup:
  */
 static sr_error_info_t *
 sr_xpath_oper_data_get(struct sr_mod_info_mod_s *mod, const char *xpath, const char **request_xpaths,
-        uint32_t req_xpath_count, const char *orig_name, const void *orig_data, sr_mod_oper_get_sub_t *shm_subs,
-        uint32_t idx1, const struct lyd_node *parent, uint32_t timeout_ms, sr_conn_ctx_t *conn,
-        struct lyd_node **oper_data)
+        uint32_t req_xpath_count, const char *orig_name, const void *orig_data, uint32_t operation_id,
+        sr_mod_oper_get_sub_t *shm_subs, uint32_t idx1, const struct lyd_node *parent, uint32_t timeout_ms,
+        sr_conn_ctx_t *conn, struct lyd_node **oper_data)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     struct lyd_node *parent_dup = NULL, *last_parent;
@@ -1108,8 +1109,8 @@ sr_xpath_oper_data_get(struct sr_mod_info_mod_s *mod, const char *xpath, const c
     request_xpath = (req_xpath_count == 1) ? request_xpaths[0] : NULL;
 
     /* get data from client */
-    if ((err_info = sr_shmsub_oper_get_notify(mod, xpath, request_xpath, parent_dup, orig_name, orig_data, shm_subs,
-            idx1, timeout_ms, conn, oper_data, &cb_err_info))) {
+    if ((err_info = sr_shmsub_oper_get_notify(mod, xpath, request_xpath, parent_dup, orig_name, orig_data, operation_id,
+            shm_subs, idx1, timeout_ms, conn, oper_data, &cb_err_info))) {
         sr_errinfo_merge(&err_info, cb_err_info);
         goto cleanup;
     }
@@ -1431,6 +1432,7 @@ cleanup:
  * @param[in] oper_mode Current lock mode of @p mod for ::SR_DS_OPERATIONAL.
  * @param[in] orig_name Event originator name.
  * @param[in] orig_data Event originator data.
+ * @param[in] operation_id Operation ID.
  * @param[in] conn Connection to use.
  * @param[in] timeout_ms Operational callback timeout in milliseconds.
  * @param[in] get_oper_opts Get oper data options.
@@ -1438,8 +1440,9 @@ cleanup:
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name, const void *orig_data, sr_conn_ctx_t *conn,
-        uint32_t timeout_ms, sr_get_oper_flag_t get_oper_opts, struct lyd_node **data)
+sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name, const void *orig_data,
+        uint32_t operation_id, sr_conn_ctx_t *conn, uint32_t timeout_ms, sr_get_oper_flag_t get_oper_opts,
+        struct lyd_node **data)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_oper_get_sub_t *shm_subs;
@@ -1554,7 +1557,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
             for (j = 0; j < set->count; ++j) {
                 /* get oper data from the client */
                 if ((err_info = sr_xpath_oper_data_get(mod, sub_xpath, request_xpaths, req_xpath_count, orig_name,
-                        orig_data, shm_subs, i, set->dnodes[j], timeout_ms, conn, &oper_data))) {
+                        orig_data, operation_id, shm_subs, i, set->dnodes[j], timeout_ms, conn, &oper_data))) {
                     goto cleanup_opergetsub_ext_unlock;
                 }
 
@@ -1574,7 +1577,7 @@ next_iter:
         } else {
             /* top-level data */
             if ((err_info = sr_xpath_oper_data_get(mod, sub_xpath, request_xpaths, req_xpath_count, orig_name,
-                    orig_data, shm_subs, i, NULL, timeout_ms, conn, &oper_data))) {
+                    orig_data, operation_id, shm_subs, i, NULL, timeout_ms, conn, &oper_data))) {
                 goto cleanup_opergetsub_ext_unlock;
             }
 
@@ -2774,8 +2777,8 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
         }
 
         /* append any operational data provided by clients */
-        if ((err_info = sr_module_oper_data_update(mod, orig_name, orig_data, conn, timeout_ms, get_oper_opts,
-                &mod_info->data))) {
+        if ((err_info = sr_module_oper_data_update(mod, orig_name, orig_data, mod_info->operation_id, conn, timeout_ms,
+                get_oper_opts, &mod_info->data))) {
             return err_info;
         }
     }
@@ -3811,7 +3814,7 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
 
     /* send the notification (non-validated, if everything works correctly it must be valid) */
     err_info = sr_shmsub_notif_notify(mod_info->conn, notif, notif_ts_mono, notif_ts_real, session->orig_name,
-            session->orig_data, 0, 0);
+            session->orig_data, mod_info->operation_id, 0, 0);
 
     /* NOTIF SUB READ UNLOCK */
     sr_rwunlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, mod_info->conn->cid, __func__);

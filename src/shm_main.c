@@ -509,6 +509,7 @@ sr_shmmain_open(sr_shm_t *shm, int *created)
         ATOMIC_STORE_RELAXED(main_shm->new_sr_sid, 1);
         ATOMIC_STORE_RELAXED(main_shm->new_sub_id, 1);
         ATOMIC_STORE_RELAXED(main_shm->new_evpipe_num, 1);
+        ATOMIC_STORE_RELAXED(main_shm->new_operation_id, 1);
         strncpy(main_shm->repo_path, sr_get_repo_path(), sizeof main_shm->repo_path - 1);
 
         /* remove leftover event pipes */

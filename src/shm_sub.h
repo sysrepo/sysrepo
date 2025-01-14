@@ -167,6 +167,7 @@ sr_error_info_t *sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_
  * @param[in] parent Existing parent to append the data to.
  * @param[in] orig_name Event originator name.
  * @param[in] orig_data Event originator data.
+ * @param[in] operation_id Operation ID.
  * @param[in] oper_get_subs An array of operational get subscriptions.
  * @param[in] idx1 Index of the array where operational subscriptions with the same XPath are.
  * @param[in] timeout_ms Operational callback timeout in milliseconds.
@@ -176,8 +177,9 @@ sr_error_info_t *sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmsub_oper_get_notify(struct sr_mod_info_mod_s *mod, const char *xpath, const char *request_xpath,
-        const struct lyd_node *parent, const char *orig_name, const void *orig_data, sr_mod_oper_get_sub_t *oper_get_subs,
-        uint32_t idx1, uint32_t timeout_ms, sr_conn_ctx_t *conn, struct lyd_node **data, sr_error_info_t **cb_err_info);
+        const struct lyd_node *parent, const char *orig_name, const void *orig_data, uint32_t operation_id,
+        sr_mod_oper_get_sub_t *oper_get_subs, uint32_t idx1, uint32_t timeout_ms, sr_conn_ctx_t *conn,
+        struct lyd_node **data, sr_error_info_t **cb_err_info);
 
 /**
  * @brief Notify about (generate) an RPC/action event.
@@ -191,6 +193,7 @@ sr_error_info_t *sr_shmsub_oper_get_notify(struct sr_mod_info_mod_s *mod, const 
  * @param[in] input Operation input tree.
  * @param[in] orig_name Event originator name.
  * @param[in] orig_data Event originator data.
+ * @param[in] operation_id Operation ID.
  * @param[in] timeout_ms RPC/action callback timeout in milliseconds.
  * @param[in,out] request_id Generated request ID, set to 0 when passing.
  * @param[out] output Operation output returned by the last subscriber on success.
@@ -198,8 +201,8 @@ sr_error_info_t *sr_shmsub_oper_get_notify(struct sr_mod_info_mod_s *mod, const 
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count, const char *path,
-        const struct lyd_node *input, const char *orig_name, const void *orig_data, uint32_t timeout_ms,
-        uint32_t *request_id, struct lyd_node **output, sr_error_info_t **cb_err_info);
+        const struct lyd_node *input, const char *orig_name, const void *orig_data, uint32_t operation_id,
+        uint32_t timeout_ms, uint32_t *request_id, struct lyd_node **output, sr_error_info_t **cb_err_info);
 
 /**
  * @brief Notify about (generate) an RPC/action abort event.
@@ -211,13 +214,14 @@ sr_error_info_t *sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, off_t *subs, uint32_t
  * @param[in] input Operation input tree.
  * @param[in] orig_name Event originator name.
  * @param[in] orig_data Event originator data.
+ * @param[in] operation_id Operation ID.
  * @param[in] timeout_ms RPC/action callback timeout in milliseconds.
  * @param[in] request_id Generated request ID from previous event.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmsub_rpc_notify_abort(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count,
-        const char *path, const struct lyd_node *input, const char *orig_name, const void *orig_data, uint32_t timeout_ms,
-        uint32_t request_id);
+sr_error_info_t *sr_shmsub_rpc_notify_abort(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count, const char *path,
+        const struct lyd_node *input, const char *orig_name, const void *orig_data, uint32_t operation_id,
+        uint32_t timeout_ms, uint32_t request_id);
 
 /**
  * @brief Notify about (generate) a notification event.
@@ -228,12 +232,14 @@ sr_error_info_t *sr_shmsub_rpc_notify_abort(sr_conn_ctx_t *conn, off_t *subs, ui
  * @param[in] notif_ts_real Notification realtime timestamp.
  * @param[in] orig_name Event originator name.
  * @param[in] orig_data Event originator data.
+ * @param[in] operation_id Operation ID.
  * @param[in] timeout_ms Notification callback timeout in milliseconds. Used only if @p wait is set.
  * @param[in] wait Whether to wait for the callbacks or not.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmsub_notif_notify(sr_conn_ctx_t *conn, const struct lyd_node *notif, struct timespec notif_ts_mono,
-        struct timespec notif_ts_real, const char *orig_name, const void *orig_data, uint32_t timeout_ms, int wait);
+        struct timespec notif_ts_real, const char *orig_name, const void *orig_data, uint32_t operation_id,
+        uint32_t timeout_ms, int wait);
 
 /**
  * @brief Write the result of having processed an event.
@@ -250,9 +256,8 @@ sr_error_info_t *sr_shmsub_notif_notify(sr_conn_ctx_t *conn, const struct lyd_no
  * @param[in] result_str Result of processing the event in string.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmsub_listen_write_event(sr_sub_shm_t *sub_shm, uint32_t valid_subscr_count,
-        sr_error_t err_code, sr_shm_t *shm_data_sub, const char *data, uint32_t data_len, const char *event_desc,
-        const char *result_str);
+sr_error_info_t *sr_shmsub_listen_write_event(sr_sub_shm_t *sub_shm, uint32_t valid_subscr_count, sr_error_t err_code,
+        sr_shm_t *shm_data_sub, const char *data, uint32_t data_len, const char *event_desc, const char *result_str);
 
 /**
  * @brief Process all module change events, if any.

@@ -2778,7 +2778,7 @@ sr_get_item(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
     }
     *value = NULL;
     /* for operational, use operational and running datastore */
-    SR_MODINFO_INIT(mod_info, session->conn, session->ds, session->ds == SR_DS_OPERATIONAL ? SR_DS_RUNNING : session->ds);
+    SR_MODINFO_INIT(mod_info, session->conn, session->ds, session->ds == SR_DS_OPERATIONAL ? SR_DS_RUNNING : session->ds, 0);
 
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
@@ -2882,7 +2882,7 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, 
     *values = NULL;
     *value_cnt = 0;
     /* for operational, use operational and running datastore */
-    SR_MODINFO_INIT(mod_info, session->conn, session->ds, session->ds == SR_DS_OPERATIONAL ? SR_DS_RUNNING : session->ds);
+    SR_MODINFO_INIT(mod_info, session->conn, session->ds, session->ds == SR_DS_OPERATIONAL ? SR_DS_RUNNING : session->ds, 0);
 
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
@@ -3041,7 +3041,7 @@ sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms,
         timeout_ms = SR_OPER_CB_TIMEOUT;
     }
     /* for operational, use operational and running datastore */
-    SR_MODINFO_INIT(mod_info, session->conn, session->ds, session->ds == SR_DS_OPERATIONAL ? SR_DS_RUNNING : session->ds);
+    SR_MODINFO_INIT(mod_info, session->conn, session->ds, session->ds == SR_DS_OPERATIONAL ? SR_DS_RUNNING : session->ds, 0);
 
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
@@ -3156,7 +3156,7 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
     }
 
     /* for operational, use operational and running datastore */
-    SR_MODINFO_INIT(mod_info, session->conn, session->ds, session->ds == SR_DS_OPERATIONAL ? SR_DS_RUNNING : session->ds);
+    SR_MODINFO_INIT(mod_info, session->conn, session->ds, session->ds == SR_DS_OPERATIONAL ? SR_DS_RUNNING : session->ds, 0);
 
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
@@ -3293,7 +3293,7 @@ sr_get_node(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
     }
 
     /* for operational, use operational and running datastore */
-    SR_MODINFO_INIT(mod_info, session->conn, session->ds, session->ds == SR_DS_OPERATIONAL ? SR_DS_RUNNING : session->ds);
+    SR_MODINFO_INIT(mod_info, session->conn, session->ds, session->ds == SR_DS_OPERATIONAL ? SR_DS_RUNNING : session->ds, 0);
 
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
@@ -3866,7 +3866,7 @@ sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t timeout
         timeout_ms = SR_OPER_CB_TIMEOUT;
     }
     /* for operational, use operational and running datastore */
-    SR_MODINFO_INIT(mod_info, session->conn, session->ds, session->ds == SR_DS_OPERATIONAL ? SR_DS_RUNNING : session->ds);
+    SR_MODINFO_INIT(mod_info, session->conn, session->ds, session->ds == SR_DS_OPERATIONAL ? SR_DS_RUNNING : session->ds, 0);
 
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
@@ -4281,7 +4281,7 @@ sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms)
     }
 
     /* prepare mod_info */
-    SR_MODINFO_INIT(mod_info, session->conn, session->ds, session->ds);
+    SR_MODINFO_INIT(mod_info, session->conn, session->ds, session->ds, 0);
 
     if (session->ds == SR_DS_OPERATIONAL) {
         /* handle specially */
@@ -4419,20 +4419,21 @@ cleanup:
  *
  * @param[in] session Session to use.
  * @param[in] ly_mod Optional specific module.
+ * @param[in] operation_id Operation ID.
  * @param[in,out] src_config Source data for the replace, they are spent.
  * @param[in] timeout_ms Change callback timeout in milliseconds.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-_sr_replace_config(sr_session_ctx_t *session, const struct lys_module *ly_mod, struct lyd_node **src_config,
-        uint32_t timeout_ms)
+_sr_replace_config(sr_session_ctx_t *session, const struct lys_module *ly_mod, uint32_t operation_id,
+        struct lyd_node **src_config, uint32_t timeout_ms)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     struct sr_mod_info_s mod_info;
 
     assert(!*src_config || !(*src_config)->prev->next);
     assert(session->ds != SR_DS_OPERATIONAL);
-    SR_MODINFO_INIT(mod_info, session->conn, session->ds, session->ds);
+    SR_MODINFO_INIT(mod_info, session->conn, session->ds, session->ds, operation_id);
 
     /* single module/all modules */
     if (ly_mod) {
@@ -4514,7 +4515,7 @@ sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd
     }
 
     /* replace the data */
-    if ((err_info = _sr_replace_config(session, ly_mod, &src_config, timeout_ms))) {
+    if ((err_info = _sr_replace_config(session, ly_mod, 0, &src_config, timeout_ms))) {
         goto cleanup_unlock;
     }
 
@@ -4547,9 +4548,9 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
     }
     if ((src_datastore == SR_DS_RUNNING) && (session->ds == SR_DS_CANDIDATE)) {
         /* discard-changes, need no data, but lock running for READ and candidate for WRITE */
-        SR_MODINFO_INIT(mod_info, session->conn, session->ds, src_datastore);
+        SR_MODINFO_INIT(mod_info, session->conn, session->ds, src_datastore, 0);
     } else {
-        SR_MODINFO_INIT(mod_info, session->conn, src_datastore, src_datastore);
+        SR_MODINFO_INIT(mod_info, session->conn, src_datastore, src_datastore, 0);
     }
 
     /* CONTEXT LOCK */
@@ -4598,7 +4599,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
         }
 
         /* replace the data */
-        if ((err_info = _sr_replace_config(session, ly_mod, &mod_info.data, timeout_ms))) {
+        if ((err_info = _sr_replace_config(session, ly_mod, mod_info.operation_id, &mod_info.data, timeout_ms))) {
             goto cleanup;
         }
 
@@ -4616,7 +4617,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
         sr_shmmod_modinfo_unlock(&mod_info);
 
         /* replace the data */
-        if ((err_info = _sr_replace_config(session, ly_mod, &mod_info.data, timeout_ms))) {
+        if ((err_info = _sr_replace_config(session, ly_mod, mod_info.operation_id, &mod_info.data, timeout_ms))) {
             goto cleanup;
         }
     }
@@ -4655,7 +4656,7 @@ _sr_discard_oper_changes(sr_session_ctx_t *session, const char *module_name, int
     if (!timeout_ms) {
         timeout_ms = SR_CHANGE_CB_TIMEOUT;
     }
-    SR_MODINFO_INIT(mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_OPERATIONAL);
+    SR_MODINFO_INIT(mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_OPERATIONAL, 0);
 
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
@@ -4720,7 +4721,7 @@ sr_get_oper_changes(sr_session_ctx_t *session, const char *module_name, sr_data_
         return sr_api_ret(session, err_info);
     }
 
-    SR_MODINFO_INIT(mod_info, conn, SR_DS_OPERATIONAL, SR_DS_OPERATIONAL);
+    SR_MODINFO_INIT(mod_info, conn, SR_DS_OPERATIONAL, SR_DS_OPERATIONAL, 0);
 
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
@@ -4937,7 +4938,7 @@ _sr_un_lock(sr_session_ctx_t *session, const char *module_name, int lock, uint32
 
     SR_CHECK_ARG_APIRET(!session || !SR_IS_CONVENTIONAL_DS(session->ds), session, err_info);
 
-    SR_MODINFO_INIT(mod_info, session->conn, session->ds, session->ds);
+    SR_MODINFO_INIT(mod_info, session->conn, session->ds, session->ds, 1);
 
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
@@ -5023,7 +5024,7 @@ sr_get_lock(sr_conn_ctx_t *conn, sr_datastore_t datastore, const char *module_na
     if (timestamp) {
         memset(timestamp, 0, sizeof *timestamp);
     }
-    SR_MODINFO_INIT(mod_info, conn, datastore, datastore);
+    SR_MODINFO_INIT(mod_info, conn, datastore, datastore, 1);
 
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
@@ -5686,8 +5687,6 @@ sr_module_change_subscribe_enable(sr_session_ctx_t *session, struct sr_mod_info_
     sr_session_ctx_t *ev_sess = NULL;
     sr_error_t err_code;
 
-    SR_MODINFO_INIT((*mod_info), session->conn, session->ds, session->ds == SR_DS_OPERATIONAL ? SR_DS_RUNNING : session->ds);
-
     /* create mod_info structure with this module only, do not use cache to allow reading data in the callback
      * (avoid dead-lock) */
     if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, mod_info))) {
@@ -5739,7 +5738,8 @@ sr_module_change_subscribe_enable(sr_session_ctx_t *session, struct sr_mod_info_
         SR_LOG_INF("Triggering \"%s\" \"%s\" event on enabled data.", ly_mod->name, sr_ev2str(ev_sess->ev));
 
         /* present all changes in an "enabled" event */
-        err_code = callback(ev_sess, sub_id, ly_mod->name, xpath, sr_ev2api(ev_sess->ev), 0, private_data);
+        err_code = callback(ev_sess, sub_id, ly_mod->name, xpath, sr_ev2api(ev_sess->ev), mod_info->operation_id,
+                private_data);
         if (err_code != SR_ERR_OK) {
             /* callback failed but it is the only one so no "abort" event is necessary */
             if (ev_sess->ev_err_info) {
@@ -5856,7 +5856,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     SR_CHECK_ARG_APIRET(!session || !SR_IS_STANDARD_DS(session->ds) || SR_IS_EVENT_SESS(session) || !module_name ||
             !callback || !subscription, session, err_info);
 
-    SR_MODINFO_INIT(mod_info, session->conn, SR_DS_RUNNING, SR_DS_RUNNING);
+    SR_MODINFO_INIT(mod_info, session->conn, session->ds, session->ds == SR_DS_OPERATIONAL ? SR_DS_RUNNING : session->ds, 0);
 
     conn = session->conn;
     /* only these options are relevant outside this function and will be stored */
@@ -6761,7 +6761,7 @@ _sr_rpc_send_tree(sr_session_ctx_t *session, struct sr_mod_info_s *mod_info, con
     sr_rpc_t *shm_rpc;
     sr_dep_t *shm_deps;
     uint16_t shm_dep_count;
-    uint32_t event_id = 0;
+    uint32_t request_id = 0;
 
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
@@ -6794,7 +6794,7 @@ _sr_rpc_send_tree(sr_session_ctx_t *session, struct sr_mod_info_s *mod_info, con
     sr_shmmod_modinfo_unlock(mod_info);
 
     sr_modinfo_erase(mod_info);
-    SR_MODINFO_INIT(*mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING);
+    SR_MODINFO_INIT(*mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, 0);
 
     if (!strcmp(path, SR_RPC_FACTORY_RESET_PATH)) {
         /* update the input as needed */
@@ -6815,14 +6815,15 @@ _sr_rpc_send_tree(sr_session_ctx_t *session, struct sr_mod_info_s *mod_info, con
 
     /* publish RPC in an event and wait for a reply from the last subscriber */
     if ((err_info = sr_shmsub_rpc_notify(session->conn, &shm_rpc->subs, &shm_rpc->sub_count, path, input,
-            session->orig_name, session->orig_data, timeout_ms, &event_id, &(*output)->tree, &cb_err_info))) {
+            session->orig_name, session->orig_data, mod_info->operation_id, timeout_ms, &request_id, &(*output)->tree,
+            &cb_err_info))) {
         goto cleanup_rpcsub_unlock;
     }
 
     if (cb_err_info) {
         /* "rpc" event failed, publish "abort" event and finish */
         err_info = sr_shmsub_rpc_notify_abort(session->conn, &shm_rpc->subs, &shm_rpc->sub_count, path,
-                input, session->orig_name, session->orig_data, timeout_ms, event_id);
+                input, session->orig_name, session->orig_data, mod_info->operation_id, timeout_ms, request_id);
         goto cleanup_rpcsub_unlock;
     }
 
@@ -6890,7 +6891,7 @@ _sr_rpc_ext_send_tree(sr_session_ctx_t *session, const struct lyd_node *ext_pare
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     sr_mod_t *shm_mod;
-    uint32_t event_id = 0;
+    uint32_t request_id = 0;
 
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
@@ -6930,16 +6931,16 @@ _sr_rpc_ext_send_tree(sr_session_ctx_t *session, const struct lyd_node *ext_pare
     }
 
     /* publish RPC in an event and wait for a reply from the last subscriber */
-    if ((err_info = sr_shmsub_rpc_notify(session->conn, &shm_mod->rpc_ext_subs,
-            &shm_mod->rpc_ext_sub_count, path, input, session->orig_name, session->orig_data, timeout_ms, &event_id,
+    if ((err_info = sr_shmsub_rpc_notify(session->conn, &shm_mod->rpc_ext_subs, &shm_mod->rpc_ext_sub_count, path,
+            input, session->orig_name, session->orig_data, mod_info->operation_id, timeout_ms, &request_id,
             &(*output)->tree, &cb_err_info))) {
         goto cleanup_rpcsub_unlock;
     }
 
     if (cb_err_info) {
         /* "rpc" event failed, publish "abort" event and finish */
-        err_info = sr_shmsub_rpc_notify_abort(session->conn, &shm_mod->rpc_ext_subs,
-                &shm_mod->rpc_ext_sub_count, path, input, session->orig_name, session->orig_data, timeout_ms, event_id);
+        err_info = sr_shmsub_rpc_notify_abort(session->conn, &shm_mod->rpc_ext_subs, &shm_mod->rpc_ext_sub_count, path,
+                input, session->orig_name, session->orig_data, mod_info->operation_id, timeout_ms, request_id);
         goto cleanup_rpcsub_unlock;
     }
 
@@ -6963,7 +6964,6 @@ _sr_rpc_ext_send_tree(sr_session_ctx_t *session, const struct lyd_node *ext_pare
         goto cleanup;
     }
 
-    /* success */
     goto cleanup;
 
 cleanup_rpcsub_unlock:
@@ -7003,7 +7003,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
     if (!timeout_ms) {
         timeout_ms = SR_RPC_CB_TIMEOUT;
     }
-    SR_MODINFO_INIT(mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING);
+    SR_MODINFO_INIT(mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, 0);
 
     /* check input data tree */
     input_op = NULL;
@@ -7330,7 +7330,7 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
     if (!timeout_ms) {
         timeout_ms = SR_NOTIF_CB_TIMEOUT;
     }
-    SR_MODINFO_INIT(mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING);
+    SR_MODINFO_INIT(mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, 0);
 
     /* check notif data tree */
     notif_op = NULL;
@@ -7423,7 +7423,7 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
 
     /* publish notif in an event */
     err_info = sr_shmsub_notif_notify(session->conn, notif_top, notif_ts_mono, notif_ts_real, session->orig_name,
-            session->orig_data, timeout_ms, wait);
+            session->orig_data, mod_info.operation_id, timeout_ms, wait);
 
     /* NOTIF SUB READ UNLOCK */
     sr_rwunlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid, __func__);

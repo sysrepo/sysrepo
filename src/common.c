@@ -2890,7 +2890,7 @@ sr_conn_ext_data_update(sr_conn_ctx_t *conn)
     struct lyd_node *yl_data = NULL, *new_ext_data = NULL;
 
     /* init mod info for cleanup */
-    SR_MODINFO_INIT(mi, conn, SR_DS_OPERATIONAL, SR_DS_RUNNING);
+    SR_MODINFO_INIT(mi, conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, 0);
 
     /* manually get ietf-yang-schema-mount operational data but avoid recursive call of this function */
     ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, "ietf-yang-schema-mount");
@@ -5609,6 +5609,7 @@ sr_generate_notif_send(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const struct lyd_
 {
     sr_error_info_t *err_info = NULL;
     struct timespec notif_ts_mono, notif_ts_real;
+    uint32_t operation_id;
 
     /* NOTIF SUB READ LOCK */
     if ((err_info = sr_rwlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
@@ -5620,8 +5621,11 @@ sr_generate_notif_send(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const struct lyd_
     sr_timeouttime_get(&notif_ts_mono, 0);
     sr_realtime_get(&notif_ts_real);
 
+    /* generate a new operation ID */
+    operation_id = ATOMIC_INC_RELAXED(SR_CONN_MAIN_SHM(conn)->new_operation_id);
+
     /* send the notification (non-validated, must be valid) */
-    err_info = sr_shmsub_notif_notify(conn, notif, notif_ts_mono, notif_ts_real, NULL, NULL, 0, 0);
+    err_info = sr_shmsub_notif_notify(conn, notif, notif_ts_mono, notif_ts_real, NULL, NULL, operation_id, 0, 0);
 
     /* NOTIF SUB READ UNLOCK */
     sr_rwunlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);

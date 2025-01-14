@@ -974,8 +974,7 @@ enabled_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module
     int ret, *called = (int *)private_data;
 
     (void)sub_id;
-
-    assert_int_equal(request_id, 0);
+    (void)request_id;
 
     if (!strcmp(xpath, "/ietf-interfaces:interfaces/interface[name='eth128']")) {
         assert_string_equal(module_name, "ietf-interfaces");

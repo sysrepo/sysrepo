@@ -542,13 +542,12 @@ typedef struct sr_change_iter_s sr_change_iter_t;
  * @param[in] module_name Name of the module where the change has occurred.
  * @param[in] xpath [XPath](@ref paths) used when subscribing, NULL if the whole module was subscribed to.
  * @param[in] event Type of the callback event that has occurred.
- * @param[in] request_id Request ID unique for the specific @p module_name. Connected events
- * for one request (::SR_EV_CHANGE and ::SR_EV_DONE, for example) have the same request ID.
+ * @param[in] operation_id Operation ID of the current operation used for all the callbacks and events.
  * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_module_change_subscribe call.
  * @return User error code (::SR_ERR_OK on success).
  */
 typedef int (*sr_module_change_cb)(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
-        sr_event_t event, uint32_t request_id, void *private_data);
+        sr_event_t event, uint32_t operation_id, void *private_data);
 
 /** @} datasubs */
 
@@ -568,7 +567,7 @@ typedef int (*sr_module_change_cb)(sr_session_ctx_t *session, uint32_t sub_id, c
  * @param[in] input Array of input parameters.
  * @param[in] input_cnt Number of input parameters.
  * @param[in] event Type of the callback event that has occurred.
- * @param[in] request_id Request ID unique for the specific @p op_path.
+ * @param[in] operation_id Operation ID of the current operation used for all the callbacks and events.
  * @param[out] output Array of output parameters. Should be allocated on heap,
  * will be freed by sysrepo after sending of the RPC response.
  * @param[out] output_cnt Number of output parameters.
@@ -576,7 +575,7 @@ typedef int (*sr_module_change_cb)(sr_session_ctx_t *session, uint32_t sub_id, c
  * @return User error code (::SR_ERR_OK on success).
  */
 typedef int (*sr_rpc_cb)(sr_session_ctx_t *session, uint32_t sub_id, const char *xpath, const sr_val_t *input,
-        const size_t input_cnt, sr_event_t event, uint32_t request_id, sr_val_t **output, size_t *output_cnt,
+        const size_t input_cnt, sr_event_t event, uint32_t operation_id, sr_val_t **output, size_t *output_cnt,
         void *private_data);
 
 /**
@@ -589,13 +588,13 @@ typedef int (*sr_rpc_cb)(sr_session_ctx_t *session, uint32_t sub_id, const char 
  * @param[in] op_path Simple operation [path](@ref paths) identifying the RPC/action.
  * @param[in] input Data tree of input parameters. Always points to the __RPC/action__ itself, even for nested operations.
  * @param[in] event Type of the callback event that has occurred.
- * @param[in] request_id Request ID unique for the specific @p op_path.
+ * @param[in] operation_id Operation ID of the current operation used for all the callbacks and events.
  * @param[out] output Data tree for appending any output parameters, the operation root node is provided..
  * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_rpc_subscribe_tree call.
  * @return User error code (::SR_ERR_OK on success).
  */
 typedef int (*sr_rpc_tree_cb)(sr_session_ctx_t *session, uint32_t sub_id, const char *op_path, const struct lyd_node *input,
-        sr_event_t event, uint32_t request_id, struct lyd_node *output, void *private_data);
+        sr_event_t event, uint32_t operation_id, struct lyd_node *output, void *private_data);
 
 /** @} rpcsubs */
 
@@ -680,7 +679,7 @@ typedef void (*sr_event_notif_tree_cb)(sr_session_ctx_t *session, uint32_t sub_i
  * @param[in] path [Path](@ref paths) identifying the subtree that is supposed to be provided, same as the one used
  * for the subscription.
  * @param[in] request_xpath [XPath](@ref paths) as requested by a client. Can be NULL.
- * @param[in] request_id Request ID unique for the specific @p module_name.
+ * @param[in] operation_id Operation ID of the current operation used for all the callbacks and events.
  * @param[in,out] parent Pointer to an existing parent of the requested nodes. Is NULL for top-level nodes.
  * Caller is supposed to append the requested nodes to this data subtree and return either the original parent
  * or a top-level node.
@@ -688,7 +687,7 @@ typedef void (*sr_event_notif_tree_cb)(sr_session_ctx_t *session, uint32_t sub_i
  * @return User error code (::SR_ERR_OK on success).
  */
 typedef int (*sr_oper_get_items_cb)(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *path,
-        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data);
+        const char *request_xpath, uint32_t operation_id, struct lyd_node **parent, void *private_data);
 
 /** @} oper_subs */
 
