@@ -255,9 +255,6 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
         assert(!strcmp(LYD_NAME(lyd_child(sr_mods)), "content-id"));
         main_shm->content_id = ((struct lyd_node_term *)lyd_child(sr_mods))->value.uint32;
 
-        /* recover anything left in ext SHM */
-        sr_shmext_recover_sub_all(conn);
-
         /* add all the modules in lydmods data into mod SHM */
         if ((err_info = sr_shmmod_store_modules(&conn->mod_shm, sr_mods))) {
             goto cleanup_unlock;
