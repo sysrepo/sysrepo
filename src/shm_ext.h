@@ -51,12 +51,19 @@ void sr_shmext_conn_remap_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int e
 sr_error_info_t *sr_shmext_open(sr_shm_t *shm, int zero);
 
 /**
- * @brief Debug print the contents of ext SHM.
+ * @brief Debug check and print the contents of extended SHM.
  *
- * @param[in] mod_shm Mod SHM.
- * @param[in] shm_ext Ext SHM.
+ * @details This function prints the contents of the extended SHM (shared memory)
+ * for debugging purposes.
+ * The `validate` parameter should only be set if the remap was done with the ext_lock held.
+ * This is because data in the ext SHM could refer to larger offset than what we have currently mapped.
+ * And we don't want to try and read data beyond our map.
+ *
+ * @param[in] mod_shm The Mod SHM structure.
+ * @param[in] shm_ext The extended SHM structure.
+ * @param[in] validate Flag indicating whether ext SHM should be validated.
  */
-void sr_shmext_print(sr_mod_shm_t *mod_shm, sr_shm_t *shm_ext);
+void sr_shmext_print(sr_mod_shm_t *mod_shm, sr_shm_t *shm_ext, int validate);
 
 /**
  * @brief Add main SHM module change subscription and create sub SHM if the first subscription was added.

@@ -39,8 +39,8 @@ _test_log_msg(sr_log_level_t level, const char *message, const char *prefix)
         severity = "INF";
         break;
     case SR_LL_DBG:
-        /*severity = "DBG";
-        break;*/
+        severity = "DBG";
+        break;
         return;
     case SR_LL_NONE:
         assert(0);
