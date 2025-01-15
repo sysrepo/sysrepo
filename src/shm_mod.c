@@ -1882,12 +1882,6 @@ sr_shmmod_session_oper_order(sr_session_ctx_t *session, const struct lys_module 
         }
     } else {
         mod_shm = SR_CONN_MOD_SHM(session->conn);
-
-        /* EXT READ LOCK */
-        if ((err_info = sr_shmext_conn_remap_lock(session->conn, SR_LOCK_READ, 1, __func__))) {
-            goto cleanup;
-        }
-
         /* update all the modules with any push oper data */
         for (i = 0; i < mod_shm->mod_count; ++i) {
             shm_mod = SR_SHM_MOD_IDX(mod_shm, i);
@@ -1899,19 +1893,16 @@ sr_shmmod_session_oper_order(sr_session_ctx_t *session, const struct lys_module 
             if (order_p) {
                 if ((err_info = sr_shmext_oper_push_get(session->conn, shm_mod, ((char *)mod_shm) + shm_mod->name,
                         session->sid, order_p, NULL, SR_LOCK_NONE))) {
-                    goto unlock;
+                    goto cleanup;
                 }
             } else {
                 if ((err_info = sr_shmext_oper_push_update(session->conn, shm_mod, ((char *)mod_shm) + shm_mod->name,
                         session->sid, order, -1, SR_LOCK_NONE))) {
-                    goto unlock;
+                    goto cleanup;
                 }
             }
         }
 
-unlock:
-        /* EXT READ UNLOCK */
-        sr_shmext_conn_remap_unlock(session->conn, SR_LOCK_READ, 1, __func__);
     }
 
 cleanup:
