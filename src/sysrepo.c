@@ -4763,6 +4763,11 @@ sr_set_oper_changes_order(sr_session_ctx_t *session, const char *module_name, ui
 
     SR_CHECK_ARG_APIRET(!session || !order, NULL, err_info);
 
+    /* CONTEXT LOCK */
+    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
+        return sr_api_ret(session, err_info);
+    }
+
     /* check module existence */
     if (module_name && !(ly_mod = ly_ctx_get_module_implemented(session->conn->ly_ctx, module_name))) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
@@ -4773,6 +4778,9 @@ sr_set_oper_changes_order(sr_session_ctx_t *session, const char *module_name, ui
     err_info = sr_shmmod_session_oper_order(session, ly_mod, order, NULL);
 
 cleanup:
+    /* CONTEXT UNLOCK */
+    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
+
     return sr_api_ret(NULL, err_info);
 }
 
@@ -4783,6 +4791,11 @@ sr_get_oper_changes_order(sr_session_ctx_t *session, const char *module_name, ui
     const struct lys_module *ly_mod;
 
     SR_CHECK_ARG_APIRET(!session || !module_name || !order, NULL, err_info);
+
+    /* CONTEXT LOCK */
+    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
+        return sr_api_ret(session, err_info);
+    }
 
     /* check module existence */
     if (!(ly_mod = ly_ctx_get_module_implemented(session->conn->ly_ctx, module_name))) {
@@ -4795,6 +4808,9 @@ sr_get_oper_changes_order(sr_session_ctx_t *session, const char *module_name, ui
     err_info = sr_shmmod_session_oper_order(session, ly_mod, 0, order);
 
 cleanup:
+    /* CONTEXT UNLOCK */
+    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
+
     return sr_api_ret(NULL, err_info);
 }
 
