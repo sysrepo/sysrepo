@@ -953,7 +953,7 @@ sr_shmmod_del_module_oper_data(sr_conn_ctx_t *conn, const struct lys_module *ly_
     oper_push_l = malloc(oper_push_count * sizeof *oper_push_l);
     SR_CHECK_MEM_GOTO(!oper_push_l, err_info, cleanup_unlock);
 
-    /* EXT READ LOCK */
+    /* CONN EXT REMAP READ LOCK */
     if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
         goto cleanup_unlock;
     }
@@ -961,7 +961,7 @@ sr_shmmod_del_module_oper_data(sr_conn_ctx_t *conn, const struct lys_module *ly_
     /* get local copy of push oper data, they cannot change because we are holding mod write lock */
     memcpy(oper_push_l, conn->ext_shm.addr + shm_mod->oper_push_data, oper_push_count * sizeof *oper_push_l);
 
-    /* EXT READ UNLOCK */
+    /* CONN EXT REMAP READ UNLOCK */
     sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
 
     for (i = 0; i < oper_push_count; ++i) {

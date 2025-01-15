@@ -5569,7 +5569,7 @@ sr_generate_notif_has_subs_or_replay(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, int
     sr_mod_notif_sub_t *notif_subs;
     uint32_t notif_sub_count;
 
-    /* EXT READ LOCK */
+    /* CONN EXT REMAP READ LOCK */
     if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
         goto cleanup;
     }
@@ -5577,7 +5577,7 @@ sr_generate_notif_has_subs_or_replay(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, int
     /* get subscriber count */
     err_info = sr_notif_find_subscriber(conn, "sysrepo-notifications", &notif_subs, &notif_sub_count, NULL);
 
-    /* EXT READ UNLOCK */
+    /* CONN EXT REMAP READ UNLOCK */
     sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
 
     if (err_info) {
