@@ -634,7 +634,7 @@ endif()
 
 # generate API/ABI report
 if("${BUILD_TYPE_UPPER}" STREQUAL "ABICHECK")
-    lib_abi_check(sysrepo "${LIB_MAIN_HEADERS};${LIB_UTIL_HEADERS}" ${SYSREPO_SOVERSION_FULL} 9c45e6ecad42da0dbe6b618da5d1d1d091258047)
+    lib_abi_check(sysrepo "${LIB_MAIN_HEADERS};${LIB_UTIL_HEADERS}" ${SYSREPO_SOVERSION_FULL} 5accdd96d9d59ac60e975b0c8e8cc9e83911451e)
 endif()
 
 # source files to be covered by the 'format' target and a test with 'format-check' target
