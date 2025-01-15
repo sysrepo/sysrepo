@@ -2740,7 +2740,7 @@ sr_shmext_oper_push_get(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *mod_
     }
 
     /* EXT READ LOCK */
-    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 1, __func__))) {
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
         goto cleanup_shmmod_unlock;
     }
 
@@ -2759,7 +2759,7 @@ sr_shmext_oper_push_get(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *mod_
     }
 
     /* EXT READ UNLOCK */
-    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 1, __func__);
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
 
 cleanup_shmmod_unlock:
     if (!has_mod_locks) {

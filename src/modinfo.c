@@ -1264,7 +1264,7 @@ sr_module_oper_data_load(struct sr_mod_info_mod_s *mod, sr_conn_ctx_t *conn, uin
     int last_sid = 0, dead_cid = 0;
 
     /* EXT READ LOCK */
-    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 1, __func__))) {
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
         goto cleanup;
     }
 
@@ -1288,7 +1288,7 @@ sr_module_oper_data_load(struct sr_mod_info_mod_s *mod, sr_conn_ctx_t *conn, uin
     }
 
     /* EXT READ UNLOCK */
-    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 1, __func__);
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
 
     if (err_info) {
         goto cleanup;
