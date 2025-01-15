@@ -288,13 +288,6 @@ sr_error_info_t *sr_shmext_rpc_sub_stop(sr_conn_ctx_t *conn, off_t *subs, uint32
 void sr_shmext_rpc_sub_remove_dead(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count);
 
 /**
- * @brief Recover all subscriptions in ext SHM, their connection must be dead.
- *
- * @param[in] conn Connection to use.
- */
-void sr_shmext_recover_sub_all(sr_conn_ctx_t *conn);
-
-/**
  * @brief Check validity of all the subscriptions in a new updated context.
  *
  * @param[in] conn Connection to use.
