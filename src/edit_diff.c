@@ -2636,6 +2636,11 @@ sr_oper_edit_mod_apply(const struct lyd_node *tree, const struct lys_module *ly_
         }
     } while (root != tree);
 
+    if (!op) {
+        /* no data to apply */
+        goto cleanup;
+    }
+
 apply:
     /* apply the edit to oper data and generate diff */
     if ((err_info = sr_oper_edit_mod_apply_data(mod_first, &opaq_set, ly_mod, op, data, &mod_diff, change))) {
