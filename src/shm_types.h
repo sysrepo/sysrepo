@@ -146,7 +146,8 @@ typedef struct {
     off_t inv_deps;             /**< Array of inverse module data dependencies (off_t *) (offset in mod SHM). */
     uint16_t inv_dep_count;     /**< Number of inverse module data dependencies. */
 
-    off_t oper_push_data;       /**< Array of oper push data entries (offset in ext SHM). */
+    off_t oper_push_data;       /**< Array of oper push data entries (offset in ext SHM), protected by operational DS
+                                     mod data locks. */
     uint32_t oper_push_data_count;  /**< Number of oper poush data entries. */
 
     struct {
@@ -190,7 +191,8 @@ typedef struct {
 typedef struct {
     uint32_t shm_ver;           /**< Main and ext SHM version of all expected data stored in them. Is increased with
                                      every change of their structure content (ABI change). */
-    pthread_mutex_t ext_lock;   /**< Process-shared lock for accessing holes and truncating ext SHM. */
+    pthread_mutex_t ext_lock;   /**< Process-shared lock for accessing holes and truncating ext SHM. Accessing ext SHM
+                                     structures requires another dedicated lock. */
 
     sr_rwlock_t context_lock;   /**< Process-shared lock for accessing connection LY context, lydmods data,
                                      and SHM mod modules. */
