@@ -298,12 +298,12 @@ sr_shmext_print(sr_mod_shm_t *mod_shm, sr_shm_t *shm_ext, int validate)
     char *msg;
     sr_ext_hole_t *hole;
     sr_ext_shm_t *ext_shm = (sr_ext_shm_t *)shm_ext->addr;
-    const char *xpath_str;
 
-    const char *LAST_MAPPED_ADDRESS = shm_ext->addr + shm_ext->size;
-
-#define SR_EXT_IS_ADDR_MAPPED(ptr) ((const char*)(ptr) < LAST_MAPPED_ADDRESS)
 #define SR_EXT_ADDR(offset) (shm_ext->addr + (offset))
+    const char *xpath_str;
+    const char *MAPPED_EXT_END_ADDR = SR_EXT_ADDR(shm_ext->size);
+
+#define SR_EXT_IS_ADDR_MAPPED(ptr) ((const char*)(ptr) < MAPPED_EXT_END_ADDR)
 #define SR_EXT_STR_FROM_OFFSET(offset) (SR_EXT_IS_ADDR_MAPPED(SR_EXT_ADDR(offset)) ? SR_EXT_ADDR(offset) : "XPATH_OFF_UNMAPPED")
 
     (void)cur_off;
@@ -495,7 +495,7 @@ sr_shmext_print(sr_mod_shm_t *mod_shm, sr_shm_t *shm_ext, int validate)
     SR_LOG_DBG("#SHM:\n%s", msg);
     free(msg);
 
-    /* fail on an assert if something is wrong, if we are working with a know_size ext SHM */
+    /* fail on an assert if something is wrong, if asked to validate */
     cur_off = 0;
     for (i = 0; (i < item_count) && validate; ++i) {
         if (i < item_count - 1) {
@@ -534,6 +534,7 @@ error:
     free(items);
 
 #undef SR_EXT_IS_ADDR_MAPPED
+#undef SR_EXT_ADDR
 #undef SR_EXT_STR_FROM_OFFSET
 }
 
@@ -1573,7 +1574,7 @@ void
 sr_shmext_rpc_sub_remove_dead(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count)
 {
     uint32_t i = 0;
-    sr_error_info_t *err_info = NULL, *tmp_err;
+    sr_error_info_t *err_info = NULL;
     sr_mod_rpc_sub_t *shm_sub;
     char *path = NULL;
 
@@ -1591,12 +1592,12 @@ sr_shmext_rpc_sub_remove_dead(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_co
         }
 
         /* subscription is dead, recover it */
-        if ((tmp_err = sr_get_trim_predicates(conn->ext_shm.addr + shm_sub[i].xpath, &path))) {
-            sr_errinfo_merge(&err_info, tmp_err);
+        if ((err_info = sr_get_trim_predicates(conn->ext_shm.addr + shm_sub[i].xpath, &path))) {
+            sr_errinfo_free(&err_info);
             i++;
         } else {
-            if ((tmp_err = sr_shmext_rpc_sub_stop(conn, subs, sub_count, path, i, 1, 1))) {
-                sr_errinfo_merge(&err_info, tmp_err);
+            if ((err_info = sr_shmext_rpc_sub_stop(conn, subs, sub_count, path, i, 1, 1))) {
+                sr_errinfo_free(&err_info);
                 i++;
             }
         }
@@ -1652,7 +1653,7 @@ sr_shmext_rpc_sub_add(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count, con
         goto cleanup_unlock;
     }
 
-    SR_LOG_DBG("#SHM before (adding rpc sub) %s", xpath);
+    SR_LOG_DBG("#SHM before (adding rpc sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm, 1);
 
     /* add new subscription with its xpath */
@@ -1671,7 +1672,7 @@ sr_shmext_rpc_sub_add(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count, con
     ATOMIC_STORE_RELAXED(shm_sub->suspended, 0);
     shm_sub->cid = sub_cid;
 
-    SR_LOG_DBG("#SHM after (adding rpc sub) %s", xpath);
+    SR_LOG_DBG("#SHM after (adding rpc sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm, 1);
 
     if (!path_found && sub_cid) {
@@ -1724,14 +1725,14 @@ sr_shmext_rpc_sub_free(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count, co
         return err_info;
     }
 
-    SR_LOG_INF("#SHM before (removing rpc sub) %s", path);
+    SR_LOG_DBG("#SHM before (removing rpc sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm, 0);
 
     /* free the subscription */
     sr_shmrealloc_del(&conn->ext_shm, subs, sub_count, sizeof *shm_subs, del_idx,
             sr_strshmlen(conn->ext_shm.addr + shm_subs[del_idx].xpath), shm_subs[del_idx].xpath);
 
-    SR_LOG_INF("#SHM after (removing rpc sub) %s", path);
+    SR_LOG_DBG("#SHM after (removing rpc sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm, 0);
 
     /* EXT UNLOCK */
