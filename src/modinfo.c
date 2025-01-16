@@ -2645,6 +2645,28 @@ cleanup:
 }
 
 /**
+ * @brief Check whether the session has pushed any operational data to this module
+ *
+ * @param[in] sess Session to check.
+ * @param[in] mod_name module name to search.
+ * @return 1 if there is data, else 0
+ */
+static int
+sr_modinfo_sess_has_push_oper_data(sr_session_ctx_t *sess, const char *mod_name)
+{
+    uint32_t i;
+
+    for (i = 0; i < sess->oper_push_mod_count; ++i) {
+        if (!strcmp(sess->oper_push_mods[i].name, mod_name)) {
+            /* module found, return has_data */
+            return sess->oper_push_mods[i].has_data;
+        }
+    }
+
+    return 0;
+}
+
+/**
  * @brief Load module data of a specific module.
  *
  * @param[in] mod_info Mod info to use.
@@ -2664,7 +2686,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
     struct lyd_node *mod_data = NULL;
     const char **xpaths;
     uint32_t xpath_count;
-    int modified, has_data = 0;
+    int modified;
     char *orig_name = NULL;
     void *orig_data = NULL;
 
@@ -2674,14 +2696,13 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
     if ((mod_info->ds == SR_DS_OPERATIONAL) && (mod_info->ds2 == SR_DS_OPERATIONAL)) {
         assert(sess);
 
-        /* check whether this session even has any push oper data and next push data for this module */
-        if (sess->oper_push_mod_count && (err_info = sr_shmext_oper_push_get(conn, mod->shm_mod, mod->ly_mod->name, sess->sid, NULL, &has_data,
-                SR_LOCK_READ))) {
-            return err_info;
+        /* check if we have any push data */
+        if (!sr_modinfo_sess_has_push_oper_data(sess, mod->ly_mod->name)) {
+            return NULL;
         }
 
         /* load module data */
-        if ((has_data == 1) && (err_info = sr_module_file_data_append(mod->ly_mod, mod->ds_handle, mod_info->ds2,
+        if ((err_info = sr_module_file_data_append(mod->ly_mod, mod->ds_handle, mod_info->ds2,
                 conn->cid, sess->sid, mod->xpaths, mod->xpath_count, &mod_info->data))) {
             return err_info;
         }
