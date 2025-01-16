@@ -405,4 +405,15 @@ sr_error_info_t *sr_shmext_oper_push_get(sr_conn_ctx_t *conn, sr_mod_t *shm_mod,
 sr_error_info_t *sr_shmext_oper_push_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *mod_name, uint32_t sid,
         sr_lock_mode_t has_mod_locks);
 
+/**
+ * @brief Change a push oper data entry's has_data flag of a module for a session.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] shm_mod SHM mod.
+ * @param[in] sid Session ID of the push oper data.
+ * @param[in] has_data Whether any push data is stored.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmext_oper_push_change_has_data(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sid, int has_data);
+
 #endif /* _SHM_EXT_H */
