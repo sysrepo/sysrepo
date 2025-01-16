@@ -2806,3 +2806,37 @@ cleanup_ext_unlock:
 cleanup:
     return err_info;
 }
+
+sr_error_info_t *
+sr_shmext_oper_push_change_has_data(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sid, int has_data)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_mod_oper_push_t *oper_push;
+    uint32_t i;
+
+    /* We already have a module WRITE lock */
+
+    /* EXT READ LOCK */
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
+        goto cleanup;
+    }
+
+    /* Find the session in mod oper push data */
+    for (i = 0; i < shm_mod->oper_push_data_count; ++i) {
+        oper_push = &((sr_mod_oper_push_t *)(conn->ext_shm.addr + shm_mod->oper_push_data))[i];
+        if (oper_push->sid == sid) {
+            break;
+        }
+    }
+    SR_CHECK_INT_GOTO(i == shm_mod->oper_push_data_count, err_info, cleanup_ext_unlock);
+
+    /* set has_data */
+    oper_push->has_data = has_data;
+
+cleanup_ext_unlock:
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
+
+cleanup:
+    return err_info;
+}
