@@ -2796,8 +2796,14 @@ sr_shmext_oper_push_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *UNUS
     }
     SR_CHECK_INT_GOTO(i == shm_mod->oper_push_data_count, err_info, cleanup_ext_unlock);
 
+    SR_LOG_DBG("#SHM before (removing oper push session)");
+    sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
+
     /* free the item */
     sr_shmrealloc_del(&conn->ext_shm, &shm_mod->oper_push_data, &shm_mod->oper_push_data_count, sizeof *oper_push, i, 0, 0);
+
+    SR_LOG_DBG("#SHM after (removing oper push session)");
+    sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
 cleanup_ext_unlock:
     /* EXT READ UNLOCK */

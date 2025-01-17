@@ -3914,6 +3914,8 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
     sr_datastore_t store_ds;
     uint32_t i, sid;
     int create = 0, change = 0;
+    const char *mod_name = NULL;
+    sr_mod_t *shm_mod;
 
     assert(!mod_info->data_cached);
 
@@ -3989,6 +3991,21 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
                         goto cleanup;
                     }
                 }
+            }
+        }
+    }
+
+    if (shmmod_session_del && !mod_info->mod_count && session->oper_push_mod_count) {
+        /* We are stopping a session, we had pushed some data in the past, but no current data, so mod_info->count is zero */
+        for (i = 0; i < session->oper_push_mod_count; ++i) {
+            mod_name = session->oper_push_mods[i].name;
+            shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(mod_info->conn), mod_name);
+            if (!shm_mod) {
+                /* module was removed, sr_remove_module should have removed Ext SHM data for it as well */
+                continue;
+            }
+            if ((err_info = sr_shmext_oper_push_del(mod_info->conn, shm_mod, mod_name, sid, SR_LOCK_WRITE))) {
+                goto cleanup;
             }
         }
     }
