@@ -4687,6 +4687,11 @@ sr_discard_oper_changes(sr_conn_ctx_t *UNUSED(conn), sr_session_ctx_t *session, 
 
     SR_CHECK_ARG_APIRET(!session, NULL, err_info);
 
+    if (session->dt[SR_DS_OPERATIONAL].edit) {
+        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "There are already staged changes. Call 'sr_discard_changes()' to remove them first.");
+        return sr_api_ret(session, err_info);
+    }
+
     return _sr_discard_oper_changes(session, module_name, 0, timeout_ms);
 }
 
