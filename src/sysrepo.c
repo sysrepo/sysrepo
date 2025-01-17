@@ -3990,7 +3990,8 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
     }
 
     if (!mod_info->notify_diff) {
-        if (!sr_modinfo_is_changed(mod_info)) {
+        /* Only log if called by sr_apply_changes not sr_session_stop and have no changes to apply */
+        if (!sr_modinfo_is_changed(mod_info) && !shmmod_session_del) {
             SR_LOG_DBG("No \"%s\" datastore changes to apply.", sr_ds2str(mod_info->ds));
         }
         goto store;
@@ -4101,8 +4102,8 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
     }
 
 store:
-    if (!mod_info->notify_diff && !sr_modinfo_is_changed(mod_info)) {
-        /* there is no diff and no changed modules, nothing to store */
+    if (!mod_info->notify_diff && !sr_modinfo_is_changed(mod_info) && !shmmod_session_del) {
+        /* there is no diff and no changed modules, and we are not stopping the session, nothing to store */
         goto cleanup;
     }
 
@@ -4111,7 +4112,7 @@ store:
         goto cleanup;
     }
 
-    /* store updated datastore */
+    /* store updated datastore or remove left over session in Ext SHM if deleting */
     if ((err_info = sr_modinfo_data_store(mod_info, session, shmmod_session_del))) {
         goto cleanup;
     }
