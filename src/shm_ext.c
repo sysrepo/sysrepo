@@ -2235,17 +2235,15 @@ sr_shmext_change_sub_suspended(sr_conn_ctx_t *conn, const char *mod_name, sr_dat
     sr_mod_t *shm_mod;
     sr_mod_change_sub_t *shm_subs;
     uint32_t i;
+    sr_lock_mode_t mode = (set_suspended > -1) ? SR_LOCK_WRITE : SR_LOCK_READ;
 
     shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), mod_name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
-    /* changing suspended technically modifies (adds/removes) subscriptions */
-    if (set_suspended > -1) {
-        /* CHANGE SUB WRITE LOCK */
-        if ((err_info = sr_rwlock(&shm_mod->change_sub[ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
-                __func__, NULL, NULL))) {
-            return err_info;
-        }
+    /* CHANGE SUB LOCK */
+    if ((err_info = sr_rwlock(&shm_mod->change_sub[ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, mode, conn->cid,
+            __func__, NULL, NULL))) {
+        return err_info;
     }
 
     /* EXT READ LOCK */
@@ -2288,10 +2286,8 @@ cleanup_changesub_ext_unlock:
     sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
 
 cleanup_changesub_unlock:
-    if (set_suspended > -1) {
-        /* CHANGE SUB WRITE UNLOCK */
-        sr_rwunlock(&shm_mod->change_sub[ds].lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
-    }
+    /* CHANGE SUB UNLOCK */
+    sr_rwunlock(&shm_mod->change_sub[ds].lock, 0, mode, conn->cid, __func__);
 
     return err_info;
 }
@@ -2306,17 +2302,15 @@ sr_shmext_oper_get_sub_suspended(sr_conn_ctx_t *conn, const char *mod_name, uint
     sr_mod_oper_get_xpath_sub_t *xpath_subs;
     uint32_t i, j;
     int found = 0;
+    sr_lock_mode_t mode = (set_suspended > -1) ? SR_LOCK_WRITE : SR_LOCK_READ;
 
     shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), mod_name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
-    /* changing suspended technically modifies (adds/removes) subscriptions */
-    if (set_suspended > -1) {
-        /* OPER GET SUB WRITE LOCK */
-        if ((err_info = sr_rwlock(&shm_mod->oper_get_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
-                __func__, NULL, NULL))) {
-            return err_info;
-        }
+    /* OPER GET SUB LOCK */
+    if ((err_info = sr_rwlock(&shm_mod->oper_get_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, mode, conn->cid,
+            __func__, NULL, NULL))) {
+        return err_info;
     }
 
     /* EXT READ LOCK */
@@ -2366,10 +2360,8 @@ cleanup_opergetsub_ext_unlock:
     sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
 
 cleanup_opergetsub_unlock:
-    if (set_suspended > -1) {
-        /* OPER GET SUB WRITE UNLOCK */
-        sr_rwunlock(&shm_mod->oper_get_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
-    }
+    /* OPER GET SUB UNLOCK */
+    sr_rwunlock(&shm_mod->oper_get_lock, 0, mode, conn->cid, __func__);
 
     return err_info;
 }
@@ -2382,17 +2374,15 @@ sr_shmext_oper_poll_sub_suspended(sr_conn_ctx_t *conn, const char *mod_name, uin
     sr_mod_t *shm_mod;
     sr_mod_oper_poll_sub_t *shm_subs;
     uint32_t i;
+    sr_lock_mode_t mode = (set_suspended > -1) ? SR_LOCK_WRITE : SR_LOCK_READ;
 
     shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), mod_name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
-    /* changing suspended technically modifies (adds/removes) subscriptions */
-    if (set_suspended > -1) {
-        /* OPER POLL SUB WRITE LOCK */
-        if ((err_info = sr_rwlock(&shm_mod->oper_poll_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
-                __func__, NULL, NULL))) {
-            return err_info;
-        }
+    /* OPER POLL SUB LOCK */
+    if ((err_info = sr_rwlock(&shm_mod->oper_poll_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, mode, conn->cid,
+            __func__, NULL, NULL))) {
+        return err_info;
     }
 
     /* EXT READ LOCK */
@@ -2435,10 +2425,8 @@ cleanup_operpollsub_ext_unlock:
     sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
 
 cleanup_operpollsub_unlock:
-    if (set_suspended > -1) {
-        /* OPER POLL SUB WRITE UNLOCK */
-        sr_rwunlock(&shm_mod->oper_poll_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
-    }
+    /* OPER POLL SUB UNLOCK */
+    sr_rwunlock(&shm_mod->oper_poll_lock, 0, mode, conn->cid, __func__);
 
     return err_info;
 }
@@ -2451,17 +2439,15 @@ sr_shmext_notif_sub_suspended(sr_conn_ctx_t *conn, const char *mod_name, uint32_
     sr_mod_t *shm_mod;
     sr_mod_notif_sub_t *shm_sub;
     uint32_t i;
+    sr_lock_mode_t mode = (set_suspended > -1) ? SR_LOCK_WRITE : SR_LOCK_READ;
 
     shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), mod_name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
-    /* changing suspended technically modifies (adds/removes) subscriptions */
-    if (set_suspended > -1) {
-        /* NOTIF SUB WRITE LOCK */
-        if ((err_info = sr_rwlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
-                __func__, NULL, NULL))) {
-            return err_info;
-        }
+    /* NOTIF SUB LOCK */
+    if ((err_info = sr_rwlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, mode, conn->cid,
+            __func__, NULL, NULL))) {
+        return err_info;
     }
 
     /* EXT READ LOCK */
@@ -2504,10 +2490,8 @@ cleanup_notifsub_ext_unlock:
     sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
 
 cleanup_notifsub_unlock:
-    if (set_suspended > -1) {
-        /* NOTIF SUB WRITE UNLOCK */
-        sr_rwunlock(&shm_mod->notif_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
-    }
+    /* NOTIF SUB UNLOCK */
+    sr_rwunlock(&shm_mod->notif_lock, 0, mode, conn->cid, __func__);
 
     return err_info;
 }
@@ -2519,17 +2503,15 @@ sr_shmext_rpc_sub_suspended(sr_conn_ctx_t *conn, const char *path, uint32_t sub_
     sr_rpc_t *shm_rpc;
     sr_mod_rpc_sub_t *shm_sub;
     uint32_t i;
+    sr_lock_mode_t mode = (set_suspended > -1) ? SR_LOCK_WRITE : SR_LOCK_READ;
 
     shm_rpc = sr_shmmod_find_rpc(SR_CONN_MOD_SHM(conn), path);
     SR_CHECK_INT_RET(!shm_rpc, err_info);
 
-    /* changing suspended technically modifies (adds/removes) subscriptions */
-    if (set_suspended > -1) {
-        /* RPC SUB WRITE LOCK */
-        if ((err_info = sr_rwlock(&shm_rpc->lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
-                __func__, NULL, NULL))) {
-            return err_info;
-        }
+    /* RPC SUB LOCK */
+    if ((err_info = sr_rwlock(&shm_rpc->lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, mode, conn->cid,
+            __func__, NULL, NULL))) {
+        return err_info;
     }
 
     /* EXT READ LOCK */
@@ -2572,10 +2554,8 @@ cleanup_rpcsub_ext_unlock:
     sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
 
 cleanup_rpcsub_unlock:
-    if (set_suspended > -1) {
-        /* RPC SUB WRITE UNLOCK */
-        sr_rwunlock(&shm_rpc->lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
-    }
+    /* RPC SUB UNLOCK */
+    sr_rwunlock(&shm_rpc->lock, 0, mode, conn->cid, __func__);
 
     return err_info;
 }
