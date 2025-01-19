@@ -108,6 +108,15 @@
 /** environment variable for setting a custom prefix for SHM files */
 #define SR_SHM_PREFIX_ENV "SYSREPO_SHM_PREFIX"
 
+/* Ext SHM allocation block size - the smallest allocation unit in the Ext SHM */
+#define SR_SHMEXT_BLOCK_SIZE @SYSREPO_EXT_SHM_BLOCK_SIZE@
+
+/* Ext SHM Initial block count */
+#define SR_SHMEXT_INIT_BLOCK_COUNT @SYSREPO_EXT_SHM_INIT_BLOCK_COUNT@
+
+/* Ext SHM Count of blocks to grow by, when out of free space */
+#define SR_SHMEXT_GROW_BLOCKS @SYSREPO_EXT_SHM_GROW_BLOCKS@
+
 /** group to own all directories/files */
 #define SR_GROUP "@SYSREPO_GROUP@"
 

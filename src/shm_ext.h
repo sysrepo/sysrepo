@@ -53,10 +53,9 @@ sr_error_info_t *sr_shmext_open(sr_shm_t *shm, int zero);
 /**
  * @brief Debug print the contents of ext SHM.
  *
- * @param[in] mod_shm Mod SHM.
- * @param[in] shm_ext Ext SHM.
+ * @param[in] conn Connection to use.
  */
-void sr_shmext_print(sr_mod_shm_t *mod_shm, sr_shm_t *shm_ext);
+void sr_shmext_print(sr_conn_ctx_t *conn);
 
 /**
  * @brief Add main SHM module change subscription and create sub SHM if the first subscription was added.
