@@ -35,7 +35,7 @@ jobs:
         config:
           - {
             name: "Release, gcc",
-            os: "ubuntu-22.04",
+            os: "ubuntu-latest",
             build-type: "Release",
             dep-build-type: "Release",
             cc: "gcc",
@@ -46,7 +46,7 @@ jobs:
           }
           - {
             name: "Release, clang",
-            os: "ubuntu-22.04",
+            os: "ubuntu-latest",
             build-type: "Release",
             dep-build-type: "Release",
             cc: "clang",
@@ -57,7 +57,7 @@ jobs:
           }
           - {
             name: "Debug, gcc",
-            os: "ubuntu-22.04",
+            os: "ubuntu-latest",
             build-type: "Debug",
             dep-build-type: "Debug",
             cc: "gcc",
@@ -68,7 +68,7 @@ jobs:
           }
           - {
             name: "Debug, clang",
-            os: "ubuntu-22.04",
+            os: "ubuntu-latest",
             build-type: "Debug",
             dep-build-type: "Debug",
             cc: "clang",
@@ -80,7 +80,7 @@ jobs:
           }
           - {
             name: "ASAN and UBSAN",
-            os: "ubuntu-22.04",
+            os: "ubuntu-latest",
             build-type: "Debug",
             dep-build-type: "Debug",
             cc: "clang",
@@ -103,7 +103,7 @@ jobs:
           }
           - {
             name: "MONGO DS plugin",
-            os: "ubuntu-22.04",
+            os: "ubuntu-latest",
             build-type: "Debug",
             dep-build-type: "Debug",
             cc: "gcc",
@@ -114,7 +114,7 @@ jobs:
           }
           - {
             name: "MONGO DS plugin latest",
-            os: "ubuntu-22.04",
+            os: "ubuntu-latest",
             build-type: "Debug",
             dep-build-type: "Debug",
             cc: "gcc",
@@ -125,7 +125,7 @@ jobs:
           }
           - {
             name: "REDIS DS plugin",
-            os: "ubuntu-22.04",
+            os: "ubuntu-latest",
             build-type: "Debug",
             dep-build-type: "Debug",
             cc: "gcc",
@@ -136,7 +136,7 @@ jobs:
           }
           - {
             name: "REDIS DS plugin latest",
-            os: "ubuntu-22.04",
+            os: "ubuntu-latest",
             build-type: "Debug",
             dep-build-type: "Debug",
             cc: "gcc",
@@ -147,7 +147,7 @@ jobs:
           }
           - {
             name: "DEB Package",
-            os: "ubuntu-22.04",
+            os: "ubuntu-latest",
             build-type: "Release",
             dep-build-type: "Release",
             cc: "gcc",
@@ -251,10 +251,11 @@ jobs:
 
       - name: Deps-RedisDB
         shell: bash
+        # use jammy (22.04) since redis-stack-server is not available on noble (24.04) yet!
         run: |
           curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
           sudo chmod 644 /usr/share/keyrings/redis-archive-keyring.gpg
-          echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/redis.list
+          echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb jammy main" | sudo tee /etc/apt/sources.list.d/redis.list
           sudo apt-get update
           sudo apt-get install redis-stack-server
           sudo service redis-stack-server start
