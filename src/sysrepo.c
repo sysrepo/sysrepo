@@ -6543,15 +6543,11 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
 
     /* add RPC/action subscription into ext SHM and create separate specific SHM segment */
     if (is_ext) {
-        /* Remove any dead subscriptions */
-        sr_shmext_rpc_sub_remove_dead(conn, &shm_mod->rpc_ext_subs, &shm_mod->rpc_ext_sub_count);
         if ((err_info = sr_shmext_rpc_sub_add(conn, &shm_mod->rpc_ext_subs,
                 &shm_mod->rpc_ext_sub_count, path, sub_id, xpath, priority, 0, (*subscription)->evpipe_num, conn->cid))) {
             goto cleanup_unlock2;
         }
     } else {
-        /* Remove any dead subscriptions */
-        sr_shmext_rpc_sub_remove_dead(conn, &shm_rpc->subs, &shm_rpc->sub_count);
         if ((err_info = sr_shmext_rpc_sub_add(conn, &shm_rpc->subs, &shm_rpc->sub_count, path, sub_id,
                 xpath, priority, 0, (*subscription)->evpipe_num, conn->cid))) {
             goto cleanup_unlock2;

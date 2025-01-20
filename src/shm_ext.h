@@ -279,15 +279,6 @@ sr_error_info_t *sr_shmext_rpc_sub_stop(sr_conn_ctx_t *conn, off_t *subs, uint32
         const char *path, uint32_t del_idx, int del_evpipe, int recovery);
 
 /**
- * @brief Remove dead main SHM module RPC/action subscription
- *
- * @param[in] conn Connection to use.
- * @param[in,out] subs Offset in ext SHM of RPC subs.
- * @param[in,out] sub_count Ext SHM RPC sub count.
-*/
-void sr_shmext_rpc_sub_remove_dead(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count);
-
-/**
  * @brief Check validity of all the subscriptions in a new updated context.
  *
  * @param[in] conn Connection to use.
