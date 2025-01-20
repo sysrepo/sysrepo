@@ -145,8 +145,7 @@ struct sr_denied {
  * @param[in,out] denied Deny details, if applicable.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_nacm_check_operation(const char *nacm_user, const struct lyd_node *data,
-        struct sr_denied *denied);
+sr_error_info_t *sr_nacm_check_op(const char *nacm_user, const struct lyd_node *data, struct sr_denied *denied);
 
 /**
  * @brief Filter out result nodes that do not have R access to.

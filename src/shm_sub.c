@@ -4724,7 +4724,7 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
         /* check NACM */
         free(denied.rule_name);
         memset(&denied, 0, sizeof denied);
-        if (sub->sess->nacm_user && (err_info = sr_nacm_check_operation(sub->sess->nacm_user, notif, &denied))) {
+        if (sub->sess->nacm_user && (err_info = sr_nacm_check_op(sub->sess->nacm_user, notif, &denied))) {
             goto cleanup;
         }
 

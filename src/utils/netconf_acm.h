@@ -4,8 +4,8 @@
  * @brief NACM functionality header
  *
  * @copyright
- * Copyright (c) 2019 - 2022 Deutsche Telekom AG.
- * Copyright (c) 2017 - 2022 CESNET, z.s.p.o.
+ * Copyright (c) 2019 - 2025 Deutsche Telekom AG.
+ * Copyright (c) 2017 - 2025 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -85,6 +85,15 @@ const char *sr_nacm_get_user(sr_session_ctx_t *session);
  * @return Username of NACM recovery session.
  */
 const char *sr_nacm_get_recovery_user(void);
+
+/**
+ * @brief Explicitly check NACM access of an operation.
+ *
+ * @param[in] session Session to use, must have NACM username set for the check to be performed.
+ * @param[in] op Operation to check.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_nacm_check_operation(sr_session_ctx_t *session, const struct lyd_node *op);
 
 #ifdef __cplusplus
 }

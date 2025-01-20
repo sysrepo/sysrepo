@@ -7043,7 +7043,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
 
     if (session->nacm_user) {
         /* check NACM */
-        if ((err_info = sr_nacm_check_operation(session->nacm_user, input_top, &denied))) {
+        if ((err_info = sr_nacm_check_op(session->nacm_user, input_top, &denied))) {
             goto cleanup;
         }
 

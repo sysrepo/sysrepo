@@ -1675,7 +1675,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_nacm_check_operation(const char *nacm_user, const struct lyd_node *data, struct sr_denied *denied)
+sr_nacm_check_op(const char *nacm_user, const struct lyd_node *data, struct sr_denied *denied)
 {
     sr_error_info_t *err_info = NULL;
     const struct lyd_node *op = NULL;
@@ -1791,6 +1791,42 @@ cleanup:
 
     sr_nacm_free_groups(groups, group_count);
     return err_info;
+}
+
+API int
+sr_nacm_check_operation(sr_session_ctx_t *session, const struct lyd_node *op)
+{
+    sr_error_info_t *err_info = NULL;
+    struct sr_denied denied = {0};
+
+    SR_CHECK_ARG_APIRET(!session || !op, session, err_info);
+
+    if (!session->nacm_user) {
+        goto cleanup;
+    }
+
+    /* check the operation */
+    if ((err_info = sr_nacm_check_op(session->nacm_user, op, &denied))) {
+        goto cleanup;
+    }
+
+    if (denied.denied) {
+        /* access denied */
+        if (denied.rule_name) {
+            sr_log(SR_LL_ERR, "NACM access denied by the rule \"%s\".", denied.rule_name);
+        } else if (denied.def) {
+            sr_log(SR_LL_ERR, "NACM access denied by \"%s\" node extension \"%s\".", LYD_NAME(denied.node), denied.def->name);
+        } else {
+            sr_log(SR_LL_ERR, "NACM access denied by the default NACM permissions.");
+        }
+
+        sr_errinfo_new_nacm(&err_info, "protocol", "access-denied", NULL, denied.node,
+                "Executing the operation is denied because \"%s\" NACM authorization failed.", session->nacm_user);
+        goto cleanup;
+    }
+
+cleanup:
+    return sr_api_ret(session, err_info);
 }
 
 /**

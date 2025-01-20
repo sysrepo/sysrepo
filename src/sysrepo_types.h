@@ -4,8 +4,8 @@
  * @brief public sysrepo types header
  *
  * @copyright
- * Copyright (c) 2018 - 2022 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2022 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2025 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2025 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
