@@ -1501,7 +1501,14 @@ sr_shmext_notif_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_id
     return err_info;
 }
 
-void
+/**
+ * @brief Remove dead main SHM module RPC/action subscription
+ *
+ * @param[in] conn Connection to use.
+ * @param[in,out] subs Offset in ext SHM of RPC subs.
+ * @param[in,out] sub_count Ext SHM RPC sub count.
+*/
+static void
 sr_shmext_rpc_sub_remove_dead(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count)
 {
     uint32_t i = 0;
@@ -1552,6 +1559,9 @@ sr_shmext_rpc_sub_add(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count, con
     int r, path_found = 0;
 
     assert(xpath);
+
+    /* Remove any dead subscriptions */
+    sr_shmext_rpc_sub_remove_dead(conn, subs, sub_count);
 
     /* EXT WRITE LOCK */
     if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_WRITE, 1, __func__))) {
