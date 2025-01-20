@@ -122,7 +122,7 @@ srpds_get_oper_collection_name(const char *mod_name, sr_cid_t cid, uint32_t sid,
     int r;
 
     if (is_oper) {
-        r = asprintf(collection_name, "%s_%s-%" PRIu32 " - %" PRIu32, sr_get_shm_prefix(), mod_name, cid, sid);
+        r = asprintf(collection_name, "%s_%s-%" PRIu32 "-%" PRIu32, sr_get_shm_prefix(), mod_name, cid, sid);
     } else {
         r = asprintf(collection_name, "%s_%s", sr_get_shm_prefix(), mod_name);
     }
