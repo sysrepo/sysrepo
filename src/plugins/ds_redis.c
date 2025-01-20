@@ -1986,12 +1986,6 @@ srpds_store_oper_recursively(redisContext *ctx, const struct lyd_node *mod_data,
             ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_path()", "");
             return err_info;
         }
-        if (!sibling->schema) {
-            /* add index */
-            sprintf(idx_str, "[%u]", discard_items_idx++);
-            path = realloc(path, strlen(path) + strlen(idx_str) + 1);
-            strcat(path, idx_str);
-        }
 
         /* get value */
         if (sibling->schema && (sibling->schema->nodetype & LYD_NODE_ANY)) {
@@ -2186,6 +2180,11 @@ srpds_store_oper_recursively(redisContext *ctx, const struct lyd_node *mod_data,
                 goto cleanup;
             }
         } else {
+            /* add index */
+            sprintf(idx_str, "[%" PRIu32 "]", discard_items_idx++);
+            path = realloc(path, strlen(path) + strlen(idx_str) + 1);
+            strcat(path, idx_str);
+
             if ((err_info = srpds_bulk_start(14, bulk))) {
                 goto cleanup;
             }
