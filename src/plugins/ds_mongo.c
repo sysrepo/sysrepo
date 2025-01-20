@@ -595,7 +595,7 @@ srpds_load_oper(mongoc_collection_t *module, const struct lys_module *mod, bson_
         /* remove the opaque node index prefixed if any */
         if ('O' == path[0]) {
             path++;
-            strtoul(path, &opaq_path, 16);
+            strtoul(path, &opaq_path, 10);
             path = opaq_path;
         }
 
@@ -2759,7 +2759,7 @@ srpds_load_oper_recursively(const struct lyd_node *mod_data, struct mongo_diff_d
             }
         } else {
             /* prefix paths with an opaq_index in hex prefixed with 'O' */
-            if (asprintf(&opaq_path, "O%x%s", ++opaq_index, path) == -1) {
+            if (asprintf(&opaq_path, "O%" PRIu32 "%s", ++opaq_index, path) == -1) {
                 ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
                 goto cleanup;
             }
