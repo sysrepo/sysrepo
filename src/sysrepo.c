@@ -703,6 +703,14 @@ _sr_session_stop(sr_session_ctx_t *session)
     tmp_err = sr_session_notif_buf_stop(session);
     sr_errinfo_merge(&err_info, tmp_err);
 
+    /* drop all staged changes, they interfere with _sr_discard_oper_changes() below */
+    for (ds = 0; ds < SR_DS_COUNT; ++ds) {
+        sr_release_data(session->dt[ds].edit);
+        lyd_free_all(session->dt[ds].diff);
+        session->dt[ds].edit = NULL;
+        session->dt[ds].diff = NULL;
+    }
+
     if (session->oper_push_mod_count) {
         /* free any stored operational data and the SHM ext push oper data entries */
         _sr_discard_oper_changes(session, NULL, 1, 0);
@@ -733,10 +741,6 @@ _sr_session_stop(sr_session_ctx_t *session)
     free(session->ev_data.orig_data);
     sr_errinfo_free(&session->ev_err_info);
     pthread_mutex_destroy(&session->ptr_lock);
-    for (ds = 0; ds < SR_DS_COUNT; ++ds) {
-        sr_release_data(session->dt[ds].edit);
-        lyd_free_all(session->dt[ds].diff);
-    }
 
     /* free any push oper module names */
     for (i = 0; i < session->oper_push_mod_count; ++i) {
@@ -4683,6 +4687,11 @@ sr_discard_oper_changes(sr_conn_ctx_t *UNUSED(conn), sr_session_ctx_t *session, 
     sr_error_info_t *err_info = NULL;
 
     SR_CHECK_ARG_APIRET(!session, NULL, err_info);
+
+    if (session->dt[SR_DS_OPERATIONAL].edit) {
+        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "There are already staged changes. Call 'sr_discard_changes()' to remove them first.");
+        return sr_api_ret(session, err_info);
+    }
 
     return _sr_discard_oper_changes(session, module_name, 0, timeout_ms);
 }
