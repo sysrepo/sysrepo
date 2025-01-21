@@ -321,7 +321,7 @@ srpds_get_access(mongoc_collection_t *module, char **owner, char **group, mode_t
         *perm = 0;
     }
 
-    doc = BCON_NEW("_id", BCON_UTF8("4"));
+    doc = BCON_NEW("_id", BCON_UTF8("2"));
     cursor = mongoc_collection_find_with_opts(module, doc, NULL, NULL);
 
     if (mongoc_cursor_next(cursor, (const bson_t **) &doc2)) {
@@ -502,7 +502,7 @@ cleanup:
 }
 
 /**
- * @brief Load all data (only nodes (/), metadata (2) and attributes (3)) from the database and store them
+ * @brief Load all data (only nodes (/), metadata (4) and attributes (5)) from the database and store them
  * inside the lyd_node structure (only for operational datastore).
  *
  * @param[in] module Given MongoDB collection.
@@ -553,7 +553,7 @@ srpds_load_oper(mongoc_collection_t *module, const struct lys_module *mod, bson_
     *   | 7) opaque nodes
     *   |    Dataset [ path(_id) | name | type | module_name | value ]
     *   |
-    *   | 8/9) metadata and attributes (0, 1, 2, 3, 4) ... (0, 1, 4) DO NOT LOAD
+    *   | 8/9) metadata and attributes (0, 1, 2, 4, 5) ... (0, 1, 2) DO NOT LOAD
     *   |
     *   | module_name = NULL - use parent's module | name - use the module specified by this name
     *   | valtype     = 0 - XML | 1 - JSON
@@ -563,12 +563,12 @@ srpds_load_oper(mongoc_collection_t *module, const struct lys_module *mod, bson_
     *   | 1) global metadata (starting with a number)
     *   |     1.1) 0 = timestamp (last-modif) [ !!! NOT LOADED ]
     *   |     1.2) 1 = is different from running? (for candidate datastore) [ !!! NOT LOADED ]
-    *   |     1.3) 4 = owner, group and permissions [ !!! NOT LOADED]
+    *   |     1.3) 2 = owner, group and permissions [ !!! NOT LOADED]
     *   |    Dataset [ path(_id) | value ]
     *   |
     *   | 2) metadata and attributes (starting with a number)
-    *   |     2.1) 2 = node metadata
-    *   |     2.2) 3 = attribute data for opaque nodes
+    *   |     2.1) 4 = node metadata
+    *   |     2.2) 5 = attribute data for opaque nodes
     *   |    Dataset [ path_with_name(_id) | name | type | path_to_node | value ]
     *
     *   [ !!! NOT LOADED ] data are only for internal use
@@ -594,11 +594,11 @@ srpds_load_oper(mongoc_collection_t *module, const struct lys_module *mod, bson_
         /* do not load, this is additional data
          * 0 - timestamp of the last modification
          * 1 - modified flag for candidate datastore
-         * 4 - owner, group and permissions */
+         * 2 - owner, group and permissions */
         switch (path[0]) {
         case '0':
         case '1':
-        case '4':
+        case '2':
             continue;
         default:
             break;
@@ -804,7 +804,7 @@ srpds_load_conv(mongoc_collection_t *module, const struct lys_module *mod, sr_da
     *   | 6) user-ordered leaf-lists
     *   |    Dataset [ path(_id) | name | type | module_name | dflt_flag | value | order | path_no_pred | prev | path_modif ]
     *   |
-    *   | 7) metadata and maxorder (0, 1, 4, #)
+    *   | 7) metadata and maxorder (0, 1, 2, #)
     *   |
     *   | module_name = NULL - use parent's module | name - use the module specified by this name
     *   | valtype     = 0 - XML | 1 - JSON
@@ -814,7 +814,7 @@ srpds_load_conv(mongoc_collection_t *module, const struct lys_module *mod, sr_da
     *   | 1) metadata
     *   |     1.1) 0 = timestamp (last-modif) [ !!! NOT LOADED ]
     *   |     1.2) 1 = is different from running? (for candidate datastore) [ !!! NOT LOADED ]
-    *   |     1.3) 4 = owner, group and permissions [ !!! NOT LOADED ]
+    *   |     1.3) 2 = owner, group and permissions [ !!! NOT LOADED ]
     *   |    Dataset [ path(_id) | value ]
     *   |
     *   | 2) maximum order for a userordered list or leaflist (starting with a #)
@@ -845,12 +845,12 @@ srpds_load_conv(mongoc_collection_t *module, const struct lys_module *mod, sr_da
          * 0 - timestamp of the last modification
          * 1 - modified flag for candidate datastore
          * # - maximum load-order for list or leaf-list
-         * 4 - owner, group and permissions */
+         * 2 - owner, group and permissions */
         switch (path[0]) {
         case '0':
         case '1':
         case '#':
-        case '4':
+        case '2':
             continue;
         default:
             break;
@@ -2559,7 +2559,7 @@ srpds_add_meta(struct lyd_meta *meta, const char *path, struct mongo_diff_data *
             }
 
             /* create unique path for new metadata */
-            if (asprintf(&path_with_name, "2%s#%s", path, meta_name) == -1) {
+            if (asprintf(&path_with_name, "4%s#%s", path, meta_name) == -1) {
                 ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
                 goto cleanup;
             }
@@ -2618,7 +2618,7 @@ srpds_add_attr(struct lyd_attr *attr, const char *path, struct mongo_diff_data *
             }
 
             /* create unique path for new attribute */
-            if (asprintf(&path_with_name, "3%s#%s", path, attr_name) == -1) {
+            if (asprintf(&path_with_name, "5%s#%s", path, attr_name) == -1) {
                 ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
                 goto cleanup;
             }
@@ -2814,7 +2814,7 @@ srpds_store_oper(mongoc_collection_t *module, const struct lyd_node *mod_data)
     }
 
     /* delete all data */
-    del_query = BCON_NEW("_id", "{", "$regex", "^[^4]", "$options", "s", "}");
+    del_query = BCON_NEW("_id", "{", "$regex", "^[^2]", "$options", "s", "}");
     if (!mongoc_collection_delete_many(module, del_query, NULL,
             NULL, &error)) {
         ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_delete_many()", error.message);
@@ -2915,7 +2915,7 @@ srpds_mongo_copy(const struct lys_module *mod, sr_datastore_t trg_ds, sr_datasto
             "{", "returns",
             "{", "$regexMatch",
             "{", "input", "$_id",
-            "regex", "^[^4]",
+            "regex", "^[^2]",
             "options", "s",
             "}",
             "}",
@@ -3139,7 +3139,7 @@ srpds_mongo_install(const struct lys_module *mod, sr_datastore_t ds, const char 
     }
 
     /* insert owner, group and permissions */
-    bson_query = BCON_NEW("_id", "4", "owner", BCON_UTF8(owner), "group", BCON_UTF8(group), "perm", BCON_INT32((int32_t)perm));
+    bson_query = BCON_NEW("_id", "2", "owner", BCON_UTF8(owner), "group", BCON_UTF8(group), "perm", BCON_INT32((int32_t)perm));
     if (!mongoc_collection_insert_one(mdata.module, bson_query, NULL, NULL, &error)) {
         ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_insert_one()", error.message);
         goto cleanup;
@@ -3220,7 +3220,7 @@ srpds_mongo_access_set(const struct lys_module *mod, sr_datastore_t ds, const ch
     }
 
     /* _id for owner, group and permissions */
-    bson_query_key = BCON_NEW("_id", "4");
+    bson_query_key = BCON_NEW("_id", "2");
 
     /* set owner */
     if (owner) {
@@ -3500,7 +3500,7 @@ srpds_mongo_candidate_reset(const struct lys_module *mod, void *plg_data)
         goto cleanup;
     }
 
-    doc = BCON_NEW("_id", "{", "$regex", "^[^014]", "$options", "s", "}");
+    doc = BCON_NEW("_id", "{", "$regex", "^[^012]", "$options", "s", "}");
 
     if (!mongoc_collection_delete_many(mdata.module, doc,
             NULL, NULL, &error)) {
