@@ -7975,24 +7975,24 @@ module_diff_reuse_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mod
             "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\" xmlns:yang=\"urn:ietf:params:xml:ns:yang:1\" yang:operation=\"none\">\n"
             "  <interface yang:operation=\"create\">\n"
             "    <name>eth52</name>\n"
-            "    <type yang:operation=\"create\" xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
             "  </interface>\n"
             "</interfaces>\n";
 
     const char *test_diff = "<l1 xmlns=\"urn:test\" xmlns:yang=\"urn:ietf:params:xml:ns:yang:1\" yang:key=\"\" yang:operation=\"create\">\n"
             "  <k>key1</k>\n"
-            "  <v yang:operation=\"create\">1</v>\n"
+            "  <v>1</v>\n"
             "</l1>\n";
     const char *full_diff =
             "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\" xmlns:yang=\"urn:ietf:params:xml:ns:yang:1\" yang:operation=\"none\">\n"
             "  <interface yang:operation=\"create\">\n"
             "    <name>eth52</name>\n"
-            "    <type yang:operation=\"create\" xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
             "  </interface>\n"
             "</interfaces>\n"
             "<l1 xmlns=\"urn:test\" xmlns:yang=\"urn:ietf:params:xml:ns:yang:1\" yang:key=\"\" yang:operation=\"create\">\n"
             "  <k>key1</k>\n"
-            "  <v yang:operation=\"create\">1</v>\n"
+            "  <v>1</v>\n"
             "</l1>\n";
 
     const size_t NUM_SUBS = 7;

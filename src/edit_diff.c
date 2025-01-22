@@ -1327,7 +1327,7 @@ sr_diff_find_match(const struct lyd_node *diff_sibling, const struct lyd_node *d
  * @param[in] op Diff operation.
  * @param[in] diff_parent Current sysrepo diff parent.
  * @param[in,out] diff_root Current sysrepo diff root node.
- * @param[out] diff_node Optional created diff node.
+ * @param[out] diff_node Created diff node.
  * @return err_info, NULL on error.
  */
 static sr_error_info_t *
@@ -1339,7 +1339,7 @@ sr_edit_diff_add(const struct lyd_node *node, const char *meta_val, const char *
     char *sibling_before_val = NULL;
 
     assert((op == EDIT_NONE) || (op == EDIT_CREATE) || (op == EDIT_DELETE) || (op == EDIT_REPLACE));
-    assert(!diff_node || !*diff_node);
+    assert(diff_node && !*diff_node);
 
     if (!diff_parent && !diff_root) {
         /* we are actually not generating a diff, so just perform what we are supposed to to change the datastore */
@@ -1351,26 +1351,24 @@ sr_edit_diff_add(const struct lyd_node *node, const char *meta_val, const char *
         goto cleanup;
     }
 
-    /* add specific attributes for the node */
-    if ((err_info = sr_diff_add_meta(node_dup, meta_val, prev_meta_val, op))) {
-        goto cleanup;
-    }
-
     /* check whether the new diff node is not already in the diff */
     if ((err_info = sr_diff_find_match(diff_parent ? lyd_child(diff_parent) : *diff_root, node_dup, &diff_match))) {
         goto cleanup;
     }
     if (diff_match) {
+        /* add diff metadata for the node so it can be merged as diff */
+        if ((err_info = sr_diff_add_meta(node_dup, meta_val, prev_meta_val, op))) {
+            goto cleanup;
+        }
+
         /* merge the new diff node with the one in the diff */
         if ((err_info = sr_lyd_diff_merge_tree(diff_root, diff_parent, node_dup))) {
             goto cleanup;
         }
 
-        if (diff_node) {
-            /* find the merged node in the diff */
-            if ((err_info = sr_lyd_find_sibling_first(diff_parent ? lyd_child(diff_parent) : *diff_root, node_dup, diff_node))) {
-                goto cleanup;
-            }
+        /* find the merged node in the diff */
+        if ((err_info = sr_lyd_find_sibling_first(diff_parent ? lyd_child(diff_parent) : *diff_root, node_dup, diff_node))) {
+            goto cleanup;
         }
     } else {
         /* insert node into diff, not there */
@@ -1384,9 +1382,12 @@ sr_edit_diff_add(const struct lyd_node *node, const char *meta_val, const char *
             lyd_insert_sibling(*diff_root, node_dup, diff_root);
         }
 
-        if (diff_node) {
-            *diff_node = node_dup;
+        /* add diff metadata for the node, after it was connected to the diff */
+        if ((err_info = sr_diff_add_meta(node_dup, meta_val, prev_meta_val, op))) {
+            goto cleanup;
         }
+
+        *diff_node = node_dup;
         node_dup = NULL;
     }
 
