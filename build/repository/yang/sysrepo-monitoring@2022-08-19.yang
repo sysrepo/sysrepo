@@ -1,0 +1,379 @@
+module sysrepo-monitoring {
+  yang-version 1.1;
+  namespace "http://www.sysrepo.org/yang/sysrepo-monitoring";
+  prefix srm;
+
+  import ietf-yang-types {
+    prefix yang;
+  }
+  import ietf-datastores {
+    prefix ds;
+  }
+
+  organization
+    "CESNET";
+  contact
+    "Author: Michal Vasko
+             <mvasko@cesnet.cz>";
+  description
+    "Sysrepo YANG datastore monitoring state information.";
+
+  revision 2022-08-19 {
+    description
+      "Added state information for operational poll subscriptions.";
+  }
+  revision 2022-04-08 {
+    description
+      "Added NACM statistics.";
+  }
+  revision 2021-07-29 {
+    description
+      "Subscription suspended state information added.";
+  }
+  revision 2021-01-15 {
+    description
+      "Connection pid and new lock type added, lock information completely changed.";
+  }
+  revision 2020-04-17 {
+    description
+      "Initial revision.";
+  }
+
+  typedef lock-mode {
+    type enumeration {
+      enum "read" {
+        description
+          "Read lock.";
+      }
+      enum "read-upgr" {
+        description
+          "Read lock with an upgrade capability.";
+      }
+      enum "write" {
+        description
+          "Write lock.";
+      }
+    }
+    description
+      "Mode of lock held.";
+  }
+
+  typedef module-ref {
+    type leafref {
+      path "/sysrepo-state/module/name";
+    }
+    description
+      "Module reference.";
+  }
+
+  typedef conn-ref {
+    type leafref {
+      path "/sysrepo-state/connection/cid";
+    }
+    description
+      "Connection reference.";
+  }
+
+  grouping lock-ds-params {
+    description
+      "Parameters of a Sysrepo lock specific for a datastore.";
+    leaf cid {
+      type conn-ref;
+      description
+        "CID of the lock owner.";
+    }
+    leaf datastore {
+      type identityref {
+        base ds:datastore;
+      }
+      description
+        "Specific datastore of the lock.";
+    }
+    leaf mode {
+      type lock-mode;
+      mandatory true;
+      description
+        "Lock mode.";
+    }
+  }
+
+  grouping lock-params {
+    description
+      "Parameters of a Sysrepo lock.";
+    leaf cid {
+      type conn-ref;
+      description
+        "CID of the lock owner.";
+    }
+    leaf mode {
+      type lock-mode;
+      mandatory true;
+      description
+        "Lock mode.";
+    }
+  }
+
+  container sysrepo-state {
+    config false;
+    description
+      "Information about Sysrepo state stored in the shared memory.";
+    list module {
+      key "name";
+      description
+        "Sysrepo module.";
+      leaf name {
+        type string;
+        description
+          "Module name.";
+      }
+      list datastore {
+        key "name";
+        description
+          "Datastore state.";
+        leaf name {
+          type identityref {
+            base ds:datastore;
+          }
+          description
+            "Datastore name.";
+        }
+        leaf last-modified {
+          type yang:date-and-time;
+          description
+            "When the datastore was last modified.";
+        }
+      }
+      list data-lock {
+        key "cid datastore";
+        description
+          "Held module data lock.";
+        uses lock-ds-params;
+      }
+      list ds-lock {
+        key "datastore";
+        description
+          "Held datastore (NETCONF) lock.";
+        leaf datastore {
+          type identityref {
+            base ds:datastore;
+          }
+          description
+            "Datastore of the datastore lock.";
+        }
+        leaf sid {
+          type uint32;
+          mandatory true;
+          description
+            "Lock owner session ID.";
+        }
+        leaf timestamp {
+          type yang:date-and-time;
+          mandatory true;
+          description
+            "Timestamp of obtaining the lock.";
+        }
+      }
+      list change-sub-lock {
+        key "cid datastore";
+        description
+          "Held module change subscriptions lock.";
+        uses lock-ds-params;
+      }
+      list oper-get-sub-lock {
+        description
+          "Held module operational get subscriptions lock.";
+        uses lock-params;
+      }
+      list oper-poll-sub-lock {
+        description
+          "Held module operational poll subscriptions lock.";
+        uses lock-params;
+      }
+      list notif-sub-lock {
+        description
+          "Held module notification subscriptions lock.";
+        uses lock-params;
+      }
+      container subscriptions {
+        description
+          "Module subscriptions.";
+        list change-sub {
+          description
+            "Data change subscription.";
+          leaf datastore {
+            type identityref {
+              base ds:datastore;
+            }
+            mandatory true;
+            description
+              "Datastore, whose data changes were subscribed for.";
+          }
+          leaf xpath {
+            type yang:xpath1.0;
+            description
+              "XPath filtering the data subscribed for.";
+          }
+          leaf priority {
+            type uint32;
+            mandatory true;
+            description
+              "Subscription priority.";
+          }
+          leaf cid {
+            type conn-ref;
+            mandatory true;
+            description
+              "CID of the connection that this subscription belongs to.";
+          }
+          leaf suspended {
+            type boolean;
+            mandatory true;
+            description
+              "Whether the subscription is in the suspended state.";
+          }
+        }
+        list operational-get-sub {
+          key "xpath";
+          description
+            "Operational get (pull) subscription.";
+          leaf xpath {
+            type yang:xpath1.0;
+            description
+              "Operational get subscription XPath.";
+          }
+          list xpath-sub {
+            min-elements 1;
+            description
+              "Operational get subscription for the XPath.";
+            leaf cid {
+              type conn-ref;
+              mandatory true;
+              description
+                "CID of the connection that this subscription belongs to.";
+            }
+            leaf suspended {
+              type boolean;
+              mandatory true;
+              description
+                "Whether the subscription is in the suspended state.";
+            }
+          }
+        }
+        list operational-poll-sub {
+          key "xpath";
+          description
+            "Operational poll subscription.";
+          leaf xpath {
+            type yang:xpath1.0;
+            description
+              "Operational poll subscription XPath.";
+          }
+          leaf cid {
+            type conn-ref;
+            description
+              "CID of the connection that this subscription belongs to.";
+          }
+          leaf suspended {
+            type boolean;
+            mandatory true;
+            description
+              "Whether the subscription is in the suspended state.";
+          }
+        }
+        list notification-sub {
+          description
+            "Event notification subscription.";
+          leaf cid {
+            type conn-ref;
+            description
+              "CID of the connection that this subscription belongs to.";
+          }
+          leaf suspended {
+            type boolean;
+            mandatory true;
+            description
+              "Whether the subscription is in the suspended state.";
+          }
+        }
+      }
+    }
+    list rpc {
+      key "path";
+      description
+        "RPC/action of a Sysrepo module.";
+      leaf path {
+        type yang:xpath1.0;
+        description
+          "Path identifying an RPC or action.";
+      }
+      list sub-lock {
+        description
+          "Held RPC/action subscriptions lock.";
+        uses lock-params;
+      }
+      list rpc-sub {
+        leaf xpath {
+          type yang:xpath1.0;
+          mandatory true;
+          description
+            "XPath filtering the RPCs/actions subscribed for.";
+        }
+        leaf priority {
+          type uint32;
+          mandatory true;
+          description
+            "Subscription priority.";
+        }
+        leaf cid {
+          type conn-ref;
+          mandatory true;
+          description
+            "CID of the connection that this subscription belongs to.";
+        }
+        leaf suspended {
+          type boolean;
+          mandatory true;
+          description
+            "Whether the subscription is in the suspended state.";
+        }
+      }
+    }
+    list connection {
+      key "cid";
+      description
+        "Created Sysrepo connection.";
+      leaf cid {
+        type uint32;
+        description
+          "Unique CID of the connection.";
+      }
+      leaf pid {
+        type uint32;
+        mandatory true;
+        description
+          "PID of the process that created this connection.";
+      }
+      container nacm-stats {
+        description
+          "Various NACM statistics for this connection.";
+        reference
+          "RFC 8341";
+        leaf denied-operations {
+          type yang:zero-based-counter32;
+          description
+            "Connection-specific value of /ietf-netconf-acm:nacm/denied-operations.";
+        }
+        leaf denied-data-writes {
+          type yang:zero-based-counter32;
+          description
+            "Connection-specific value of /ietf-netconf-acm:nacm/denied-data-writes.";
+        }
+        leaf denied-notifications {
+          type yang:zero-based-counter32;
+          description
+            "Connection-specific value of /ietf-netconf-acm:nacm/denied-notifications.";
+        }
+      }
+    }
+  }
+}

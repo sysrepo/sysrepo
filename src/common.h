@@ -104,7 +104,8 @@ struct srplg_ntf_s;
 #define SR_CHANGE_CB_TIMEOUT 5000
 
 /** default timeout for operational subscription callback (ms) */
-#define SR_OPER_CB_TIMEOUT 5000
+// #define SR_OPER_CB_TIMEOUT 5000
+#define SR_OPER_CB_TIMEOUT 10000
 
 /** default timeout for RPC/action subscription callback (ms) */
 #define SR_RPC_CB_TIMEOUT 2000

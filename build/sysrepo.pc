@@ -1,0 +1,17 @@
+prefix=/usr/local
+includedir=${prefix}/include
+libdir=${prefix}/lib
+
+Name: sysrepo
+Description: YANG-based system repository for all-around configuration management.
+Version: 2.2.36
+Requires.private: libyang
+Libs: -L${libdir} -lsysrepo
+Cflags: -I${includedir}
+
+SR_REPO_PATH=//home/hytec/gnb407/du_bin/intel/liboam/oam_du/cm/sysrepo/run/SysrepoInstaller/PKG/sysrepo/build/repository
+SR_PLUGINS_PATH=/usr/local/lib/sysrepo/plugins
+SRPD_PLUGINS_PATH=/usr/local/lib/sysrepo-plugind/plugins
+
+SR_GROUP=
+SR_UMASK=000

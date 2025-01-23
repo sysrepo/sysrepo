@@ -1,0 +1,1 @@
+/usr/bin/cc -g -O0  -Wall -Wextra -Wpedantic -std=c11 -g -rdynamic CMakeFiles/notif_send_example.dir/notif_send_example.c.o -o notif_send_example  -Wl,-rpath,//home/hytec/gnb407/du_bin/intel/liboam/oam_du/cm/sysrepo/run/SysrepoInstaller/PKG/sysrepo/build:/usr/local/lib ../libsysrepo.so.7.13.13 -latomic -Wl,-Bstatic -lrt -Wl,-Bdynamic -ldl /usr/local/lib/libyang.so 

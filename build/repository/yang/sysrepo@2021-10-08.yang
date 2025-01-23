@@ -1,0 +1,260 @@
+module sysrepo {
+  yang-version 1.1;
+  namespace "http://www.sysrepo.org/yang/sysrepo";
+  prefix sr;
+
+  import ietf-yang-types {
+    prefix yang;
+  }
+  import ietf-yang-metadata {
+    prefix md;
+    revision-date 2016-08-05;
+  }
+
+  organization
+    "CESNET";
+  contact
+    "Author: Michal Vasko
+             <mvasko@cesnet.cz>";
+  description
+    "Sysrepo YANG datastore internal attributes and information.";
+
+  revision 2021-10-08 {
+    description
+      "Removed nodes for scheduling changes.";
+  }
+  revision 2021-09-07 {
+    description
+      "Added module datastore plugins, increased replay-support type precision,
+       and added details to dependencies.";
+  }
+  revision 2021-03-31 {
+    description
+      "Add content-id yang-library data identifier.";
+  }
+  revision 2021-01-18 {
+    description
+      "Reorganized dependencies.";
+  }
+  revision 2020-01-15 {
+    description
+      "Added a new purge operation.";
+  }
+  revision 2019-11-26 {
+    description
+      "startup-data renamed to data; it is used for running datastore as well.";
+  }
+  revision 2019-10-25 {
+    description
+      "Added attributes for storing operational data owners.";
+  }
+  revision 2019-09-25 {
+    description
+      "Added initial startup data for newly installed modules.";
+  }
+  revision 2019-09-17 {
+    description
+      "Added list of scheduled installed modules.";
+  }
+  revision 2019-07-10 {
+    description
+      "Initial revision.";
+  }
+
+  md:annotation "operation" {
+    type enumeration {
+      enum none {
+        description
+          "Node with this operation must exist but does not affect the datastore in any way.";
+        reference
+          "RFC 6241 section 7.2.: default-operation";
+      }
+      enum ether {
+        description
+          "Node with this operation does not have to exist and does not affect the datastore in any way.";
+      }
+      enum purge {
+        description
+          "Node with this operation represents an arbitrary generic node instance and all
+           the instances will be deleted.";
+      }
+    }
+    description
+      "Additional proprietary <edit-config> operations used internally.";
+    reference
+      "RFC 6241 section 7.2.";
+  }
+  md:annotation "cid" {
+    type uint32;
+    description
+      "Process with this CID is the owner of the operational data subtree.";
+  }
+
+  typedef module-ref {
+    type leafref {
+      path "/sysrepo-modules/module/name";
+    }
+    description
+      "Reference to a module.";
+  }
+
+  grouping module-info-grp {
+    leaf name {
+      type string;
+      description
+        "Module name.";
+    }
+    leaf revision {
+      type string;
+      description
+        "Module revision.";
+    }
+    leaf-list enabled-feature {
+      type string;
+      description
+        "List of all the enabled features.";
+    }
+    list plugin {
+      key "datastore";
+      min-elements 5;
+      max-elements 5;
+      description
+        "Module datastore plugin handling specific datastore data.";
+      leaf datastore {
+        type enumeration {
+          enum "running";
+          enum "startup";
+          enum "candidate";
+          enum "operational";
+          enum "notification";
+        }
+        description
+          "Datastore of this plugin.";
+      }
+      leaf name {
+        type string;
+        mandatory true;
+        description
+          "Specific plugin name as present in the plugin structures.";
+      }
+    }
+  }
+
+  grouping deps-grp {
+    list lref {
+      description
+        "Dependency of a leafref node.";
+      leaf target-path {
+        type yang:xpath1.0;
+        mandatory true;
+        description
+          "Path identifying the leafref target node.";
+      }
+      leaf target-module {
+        type module-ref;
+        mandatory true;
+        description
+          "Foreign target module of the leafref.";
+      }
+    }
+    list inst-id {
+      description
+        "Dependency of an instance-identifier node.";
+      leaf source-path {
+        type yang:xpath1.0;
+        mandatory true;
+        description
+          "Path identifying the instance-identifier node.";
+      }
+      leaf default-target-path {
+        type yang:xpath1.0;
+        description
+          "Default instance-identifier value.";
+      }
+    }
+    list xpath {
+      description
+        "Dependency of an XPath expression - must or when statement.";
+      leaf expression {
+        type yang:xpath1.0;
+        mandatory true;
+        description
+          "XPath expression of the dependency - must or when statement argument.";
+      }
+      leaf-list target-module {
+        type module-ref;
+        description
+          "Foreign modules with the data needed for evaluation of the XPath.";
+      }
+    }
+  }
+
+  container sysrepo-modules {
+    config false;
+    description
+      "All installed Sysrepo modules.";
+    leaf content-id {
+      type uint32;
+      mandatory true;
+      description
+        "Sysrepo module-set content-id to be used for its generated yang-library data.";
+    }
+    list module {
+      key "name";
+      description
+        "Sysrepo module.";
+      uses module-info-grp;
+      leaf replay-support {
+        type yang:date-and-time;
+        description
+          "Present only if the module supports replay. Means the earliest stored notification if any present.
+           Otherwise the time the replay support was switched on.";
+      }
+      container deps {
+        description
+          "Module data dependencies on other modules.";
+        uses deps-grp;
+      }
+      leaf-list inverse-deps {
+        type module-ref;
+        description
+          "List of modules that depend on this module.";
+      }
+      list rpc {
+        key "path";
+        description
+          "Module RPC/actions.";
+        leaf path {
+          type yang:xpath1.0;
+          description
+            "Path identifying the operation.";
+        }
+        container in {
+          description
+            "Operation input dependencies.";
+          uses deps-grp;
+        }
+        container out {
+          description
+            "Operation output dependencies.";
+          uses deps-grp;
+        }
+      }
+      list notification {
+        key "path";
+        description
+          "Module notifications.";
+        leaf path {
+          type yang:xpath1.0;
+          description
+            "Path identifying the notification.";
+        }
+        container deps {
+          description
+            "Notification dependencies.";
+          uses deps-grp;
+        }
+      }
+    }
+  }
+}

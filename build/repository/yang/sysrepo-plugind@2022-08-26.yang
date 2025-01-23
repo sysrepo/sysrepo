@@ -1,0 +1,115 @@
+module sysrepo-plugind {
+  namespace "urn:sysrepo:plugind";
+  prefix srpd;
+
+  import ietf-yang-types {
+    prefix yang;
+  }
+
+  revision 2022-08-26 {
+    description
+      "Added configuration of operational poll subscriptions.";
+  }
+  revision 2022-07-28 {
+    description
+      "Added configuration of notification rotation.";
+  }
+  revision 2022-03-10 {
+    description
+      "Added info about loaded plugins.";
+  }
+  revision 2020-12-10 {
+    description
+      "Initial revision.";
+  }
+
+  container sysrepo-plugind {
+    container plugin-order {
+      description
+        "The order in which to run plugins from the sysrepo-plugind.";
+      leaf-list plugin {
+        type string;
+        ordered-by user;
+        description
+          "The name of the plugin file, which may or may not include the extension.";
+      }
+    }
+    container notif-datastore {
+      description
+        "Includes configuration for notification datastore.";
+      container rotation {
+        description
+          "Notification rotation configuration and statistics.";
+        container enabled {
+          presence "Rotation is enabled.";
+          leaf older-than {
+            type string {
+              pattern "[1-9][0-9]*[smhDWMY]";
+            }
+            mandatory true;
+            description
+              "Period that has to elapse for notifications to be rotated. Units can be
+               [s] seconds, [m] minutes, [h] hours, [D] days, [W] weeks, [M] months,
+               or [Y] years.";
+          }
+          leaf output-dir {
+            type string;
+            mandatory true;
+            description
+              "Contains rotated notifications.";
+          }
+          leaf compress {
+            type boolean;
+            default "true";
+            description
+              "Enable/disable compression of rotated notifications with zip,
+               if disabled then notifications are simply copied to the output folder.";
+          }
+        }
+        leaf rotated-files-count {
+          type yang:counter64;
+          config false;
+          description
+            "Number of rotated files while sysrepo-plugind is running";
+        }
+      }
+    }
+    container oper-datastore {
+      description
+        "Includes configuration of operational datastore.";
+      list poll-diff-subscription {
+        key "module-name path";
+        description
+          "Subscription periodically retrieving data of an operational get subscription
+           and reporting changes to any subscribers.";
+        leaf module-name {
+          type string;
+          description
+            "Module name of the operational get subscription to poll.";
+        }
+        leaf path {
+          type yang:xpath1.0;
+          description
+            "Path of the operational get subscription to poll.";
+        }
+        leaf valid {
+          type uint32;
+          units "milliseconds";
+          mandatory true;
+          description
+            "Interval of data retrieval and the changes report.";
+        }
+      }
+    }
+    container loaded-plugins {
+      config false;
+      description
+        "Names of all the loaded (initialized) plugins.";
+      leaf-list plugin {
+        type string;
+        description
+          "Name of a loaded plugin.";
+      }
+    }
+  }
+}
