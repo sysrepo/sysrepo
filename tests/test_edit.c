@@ -865,6 +865,29 @@ test_purge(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_delete_item(st->sess, "/test:ll1", 0);
     assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(st->sess, "/mod:container/list-enh[label='0'][date-and-time='1970-01-01T00:00:00Z']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* typo in xpath, should be caught */
+    ret = sr_delete_item(st->sess, "/mod:container/list-enha[label='0']", 0);
+    assert_int_equal(ret, SR_ERR_LY);
+
+    /* one key given in multi-key list, should be deleted */
+    ret = sr_delete_item(st->sess, "/mod:container/list-enh[label='0']", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* test that the data was actually deleted */
+    ret = sr_get_subtree(st->sess, "/mod:container/list-enh[label='0']", 0, &subtree);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_null(subtree);
+
     sr_session_switch_ds(st->sess, SR_DS_RUNNING);
 }
 
