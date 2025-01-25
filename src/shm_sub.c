@@ -1880,6 +1880,7 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, const char *
                 continue;
             }
 
+            nsub->sub_shm->subscriber_count = subscriber_count;
             nsub->pending_event = 1;
             pending_events = 1;
         }
@@ -2122,6 +2123,7 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, const char 
                 continue;
             }
 
+            nsub->sub_shm->subscriber_count = subscriber_count;
             nsub->pending_event = 1;
             pending_events = 1;
         }
