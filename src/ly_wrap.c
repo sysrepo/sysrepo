@@ -514,7 +514,7 @@ sr_lyd_parse_op(const struct ly_ctx *ctx, const char *data, LYD_FORMAT format, e
         goto cleanup;
     }
 
-    if (lyd_parse_op(ctx, NULL, in, format, data_type, tree, NULL)) {
+    if (lyd_parse_op(ctx, NULL, in, format, data_type, LYD_PARSE_STRICT, tree, NULL)) {
         sr_errinfo_new_ly(&err_info, ctx, NULL, SR_ERR_LY);
         goto cleanup;
     }

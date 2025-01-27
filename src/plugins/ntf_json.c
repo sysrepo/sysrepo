@@ -131,7 +131,7 @@ srpntf_read_notif(int notif_fd, struct ly_ctx *ly_ctx, struct lyd_node **notif)
 
     /* parse the notification */
     ly_in_new_memory(notif_json, &in);
-    if (lyd_parse_op(ly_ctx, NULL, in, LYD_JSON, LYD_TYPE_NOTIF_YANG, notif, NULL)) {
+    if (lyd_parse_op(ly_ctx, NULL, in, LYD_JSON, LYD_TYPE_NOTIF_YANG, LYD_PARSE_STRICT, notif, NULL)) {
         err_info = srpjson_log_err_ly(srpntf_name, ly_ctx);
         goto cleanup;
     }
