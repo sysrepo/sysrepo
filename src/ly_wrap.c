@@ -1541,13 +1541,16 @@ sr_ly_canonize_xpath10_value(const struct ly_ctx *ctx, const char *value, LY_VAL
     const struct lysc_node_leaf *leaf_xpath = NULL;
     struct lyd_value val = {0};
     struct ly_err_item *err = NULL;
+    struct lyplg_type *type_plg;
 
     /* get leaf of xpath1.0 type */
     leaf_xpath = (struct lysc_node_leaf *)lys_find_path(ctx, NULL, "/sysrepo:sysrepo-modules/module/rpc/path", 0);
     assert(leaf_xpath);
 
+    type_plg = lysc_get_type_plugin(leaf_xpath->type->plugin_ref);
+
     /* get the path in canonical (JSON) format */
-    if (leaf_xpath->type->plugin->store(ctx, leaf_xpath->type, value, strlen(value), 0, format, prefix_data,
+    if (type_plg->store(ctx, leaf_xpath->type, value, strlen(value), 0, format, prefix_data,
             LYD_HINT_DATA, NULL, &val, NULL, &err)) {
         if (err) {
             sr_errinfo_new(&err_info, SR_ERR_LY, "%s", err->msg);
@@ -1560,7 +1563,7 @@ sr_ly_canonize_xpath10_value(const struct ly_ctx *ctx, const char *value, LY_VAL
 
 cleanup:
     ly_err_free(err);
-    leaf_xpath->type->plugin->free(ctx, &val);
+    type_plg->free(ctx, &val);
     return err_info;
 }
 
