@@ -269,10 +269,10 @@ step_load_data(const struct ly_ctx *ly_ctx, const char *file_path, LYD_FORMAT fo
         lyrc = lyd_parse_data(ly_ctx, NULL, in, format, parse_flags, 0, data);
         break;
     case DATA_RPC:
-        lyrc = lyd_parse_op(ly_ctx, NULL, in, format, LYD_TYPE_RPC_YANG, data, NULL);
+        lyrc = lyd_parse_op(ly_ctx, NULL, in, format, LYD_TYPE_RPC_YANG, LYD_PARSE_STRICT, data, NULL);
         break;
     case DATA_NOTIF:
-        lyrc = lyd_parse_op(ly_ctx, NULL, in, format, LYD_TYPE_NOTIF_YANG, data, NULL);
+        lyrc = lyd_parse_op(ly_ctx, NULL, in, format, LYD_TYPE_NOTIF_YANG, LYD_PARSE_STRICT, data, NULL);
         break;
     }
     ly_in_free(in, 1);
