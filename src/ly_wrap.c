@@ -398,7 +398,7 @@ sr_lys_find_xpath(const struct ly_ctx *ctx, const char *xpath, uint32_t options,
         *valid = 1;
     }
 
-    if (lys_find_xpath(ctx, NULL, xpath, options, set)) {
+    if (lys_find_xpath(ctx, NULL, xpath, options, set) || !(*set)->count) {
         if (valid) {
             *valid = 0;
         } else {
