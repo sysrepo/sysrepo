@@ -99,7 +99,8 @@ sr_errinfo_new_ly(sr_error_info_t **err_info, const struct ly_ctx *ly_ctx, const
  * @brief Ext data callback for a connection context to provide schema mount data.
  */
 static LY_ERR
-sr_ly_ext_data_clb(const struct lysc_ext_instance *ext, void *user_data, void **ext_data, ly_bool *ext_data_free)
+sr_ly_ext_data_clb(const struct lysc_ext_instance *ext,  const struct lyd_node *UNUSED(parent),
+        void *user_data, void **ext_data, ly_bool *ext_data_free)
 {
     sr_error_info_t *err_info = NULL;
     sr_conn_ctx_t *conn = user_data;
