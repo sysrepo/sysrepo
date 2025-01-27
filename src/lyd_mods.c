@@ -556,7 +556,7 @@ sr_lydmods_moddep_type(const struct lysc_type *type, const struct lysc_node *nod
     const struct lysc_type_union *uni;
     const struct lysc_type_leafref *lref;
     struct ly_set *atoms = NULL;
-    const char *default_val = NULL;
+    char *default_val = NULL;
     LY_ARRAY_COUNT_TYPE u;
     uint32_t i;
 
@@ -567,10 +567,15 @@ sr_lydmods_moddep_type(const struct lysc_type *type, const struct lysc_node *nod
             break;
         }
 
-        if ((node->nodetype == LYS_LEAF) && ((struct lysc_node_leaf *)node)->dflt) {
+        if ((node->nodetype == LYS_LEAF) && ((struct lysc_node_leaf *)node)->dflt.str) {
+            /* get JSON format of the default value */
+            if ((err_info = sr_ly_canonize_xpath10_value(node->module->ctx, ((struct lysc_node_leaf *)node)->dflt.str,
+                    LY_VALUE_SCHEMA_RESOLVED, ((struct lysc_node_leaf *)node)->dflt.prefixes, &default_val))) {
+                goto cleanup;
+            }
+
             /* get target module of the default value */
-            if (lys_find_path_atoms(node->module->ctx, NULL,
-                    lyd_value_get_canonical(node->module->ctx, ((struct lysc_node_leaf *)node)->dflt), 0, &atoms)) {
+            if (lys_find_path_atoms(node->module->ctx, NULL, default_val, 0, &atoms)) {
                 SR_ERRINFO_MEM(&err_info);
                 goto cleanup;
             }
@@ -578,10 +583,7 @@ sr_lydmods_moddep_type(const struct lysc_type *type, const struct lysc_node *nod
             ly_mod = sr_ly_atom_is_foreign(atoms->snodes[0], op_node);
         }
 
-        if (ly_mod) {
-            default_val = lyd_value_get_canonical(node->module->ctx, ((struct lysc_node_leaf *)node)->dflt);
-        }
-        if ((err_info = sr_lydmods_moddep_add_instid(node, default_val, sr_deps))) {
+        if ((err_info = sr_lydmods_moddep_add_instid(node, ly_mod ? default_val : NULL, sr_deps))) {
             goto cleanup;
         }
         break;
@@ -627,6 +629,7 @@ sr_lydmods_moddep_type(const struct lysc_type *type, const struct lysc_node *nod
 
 cleanup:
     ly_set_free(atoms, NULL);
+    free(default_val);
     return err_info;
 }
 
