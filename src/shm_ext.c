@@ -313,7 +313,7 @@ sr_shmext_print(sr_mod_shm_t *mod_shm, sr_shm_t *shm_ext)
     for (idx = 0; idx < mod_shm->mod_count; ++idx) {
         shm_mod = SR_SHM_MOD_IDX(mod_shm, idx);
 
-        if (shm_mod->oper_push_data) {
+        if (shm_mod->oper_push_data_count) {
             /* add oper push data sessions */
             if (sr_shmext_print_add_item(&items, &item_count, shm_mod->oper_push_data,
                     SR_SHM_SIZE(shm_mod->oper_push_data_count * sizeof(sr_mod_oper_push_t)),

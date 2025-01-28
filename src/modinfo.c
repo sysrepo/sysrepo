@@ -1263,12 +1263,12 @@ sr_module_oper_data_load(struct sr_mod_info_mod_s *mod, sr_conn_ctx_t *conn, uin
     uint32_t i, j, merge_opts, oper_push_count = 0;
     int last_sid = 0, dead_cid = 0;
 
-    /* EXT READ LOCK */
-    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
-        goto cleanup;
-    }
-
     if (mod->shm_mod->oper_push_data_count) {
+        /* EXT READ LOCK */
+        if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
+            goto cleanup;
+        }
+
         /* make a local copy of the array, with only alive connections */
         oper_push_dup = malloc(mod->shm_mod->oper_push_data_count * sizeof *oper_push_dup);
         if (!oper_push_dup) {
@@ -1285,10 +1285,9 @@ sr_module_oper_data_load(struct sr_mod_info_mod_s *mod, sr_conn_ctx_t *conn, uin
                 }
             }
         }
+        /* EXT READ UNLOCK */
+        sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
     }
-
-    /* EXT READ UNLOCK */
-    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
 
     if (err_info) {
         goto cleanup;
