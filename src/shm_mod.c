@@ -1886,6 +1886,7 @@ sr_shmmod_session_oper_order(sr_session_ctx_t *session, const struct lys_module 
         for (i = 0; i < mod_shm->mod_count; ++i) {
             shm_mod = SR_SHM_MOD_IDX(mod_shm, i);
 
+            /* oper_push_data_count is protected by operational DS module data locks */
             if (!shm_mod->oper_push_data_count) {
                 continue;
             }

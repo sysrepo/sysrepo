@@ -1263,6 +1263,7 @@ sr_module_oper_data_load(struct sr_mod_info_mod_s *mod, sr_conn_ctx_t *conn, uin
     uint32_t i, j, merge_opts, oper_push_count = 0;
     int last_sid = 0, dead_cid = 0;
 
+    /* oper_push_data_count is protected by operational DS module data locks */
     if (mod->shm_mod->oper_push_data_count) {
         /* EXT READ LOCK */
         if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
