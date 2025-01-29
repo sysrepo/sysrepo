@@ -1148,7 +1148,8 @@ sr_shmsub_change_notify_evpipe(struct sr_mod_info_s *mod_info, struct sr_mod_inf
 
     shm_sub = (sr_mod_change_sub_t *)(mod_info->conn->ext_shm.addr + mod->shm_mod->change_sub[ds].subs);
     for (i = 0; i < mod->shm_mod->change_sub[ds].sub_count; ++i) {
-        if (!sr_shmsub_change_listen_event_is_valid(ev, shm_sub[i].opts)) {
+        /* check subscription aliveness */
+        if (!sr_conn_is_alive(shm_sub[i].cid)) {
             continue;
         }
 
@@ -1164,7 +1165,7 @@ sr_shmsub_change_notify_evpipe(struct sr_mod_info_s *mod_info, struct sr_mod_inf
         }
 
         /* valid subscription */
-        if (shm_sub[i].priority == priority) {
+        if (sr_shmsub_change_listen_event_is_valid(ev, shm_sub[i].opts) && (shm_sub[i].priority == priority)) {
             if ((err_info = sr_shmsub_notify_evpipe(shm_sub[i].evpipe_num))) {
                 /* If this CID is dead and ignore the error */
                 if (sr_conn_is_alive(shm_sub[i].cid)) {
