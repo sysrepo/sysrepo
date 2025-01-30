@@ -5519,7 +5519,7 @@ sr_subscription_thread_resume(sr_subscription_ctx_t *subscription)
     }
 
     /* generate a new event for the thread to wake up */
-    if ((err_info = sr_shmsub_notify_evpipe(subscription->evpipe_num))) {
+    if ((err_info = sr_shmsub_notify_evpipe(subscription->evpipe_num, 0, NULL))) {
         return sr_api_ret(NULL, err_info);
     }
 
@@ -5563,7 +5563,7 @@ _sr_unsubscribe(sr_subscription_ctx_t *subscription)
         ATOMIC_STORE_RELAXED(subscription->thread_running, 0);
 
         /* generate a new event for the thread to wake up */
-        if ((tmp_err = sr_shmsub_notify_evpipe(subscription->evpipe_num))) {
+        if ((tmp_err = sr_shmsub_notify_evpipe(subscription->evpipe_num, 0, NULL))) {
             sr_errinfo_merge(&err_info, tmp_err);
         } else {
             /* join the thread */
@@ -7207,7 +7207,7 @@ _sr_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const char 
 
     if (start_time || stop_time) {
         /* notify subscription there are already some events (replay needs to be performed) or stop time needs to be checked */
-        if ((err_info = sr_shmsub_notify_evpipe((*subscription)->evpipe_num))) {
+        if ((err_info = sr_shmsub_notify_evpipe((*subscription)->evpipe_num, 0, NULL))) {
             goto error2;
         }
     }
@@ -7602,7 +7602,7 @@ sr_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uint32_t sub_
     }
 
     /* generate a new event for the thread to wake up */
-    if ((err_info = sr_shmsub_notify_evpipe(subscription->evpipe_num))) {
+    if ((err_info = sr_shmsub_notify_evpipe(subscription->evpipe_num, 0, NULL))) {
         goto cleanup_unlock;
     }
 
@@ -7834,7 +7834,7 @@ sr_oper_poll_subscribe(sr_session_ctx_t *session, const char *module_name, const
     }
 
     /* make sure the event handler updates its wake up period */
-    if ((err_info = sr_shmsub_notify_evpipe((*subscription)->evpipe_num))) {
+    if ((err_info = sr_shmsub_notify_evpipe((*subscription)->evpipe_num, 0, NULL))) {
         goto error4;
     }
 

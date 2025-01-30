@@ -95,9 +95,12 @@ sr_error_info_t *sr_shmsub_data_unlink(const char *name, const char *suffix1, in
  * @brief Write into a subscriber event pipe to notify it there is a new event.
  *
  * @param[in] evpipe_num Subscriber event pipe number.
+ * @param[in] cid Optional connection CID to check for aliveness in case writing into the pipe fails.
+ * @param[out] fail Optional fail flag to notify about fail in case connection with @p cid is dead, otherwise
+ * standard err_info is returned.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmsub_notify_evpipe(uint32_t evpipe_num);
+sr_error_info_t *sr_shmsub_notify_evpipe(uint32_t evpipe_num, sr_cid_t cid, int *fail);
 
 /**
  * @brief Notify about (generate) a change "update" event.

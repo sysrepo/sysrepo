@@ -1085,11 +1085,15 @@ sr_shmsub_change_notify_next_subscription(sr_conn_ctx_t *conn, struct sr_mod_inf
 }
 
 sr_error_info_t *
-sr_shmsub_notify_evpipe(uint32_t evpipe_num)
+sr_shmsub_notify_evpipe(uint32_t evpipe_num, sr_cid_t cid, int *fail)
 {
     sr_error_info_t *err_info = NULL;
     char *path = NULL, buf[1] = {0};
-    int fd = -1, ret;
+    int fd = -1, r;
+
+    if (fail) {
+        *fail = 0;
+    }
 
     /* get path to the pipe */
     if ((err_info = sr_path_evpipe(evpipe_num, &path))) {
@@ -1098,20 +1102,26 @@ sr_shmsub_notify_evpipe(uint32_t evpipe_num)
 
     /* open pipe for writing */
     if ((fd = sr_open(path, O_WRONLY | O_NONBLOCK, 0)) == -1) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, "Opening \"%s\" for writing failed (%s).", path, strerror(errno));
+        if (!cid || sr_conn_is_alive(cid)) {
+            sr_errinfo_new(&err_info, SR_ERR_SYS, "Opening \"%s\" for writing failed (%s).", path, strerror(errno));
+        } else if (fail) {
+            *fail = 1;
+        }
         goto cleanup;
     }
 
     /* write one arbitrary byte */
     do {
-        ret = write(fd, buf, 1);
-    } while (!ret);
-    if (ret == -1) {
-        SR_ERRINFO_SYSERRNO(&err_info, "write");
+        r = write(fd, buf, 1);
+    } while (!r);
+    if (r == -1) {
+        if (!cid || sr_conn_is_alive(cid)) {
+            SR_ERRINFO_SYSERRNO(&err_info, "write");
+        } else if (fail) {
+            *fail = 1;
+        }
         goto cleanup;
     }
-
-    /* success */
 
 cleanup:
     if (fd > -1) {
@@ -1138,6 +1148,7 @@ sr_shmsub_change_notify_evpipe(struct sr_mod_info_s *mod_info, struct sr_mod_inf
     sr_mod_change_sub_t *shm_sub;
     uint32_t i;
     sr_datastore_t ds = mod_info->ds;
+    int fail;
 
     *sub_count = 0;
 
@@ -1148,10 +1159,7 @@ sr_shmsub_change_notify_evpipe(struct sr_mod_info_s *mod_info, struct sr_mod_inf
 
     shm_sub = (sr_mod_change_sub_t *)(mod_info->conn->ext_shm.addr + mod->shm_mod->change_sub[ds].subs);
     for (i = 0; i < mod->shm_mod->change_sub[ds].sub_count; ++i) {
-        /* check subscription aliveness */
-        if (!sr_conn_is_alive(shm_sub[i].cid)) {
-            continue;
-        }
+        /* do not check subscription aliveness, prone to data races */
 
         /* skip suspended subscriptions */
         if (ATOMIC_LOAD_RELAXED(shm_sub[i].suspended)) {
@@ -1166,10 +1174,12 @@ sr_shmsub_change_notify_evpipe(struct sr_mod_info_s *mod_info, struct sr_mod_inf
 
         /* valid subscription */
         if (sr_shmsub_change_listen_event_is_valid(ev, shm_sub[i].opts) && (shm_sub[i].priority == priority)) {
-            if ((err_info = sr_shmsub_notify_evpipe(shm_sub[i].evpipe_num))) {
+            if ((err_info = sr_shmsub_notify_evpipe(shm_sub[i].evpipe_num, shm_sub[i].cid, &fail))) {
                 goto cleanup;
             }
-            (*sub_count)++;
+            if (!fail) {
+                (*sub_count)++;
+            }
         }
     }
 
@@ -1320,7 +1330,7 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, const char *orig_
         }
 
         if (!subscriber_count) {
-            /* the subscription(s) was recovered just now so there are not any */
+            /* the subscription(s) dies just now so there are not any */
             continue;
         }
 
@@ -1629,7 +1639,7 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, const char *orig_
             }
 
             if (!subscriber_count) {
-                /* the subscription(s) was recovered just now so there are not any */
+                /* the subscription(s) died just now so there are not any */
                 continue;
             }
             /* open sub SHM and map it */
@@ -1822,6 +1832,7 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, const char *
             }
 
             if (!subscriber_count) {
+                /* the subscription(s) died just now so there are not any */
                 continue;
             }
 
@@ -2067,6 +2078,7 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, const char 
                 }
             }
             if (!subscriber_count) {
+                /* the subscription(s) died just now so there are not any */
                 continue;
             }
 
@@ -2198,6 +2210,7 @@ sr_shmsub_oper_get_notify(struct sr_mod_info_mod_s *mod, const char *xpath, cons
     char *parent_lyb = NULL;
     struct lyd_node *oper_data;
     sr_cid_t cid;
+    int fail;
 
     if (!request_xpath) {
         request_xpath = "";
@@ -2269,11 +2282,13 @@ sr_shmsub_oper_get_notify(struct sr_mod_info_mod_s *mod, const char *xpath, cons
                 sr_ev2str(SR_SUB_EV_OPER), i, operation_id);
 
         /* notify using event pipe */
-        if ((err_info = sr_shmsub_notify_evpipe(nsub->xpath_sub->evpipe_num))) {
+        if ((err_info = sr_shmsub_notify_evpipe(nsub->xpath_sub->evpipe_num, nsub->xpath_sub->cid, &fail))) {
             goto cleanup;
         }
 
-        nsub->pending_event = 1;
+        if (!fail) {
+            nsub->pending_event = 1;
+        }
     }
 
     /* wait until the events are processed */
@@ -2606,6 +2621,11 @@ sr_shmsub_rpc_notify_has_subscription(sr_conn_ctx_t *conn, off_t *subs, uint32_t
     return has_sub;
 }
 
+struct sr_sub_evpipe_s {
+    uint32_t evpipe;
+    sr_cid_t cid;
+};
+
 /**
  * @brief Learn the priority of the next valid subscriber for an RPC event.
  *
@@ -2615,7 +2635,7 @@ sr_shmsub_rpc_notify_has_subscription(sr_conn_ctx_t *conn, off_t *subs, uint32_t
  * @param[in] input Operation input.
  * @param[in] last_priority Last priorty of a subscriber.
  * @param[out] next_priorty_p Next priorty of a subscriber(s).
- * @param[out] evpipes_p Array of evpipe numbers of all subscribers, needs to be freed.
+ * @param[out] evpipes_p Array of evpipes of all subscribers, needs to be freed.
  * @param[out] sub_count_p Number of subscribers with this priority.
  * @param[out] opts_p Optional options of all subscribers with this priority.
  * @return err_info, NULL on success.
@@ -2623,7 +2643,7 @@ sr_shmsub_rpc_notify_has_subscription(sr_conn_ctx_t *conn, off_t *subs, uint32_t
 static sr_error_info_t *
 sr_shmsub_rpc_notify_next_subscription(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count,
         const struct lyd_node *input, uint32_t last_priority, uint32_t *next_priority_p,
-        uint32_t **evpipes_p, uint32_t *sub_count_p, int *opts_p)
+        struct sr_sub_evpipe_s **evpipes_p, uint32_t *sub_count_p, int *opts_p)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_rpc_sub_t *shm_subs;
@@ -2661,14 +2681,16 @@ sr_shmsub_rpc_notify_next_subscription(sr_conn_ctx_t *conn, off_t *subs, uint32_
                     free(*evpipes_p);
                     *evpipes_p = malloc(sizeof **evpipes_p);
                     SR_CHECK_MEM_GOTO(!*evpipes_p, err_info, cleanup);
-                    (*evpipes_p)[0] = shm_subs[i].evpipe_num;
+                    (*evpipes_p)[0].evpipe = shm_subs[i].evpipe_num;
+                    (*evpipes_p)[0].cid = shm_subs[i].cid;
                     *sub_count_p = 1;
                     opts = shm_subs[i].opts;
                 } else if (shm_subs[i].priority == *next_priority_p) {
                     /* same priority subscription */
                     *evpipes_p = sr_realloc(*evpipes_p, (*sub_count_p + 1) * sizeof **evpipes_p);
                     SR_CHECK_MEM_GOTO(!*evpipes_p, err_info, cleanup);
-                    (*evpipes_p)[*sub_count_p] = shm_subs[i].evpipe_num;
+                    (*evpipes_p)[*sub_count_p].evpipe = shm_subs[i].evpipe_num;
+                    (*evpipes_p)[*sub_count_p].cid = shm_subs[i].cid;
                     ++(*sub_count_p);
                     opts |= shm_subs[i].opts;
                 }
@@ -2677,7 +2699,8 @@ sr_shmsub_rpc_notify_next_subscription(sr_conn_ctx_t *conn, off_t *subs, uint32_
                 *next_priority_p = shm_subs[i].priority;
                 *evpipes_p = malloc(sizeof **evpipes_p);
                 SR_CHECK_MEM_GOTO(!*evpipes_p, err_info, cleanup);
-                (*evpipes_p)[0] = shm_subs[i].evpipe_num;
+                (*evpipes_p)[0].evpipe = shm_subs[i].evpipe_num;
+                (*evpipes_p)[0].cid = shm_subs[i].cid;
                 *sub_count_p = 1;
                 opts = shm_subs[i].opts;
             }
@@ -2701,7 +2724,8 @@ sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count, cons
 {
     sr_error_info_t *err_info = NULL;
     char *input_lyb = NULL;
-    uint32_t i, input_lyb_len, cur_priority, subscriber_count, *evpipes = NULL;
+    uint32_t i, input_lyb_len, cur_priority, subscriber_count;
+    struct sr_sub_evpipe_s *evpipes = NULL;
     int opts, lock_lost;
     sr_sub_shm_t *sub_shm;
     sr_shm_t shm_sub = SR_SHM_INITIALIZER, shm_data_sub = SR_SHM_INITIALIZER;
@@ -2787,7 +2811,7 @@ first_sub:
 
         /* notify using event pipe */
         for (i = 0; i < subscriber_count; ++i) {
-            if ((err_info = sr_shmsub_notify_evpipe(evpipes[i]))) {
+            if ((err_info = sr_shmsub_notify_evpipe(evpipes[i].evpipe, evpipes[i].cid, NULL))) {
                 goto cleanup_wrunlock;
             }
         }
@@ -2862,7 +2886,8 @@ sr_shmsub_rpc_notify_abort(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     char *input_lyb = NULL;
-    uint32_t i, input_lyb_len, cur_priority, err_priority, subscriber_count, err_subscriber_count, *evpipes = NULL;
+    uint32_t i, input_lyb_len, cur_priority, err_priority, subscriber_count, err_subscriber_count;
+    struct sr_sub_evpipe_s *evpipes = NULL;
     sr_sub_shm_t *sub_shm;
     sr_shm_t shm_sub = SR_SHM_INITIALIZER, shm_data_sub = SR_SHM_INITIALIZER;
     int first_iter, lock_lost;
@@ -2941,7 +2966,7 @@ clear_shm:
 
         /* notify using event pipe */
         for (i = 0; i < subscriber_count; ++i) {
-            if ((err_info = sr_shmsub_notify_evpipe(evpipes[i]))) {
+            if ((err_info = sr_shmsub_notify_evpipe(evpipes[i].evpipe, evpipes[i].cid, NULL))) {
                 goto cleanup_wrunlock;
             }
         }
@@ -3076,17 +3101,15 @@ sr_shmsub_notif_notify(sr_conn_ctx_t *conn, const struct lyd_node *notif, struct
 
     /* notify all subscribers using event pipe */
     for (i = 0; i < notif_sub_count; i++) {
-        /* check that the subscription is still alive */
-        if (!sr_conn_is_alive(notif_subs[i].cid)) {
-            continue;
-        }
+        /* do not check subscription aliveness, prone to data races */
 
         if (ATOMIC_LOAD_RELAXED(notif_subs[i].suspended)) {
             /* skip suspended subscribers */
             continue;
         }
 
-        if ((err_info = sr_shmsub_notify_evpipe(notif_subs[i].evpipe_num))) {
+        /* notify using event pipe */
+        if ((err_info = sr_shmsub_notify_evpipe(notif_subs[i].evpipe_num, notif_subs[i].cid, NULL))) {
             goto cleanup_ext_sub_unlock;
         }
     }
@@ -4151,10 +4174,7 @@ sr_shmsub_oper_poll_get_sub_change_notify_evpipe(sr_conn_ctx_t *conn, const char
     shm_subs = (sr_mod_oper_poll_sub_t *)(conn->ext_shm.addr + shm_mod->oper_poll_subs);
     for (i = 0; i < shm_mod->oper_poll_sub_count; ++i) {
         if (!strcmp(oper_get_path, conn->ext_shm.addr + shm_subs[i].xpath)) {
-            /* check that the subscription is still alive */
-            if (!sr_conn_is_alive(shm_subs[i].cid)) {
-                continue;
-            }
+            /* do not check subscription aliveness, prone to data races */
 
             /* check that the subscription is active */
             if (ATOMIC_LOAD_RELAXED(shm_subs[i].suspended)) {
@@ -4162,7 +4182,7 @@ sr_shmsub_oper_poll_get_sub_change_notify_evpipe(sr_conn_ctx_t *conn, const char
             }
 
             /* relevant oper get subscriptions change for this oper poll subscription */
-            if ((err_info = sr_shmsub_notify_evpipe(shm_subs[i].evpipe_num))) {
+            if ((err_info = sr_shmsub_notify_evpipe(shm_subs[i].evpipe_num, shm_subs[i].cid, NULL))) {
                 break;
             }
         }
