@@ -6644,11 +6644,12 @@ sr_rpc_send(sr_session_ctx_t *session, const char *path, const sr_val_t *input, 
     if ((ret = sr_rpc_send_tree(session, input_tree, timeout_ms, &output_data)) != SR_ERR_OK) {
         goto cleanup;
     }
+    if (!output_data) {
+        /* no output */
+        goto cleanup;
+    }
 
     /* transform data tree into an output */
-    assert(output_data && (output_data->tree->schema->nodetype & (LYS_RPC | LYS_ACTION)));
-    *output_cnt = 0;
-    *output = NULL;
     LYD_TREE_DFS_BEGIN(output_data->tree, elem) {
         if (elem != output_data->tree) {
             /* allocate new sr_val */
@@ -7081,6 +7082,15 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
         err_info = _sr_rpc_ext_send_tree(session, ext_parent, &mod_info, path, input_top, input_op, timeout_ms, output);
     } else {
         err_info = _sr_rpc_send_tree(session, &mod_info, path, input_top, input_op, timeout_ms, output);
+    }
+    if (err_info) {
+        goto cleanup;
+    }
+
+    /* no output nodes */
+    if (!lyd_child((*output)->tree)) {
+        sr_release_data(*output);
+        *output = NULL;
     }
 
 cleanup:

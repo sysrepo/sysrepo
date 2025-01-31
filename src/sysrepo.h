@@ -1624,7 +1624,7 @@ int sr_rpc_send(sr_session_ctx_t *session, const char *path, const sr_val_t *inp
  * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
  * @param[in,out] input Input data tree in @p session connection _libyang_ context, is validated.
  * @param[in] timeout_ms RPC/action callback timeout in milliseconds. If 0, default is used.
- * @param[out] output SR data with the output data tree.
+ * @param[out] output SR data with the output data tree, NULL if no output nodes were generated.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t timeout_ms, sr_data_t **output);

@@ -490,7 +490,7 @@ op_rpc(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_FO
     const struct ly_ctx *ly_ctx;
     char tmp_file[23];
     int r, rc = EXIT_SUCCESS;
-    struct lyd_node *input, *node;
+    struct lyd_node *input;
     sr_data_t *output;
 
     if (!file_path && editor) {
@@ -526,13 +526,7 @@ op_rpc(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_FO
     }
 
     /* print output if any */
-    LY_LIST_FOR(lyd_child(output->tree), node) {
-        if (!(node->flags & LYD_DEFAULT)) {
-            break;
-        }
-    }
-
-    if (node) {
+    if (output) {
         lyd_print_file(stdout, output->tree, format, wd_opt);
     }
     sr_release_data(output);
