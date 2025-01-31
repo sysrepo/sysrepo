@@ -554,11 +554,13 @@ retry:
             goto cleanup;
         }
 
-        /* retry */
-        if (fd > -1) {
-            close(fd);
+        if (ds == SR_DS_RUNNING) {
+            /* retry only for running, otherwise we return empty data */
+            if (fd > -1) {
+                close(fd);
+            }
+            goto retry;
         }
-        goto retry;
     }
 
 cleanup:
