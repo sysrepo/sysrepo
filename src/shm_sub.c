@@ -494,6 +494,7 @@ _sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t event, uint32_t 
 
     /* request_id cannot have changed while we were waiting */
     assert(request_id == last_request_id);
+    (void)request_id;
     (void)last_request_id;
 
     /* orig_cid is mainly used to recover the shm if the originator has crashed after a fake write unlock.
