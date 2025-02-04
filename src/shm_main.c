@@ -260,7 +260,7 @@ sr_shmmain_conn_check(sr_cid_t cid, int *conn_alive, pid_t *pid)
             SR_LOG_WRN("Connection with CID %" PRIu32 " is dead.", cid);
         } else if (errno != ENOENT) {
             /* removing the file is subject to a (harmless) data race, account for it */
-            SR_ERRINFO_SYSERRNO(&err_info, "unlink");
+            sr_errinfo_new(&err_info, SR_ERR_SYS, "Unlink \"%s\" failed (%s).", path, strerror(errno));
         }
     } else {
         /* we cannot get the lock, it must be held by a live connection */
@@ -401,6 +401,7 @@ sr_shmmain_conn_list_del(sr_cid_t cid)
     sr_error_info_t *err_info = NULL;
     char *path;
     struct sr_conn_list_s *ptr, *prev;
+    int lock_fd = -1;
 
     /* CONN LIST LOCK */
     if ((err_info = sr_mlock(&conn_proc.list_lock, SR_CONN_LIST_LOCK_TIMEOUT, __func__, NULL, NULL))) {
@@ -418,10 +419,9 @@ sr_shmmain_conn_list_del(sr_cid_t cid)
                 prev->_next = ptr->_next;
             }
 
-            /* cleanup local resources */
+            /* remember the lock_fd to close later */
             if (ptr->lock_fd > -1) {
-                /* closing ANY file descriptor to a locked file releases all the locks */
-                close(ptr->lock_fd);
+                lock_fd = ptr->lock_fd;
             } else {
                 SR_ERRINFO_INT(&err_info);
             }
@@ -440,10 +440,18 @@ sr_shmmain_conn_list_del(sr_cid_t cid)
     if ((err_info = sr_path_conn_lockfile(cid, 0, &path))) {
         return err_info;
     }
-    if (unlink(path)) {
-        SR_ERRINFO_SYSERRNO(&err_info, "unlink");
+
+    /* potential race - another connection of same process could have removed this file after sr_munlock above */
+    if (unlink(path) && (errno != ENOENT)) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Unlink \"%s\" failed (%s).", path, strerror(errno));
     }
+
     free(path);
+
+    /* closing ANY file descriptor to the lockfile releases all the locks */
+    if (lock_fd > -1) {
+        close(lock_fd);
+    }
 
     return err_info;
 }
