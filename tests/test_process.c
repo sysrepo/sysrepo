@@ -85,6 +85,7 @@ run_tests(struct test *tests, uint32_t test_count)
     int pipes[4], wstatus, fail = 0;
     const char *child_status, *parent_status;
     size_t i;
+    pid_t child_pid;
 
     sr_assert(pipe(pipes) == 0);
     sr_assert(pipe(pipes + 2) == 0);
@@ -98,7 +99,7 @@ run_tests(struct test *tests, uint32_t test_count)
 
         TLOG_INF("[ %3s %2s %2s ] test %s", "RUN", "", "", tests[i].name);
 
-        if (fork()) {
+        if ((child_pid = fork())) {
             /* run parent process */
             if (tests[i].p1(pipes[0], pipes[3])) {
                 parent_status = "FAIL";
@@ -107,8 +108,8 @@ run_tests(struct test *tests, uint32_t test_count)
                 parent_status = "OK";
             }
 
-            /* wait for child */
-            sr_assert(wait(&wstatus) != -1);
+            /* wait for the other process, and not any other child process a test may spawn */
+            sr_assert(waitpid(child_pid, &wstatus, 0) != -1);
 
             if (WIFEXITED(wstatus)) {
                 if (WEXITSTATUS(wstatus)) {
