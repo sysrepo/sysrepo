@@ -3539,4 +3539,5 @@ const struct srplg_ds_s srpds_mongo = {
     .access_check_cb = srpds_mongo_access_check,
     .last_modif_cb = srpds_mongo_last_modif,
     .data_version_cb = NULL,
+    .oper_store_require_diff = 0,
 };
