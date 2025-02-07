@@ -3118,6 +3118,128 @@ test_oper_order(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 }
 
+static int
+oper_change_reject_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath, sr_event_t event,
+        uint32_t request_id, void *private_data)
+{
+    (void)session;
+    (void)sub_id;
+    (void)module_name;
+    (void)xpath;
+    (void)event;
+    (void)request_id;
+    (void)private_data;
+
+    /* always fails */
+    return SR_ERR_OPERATION_FAILED;
+}
+
+static void
+test_oper_cache(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_session_ctx_t *sess = NULL;
+    sr_subscription_ctx_t *subscr = NULL;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_OPERATIONAL, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(sess, "/mixed-config:test-state/ll[1]", "x1", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* switch to operational DS */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set some operational data */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth0']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll[1]", "a1", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set some more operational data - retrieval from cache */
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll[1]", "a2", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll[2]", "b2", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set data of both modules in same transaction */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll[3]", "a3", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, oper_change_reject_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* make the changes be rejected by a subscriber */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth2']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* oper_push_cache is dropped after this, due to failure */
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
+
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
+
+    /* drop all staged changes */
+    ret = sr_discard_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* should be fine, because there are no staged changes */
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_unsubscribe(subscr);
+    subscr = NULL;
+
+    ret = sr_discard_oper_changes(NULL, st->sess, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* build a new oper_push_cache, one module at a time */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth0']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll[1]", "b1", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* use the oper cache from the first module */
+    ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth0']", SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* use the oper cache from the second module */
+    ret = sr_delete_item(st->sess, "/mixed-config:test-state/ll[1]", SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_session_stop(sess);
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
 int
 main(void)
 {
@@ -3142,6 +3264,7 @@ main(void)
         cmocka_unit_test_teardown(test_origin, clear_up),
         cmocka_unit_test_teardown(test_oper_delete, clear_up),
         cmocka_unit_test_teardown(test_oper_order, clear_up),
+        cmocka_unit_test_teardown(test_oper_cache, clear_up),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

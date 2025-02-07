@@ -181,6 +181,8 @@ struct sr_session_ctx_s {
     char *nacm_user;                /**< Optional NACM user. If set, NACM is applied. */
     sr_error_info_t *err_info;      /**< Session error information. */
 
+    struct lyd_node *oper_push_cache;    /**< Cached operational push data from the last push.
+                                              Protected by sr_lycc_lock from flushing. */
     struct sr_oper_push_cache_s {
         char *name;                 /**< Module name whose push oper data were ever modified by this session. */
         int has_data;               /**< Flag if there are any actual data currently. */
