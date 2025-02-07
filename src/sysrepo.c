@@ -4185,7 +4185,7 @@ sr_apply_oper_changes(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
     mod_info->data = NULL;
 
     /* get the operational DS data with the old push oper data */
-    if ((err_info = sr_modinfo_get_oper_data(mod_info, session->sid, NULL))) {
+    if ((err_info = sr_modinfo_get_oper_data(mod_info, session, NULL))) {
         goto cleanup;
     }
 
@@ -4194,7 +4194,7 @@ sr_apply_oper_changes(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
     mod_info->data = NULL;
 
     /* get the operational DS data with the new push oper data */
-    if ((err_info = sr_modinfo_get_oper_data(mod_info, session->sid, &new_oper_data))) {
+    if ((err_info = sr_modinfo_get_oper_data(mod_info, session, &new_oper_data))) {
         goto cleanup;
     }
 
@@ -4226,6 +4226,14 @@ sr_apply_oper_changes(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
         if ((err_info = sr_conn_ext_data_update(session->conn))) {
             goto cleanup;
         }
+    }
+
+    /* cache the newly stored oper push data unless we are deleting the session or cache is disabled */
+    if (!shmmod_session_del && !(session->conn->opts & SR_CONN_NO_OPER_PUSH_CACHE)) {
+        /* remove any previous oper_push_cache and remember the new one */
+        lyd_free_siblings(session->oper_push_cache);
+        session->oper_push_cache = mod_info->data;
+        mod_info->data = NULL;
     }
 
 cleanup:
