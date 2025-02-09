@@ -1251,7 +1251,7 @@ sr_oper_data_merge_cb(struct lyd_node *trg_node, const struct lyd_node *src_node
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_module_oper_data_load(struct sr_mod_info_mod_s *mod, sr_conn_ctx_t *conn, uint32_t sid,
+sr_module_oper_data_load(struct sr_mod_info_mod_s *mod, sr_conn_ctx_t *conn, sr_session_ctx_t *sess,
         struct lyd_node **mod_oper_data, struct lyd_node **data)
 {
     sr_error_info_t *err_info = NULL;
@@ -1262,6 +1262,7 @@ sr_module_oper_data_load(struct sr_mod_info_mod_s *mod, sr_conn_ctx_t *conn, uin
     struct ly_set *set;
     uint32_t i, j, merge_opts, oper_push_count = 0;
     int last_sid = 0, dead_cid = 0;
+    uint32_t sid = sess ? sess->sid : 0;
 
     /* oper_push_data_count is protected by operational DS module data locks */
     if (mod->shm_mod->oper_push_data_count) {
@@ -1314,8 +1315,12 @@ sr_module_oper_data_load(struct sr_mod_info_mod_s *mod, sr_conn_ctx_t *conn, uin
             last_sid = 1;
         }
         if (!last_sid || !mod_oper_data) {
+            if ((sid == oper_push_dup[i].sid) && sess->oper_push_cache) {
+                /* load push oper data from the session cache (consume it) */
+                mod_data = sr_module_data_unlink(&sess->oper_push_cache, mod->ly_mod, 1);
+            }
             /* load push oper data for the session */
-            if ((err_info = sr_module_file_data_append(mod->ly_mod, mod->ds_handle, SR_DS_OPERATIONAL,
+            else if ((err_info = sr_module_file_data_append(mod->ly_mod, mod->ds_handle, SR_DS_OPERATIONAL,
                     oper_push_dup[i].cid, oper_push_dup[i].sid, NULL, 0, &mod_data))) {
                 goto cleanup;
             }
@@ -1390,7 +1395,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_modinfo_get_oper_data(struct sr_mod_info_s *mod_info, uint32_t sid, struct lyd_node **oper_data)
+sr_modinfo_get_oper_data(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sess, struct lyd_node **oper_data)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
@@ -1408,7 +1413,7 @@ sr_modinfo_get_oper_data(struct sr_mod_info_s *mod_info, uint32_t sid, struct ly
         }
 
         /* load the requested oper data */
-        if ((err_info = sr_module_oper_data_load(mod, mod_info->conn, sid, oper_data ? &mod_oper_data : NULL,
+        if ((err_info = sr_module_oper_data_load(mod, mod_info->conn, sess, oper_data ? &mod_oper_data : NULL,
                 &mod_info->data))) {
             goto cleanup;
         }
@@ -1456,7 +1461,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
 
     if (!(get_oper_opts & SR_OPER_NO_STORED)) {
         /* process stored operational data */
-        if ((err_info = sr_module_oper_data_load(mod, conn, 0, NULL, data))) {
+        if ((err_info = sr_module_oper_data_load(mod, conn, NULL, NULL, data))) {
             return err_info;
         }
 
@@ -2978,7 +2983,7 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int read_only, sr_session_c
     sr_conn_ctx_t *conn;
     struct sr_mod_info_mod_s *mod;
     uint32_t i;
-    int run_data_cache_cur = 0;
+    int run_data_cache_cur = 0, mod_data_load = 1;
 
     conn = mod_info->conn;
 
@@ -3030,6 +3035,16 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int read_only, sr_session_c
         }
     }
 
+    /* use cached oper push data if available and usable */
+    if ((mod_info->ds == SR_DS_OPERATIONAL) && (mod_info->ds2 == SR_DS_OPERATIONAL) && sess &&
+            sess->oper_push_cache && !mod_info->data) {
+        /* need to duplicate and not consume it, as sr_apply_oper_changes() will consume this */
+        if ((err_info = sr_lyd_dup(sess->oper_push_cache, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, 1, &mod_info->data))) {
+            goto cleanup;
+        }
+        mod_data_load = 0;
+    }
+
     /* load data for each module */
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
@@ -3038,7 +3053,8 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int read_only, sr_session_c
             continue;
         }
 
-        if ((err_info = sr_modinfo_module_data_load(mod_info, mod, sess, timeout_ms, get_oper_opts, run_data_cache_cur))) {
+        /* load data if not already loaded from cache */
+        if (mod_data_load && (err_info = sr_modinfo_module_data_load(mod_info, mod, sess, timeout_ms, get_oper_opts, run_data_cache_cur))) {
             goto cleanup;
         }
         if (!mod->xpath_count) {

@@ -105,7 +105,8 @@ typedef enum {
     SR_CONN_DEFAULT = 0x0,              /**< No special behaviour. */
     SR_CONN_CACHE_RUNNING = 0x1,        /**< Always cache running datastore data which makes mainly repeated retrieval
                                              of data much faster. Affects all sessions created on this connection. */
-    SR_CONN_CTX_SET_PRIV_PARSED = 0x2   /**< Use LY_CTX_SET_PRIV_PARSED option for the connection libyang context. */
+    SR_CONN_CTX_SET_PRIV_PARSED = 0x2,  /**< Use LY_CTX_SET_PRIV_PARSED option for the connection libyang context. */
+    SR_CONN_NO_OPER_PUSH_CACHE = 0x4    /**< Disable operational push data cache for sessions of this connection. */
 } sr_conn_flag_t;
 
 /**
