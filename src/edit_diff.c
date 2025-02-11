@@ -160,7 +160,7 @@ sr_edit_op(const struct lyd_node *edit_node, enum edit_op parent_op, enum edit_o
                     }
                     lyd_free_meta_single(meta);
                 }
-                ly_temp_log_options(prev_lo);
+                ly_temp_log_options_brand(prev_lo);
             }
         }
     }
