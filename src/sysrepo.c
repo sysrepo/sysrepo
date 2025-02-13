@@ -6105,6 +6105,9 @@ _sr_get_changes_iter(sr_session_ctx_t *session, const char *xpath, int dup, sr_c
 
 error:
     sr_free_change_iter(*iter);
+    /* prevent use after free */
+    *iter = NULL;
+
     return sr_api_ret(session, err_info);
 }
 
