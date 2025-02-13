@@ -2956,6 +2956,107 @@ test_origin(void **state)
     free(str1);
 }
 
+/* TEST */
+static void
+test_oper_delete(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_data_t *data;
+    sr_conn_ctx_t *conn;
+    sr_session_ctx_t *sess;
+    int ret;
+
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set operational data from first session => lower priority order */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth3']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* create another connection and session */
+    ret = sr_connect(0, &conn);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_session_start(conn, SR_DS_OPERATIONAL, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set some operational data */
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* delete all previously set operational data of this session */
+    ret = sr_delete_item(sess, "/ietf-interfaces:interfaces-state", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read eth1 - should be deleted */
+    ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/type", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_null(data);
+
+    /* eth3 should be present - not affected by delete in other session */
+    ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth3']/type", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_non_null(data);
+    sr_release_data(data);
+
+    /* set some operational data */
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* delete all previously set operational data */
+    ret = sr_delete_item(sess, "/ietf-interfaces:interfaces-state", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set some operational data */
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces-state/interface[name='eth2']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* eth1 should be removed */
+    ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/type", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_null(data);
+
+    /* eth2 should be present */
+    ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth2']/type", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_non_null(data);
+    sr_release_data(data);
+
+    /* discard operational data root - has no effect on own pushed data */
+    ret = sr_discard_items(sess, "/ietf-interfaces:interfaces-state");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* eth2 should be present */
+    ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth2']/type", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_non_null(data);
+    sr_release_data(data);
+
+    /* eth3 should be removed due to discard-items affecting lower priority data */
+    ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth3']/type", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_null(data);
+
+    /* disconnect, operational data should be removed */
+    sr_disconnect(conn);
+}
+
 int
 main(void)
 {
@@ -2978,6 +3079,7 @@ main(void)
         cmocka_unit_test_teardown(test_change_filter, clear_up),
         cmocka_unit_test_teardown(test_oper_list_enabled, clear_up),
         cmocka_unit_test_teardown(test_origin, clear_up),
+        cmocka_unit_test_teardown(test_oper_delete, clear_up),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
