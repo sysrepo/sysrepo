@@ -50,7 +50,7 @@ the keys have to be prefixed. The prefix for all sysrepo data is `sr:` and in or
 starting with a `sr:` prefix can only be used by the sysrepo library.
 
 In Redis database there are certain limits with respect to data management which cannot be set to unlimited. The maximum amount
-of data which can be loaded from the database at once is set to one trillion. Some of these limits are enforced via the server
+of data which can be loaded from the database at once is set to 2147483648. Some of these limits are enforced via the server
 configuration and since the sysrepo library does not have an access to the server's configuration file, it sets these limits
 via commands (more specifically the options MAXAGGREGATERESULTS and MAXEXPANSIONS).
 
