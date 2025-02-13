@@ -3477,11 +3477,16 @@ sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *value, 
         }
     }
 
-    if (!session->dt[session->ds].edit && (session->ds == SR_DS_OPERATIONAL)) {
+    if (!session->oper_edit_fetched && (session->ds == SR_DS_OPERATIONAL)) {
+        assert(!session->dt[session->ds].edit);
+
         /* prepare the current stored oper data to be modified */
         if ((rc = sr_get_oper_changes(session, NULL, &session->dt[session->ds].edit))) {
             goto cleanup;
         }
+
+        /* remember that oper changes have been fetched */
+        session->oper_edit_fetched = 1;
 
         /* set the default replace operation on top-level nodes */
         if (session->dt[session->ds].edit) {
@@ -3533,11 +3538,16 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
     SR_CHECK_ARG_APIRET(!session || !path || !SR_IS_STANDARD_DS(session->ds) || (!SR_IS_CONVENTIONAL_DS(session->ds) &&
             (opts & (SR_EDIT_NON_RECURSIVE | SR_EDIT_ISOLATE))), session, err_info);
 
-    if (!session->dt[session->ds].edit && (session->ds == SR_DS_OPERATIONAL)) {
+    if (!session->oper_edit_fetched && (session->ds == SR_DS_OPERATIONAL)) {
+        assert(!session->dt[session->ds].edit);
+
         /* prepare the current stored oper data to be modified */
         if ((rc = sr_get_oper_changes(session, NULL, &session->dt[session->ds].edit))) {
             goto cleanup;
         }
+
+        /* remember that oper changes have been fetched */
+        session->oper_edit_fetched = 1;
 
         /* set the default replace operation on top-level nodes */
         if (session->dt[session->ds].edit) {
@@ -3607,6 +3617,7 @@ cleanup:
         sr_release_data(session->dt[session->ds].edit);
         session->dt[session->ds].edit = NULL;
     }
+
     return sr_api_ret(session, err_info);
 }
 
@@ -3625,11 +3636,16 @@ sr_discard_items(sr_session_ctx_t *session, const char *xpath)
 
     SR_CHECK_ARG_APIRET(!session || (session->ds != SR_DS_OPERATIONAL) || !xpath, session, err_info);
 
-    if (!session->dt[session->ds].edit) {
+    if (!session->oper_edit_fetched) {
+        assert(!session->dt[session->ds].edit);
+
         /* prepare the current stored oper data to be modified */
         if ((rc = sr_get_oper_changes(session, NULL, &session->dt[session->ds].edit))) {
             goto cleanup;
         }
+
+        /* remember that oper changes have been fetched */
+        session->oper_edit_fetched = 1;
 
         /* set the default replace operation on top-level nodes */
         if (session->dt[session->ds].edit) {
@@ -3820,6 +3836,11 @@ cleanup_unlock:
     sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
 
 cleanup:
+    if (session->ds == SR_DS_OPERATIONAL) {
+        /* remember that oper changes have been fetched */
+        session->oper_edit_fetched = !!session->dt[session->ds].edit;
+    }
+
     lyd_free_siblings(dup_edit);
     return sr_api_ret(session, err_info);
 }
@@ -4245,7 +4266,12 @@ sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms)
 
     SR_CHECK_ARG_APIRET(!session || !SR_IS_STANDARD_DS(session->ds), session, err_info);
 
-    if (!session->dt[session->ds].edit) {
+    if (session->ds == SR_DS_OPERATIONAL) {
+        /* if no operational ds edit was fetched, we don't have any staged changes to apply */
+        if (!session->oper_edit_fetched) {
+            return sr_api_ret(session, NULL);
+        }
+    } else if (!session->dt[session->ds].edit) {
         return sr_api_ret(session, NULL);
     }
 
@@ -4298,6 +4324,10 @@ cleanup:
         /* free applied edit */
         sr_release_data(session->dt[session->ds].edit);
         session->dt[session->ds].edit = NULL;
+        if (session->ds == SR_DS_OPERATIONAL) {
+            /* A new edit should call sr_get_oper_changes() to fetch pushed oper data */
+            session->oper_edit_fetched = 0;
+        }
     }
     if (err_info2) {
         /* return callback error if some was generated */
@@ -4383,6 +4413,11 @@ sr_discard_changes_xpath(sr_session_ctx_t *session, const char *xpath)
     }
 
 cleanup:
+    if ((session->ds == SR_DS_OPERATIONAL) && !session->dt[session->ds].edit) {
+        /* no current stored data is fetched into the session */
+        session->oper_edit_fetched = 0;
+    }
+
     ly_set_free(set, NULL);
     return sr_api_ret(session, err_info);
 }
