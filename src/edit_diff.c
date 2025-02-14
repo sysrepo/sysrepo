@@ -3104,7 +3104,6 @@ sr_edit_add_find_match(const struct ly_ctx *ly_ctx, const struct lyd_node *tree,
     struct lyd_node *iter;
     const struct lysc_node *schema, *siter;
     const struct lys_module *mod;
-    struct ly_ctx *sm_ctx = NULL;
     uint32_t cur_pos, pos;
     int mlen, len;
 
@@ -3140,7 +3139,7 @@ sr_edit_add_find_match(const struct ly_ctx *ly_ctx, const struct lyd_node *tree,
         } else {
             /* get child */
             siter = NULL;
-            while ((siter = lys_getnext(siter, schema, NULL, LYS_GETNEXT_WITHSCHEMAMOUNT))) {
+            while ((siter = lys_getnext(siter, schema, NULL, 0))) {
                 if (mlen && (strncmp(siter->module->name, mod_name, mlen) || (siter->module->name[mlen] != '\0'))) {
                     continue;
                 }
@@ -3150,13 +3149,10 @@ sr_edit_add_find_match(const struct ly_ctx *ly_ctx, const struct lyd_node *tree,
 
                 break;
             }
-            assert(siter);
-            if (siter->module->ctx != schema->module->ctx) {
-                /* schema-mount context, needs to be freed */
-                if (sm_ctx) {
-                    ly_ctx_destroy(sm_ctx);
-                }
-                sm_ctx = siter->module->ctx;
+            if (!siter) {
+                /* presumably in a mounted schema tree, not worth handling this case */
+                *match = NULL;
+                goto cleanup;
             }
             schema = siter;
         }
@@ -3231,7 +3227,6 @@ sr_edit_add_find_match(const struct ly_ctx *ly_ctx, const struct lyd_node *tree,
     } while (xp[0]);
 
 cleanup:
-    ly_ctx_destroy(sm_ctx);
     return err_info;
 }
 
