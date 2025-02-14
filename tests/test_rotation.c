@@ -544,6 +544,7 @@ main(void)
         cmocka_unit_test_setup(test_aging, basic_config),
     };
 
+    setenv("SRPD_PLUGINS_PATH", TESTS_REPO_DIR "/srpd_plugins", 1);
     test_log_init();
     return cmocka_run_group_tests(tests, setup, teardown);
 }
