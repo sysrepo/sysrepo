@@ -2574,6 +2574,22 @@ cleanup_rpcsub_unlock:
     return err_info;
 }
 
+static int
+sr_shmext_oper_push_cmp(const void *ptr1, const void *ptr2)
+{
+    sr_mod_oper_push_t *item1, *item2;
+
+    item1 = (sr_mod_oper_push_t *)ptr1;
+    item2 = (sr_mod_oper_push_t *)ptr2;
+
+    if (item1->order > item2->order) {
+        return 1;
+    } else if (item1->order < item2->order) {
+        return -1;
+    }
+    return 0;
+}
+
 /**
  * @brief Learn indices of existing/new push oper data entry and their order.
  *
@@ -2581,66 +2597,45 @@ cleanup_rpcsub_unlock:
  * @param[in] shm_mod SHM mod.
  * @param[in] mod_name Module name.
  * @param[in] sid Session ID of the oper data.
- * @param[in,out] order Push oper data entry order for this session.
+ * @param[in,out] order Push oper data entry order for this session. if 0, a new valid order will be generated.
  * @param[out] found_i Index where the entry was found, -1 if not found.
- * @param[out] insert_i Index where the entry should be inserted, if differs from @p found_i.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_shmext_oper_push_update_get_idx(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *mod_name, uint32_t sid,
-        uint32_t *order, int32_t *found_i, int32_t *insert_i)
+        uint32_t *order, int32_t *found_i)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_oper_push_t *oper_push = NULL;
     uint32_t i;
 
     *found_i = -1;
-    *insert_i = -1;
 
+    /* find the item if it exists and a correct new place */
     for (i = 0; i < shm_mod->oper_push_data_count; ++i) {
         oper_push = &((sr_mod_oper_push_t *)(conn->ext_shm.addr + shm_mod->oper_push_data))[i];
 
         if (oper_push->sid == sid) {
             /* found the item */
             *found_i = i;
-
+            /* remember the order if no order was specified */
             if (!*order) {
-                /* not changing the order */
                 *order = oper_push->order;
             }
-            if (oper_push->order == *order) {
-                /* order is not changed, the item does not need to be moved */
-                *insert_i = i;
-            }
+            return NULL;
         } else if (oper_push->order == *order) {
             sr_errinfo_new(&err_info, SR_ERR_EXISTS, "Operational push data with order \"%" PRIu32
                     "\" for module \"%s\" already exist.", *order, mod_name);
-            goto cleanup;
-        }
-
-        if (*order && (*insert_i == -1) && (oper_push->order > *order)) {
-            /* first item with higher order */
-            *insert_i = i;
+            return err_info;
         }
     }
 
+    /* if there is still no order, set it the highest */
     if (!*order) {
-        /* item not found, generate its order */
-        if (shm_mod->oper_push_data_count) {
-            /* oper_push is the last item */
-            *order = oper_push->order + 1;
-        } else {
-            *order = 1;
-        }
+        *order = oper_push ? (1 + oper_push->order) : 1;
     }
 
-    if (*insert_i == -1) {
-        /* highest order set or no order, inserting at the end in both cases */
-        *insert_i = shm_mod->oper_push_data_count;
-    }
-
-cleanup:
-    return err_info;
+    return NULL;
 }
 
 sr_error_info_t *
@@ -2649,8 +2644,8 @@ sr_shmext_oper_push_update(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *m
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_lock_s *shm_lock;
-    sr_mod_oper_push_t *old_item, *new_item, tmp;
-    int32_t found_i, insert_i;
+    sr_mod_oper_push_t *item;
+    int32_t found_i;
 
     assert((has_mod_locks == SR_LOCK_NONE) || (has_mod_locks == SR_LOCK_WRITE));
 
@@ -2669,54 +2664,44 @@ sr_shmext_oper_push_update(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *m
         goto cleanup_shmmod_unlock;
     }
 
-    /* learn what exactly do we need to do based on the relevant indices */
-    if ((err_info = sr_shmext_oper_push_update_get_idx(conn, shm_mod, mod_name, sid, &order, &found_i, &insert_i))) {
+    SR_LOG_DBG("#SHM before (updating oper push session)");
+    sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
+
+    /* learn the index if entry exists. If order was not specified, learn/generate the order to use */
+    if ((err_info = sr_shmext_oper_push_update_get_idx(conn, shm_mod, mod_name, sid, &order, &found_i))) {
         goto cleanup_shmmod_unlock;
     }
 
     if (found_i == -1) {
-        SR_LOG_DBG("#SHM before (adding oper push session)");
-        sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
-
-        /* session not added yet, add it */
+        /* session not added yet, just add it to the end, will sort it later */
         if ((err_info = sr_shmrealloc_add(&conn->ext_shm, &shm_mod->oper_push_data, &shm_mod->oper_push_data_count, 0,
-                sizeof *new_item, insert_i, (void **)&new_item, 0, NULL))) {
+                sizeof *item, -1, (void **)&item, 0, NULL))) {
             goto cleanup_ext_shmmod_unlock;
         }
 
         /* fill the new item with the defaults */
-        new_item->cid = conn->cid;
-        new_item->sid = sid;
-        new_item->order = 0;
-        new_item->has_data = 0;
-
-        SR_LOG_DBG("#SHM after (adding oper push session)");
-        sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
-
-        found_i = insert_i;
-    } else if (found_i != insert_i) {
-        /* move the items to keep ascending order */
-        old_item = &((sr_mod_oper_push_t *)(conn->ext_shm.addr + shm_mod->oper_push_data))[found_i];
-        new_item = &((sr_mod_oper_push_t *)(conn->ext_shm.addr + shm_mod->oper_push_data))[insert_i];
-        tmp = *old_item;
-
-        if (found_i > insert_i) {
-            memmove(new_item + 1, new_item, (found_i - insert_i) * sizeof *old_item);
-        } else {
-            memmove(old_item, old_item + 1, (insert_i - found_i - 1) * sizeof *old_item);
-        }
-
-        *new_item = tmp;
+        item->cid = conn->cid;
+        item->sid = sid;
+        item->order = order;
+        item->has_data = 0;
+    } else {
+        /* update relevant members, order is always correct and may be equal to the current value */
+        item = &((sr_mod_oper_push_t *)(conn->ext_shm.addr + shm_mod->oper_push_data))[found_i];
+        assert(item->cid == conn->cid);
+        assert(item->sid == sid);
+        item->order = order;
     }
 
-    /* update relevant members, order is always correct and may be equal to the current value */
-    new_item = &((sr_mod_oper_push_t *)(conn->ext_shm.addr + shm_mod->oper_push_data))[insert_i];
-    assert(new_item->cid == conn->cid);
-    assert(new_item->sid == sid);
-    new_item->order = order;
+    /* only update has_data if asked to */
     if (has_data > -1) {
-        new_item->has_data = has_data;
+        item->has_data = has_data;
     }
+
+    /* sort all items to keep them in "order" */
+    qsort(conn->ext_shm.addr + shm_mod->oper_push_data, shm_mod->oper_push_data_count, sizeof *item, sr_shmext_oper_push_cmp);
+
+    SR_LOG_DBG("#SHM after (updating oper push session)");
+    sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
 cleanup_ext_shmmod_unlock:
     /* EXT WRITE UNLOCK */
