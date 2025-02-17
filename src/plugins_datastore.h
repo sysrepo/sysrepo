@@ -296,6 +296,7 @@ struct srplg_ds_s {
     srds_access_check access_check_cb;  /**< callback for checking user access to module data */
     srds_last_modif last_modif_cb;  /**< callback for getting the time of last modification */
     srds_data_version data_version_cb;  /**< optional callback for checking data version */
+    const int oper_store_require_diff;  /**< if a diff is required to store operational data */
 };
 
 /**
