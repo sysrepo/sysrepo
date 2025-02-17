@@ -1410,7 +1410,7 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
     sr_lock_mode_t ctx_mode = SR_LOCK_NONE;
     uint32_t i, j, search_dir_count = 0;
     int no_changes, mod_shm_changed = 0;
-    struct ly_set mod_set = {0};
+    struct ly_set mod_set = {0}, feat_set = {0};
     char *mod_name = NULL;
 
     /* create new temporary context */
@@ -1544,13 +1544,15 @@ error:
     lyd_free_siblings(sr_mods);
     for (i = 0; i < *new_mod_count; ++i) {
         if ((*new_mods)[i].enable_features) {
-            for (j = 0; (*new_mods)[i].enable_features[j]; ++j) {
-                if ((tmp_err = sr_lydmods_change_chng_feature(conn->ly_ctx, (*new_mods)[i].ly_mod, new_ctx,
-                        (*new_mods)[i].enable_features[j], 0, conn, &sr_mods))) {
-                    sr_errinfo_merge(&err_info, tmp_err);
-                }
-                lyd_free_siblings(sr_mods);
+            feat_set.objs = (void **)(*new_mods)[i].enable_features;
+            for (j = 0; (*new_mods)[i].enable_features[j]; ++j) {}
+            feat_set.count = j;
+
+            if ((tmp_err = sr_lydmods_change_chng_feature(conn->ly_ctx, (*new_mods)[i].ly_mod, new_ctx, &feat_set,
+                    0, conn, &sr_mods))) {
+                sr_errinfo_merge(&err_info, tmp_err);
             }
+            lyd_free_siblings(sr_mods);
         } else {
             ly_set_add(&mod_set, (*new_mods)[i].ly_mod, 1, NULL);
         }
@@ -2439,20 +2441,20 @@ cleanup:
  *
  * @param[in,out] ly_ctx Context to load the module to.
  * @param[in] old_mod Previous (current) module.
- * @param[in] feature_name Changed feature.
+ * @param[in] feature_name Changed feature, "*" for all.
  * @param[in] enable Whether the feature was enabled or disabled.
  * @param[out] new_mod New loaded module.
+ * @param[out] feat_set Set with all the changed features.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_load_module(struct ly_ctx *ly_ctx, const struct lys_module *old_mod, const char *feature_name, int enable,
-        const struct lys_module **new_mod)
+        const struct lys_module **new_mod, struct ly_set *feat_set)
 {
     sr_error_info_t *err_info = NULL;
     struct lysp_feature *f = NULL;
-    struct ly_set feat_set = {0};
     const char **features = NULL;
-    uint32_t i;
+    uint32_t i, feat_count = 0;
 
     *new_mod = NULL;
 
@@ -2460,27 +2462,39 @@ sr_load_module(struct ly_ctx *ly_ctx, const struct lys_module *old_mod, const ch
     i = 0;
     while ((f = lysp_feature_next(f, old_mod->parsed, &i))) {
         if (f->flags & LYS_FENABLED) {
-            /* skip the disabled feature */
-            if (enable || strcmp(f->name, feature_name)) {
-                if ((err_info = sr_ly_set_add(&feat_set, (void *)f->name))) {
+            if (enable || (strcmp(f->name, feature_name) && strcmp("*", feature_name))) {
+                /* add already enabled features */
+                features = sr_realloc(features, (feat_count + 1) * sizeof *features);
+                SR_CHECK_MEM_GOTO(!features, err_info, cleanup);
+                features[feat_count] = f->name;
+                ++feat_count;
+            } else {
+                /* disabling the feature */
+                if ((err_info = sr_ly_set_add(feat_set, (void *)f->name))) {
                     goto cleanup;
                 }
             }
-        } else if (enable && !strcmp(f->name, feature_name)) {
-            /* add newly enabled feature */
-            if ((err_info = sr_ly_set_add(&feat_set, (void *)f->name))) {
-                goto cleanup;
+        } else {
+            if (enable && (!strcmp(f->name, feature_name) || !strcmp("*", feature_name))) {
+                /* add newly enabled feature */
+                features = sr_realloc(features, (feat_count + 1) * sizeof *features);
+                SR_CHECK_MEM_GOTO(!features, err_info, cleanup);
+                features[feat_count] = f->name;
+                ++feat_count;
+
+                /* enabling the feature */
+                if ((err_info = sr_ly_set_add(feat_set, (void *)f->name))) {
+                    goto cleanup;
+                }
             }
         }
     }
 
-    /* create features array */
-    if (feat_set.count) {
-        features = calloc(feat_set.count + 1, sizeof *features);
+    if (features) {
+        /* add terminating NULL */
+        features = sr_realloc(features, (feat_count + 1) * sizeof *features);
         SR_CHECK_MEM_GOTO(!features, err_info, cleanup);
-        for (i = 0; i < feat_set.count; ++i) {
-            features[i] = feat_set.objs[i];
-        }
+        features[feat_count] = NULL;
     }
 
     /* load the module */
@@ -2494,7 +2508,6 @@ sr_load_module(struct ly_ctx *ly_ctx, const struct lys_module *old_mod, const ch
     }
 
 cleanup:
-    ly_set_erase(&feat_set, NULL);
     free(features);
     return err_info;
 }
@@ -2504,7 +2517,7 @@ cleanup:
  *
  * @param[in] conn Connection to use.
  * @param[in] module_name Module to change.
- * @param[in] feature_name Feature to change.
+ * @param[in] feature_name Feature to change, "*" for all the features.
  * @param[in] enable Whether to enable or disable the feature.
  * @return err_info, NULL on success.
  */
@@ -2513,7 +2526,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
 {
     sr_error_info_t *err_info = NULL;
     struct ly_ctx *new_ctx = NULL, *old_ctx = NULL;
-    struct ly_set mod_set = {0};
+    struct ly_set mod_set = {0}, feat_set = {0};
     struct lyd_node *sr_mods = NULL;
     struct sr_data_update_s data_info = {0};
     const struct lys_module *ly_mod, *upd_ly_mod;
@@ -2538,20 +2551,22 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
         goto cleanup;
     }
 
-    /* check feature in the current context */
-    lyrc = lys_feature_value(ly_mod, feature_name);
-    if (lyrc == LY_ENOTFOUND) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Feature \"%s\" was not found in module \"%s\".",
-                feature_name, module_name);
-        goto cleanup;
-    } else if ((lyrc == LY_SUCCESS) && enable) {
-        sr_errinfo_new(&err_info, SR_ERR_EXISTS, "Feature \"%s\" is already enabled in module \"%s\".",
-                feature_name, module_name);
-        goto cleanup;
-    } else if ((lyrc == LY_ENOT) && !enable) {
-        sr_errinfo_new(&err_info, SR_ERR_EXISTS, "Feature \"%s\" is already disabled in module \"%s\".",
-                feature_name, module_name);
-        goto cleanup;
+    if (strcmp(feature_name, "*")) {
+        /* check feature in the current context */
+        lyrc = lys_feature_value(ly_mod, feature_name);
+        if (lyrc == LY_ENOTFOUND) {
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Feature \"%s\" was not found in module \"%s\".",
+                    feature_name, module_name);
+            goto cleanup;
+        } else if ((lyrc == LY_SUCCESS) && enable) {
+            sr_errinfo_new(&err_info, SR_ERR_EXISTS, "Feature \"%s\" is already enabled in module \"%s\".",
+                    feature_name, module_name);
+            goto cleanup;
+        } else if ((lyrc == LY_ENOT) && !enable) {
+            sr_errinfo_new(&err_info, SR_ERR_EXISTS, "Feature \"%s\" is already disabled in module \"%s\".",
+                    feature_name, module_name);
+            goto cleanup;
+        }
     }
 
     /* create new temporary context */
@@ -2569,7 +2584,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     }
 
     /* load the module with changed features */
-    if ((err_info = sr_load_module(new_ctx, ly_mod, feature_name, enable, &upd_ly_mod))) {
+    if ((err_info = sr_load_module(new_ctx, ly_mod, feature_name, enable, &upd_ly_mod, &feat_set))) {
         goto cleanup;
     }
 
@@ -2590,7 +2605,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     }
 
     /* update lydmods data */
-    if ((err_info = sr_lydmods_change_chng_feature(conn->ly_ctx, ly_mod, new_ctx, feature_name, enable, conn, &sr_mods))) {
+    if ((err_info = sr_lydmods_change_chng_feature(conn->ly_ctx, ly_mod, new_ctx, &feat_set, enable, conn, &sr_mods))) {
         goto cleanup;
     }
 
@@ -2609,7 +2624,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     sr_conn_ctx_switch(conn, &new_ctx, &old_ctx);
 
     /* send the notification */
-    sr_generate_notif_module_change_feature(conn, ly_mod, feature_name, enable);
+    sr_generate_notif_module_change_feature(conn, ly_mod, &feat_set, enable);
 
 cleanup:
     sr_lycc_update_data_clear(&data_info);
@@ -2621,6 +2636,7 @@ cleanup:
     sr_lycc_unlock(conn, ctx_mode, 1, __func__);
 
     ly_set_erase(&mod_set, NULL);
+    ly_set_erase(&feat_set, NULL);
     return err_info;
 }
 

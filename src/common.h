@@ -1408,10 +1408,10 @@ void sr_generate_notif_module_change_updated(sr_conn_ctx_t *conn, struct ly_set 
  *
  * @param[in] conn Connection to use.
  * @param[in] ly_mod Changed module.
- * @param[in] feature_name Changed feature name.
+ * @param[in] feat_set Set with all the changed features.
  * @param[in] enabled Whether the feature was enabled or disabled.
  */
 void sr_generate_notif_module_change_feature(sr_conn_ctx_t *conn, const struct lys_module *ly_mod,
-        const char *feature_name, int enabled);
+        const struct ly_set *feat_set, int enabled);
 
 #endif /* _COMMON_H */

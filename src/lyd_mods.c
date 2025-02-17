@@ -1354,11 +1354,14 @@ cleanup:
 
 sr_error_info_t *
 sr_lydmods_change_chng_feature(const struct ly_ctx *ly_ctx, const struct lys_module *old_mod,
-        const struct ly_ctx *new_ctx, const char *feat_name, int enable, sr_conn_ctx_t *conn, struct lyd_node **sr_mods)
+        const struct ly_ctx *new_ctx, const struct ly_set *feat_set, int enable, sr_conn_ctx_t *conn,
+        struct lyd_node **sr_mods)
 {
     sr_error_info_t *err_info = NULL;
+    const char *feat_name;
     struct lyd_node *sr_mod, *node;
     char *path = NULL;
+    uint32_t i;
 
     *sr_mods = NULL;
 
@@ -1377,27 +1380,31 @@ sr_lydmods_change_chng_feature(const struct ly_ctx *ly_ctx, const struct lys_mod
     }
     SR_CHECK_INT_GOTO(!sr_mod, err_info, cleanup);
 
-    if (enable) {
-        /* add enabled feature */
-        if ((err_info = sr_lyd_new_term(sr_mod, NULL, "enabled-feature", feat_name))) {
-            goto cleanup;
-        }
+    for (i = 0; i < feat_set->count; ++i) {
+        feat_name = feat_set->objs[i];
 
-        SR_LOG_INF("Module \"%s\" feature \"%s\" enabled.", old_mod->name, feat_name);
-    } else {
-        /* find and free the enabled feature */
-        free(path);
-        if (asprintf(&path, "enabled-feature[.='%s']", feat_name) == -1) {
-            SR_ERRINFO_MEM(&err_info);
-            goto cleanup;
-        }
-        if ((err_info = sr_lyd_find_path(sr_mod, path, 0, &node))) {
-            goto cleanup;
-        }
-        SR_CHECK_INT_GOTO(!node, err_info, cleanup);
-        lyd_free_tree(node);
+        if (enable) {
+            /* add enabled feature */
+            if ((err_info = sr_lyd_new_term(sr_mod, NULL, "enabled-feature", feat_name))) {
+                goto cleanup;
+            }
 
-        SR_LOG_INF("Module \"%s\" feature \"%s\" disabled.", old_mod->name, feat_name);
+            SR_LOG_INF("Module \"%s\" feature \"%s\" enabled.", old_mod->name, feat_name);
+        } else {
+            /* find and free the enabled feature */
+            free(path);
+            if (asprintf(&path, "enabled-feature[.='%s']", feat_name) == -1) {
+                SR_ERRINFO_MEM(&err_info);
+                goto cleanup;
+            }
+            if ((err_info = sr_lyd_find_path(sr_mod, path, 0, &node))) {
+                goto cleanup;
+            }
+            SR_CHECK_INT_GOTO(!node, err_info, cleanup);
+            lyd_free_tree(node);
+
+            SR_LOG_INF("Module \"%s\" feature \"%s\" disabled.", old_mod->name, feat_name);
+        }
     }
 
     /* delete all dependencies */

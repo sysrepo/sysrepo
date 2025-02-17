@@ -5799,13 +5799,14 @@ cleanup:
 }
 
 void
-sr_generate_notif_module_change_feature(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, const char *feature_name,
-        int enabled)
+sr_generate_notif_module_change_feature(sr_conn_ctx_t *conn, const struct lys_module *ly_mod,
+        const struct ly_set *feat_set, int enabled)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *notif = NULL;
+    struct lyd_node *notif = NULL, *feat_name = NULL;
     sr_mod_t *shm_mod;
     int subs_or_replay;
+    uint32_t i;
 
     /* get this module */
     shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), "sysrepo-notifications");
@@ -5816,28 +5817,40 @@ sr_generate_notif_module_change_feature(sr_conn_ctx_t *conn, const struct lys_mo
         goto cleanup;
     }
 
-    /* generate the notifcation */
-    if ((err_info = sr_lyd_new_path(NULL, conn->ly_ctx, "/sysrepo-notifications:module-change", NULL, 0, NULL,
-            &notif))) {
-        goto cleanup;
-    }
-    if ((err_info = sr_lyd_new_term(notif, NULL, "name", ly_mod->name))) {
-        goto cleanup;
-    }
-    if ((err_info = sr_lyd_new_term(notif, NULL, "revision", ly_mod->revision))) {
-        goto cleanup;
-    }
-    if ((err_info = sr_lyd_new_term(notif, NULL, "change", enabled ? "feature-enabled" : "feature-disabled"))) {
-        goto cleanup;
-    }
+    for (i = 0; i < feat_set->count; ++i) {
+        if (!feat_name) {
+            /* generate the notifcation */
+            if ((err_info = sr_lyd_new_path(NULL, conn->ly_ctx, "/sysrepo-notifications:module-change", NULL, 0, NULL,
+                    &notif))) {
+                goto cleanup;
+            }
+            if ((err_info = sr_lyd_new_term(notif, NULL, "name", ly_mod->name))) {
+                goto cleanup;
+            }
+            if ((err_info = sr_lyd_new_term(notif, NULL, "revision", ly_mod->revision))) {
+                goto cleanup;
+            }
+            if ((err_info = sr_lyd_new_term(notif, NULL, "change", enabled ? "feature-enabled" : "feature-disabled"))) {
+                goto cleanup;
+            }
 
-    if ((err_info = sr_lyd_new_term(notif, NULL, "feature-name", feature_name))) {
-        goto cleanup;
-    }
+            if ((err_info = sr_lyd_new_term(notif, NULL, "feature-name", feat_set->objs[i]))) {
+                goto cleanup;
+            }
+            if ((err_info = sr_lyd_find_path(notif, "feature-name", 1, &feat_name))) {
+                goto cleanup;
+            }
+        } else {
+            /* just update feature name */
+            if ((err_info = sr_lyd_change_term(feat_name, feat_set->objs[i], 0))) {
+                goto cleanup;
+            }
+        }
 
-    /* send it */
-    if ((err_info = sr_generate_notif_send(conn, shm_mod, notif))) {
-        goto cleanup;
+        /* send it */
+        if ((err_info = sr_generate_notif_send(conn, shm_mod, notif))) {
+            goto cleanup;
+        }
     }
 
 cleanup:

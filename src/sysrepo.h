@@ -679,7 +679,7 @@ int sr_check_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int 
  *
  * @param[in] conn Connection to use.
  * @param[in] module_name Name of the module to change.
- * @param[in] feature_name Name of the feature to enable.
+ * @param[in] feature_name Name of the feature to enable, "*" for all the features.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_enable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name);
@@ -691,7 +691,7 @@ int sr_enable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const
  *
  * @param[in] conn Connection to use.
  * @param[in] module_name Name of the module to change.
- * @param[in] feature_name Name of the feature to disable.
+ * @param[in] feature_name Name of the feature to disable, "*" for all the features.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_disable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name);
