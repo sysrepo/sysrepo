@@ -2956,10 +2956,40 @@ test_origin(void **state)
     free(str1);
 }
 
+/* TEST */
+static void
+test_date_time_scale(void **state)
+{
+    struct state *st = (struct state *)*state;
+    int ret, i;
+    sr_data_t *data;
+    char xpath[128] = "";
+
+    /* switch to operational DS */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    for (i = 0; i < 20000; i++) {
+        snprintf(xpath, sizeof(xpath), "/ietf-interfaces:interfaces-state/interface[name='eth%d']/statistics/discontinuity-time", i);
+        ret = sr_set_item_str(st->sess, xpath, "2019-10-29T09:43:12-00:00", NULL, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+    }
+
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* a short timeout value of 1 ms */
+    ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 1, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    sr_release_data(data);
+}
+
+
 int
 main(void)
 {
     const struct CMUnitTest tests[] = {
+        cmocka_unit_test_teardown(test_date_time_scale, clear_up),
         cmocka_unit_test_teardown(test_conn_owner1, clear_up),
         cmocka_unit_test_teardown(test_conn_owner2, clear_up),
         cmocka_unit_test_teardown(test_conn_owner_same_data, clear_up),
