@@ -3057,6 +3057,67 @@ test_oper_delete(void **state)
     sr_disconnect(conn);
 }
 
+/* TEST */
+static void
+test_oper_order(void **state)
+{
+    struct state *st = (struct state *)*state;
+    int ret;
+    uint32_t order = 0;
+
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_get_oper_changes_order(st->sess, NULL, &order);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+
+    ret = sr_get_oper_changes_order(st->sess, "no-such-module-exists", &order);
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+    /* not possible to set order for all modules */
+    ret = sr_set_oper_changes_order(st->sess, NULL, 10);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+
+    /* not possible to set order for non-existent modules */
+    ret = sr_set_oper_changes_order(st->sess, "no-such-module-exists", 10);
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+    /* set some operational data */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_oper_changes_order(st->sess, "test", 20);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check order was set correctly */
+    ret = sr_get_oper_changes_order(st->sess, "test", &order);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(order, 20);
+
+    /* it should not be possible to change order for ietf-interfaces since we have some pushed data for it*/
+    ret = sr_set_oper_changes_order(st->sess, "ietf-interfaces", 1);
+    assert_int_equal(ret, SR_ERR_UNSUPPORTED);
+
+    /* discard pushed operational data */
+    ret = sr_discard_oper_changes(NULL, st->sess, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* it should be possible again to set oper changes order */
+    ret = sr_set_oper_changes_order(st->sess, "ietf-interfaces", 2);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* it should be possible to lower oper changes order */
+    ret = sr_set_oper_changes_order(st->sess, "ietf-interfaces", 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* it should be possible to raise oper changes order */
+    ret = sr_set_oper_changes_order(st->sess, "ietf-interfaces", 10);
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
 int
 main(void)
 {
@@ -3080,6 +3141,7 @@ main(void)
         cmocka_unit_test_teardown(test_oper_list_enabled, clear_up),
         cmocka_unit_test_teardown(test_origin, clear_up),
         cmocka_unit_test_teardown(test_oper_delete, clear_up),
+        cmocka_unit_test_teardown(test_oper_order, clear_up),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
