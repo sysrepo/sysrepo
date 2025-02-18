@@ -972,11 +972,16 @@ int sr_oper_delete_item_str(sr_session_ctx_t *session, const char *path, const c
 
 /**
  * @brief Prepare to discard nodes matching the specified xpath in the operational datastore before applying
- * the other push oper data of this sessions. Usable only for ::SR_DS_OPERATIONAL datastore. These changes are applied
+ * the other push oper data of this session. Usable only for ::SR_DS_OPERATIONAL datastore. These changes are applied
  * only after calling ::sr_apply_changes().
  *
  * Creates an opaque node `discard-items` in the `sysrepo` YANG module namespace with @p xpath used as the value.
  * Such a node can be a part of the edit in ::sr_edit_batch() and will discard nodes like this function does.
+ *
+ * This affects only operational data of lower order.
+ * It is recommended that 'order' is explicitly set by calling `sr_set_oper_changes_order()`
+ * from all sessions that push operational data to the module to avoid different behaviour if a process restarts
+ * and is automatically assigned a higher order.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] xpath [XPath](@ref paths) expression filtering the nodes to discard, all if NULL.
@@ -1156,9 +1161,11 @@ int sr_get_oper_changes(sr_session_ctx_t *session, const char *module_name, sr_d
  * for the module.
  *
  * By default the next highest order (lowest priority) is generated for any new session push oper data of a module.
+ * It is not supported to set the order if the session already has push operational data for the specified module.
+ * This is because it can result in change of the final view of operational data, which must be notified to subscribers.
  *
  * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
- * @param[in] module_name Name of the module to change. Set to NULL to change the order for all the modules.
+ * @param[in] module_name Name of the module to change, must be a valid installed module.
  * @param[in] order Non-zero order to set, must be unique.
  * @return Error code (::SR_ERR_OK on success).
  */
