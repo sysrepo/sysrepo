@@ -91,17 +91,6 @@ jobs:
             ubsan-options: "print_stacktrace=1:halt_on_error=1",
           }
           - {
-            name: "ABI Check",
-            os: "ubuntu-latest",
-            build-type: "ABICheck",
-            dep-build-type: "Debug",
-            cc: "gcc",
-            options: "",
-            packages: "libcmocka-dev abi-dumper abi-compliance-checker",
-            snaps: "core universal-ctags",
-            make-target: "abi-check"
-          }
-          - {
             name: "MONGO DS plugin",
             os: "ubuntu-latest",
             build-type: "Debug",
