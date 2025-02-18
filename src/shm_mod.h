@@ -266,16 +266,4 @@ sr_error_info_t *sr_shmmod_reboot_init(sr_conn_ctx_t *conn, int initialized);
 sr_error_info_t *sr_shmmod_change_prio(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_datastore_t ds,
         uint32_t prio, uint32_t *prio_p);
 
-/**
- * @brief Get/set order of a push oper data entry.
- *
- * @param[in] session Session to use.
- * @param[in] ly_mod Module to use.
- * @param[in] order Order to set, 0 to get it instead.
- * @param[out] order_p Retrieved order, NULL to set it instead.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmod_session_oper_order(sr_session_ctx_t *session, const struct lys_module *ly_mod, uint32_t order,
-        uint32_t *order_p);
-
 #endif /* _SHM_MOD_H */
