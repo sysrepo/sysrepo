@@ -373,12 +373,15 @@ test_suspend(void **state)
     assert_int_equal(SR_ERR_OK, srsn_poll(fd, 500));
     assert_int_equal(SR_ERR_OK, srsn_read_notif(fd, st->ly_ctx, &ts, &notif));
     lyd_print_mem(&str, notif, LYD_XML, 0);
-    assert_string_equal(str,
+    ret = asprintf(&exp,
             "<subscription-suspended xmlns=\"urn:ietf:params:xml:ns:yang:ietf-subscribed-notifications\">\n"
-            "  <id>5</id>\n"
+            "  <id>%" PRIu32 "</id>\n"
             "  <reason>insufficient-resources</reason>\n"
-            "</subscription-suspended>\n");
+            "</subscription-suspended>\n", sub_id);
+    assert_int_not_equal(ret, -1);
+    assert_string_equal(str, exp);
     free(str);
+    free(exp);
     lyd_free_tree(notif);
 
     /* send a notif */
@@ -395,11 +398,14 @@ test_suspend(void **state)
     assert_int_equal(SR_ERR_OK, srsn_poll(fd, 500));
     assert_int_equal(SR_ERR_OK, srsn_read_notif(fd, st->ly_ctx, &ts, &notif));
     lyd_print_mem(&str, notif, LYD_XML, 0);
-    assert_string_equal(str,
+    ret = asprintf(&exp,
             "<subscription-resumed xmlns=\"urn:ietf:params:xml:ns:yang:ietf-subscribed-notifications\">\n"
-            "  <id>5</id>\n"
-            "</subscription-resumed>\n");
+            "  <id>%" PRIu32 "</id>\n"
+            "</subscription-resumed>\n", sub_id);
+    assert_int_not_equal(ret, -1);
+    assert_string_equal(str, exp);
     free(str);
+    free(exp);
     lyd_free_tree(notif);
 
     /* stop the subscription */
