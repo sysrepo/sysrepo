@@ -3861,36 +3861,57 @@ cleanup:
 }
 
 /**
+ * @brief Learn if a new oper push entry must be created for this session and module in Ext SHM.
+ *        If entry already exists, learn if has_data flag needs to be changed.
+ *
+ * @param[in] sess Session to use.
+ * @param[in] mod_name Module name for which operational data is being pushed.
+ * @param[in] has_data Whether this session has data for this module.
+ * @param[out] create Learn whether oper push data for module must be created in Ext SHM.
+ * @param[out] change_has_data Learn whether has_data for module changed from the previous value.
+ */
+static void
+sr_modinfo_push_oper_mod_learn_changes(sr_session_ctx_t *sess, const char *mod_name, int has_data, int *create, int *change_has_data)
+{
+    uint32_t i;
+
+    for (i = 0; i < sess->oper_push_mod_count; ++i) {
+        if (!strcmp(sess->oper_push_mods[i].name, mod_name)) {
+            /* don't need to create in Ext SHM */
+            *create = 0;
+            /* learn whether has_data flag is being changed */
+            *change_has_data = (sess->oper_push_mods[i].has_data != has_data);
+            return;
+        }
+    }
+
+    /* create in Ext SHM */
+    *create = 1;
+    /* not a change */
+    *change_has_data = 0;
+}
+
+/**
  * @brief Update push oper mod data in a session, add a new module if not yet present.
  *
  * @param[in] sess Session to update.
  * @param[in] mod_name Module name.
  * @param[in] has_data Flag to store.
- * @param[out] created Learn whether oper push data for module was just created (first time) .
- * @param[out] changed_has_data Learn whether has_data for module changed from the previous value.
- * @return err_info, NULL on success.
+ * @return err_info, NULL on success, only fails if out of memory.
  */
 static sr_error_info_t *
-sr_modinfo_push_oper_mod_update_sess(sr_session_ctx_t *sess, const char *mod_name, int has_data, int *created, int *changed_has_data)
+sr_modinfo_push_oper_mod_update_sess(sr_session_ctx_t *sess, const char *mod_name, int has_data)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
     void *mem;
 
-    *created = 0;
-    *changed_has_data = 0;
-
     for (i = 0; i < sess->oper_push_mod_count; ++i) {
         if (!strcmp(sess->oper_push_mods[i].name, mod_name)) {
-            /* learn whether has_data flag is being changed */
-            *changed_has_data = (sess->oper_push_mods[i].has_data != has_data);
-            /* already added, update has_data */
             sess->oper_push_mods[i].has_data = has_data;
             return NULL;
         }
     }
-
-    *created = 1;
 
     /* add new module */
     mem = realloc(sess->oper_push_mods, (i + 1) * sizeof *(sess->oper_push_mods));
@@ -3901,6 +3922,7 @@ sr_modinfo_push_oper_mod_update_sess(sr_session_ctx_t *sess, const char *mod_nam
     SR_CHECK_MEM_GOTO(!sess->oper_push_mods[i].name, err_info, cleanup);
     sess->oper_push_mods[i].has_data = has_data;
     ++sess->oper_push_mod_count;
+
 cleanup:
     return err_info;
 }
@@ -3913,7 +3935,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
     struct lyd_node *mod_diff, *mod_data;
     sr_datastore_t store_ds;
     uint32_t i, sid;
-    int create = 0, change = 0;
+    int create, change;
     const char *mod_name = NULL;
     sr_mod_t *shm_mod;
 
@@ -3978,16 +4000,19 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
                         goto cleanup;
                     }
                 } else {
-                    /* stored oper data, now cache the modified module in the session and determine if ext `change` or `create` is needed */
-                    if ((err_info = sr_modinfo_push_oper_mod_update_sess(session, mod->ly_mod->name, !!mod_data, &create, &change))) {
-                        goto cleanup;
-                    }
+                    /* stored oper data, determine if session Ext SHM data needs a `change` or `create` from the session's cached state */
+                    sr_modinfo_push_oper_mod_learn_changes(session, mod->ly_mod->name, !!mod_data, &create, &change);
 
                     /* change info in mod/ext SHM or create only if necessary */
                     if (change && (err_info = sr_shmext_oper_push_change_has_data(mod_info->conn, mod->shm_mod, sid, !!mod_data))) {
                         goto cleanup;
                     } else if (create && (err_info = sr_shmext_oper_push_update(mod_info->conn, mod->shm_mod, mod->ly_mod->name,
                             sid, 0, !!mod_data, SR_LOCK_WRITE))) {
+                        goto cleanup;
+                    }
+
+                    /* cache the Ext SHM 'has_data' info into session */
+                    if ((err_info = sr_modinfo_push_oper_mod_update_sess(session, mod->ly_mod->name, !!mod_data))) {
                         goto cleanup;
                     }
                 }
