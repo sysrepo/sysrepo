@@ -53,6 +53,9 @@ _test_log_msg(sr_log_level_t level, const char *message, const char *prefix)
     fprintf(stderr, "%03ld.%06ld [%ld][%lu][%s]%s: %s\n", ts.tv_sec, ts.tv_nsec,
             (long)getpid(), (unsigned long)pthread_self(), severity,
             prefix, message);
+    if (level == SR_LL_ERR) {
+        abort();
+    }
 }
 
 static void
