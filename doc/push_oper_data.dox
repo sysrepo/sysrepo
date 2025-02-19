@@ -6,17 +6,19 @@ functions and finally applied and stored using ::sr_apply_changes(). What happen
 edit, all the currently stored oper push data of the session are loaded and then each edit modifies this data tree.
 When these changes are applied, the prepared data tree **replaces** the previous push oper data of the session.
 
+Oper push data are **strictly tied to the session**, each can have its own oper push data and when being modified, only
+the oper push data of that session are modified. If the session is **stopped**, all its push oper data are
+automatically **discarded**. You can do so also manually using ::sr_discard_oper_changes().
+
 Additionally, using ::sr_discard_items() an XPath can be set that will select all the nodes to be removed from
-**previous data**, which may be enabled *running* data or any push oper data with a lower order (higher priority). This
-mechanism should work well for simple edits and if it does not, use the advanced mechanism described further below.
+**previous data**, which may be enabled *running* data or any push oper data of sessions with a lower order
+(higher priority). This mechanism should work well for simple edits and if it does not, use the advanced mechanism
+described further below.
 
 When building the _operational_ datastore, all the stored push data are applied in a **specific** order. That means data
 for each session are loaded, previous items discarded (if any set), and then merged into the *operational* datastore.
 Using a combination of discarding items and merging data, it should be possible to fully customize the final
 _operational_ datastore.
-
-Push oper data set by a session are owned by it. If the session is **stopped**, all its push oper data are
-automatically **discarded**. You can do so also manually using ::sr_discard_oper_changes().
 
 ## Order
 
