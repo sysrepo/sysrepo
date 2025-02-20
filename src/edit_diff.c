@@ -2675,6 +2675,7 @@ static LY_ERR
 sr_edit_mod_merge_diff_cb(struct lyd_node *trg_node, const struct lyd_node *src_node, void *UNUSED(cb_data))
 {
     sr_error_info_t *err_info = NULL;
+    struct lyd_node *iter;
 
     if (src_node) {
         /* nodes are merged, should always be equal */
@@ -2685,6 +2686,17 @@ sr_edit_mod_merge_diff_cb(struct lyd_node *trg_node, const struct lyd_node *src_
     if ((err_info = sr_diff_set_oper(trg_node, "none"))) {
         sr_errinfo_free(&err_info);
         return LY_EOTHER;
+    }
+
+    /* set 'orig-default' for all the term nodes */
+    LYD_TREE_DFS_BEGIN(trg_node, iter) {
+        if (iter->schema->nodetype & LYD_NODE_TERM) {
+            if ((err_info = sr_lyd_new_meta(iter, NULL, "yang:orig-default", (iter->flags & LYD_DEFAULT) ? "true" : "false"))) {
+                sr_errinfo_free(&err_info);
+                return LY_EOTHER;
+            }
+        }
+        LYD_TREE_DFS_END(trg_node, iter);
     }
 
     return LY_SUCCESS;
