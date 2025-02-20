@@ -1878,7 +1878,8 @@ test_factory_reset(void **state)
     sr_session_switch_ds(st->sess, SR_DS_CANDIDATE);
     ret = sr_set_item_str(st->sess, "/test:cont/l2[k='cand']/v", "0", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth100']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth100']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -1988,6 +1989,61 @@ test_factory_reset(void **state)
 
     /* cleanup */
     sr_unsubscribe(subscr);
+
+    /* change running */
+    sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+    ret = sr_set_item_str(st->sess, "/test:cont/l2[k='cand']/v", "0", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth100']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* execute #2, reset only candidate */
+    ret = lyd_new_path(NULL, st->ly_ctx, "/ietf-factory-default:factory-reset/sysrepo-factory-default:datastores/datastore",
+            "ietf-datastores:candidate", 0, &input);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_rpc_send_tree(st->sess, input, 0, &output);
+    lyd_free_tree(input);
+    assert_int_equal(ret, SR_ERR_OK);
+    sr_release_data(output);
+
+    /* check DS contents */
+    xml = "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+            "<interface><name>bu</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "</interface>"
+            "<interface><name>eth100</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "</interface></interfaces>"
+            "<test-leaf xmlns=\"urn:test\">1</test-leaf>"
+            "<cont xmlns=\"urn:test\"><l2><k>key</k><v>5</v></l2><l2><k>cand</k><v>0</v></l2></cont>";
+    sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+    ret = sr_get_data(st->sess, "/*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_non_null(data);
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(data);
+    assert_int_equal(ret, LY_SUCCESS);
+    assert_string_equal(str, xml);
+    free(str);
+
+    xml = "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+            "<interface><name>bu</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type></interface>"
+            "</interfaces>"
+            "<test-leaf xmlns=\"urn:test\">1</test-leaf>"
+            "<cont xmlns=\"urn:test\"><l2><k>key</k><v>5</v></l2></cont>";
+    sr_session_switch_ds(st->sess, SR_DS_CANDIDATE);
+    ret = sr_get_data(st->sess, "/*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_non_null(data);
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(data);
+    assert_int_equal(ret, LY_SUCCESS);
+    assert_string_equal(str, xml);
+    free(str);
 }
 
 /* MAIN */

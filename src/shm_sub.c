@@ -2379,12 +2379,12 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     struct sr_mod_info_s mod_info;
-    struct lyd_node *data[2] = {NULL};
     struct lyd_node *child;
     const struct lys_module *ly_mod;
     sr_datastore_t ds;
-    int reset_ds[2] = {0};
-    uint32_t i;
+    struct lyd_node *data[3] = {NULL};
+    int reset_ds[3] = {0}, mi_data_spent = -1;
+    uint32_t i, mi_opts;
 
     assert(input->schema->nodetype & (LYS_RPC | LYS_ACTION));
 
@@ -2436,9 +2436,13 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
                 break;
             case SR_DS_RUNNING:
                 reset_ds[SR_DS_RUNNING] = 1;
+                reset_ds[SR_DS_CANDIDATE] = 0;
                 break;
             case SR_DS_CANDIDATE:
-                /* implicit, ignore */
+                /* implicit reset if running is reset */
+                if (!reset_ds[SR_DS_RUNNING]) {
+                    reset_ds[SR_DS_CANDIDATE] = 1;
+                }
                 break;
             default:
                 sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Invalid factory-reset datastore \"%s\".", lyd_get_value(child));
@@ -2455,16 +2459,26 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
     /* MODULES UNLOCK */
     sr_shmmod_modinfo_unlock(&mod_info);
 
+    /* set a copy of the data tree for all reset DS */
     if (mod_info.data) {
-        /* keep the data for both DS */
-        if ((err_info = sr_lyd_dup(mod_info.data, NULL, LYD_DUP_RECURSIVE, 1, &data[0]))) {
-            goto cleanup;
+        for (ds = SR_DS_STARTUP; ds <= SR_DS_CANDIDATE; ++ds) {
+            if (!reset_ds[ds]) {
+                continue;
+            }
+
+            if (mi_data_spent == -1) {
+                data[ds] = mod_info.data;
+                mod_info.data = NULL;
+                mi_data_spent = ds;
+            } else {
+                if ((err_info = sr_lyd_dup(data[mi_data_spent], NULL, LYD_DUP_RECURSIVE, 1, &data[ds]))) {
+                    goto cleanup;
+                }
+            }
         }
-        data[1] = mod_info.data;
-        mod_info.data = NULL;
     }
 
-    for (ds = SR_DS_STARTUP; ds <= SR_DS_RUNNING; ++ds) {
+    for (ds = SR_DS_STARTUP; ds <= SR_DS_CANDIDATE; ++ds) {
         if (!reset_ds[ds]) {
             /* datastore should be skipped */
             continue;
@@ -2484,8 +2498,11 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
         }
 
         /* add modules with dependencies into mod_info */
-        if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_INV_DEPS | SR_MI_LOCK_UPGRADEABLE | SR_MI_PERM_NO,
-                NULL, 0, 0, 0))) {
+        mi_opts = SR_MI_LOCK_UPGRADEABLE | SR_MI_PERM_NO;
+        if (ds != SR_DS_CANDIDATE) {
+            mi_opts |= SR_MI_INV_DEPS;
+        }
+        if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, mi_opts, NULL, 0, 0, 0))) {
             goto cleanup;
         }
 
@@ -2520,8 +2537,8 @@ cleanup:
     sr_shmmod_modinfo_unlock(&mod_info);
 
     sr_modinfo_erase(&mod_info);
-    for (i = 0; i < 2; ++i) {
-        lyd_free_siblings(data[i]);
+    for (ds = SR_DS_STARTUP; ds <= SR_DS_CANDIDATE; ++ds) {
+        lyd_free_siblings(data[ds]);
     }
 
     /* CONTEXT UNLOCK */
