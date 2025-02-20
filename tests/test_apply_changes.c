@@ -849,6 +849,10 @@ subscribe_update_thread(void *arg)
     ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, module_update_cb, st, 0,
             SR_SUBSCR_UPDATE, &subscr);
     assert_int_equal(ret, SR_ERR_INVAL_ARG);
+    ret = sr_module_change_subscribe(sess, "test", "/test:r2", module_update_cb, st, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+    ret = sr_module_change_subscribe(sess, "test", "/test:notif1", module_update_cb, st, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
 
     /* signal that subscription was created */
     pthread_barrier_wait(&st->barrier);

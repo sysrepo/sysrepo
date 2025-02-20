@@ -1792,6 +1792,7 @@ sr_shmext_change_sub_check(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_
     uint32_t i;
     const char *mod_name, *xpath;
     int valid, ext_lock = 0;
+    uint16_t config_flag;
 
     /* CHANGE SUB READ LOCK */
     if ((err_info = sr_rwlock(&shm_mod->change_sub[ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
@@ -1854,7 +1855,12 @@ restart_loop:
 
         /* check subs xpath */
         xpath = conn->ext_shm.addr + subs[i].xpath;
-        sr_subscr_change_xpath_check(new_ctx, xpath, &valid);
+        if (ds == SR_DS_OPERATIONAL) {
+            config_flag = (LYS_CONFIG_W | LYS_CONFIG_R);
+        } else {
+            config_flag = LYS_CONFIG_W;
+        }
+        sr_subscr_change_xpath_check(new_ctx, xpath, config_flag, &valid);
         if (!valid) {
             sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Change subscription for \"%s\" no longer valid.", xpath);
             break;

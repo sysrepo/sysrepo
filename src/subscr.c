@@ -1872,10 +1872,11 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_subscr_change_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, int *valid)
+sr_subscr_change_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, uint16_t config_flag, int *valid)
 {
     sr_error_info_t *err_info = NULL;
     struct ly_set *set = NULL;
+    uint32_t i;
 
     /* parse the xpath on schema */
     if ((err_info = sr_lys_find_xpath(ly_ctx, xpath, 0, valid, &set))) {
@@ -1884,12 +1885,17 @@ sr_subscr_change_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, int
         goto cleanup;
     }
 
-    /* make sure there are some nodes selected */
-    if (!set->count) {
+    /* make sure there are some config/state nodes selected */
+    for (i = 0; i < set->count; ++i) {
+        if (set->snodes[i]->flags & config_flag) {
+            break;
+        }
+    }
+    if (i == set->count) {
         if (valid) {
             *valid = 0;
         } else {
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "XPath \"%s\" is not selecting any nodes.", xpath);
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "XPath \"%s\" is not selecting any valid nodes.", xpath);
         }
         goto cleanup;
     }

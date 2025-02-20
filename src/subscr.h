@@ -299,11 +299,13 @@ sr_error_info_t *sr_notif_call_callback(sr_session_ctx_t *ev_sess, sr_event_noti
  *
  * @param[in] ly_ctx Context to use.
  * @param[in] xpath XPath to check.
+ * @param[in] config_flag Config flag of valid nodes.
  * @param[in,out] valid If set, does not log and sets to 0 if invalid, 1 if valid.
  * If not set, an error is returned if invalid, otherwise NULL.
  * @return err_info (if @p valid is not set), NULL on success.
  */
-sr_error_info_t *sr_subscr_change_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, int *valid);
+sr_error_info_t *sr_subscr_change_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, uint16_t config_flag,
+        int *valid);
 
 /**
  * @brief Check the path of an oper subscription. Optionally learn what kinds (config) of nodes are provided

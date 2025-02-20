@@ -5913,6 +5913,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     uint32_t sub_id;
     sr_subscr_options_t sub_opts;
     sr_mod_t *shm_mod;
+    uint16_t config_flag;
 
     SR_CHECK_ARG_APIRET(!session || !SR_IS_STANDARD_DS(session->ds) || SR_IS_EVENT_SESS(session) || !module_name ||
             !callback || !subscription, session, err_info);
@@ -5938,7 +5939,12 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
         sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Data of internal module \"sysrepo\" cannot be subscribed to.");
         goto cleanup;
     }
-    if (xpath && (err_info = sr_subscr_change_xpath_check(conn->ly_ctx, xpath, NULL))) {
+    if (session->ds == SR_DS_OPERATIONAL) {
+        config_flag = (LYS_CONFIG_W | LYS_CONFIG_R);
+    } else {
+        config_flag = LYS_CONFIG_W;
+    }
+    if (xpath && (err_info = sr_subscr_change_xpath_check(conn->ly_ctx, xpath, config_flag, NULL))) {
         goto cleanup;
     }
 
@@ -6081,6 +6087,7 @@ sr_module_change_sub_modify_xpath(sr_subscription_ctx_t *subscription, uint32_t 
     sr_mod_t *shm_mod;
     const char *module_name;
     sr_datastore_t ds;
+    uint16_t config_flag;
 
     SR_CHECK_ARG_APIRET(!subscription || !sub_id, NULL, err_info);
 
@@ -6105,7 +6112,12 @@ sr_module_change_sub_modify_xpath(sr_subscription_ctx_t *subscription, uint32_t 
     }
 
     /* check xpath */
-    if (xpath && (err_info = sr_subscr_change_xpath_check(subscription->conn->ly_ctx, xpath, NULL))) {
+    if (ds == SR_DS_OPERATIONAL) {
+        config_flag = (LYS_CONFIG_W | LYS_CONFIG_R);
+    } else {
+        config_flag = LYS_CONFIG_W;
+    }
+    if (xpath && (err_info = sr_subscr_change_xpath_check(subscription->conn->ly_ctx, xpath, config_flag, NULL))) {
         goto cleanup_unlock;
     }
 
