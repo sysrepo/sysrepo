@@ -452,7 +452,7 @@ teardown_running(struct test_state *state)
 static void
 teardown_oper(struct test_state *state)
 {
-    sr_discard_items(state->sess, "/perf:cont");
+    sr_delete_item(state->sess, "/perf:cont", 0);
     sr_apply_changes(state->sess, state->count * 100);
     sr_session_stop(state->sess);
     sr_release_context(state->conn);
@@ -696,7 +696,7 @@ test_items_create_oper(struct test_state *state, struct timespec *ts_start, stru
 
     TEST_END(ts_end);
 
-    if ((r = sr_discard_items(state->sess, "/perf:cont/lst"))) {
+    if ((r = sr_delete_items(state->sess, "/perf:cont/lst", 0))) {
         return r;
     }
     if ((r = sr_apply_changes(state->sess, state->count * 100))) {
@@ -780,7 +780,7 @@ test_item_create_oper(struct test_state *state, struct timespec *ts_start, struc
     char path[64], l_val[32];
 
     sprintf(path, "/perf:cont/lst[k1='%" PRIu32 "'][k2='str%" PRIu32 "']/l", state->count / 2, state->count / 2);
-    if ((r = sr_discard_items(state->sess, path))) {
+    if ((r = sr_delete_item(state->sess, path, 0))) {
         return r;
     }
     if ((r = sr_apply_changes(state->sess, 0))) {
