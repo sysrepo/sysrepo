@@ -4258,14 +4258,6 @@ sr_apply_oper_changes(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
         goto cleanup;
     }
 
-    /* remove any previous oper_push_cache */
-    lyd_free_siblings(session->oper_push_cache);
-    session->oper_push_cache = NULL;
-
-    /* store mod_info->data as the new oper_push_cache */
-    session->oper_push_cache = mod_info->data;
-    mod_info->data = NULL;
-
     if (update_sm_data) {
         /* operational schema-mount data were changed, update them in the connection */
         if ((err_info = sr_conn_ext_data_update(session->conn))) {
@@ -4274,12 +4266,6 @@ sr_apply_oper_changes(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
     }
 
 cleanup:
-    /* flush previous oper_push_cache on errors */
-    if (err_info || *err_info2) {
-        lyd_free_siblings(session->oper_push_cache);
-        session->oper_push_cache = NULL;
-    }
-
     sr_release_data(old_oper_data);
     lyd_free_siblings(data_diff);
     lyd_free_siblings(old_oper_ds);
