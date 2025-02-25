@@ -1243,15 +1243,68 @@ sr_oper_data_merge_cb(struct lyd_node *trg_node, const struct lyd_node *src_node
 }
 
 /**
+ * @brief Check whether the session has pushed any operational data to this module.
+ *        If data exists, get it from cache if available.
+ *
+ * @param[in] sess Session to check.
+ * @param[in] mod_name module name to search.
+ * @param[in] dup Flag to duplicate data and not consume it.
+ * @param[out] has_data Flag whether session has push operational data for this module.
+ * @param[out] mod_data Cached module data if available.
+ * @return err_info if an error occurs during duplication, NULL otherwise.
+ */
+static sr_error_info_t *
+sr_modinfo_module_data_cache_get(sr_session_ctx_t *sess, const char *mod_name, int dup, int *has_data, struct lyd_node **mod_data)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t i;
+
+    *mod_data = NULL;
+    *has_data = 0;
+
+    for (i = 0; i < sess->oper_push_mod_count; ++i) {
+        if (!strcmp(sess->oper_push_mods[i].name, mod_name)) {
+            break;
+        }
+    }
+
+    /* module not found */
+    if (i == sess->oper_push_mod_count) {
+        return NULL;
+    }
+
+    *has_data = sess->oper_push_mods[i].has_data;
+
+    /* no cache available for use */
+    if (!sess->oper_push_mods[i].cache) {
+        return NULL;
+    }
+
+    if (dup) {
+        /* duplicate the cached data for use */
+        if ((err_info = sr_lyd_dup(sess->oper_push_mods[i].cache, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, 1, mod_data))) {
+            return err_info;
+        }
+    } else {
+        /* consume the cache */
+        *mod_data = sess->oper_push_mods[i].cache;
+        sess->oper_push_mods[i].cache = NULL;
+    }
+
+    return NULL;
+}
+
+/**
  * @brief Load and merge/process all the oper push data stored for a module.
  *
  * @param[in] mod Mod info module.
  * @param[in] conn Connection to use.
+ * @param[in] sess Session whose oper push data should be loaded, if NULL, load data of all sessions with oper push data for this module.
  * @param[in,out] data Operational data tree.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_module_oper_data_load(struct sr_mod_info_mod_s *mod, sr_conn_ctx_t *conn, uint32_t sid,
+sr_module_oper_data_load(struct sr_mod_info_mod_s *mod, sr_conn_ctx_t *conn, sr_session_ctx_t *sess,
         struct lyd_node **mod_oper_data, struct lyd_node **data)
 {
     sr_error_info_t *err_info = NULL;
@@ -1261,7 +1314,8 @@ sr_module_oper_data_load(struct sr_mod_info_mod_s *mod, sr_conn_ctx_t *conn, uin
     const char *xpath;
     struct ly_set *set;
     uint32_t i, j, merge_opts, oper_push_count = 0;
-    int last_sid = 0, dead_cid = 0;
+    int last_sid = 0, dead_cid = 0, has_data = 0;
+    uint32_t sid = sess ? sess->sid : 0;
 
     /* oper_push_data_count is protected by operational DS module data locks */
     if (mod->shm_mod->oper_push_data_count) {
@@ -1314,8 +1368,14 @@ sr_module_oper_data_load(struct sr_mod_info_mod_s *mod, sr_conn_ctx_t *conn, uin
             last_sid = 1;
         }
         if (!last_sid || !mod_oper_data) {
-            /* load push oper data for the session */
-            if ((err_info = sr_module_file_data_append(mod->ly_mod, mod->ds_handle, SR_DS_OPERATIONAL,
+            if (oper_push_dup[i].sid == sid) {
+                /* load push oper data from the session cache (consume it) */
+                if ((err_info = sr_modinfo_module_data_cache_get(sess, mod->ly_mod->name, 0, &has_data, &mod_data))) {
+                    goto cleanup;
+                }
+            }
+            /* load push oper data for the session from the datastore plugin if cache was empty */
+            if (!mod_data && (err_info = sr_module_file_data_append(mod->ly_mod, mod->ds_handle, SR_DS_OPERATIONAL,
                     oper_push_dup[i].cid, oper_push_dup[i].sid, NULL, 0, &mod_data))) {
                 goto cleanup;
             }
@@ -1390,14 +1450,14 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_modinfo_get_oper_data(struct sr_mod_info_s *mod_info, uint32_t sid, struct lyd_node **oper_data)
+sr_modinfo_get_oper_data(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sess, struct lyd_node **oper_data)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
     struct lyd_node *mod_oper_data = NULL;
     uint32_t i;
 
-    assert((mod_info->ds == SR_DS_OPERATIONAL) && (mod_info->ds2 == SR_DS_OPERATIONAL) && !mod_info->data);
+    assert((mod_info->ds == SR_DS_OPERATIONAL) && (mod_info->ds2 == SR_DS_OPERATIONAL) && !mod_info->data && sess);
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
@@ -1408,7 +1468,7 @@ sr_modinfo_get_oper_data(struct sr_mod_info_s *mod_info, uint32_t sid, struct ly
         }
 
         /* load the requested oper data */
-        if ((err_info = sr_module_oper_data_load(mod, mod_info->conn, sid, oper_data ? &mod_oper_data : NULL,
+        if ((err_info = sr_module_oper_data_load(mod, mod_info->conn, sess, oper_data ? &mod_oper_data : NULL,
                 &mod_info->data))) {
             goto cleanup;
         }
@@ -1456,7 +1516,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
 
     if (!(get_oper_opts & SR_OPER_NO_STORED)) {
         /* process stored operational data */
-        if ((err_info = sr_module_oper_data_load(mod, conn, 0, NULL, data))) {
+        if ((err_info = sr_module_oper_data_load(mod, conn, NULL, NULL, data))) {
             return err_info;
         }
 
@@ -2645,28 +2705,6 @@ cleanup:
 }
 
 /**
- * @brief Check whether the session has pushed any operational data to this module
- *
- * @param[in] sess Session to check.
- * @param[in] mod_name module name to search.
- * @return 1 if there is data, else 0
- */
-static int
-sr_modinfo_sess_has_push_oper_data(sr_session_ctx_t *sess, const char *mod_name)
-{
-    uint32_t i;
-
-    for (i = 0; i < sess->oper_push_mod_count; ++i) {
-        if (!strcmp(sess->oper_push_mods[i].name, mod_name)) {
-            /* module found, return has_data */
-            return sess->oper_push_mods[i].has_data;
-        }
-    }
-
-    return 0;
-}
-
-/**
  * @brief Load module data of a specific module.
  *
  * @param[in] mod_info Mod info to use.
@@ -2686,7 +2724,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
     struct lyd_node *mod_data = NULL;
     const char **xpaths;
     uint32_t xpath_count;
-    int modified;
+    int modified, has_data;
     char *orig_name = NULL;
     void *orig_data = NULL;
 
@@ -2696,18 +2734,21 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
     if ((mod_info->ds == SR_DS_OPERATIONAL) && (mod_info->ds2 == SR_DS_OPERATIONAL)) {
         assert(sess);
 
-        /* check if we have any push data */
-        if (!sr_modinfo_sess_has_push_oper_data(sess, mod->ly_mod->name)) {
-            return NULL;
-        }
-
-        /* load module data */
-        if ((err_info = sr_module_file_data_append(mod->ly_mod, mod->ds_handle, mod_info->ds2,
-                conn->cid, sess->sid, mod->xpaths, mod->xpath_count, &mod_info->data))) {
+        /* check if we have any push data (and duplicate it if it's already in the cache) */
+        if ((err_info = sr_modinfo_module_data_cache_get(sess, mod->ly_mod->name, 1, &has_data, &mod_data))) {
             return err_info;
         }
 
-        return NULL;
+        if (has_data) {
+            if (mod_data) {
+                err_info = sr_lyd_insert_sibling(mod_info->data, mod_data, &mod_info->data);
+            } else {
+                /* load module data from the ds plugin because cache is empty */
+                err_info = sr_module_file_data_append(mod->ly_mod, mod->ds_handle, mod_info->ds2,
+                        conn->cid, sess->sid, mod->xpaths, mod->xpath_count, &mod_info->data);
+            }
+        }
+        return err_info;
     }
 
     /* get session info */
@@ -3038,6 +3079,7 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int read_only, sr_session_c
             continue;
         }
 
+        /* load module data */
         if ((err_info = sr_modinfo_module_data_load(mod_info, mod, sess, timeout_ms, get_oper_opts, run_data_cache_cur))) {
             goto cleanup;
         }
@@ -3892,15 +3934,15 @@ sr_modinfo_push_oper_mod_learn_changes(sr_session_ctx_t *sess, const char *mod_n
 }
 
 /**
- * @brief Update push oper mod data in a session, add a new module if not yet present.
+ * @brief Update push oper mod data cache in the session, add new module if not yet present.
  *
  * @param[in] sess Session to update.
  * @param[in] mod_name Module name.
- * @param[in] has_data Flag to store.
+ * @param[in] data module data to store.
  * @return err_info, NULL on success, only fails if out of memory.
  */
 static sr_error_info_t *
-sr_modinfo_push_oper_mod_update_sess(sr_session_ctx_t *sess, const char *mod_name, int has_data)
+sr_modinfo_push_oper_mod_update_cache(sr_session_ctx_t *sess, const char *mod_name, struct lyd_node *data)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
@@ -3908,20 +3950,28 @@ sr_modinfo_push_oper_mod_update_sess(sr_session_ctx_t *sess, const char *mod_nam
 
     for (i = 0; i < sess->oper_push_mod_count; ++i) {
         if (!strcmp(sess->oper_push_mods[i].name, mod_name)) {
-            sess->oper_push_mods[i].has_data = has_data;
-            return NULL;
+            /* cache must already be consumed by sr_modinfo_get_oper_data() */
+            assert(!sess->oper_push_mods[i].cache);
+            break;
         }
     }
 
-    /* add new module */
-    mem = realloc(sess->oper_push_mods, (i + 1) * sizeof *(sess->oper_push_mods));
-    SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
-    sess->oper_push_mods = mem;
+    if (i == sess->oper_push_mod_count) {
+        /* add new module */
+        mem = realloc(sess->oper_push_mods, (i + 1) * sizeof *(sess->oper_push_mods));
+        SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
+        sess->oper_push_mods = mem;
 
-    sess->oper_push_mods[i].name = strdup(mod_name);
-    SR_CHECK_MEM_GOTO(!sess->oper_push_mods[i].name, err_info, cleanup);
-    sess->oper_push_mods[i].has_data = has_data;
-    ++sess->oper_push_mod_count;
+        /* zero the memory to prevent any uninitialized access */
+        memset(&sess->oper_push_mods[i], 0, sizeof *(sess->oper_push_mods));
+
+        sess->oper_push_mods[i].name = strdup(mod_name);
+        SR_CHECK_MEM_GOTO(!sess->oper_push_mods[i].name, err_info, cleanup);
+        ++sess->oper_push_mod_count;
+    }
+
+    sess->oper_push_mods[i].has_data = !!data;
+    sess->oper_push_mods[i].cache = data;
 
 cleanup:
     return err_info;
@@ -3982,14 +4032,6 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
                 }
             }
 
-            /* connect them back */
-            if (mod_diff) {
-                lyd_insert_sibling(mod_info->ds_diff, mod_diff, &mod_info->ds_diff);
-            }
-            if (mod_data) {
-                lyd_insert_sibling(mod_info->data, mod_data, &mod_info->data);
-            }
-
             if ((mod_info->ds == SR_DS_OPERATIONAL) && (mod_info->ds2 == SR_DS_OPERATIONAL)) {
                 assert(session);
                 if (shmmod_session_del) {
@@ -4011,11 +4053,20 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
                         goto cleanup;
                     }
 
-                    /* cache the Ext SHM 'has_data' info into session */
-                    if ((err_info = sr_modinfo_push_oper_mod_update_sess(session, mod->ly_mod->name, !!mod_data))) {
+                    /* cache the mod_data info into session */
+                    if ((err_info = sr_modinfo_push_oper_mod_update_cache(session, mod->ly_mod->name, mod_data))) {
                         goto cleanup;
                     }
+                    mod_data = NULL;
                 }
+            }
+
+            /* connect them back */
+            if (mod_diff) {
+                lyd_insert_sibling(mod_info->ds_diff, mod_diff, &mod_info->ds_diff);
+            }
+            if (mod_data) {
+                lyd_insert_sibling(mod_info->data, mod_data, &mod_info->data);
             }
         }
     }

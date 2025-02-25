@@ -3267,13 +3267,15 @@ sr_conn_run_cache_flush(sr_conn_ctx_t *conn)
 /**
  * @brief Flush all cached oper data of a connection.
  *
+ * Must be called only with WRITE mode context lock or conn->mod_remap_lock.
+ *
  * @param[in] conn Connection to use.
  */
 static void
 sr_conn_oper_cache_flush(sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL;
-    uint32_t i;
+    uint32_t i, j;
     struct sr_oper_poll_cache_s *cache;
 
     /* CONN OPER CACHE READ LOCK */
@@ -3304,6 +3306,17 @@ sr_conn_oper_cache_flush(sr_conn_ctx_t *conn)
 
     /* CONN OPER CACHE UNLOCK */
     sr_rwunlock(&conn->oper_cache_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+
+    /* remove oper push data cache from all sessions */
+
+    /* safe because context_lock or conn->mod_remap_lock is WRITE locked, preventing all other operations */
+    /* conn->ptr_lock is always acquired after sr_lycc_lock, so conn->session_count cannot change */
+    for (i = 0; i < conn->session_count; i++) {
+        for (j = 0; j < conn->sessions[i]->oper_push_mod_count; j++) {
+            lyd_free_siblings(conn->sessions[i]->oper_push_mods[j].cache);
+            conn->sessions[i]->oper_push_mods[j].cache = NULL;
+        }
+    }
 }
 
 void

@@ -183,7 +183,11 @@ struct sr_session_ctx_s {
 
     struct sr_oper_push_cache_s {
         char *name;                 /**< Module name whose push oper data were ever modified by this session. */
-        int has_data;               /**< Flag if there are any actual data currently. */
+        int has_data;               /**< Flag if there is any data from this session in the module datastore. */
+        struct lyd_node *cache;     /**< Cached operational push data from the last push.
+                                         Can be NULL even if has_data is true, for example,
+                                         after apply_changes failure or after a context change.
+                                         Protected by sr_lycc_lock from flushing. */
     } *oper_push_mods;
     uint32_t oper_push_mod_count;   /**< Count of modules with modified push oper data by this session. */
 

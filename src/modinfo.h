@@ -229,12 +229,12 @@ void sr_modinfo_changesub_rdunlock(struct sr_mod_info_s *mod_info);
  * @brief Get specific oper DS data based on the params.
  *
  * @param[in] mod_info Mod info to use.
- * @param[in] sid If set, do not load oper data of sessions after this one, otherwise load oper data of all the sessions.
- * @param[in] oper_data Used only if @p sid is set. If set, replace the oper data of @p sid with these data, otherwise
+ * @param[in] sess Session whose oper push data should be loaded.
+ * @param[in] oper_data If set, replace the oper data of @p sess with these data, otherwise
  * use the stored data of this session.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_modinfo_get_oper_data(struct sr_mod_info_s *mod_info, uint32_t sid, struct lyd_node **oper_data);
+sr_error_info_t *sr_modinfo_get_oper_data(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sess, struct lyd_node **oper_data);
 
 #define SR_MI_NEW_DEPS          0x01    /**< new modules are not required (MOD_INFO_REQ) but only dpendencies (MOD_INFO_DEP) */
 #define SR_MI_INV_DEPS          0x02    /**< add inverse dependencies for added modules */
