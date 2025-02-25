@@ -3062,8 +3062,12 @@ static void
 test_oper_order(void **state)
 {
     struct state *st = (struct state *)*state;
+    sr_session_ctx_t *sess = NULL;
     int ret;
     uint32_t order = 0;
+
+    ret = sr_session_start(st->conn, SR_DS_OPERATIONAL, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
@@ -3097,6 +3101,14 @@ test_oper_order(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(order, 20);
 
+    /* order already in use */
+    ret = sr_set_oper_changes_order(sess, "test", 20);
+    assert_int_equal(ret, SR_ERR_EXISTS);
+
+    /* order already in use, retry catches lost ext_lock on error above */
+    ret = sr_set_oper_changes_order(sess, "test", 20);
+    assert_int_equal(ret, SR_ERR_EXISTS);
+
     /* it should not be possible to change order for ietf-interfaces since we have some pushed data for it*/
     ret = sr_set_oper_changes_order(st->sess, "ietf-interfaces", 1);
     assert_int_equal(ret, SR_ERR_UNSUPPORTED);
@@ -3115,6 +3127,9 @@ test_oper_order(void **state)
 
     /* it should be possible to raise oper changes order */
     ret = sr_set_oper_changes_order(st->sess, "ietf-interfaces", 10);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_session_stop(sess);
     assert_int_equal(ret, SR_ERR_OK);
 }
 
