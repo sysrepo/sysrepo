@@ -2678,7 +2678,7 @@ sr_shmext_oper_push_update(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *m
 
     /* learn the index if entry exists. If order was not specified, learn/generate the order to use */
     if ((err_info = sr_shmext_oper_push_update_get_idx(conn, shm_mod, mod_name, sid, &order, &found_i))) {
-        goto cleanup_shmmod_unlock;
+        goto cleanup_ext_shmmod_unlock;
     }
 
     if (found_i == -1) {
