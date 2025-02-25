@@ -696,7 +696,7 @@ test_items_create_oper(struct test_state *state, struct timespec *ts_start, stru
 
     TEST_END(ts_end);
 
-    if ((r = sr_delete_items(state->sess, "/perf:cont/lst", 0))) {
+    if ((r = sr_delete_item(state->sess, "/perf:cont/lst", 0))) {
         return r;
     }
     if ((r = sr_apply_changes(state->sess, state->count * 100))) {
