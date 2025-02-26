@@ -6599,6 +6599,7 @@ cleanup:
     lyd_free_tree(node_dup);
     if (err_info) {
         if (sr_val) {
+            free(sr_val->origin);
             free(sr_val->xpath);
         }
         free(sr_val);
