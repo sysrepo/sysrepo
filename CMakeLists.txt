@@ -89,6 +89,8 @@ endif()
 option(ENABLE_EXAMPLES "Build examples." ON)
 option(ENABLE_COVERAGE "Build code coverage report from tests" OFF)
 option(ENABLE_COMMON_TARGETS "Define common custom target names such as 'doc' or 'uninstall', may cause conflicts when using add_subdirectory() to build this project" ON)
+option(ENABLE_DS_MONGO "Enable MongoDB datastore plugin" OFF)
+option(ENABLE_DS_REDIS "Enable Redis datastore plugin" OFF)
 option(ENABLE_SYSREPOCTL "Build binary tool 'sysrepoctl'" ON)
 option(ENABLE_SYSREPOCFG "Build binary tool 'sysrepocfg'" ON)
 option(ENABLE_SYSREPO_PLUGIND "Build binary daemon 'sysrepo-plugind'" ON)
@@ -403,55 +405,63 @@ list(REMOVE_ITEM CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
 list(REMOVE_ITEM CMAKE_REQUIRED_DEFINITIONS -D_DEFAULT_SOURCE)
 
 # libmongoc - optional
-find_package(mongoc-1.0 1.24.0 CONFIG)
-find_program(MONGOSH mongosh)
-if(TARGET mongo::mongoc_shared AND MONGOSH)
-    # datastore plugin added if libraries exist
-    list(APPEND LIB_SRC src/plugins/ds_mongo.c)
-    set(SR_ENABLED_DS_PLG_MONGO 1)
-    message(STATUS "Datastore plugin ds_mongo supported.")
+if(ENABLE_DS_MONGO)
+    find_package(mongoc-1.0 1.24.0 CONFIG)
+    find_program(MONGOSH mongosh)
+    if(TARGET mongo::mongoc_shared AND MONGOSH)
+        # datastore plugin added if libraries exist
+        list(APPEND LIB_SRC src/plugins/ds_mongo.c)
+        set(SR_ENABLED_DS_PLG_MONGO 1)
+        message(STATUS "Datastore plugin ds_mongo supported.")
 
-    # try running a command in MongoDB database (should not be possible) and check authentication
-    execute_process(COMMAND ${MONGOSH} "--host" "${MONGO_HOST}" "--port" "${MONGO_PORT}" "--eval" "use sr_running" "--eval" "db.runCommand({usersInfo: 1})"
-            RESULT_VARIABLE MONGO_RETURN_CODE
-            ERROR_VARIABLE MONGO_STDERR
-            OUTPUT_QUIET)
-    if(${MONGO_RETURN_CODE} EQUAL "0")
-        message(WARNING "MongoDB authentication is NOT supported! Data stored by sysrepo in MongoDB will be accessible by anyone.")
-    else()
-        if("${MONGO_STDERR}" MATCHES "^MongoServerError: .*auth.*")
-            message(STATUS "MongoDB authentication is supported!")
+        # try running a command in MongoDB database (should not be possible) and check authentication
+        execute_process(COMMAND ${MONGOSH} "--host" "${MONGO_HOST}" "--port" "${MONGO_PORT}" "--eval" "use sr_running" "--eval" "db.runCommand({usersInfo: 1})"
+                RESULT_VARIABLE MONGO_RETURN_CODE
+                ERROR_VARIABLE MONGO_STDERR
+                OUTPUT_QUIET)
+        if(${MONGO_RETURN_CODE} EQUAL "0")
+            message(WARNING "MongoDB authentication is NOT supported! Data stored by sysrepo in MongoDB will be accessible by anyone.")
         else()
-            message(WARNING "MongoDB authentication cannot be checked - a request to MongoDB failed with: ${MONGO_STDERR}")
+            if("${MONGO_STDERR}" MATCHES "^MongoServerError: .*auth.*")
+                message(STATUS "MongoDB authentication is supported!")
+            else()
+                message(WARNING "MongoDB authentication cannot be checked - a request to MongoDB failed with: ${MONGO_STDERR}")
+            endif()
         endif()
+    else()
+        message(STATUS "Datastore plugin ds_mongo not supported.")
     endif()
 else()
-    message(STATUS "Datastore plugin ds_mongo not supported.")
+    message(STATUS "MongoDB datastore plugin disabled")
 endif()
 
 # libhiredis - optional
-find_package(LibHiredis 1.1.0)
-find_program(REDIS_CLI redis-cli)
-if(LIBHIREDIS_FOUND AND REDIS_CLI)
-    # datastore plugin added if libraries exist
-    list(APPEND LIB_SRC src/plugins/ds_redis.c)
-    set(SR_ENABLED_DS_PLG_REDIS 1)
-    message(STATUS "Datastore plugin ds_redis supported.")
+if(ENABLE_DS_REDIS)
+    find_package(LibHiredis 1.1.0)
+    find_program(REDIS_CLI redis-cli)
+    if(LIBHIREDIS_FOUND AND REDIS_CLI)
+        # datastore plugin added if libraries exist
+        list(APPEND LIB_SRC src/plugins/ds_redis.c)
+        set(SR_ENABLED_DS_PLG_REDIS 1)
+        message(STATUS "Datastore plugin ds_redis supported.")
 
-    # try running a command in Redis database and check authentication
-    execute_process(COMMAND "echo" "ACL WHOAMI"
-            COMMAND "${REDIS_CLI}" "-h" "${REDIS_HOST}" "-p" "${REDIS_PORT}"
-            OUTPUT_VARIABLE REDIS_STDOUT
-            ERROR_VARIABLE REDIS_STDERR)
-    if("${REDIS_STDOUT}" MATCHES "^NOAUTH.*")
-        message(STATUS "Redis authentication is supported!")
-    elseif("${REDIS_STDERR}" MATCHES "^Could not connect to Redis.*")
-        message(WARNING "Redis authentication cannot be checked - a request to Redis failed with: ${REDIS_STDERR}")
+        # try running a command in Redis database and check authentication
+        execute_process(COMMAND "echo" "ACL WHOAMI"
+                COMMAND "${REDIS_CLI}" "-h" "${REDIS_HOST}" "-p" "${REDIS_PORT}"
+                OUTPUT_VARIABLE REDIS_STDOUT
+                ERROR_VARIABLE REDIS_STDERR)
+        if("${REDIS_STDOUT}" MATCHES "^NOAUTH.*")
+            message(STATUS "Redis authentication is supported!")
+        elseif("${REDIS_STDERR}" MATCHES "^Could not connect to Redis.*")
+            message(WARNING "Redis authentication cannot be checked - a request to Redis failed with: ${REDIS_STDERR}")
+        else()
+            message(WARNING "Redis authentication is NOT supported! Data stored by sysrepo in Redis will be accessible by anyone.")
+        endif()
     else()
-        message(WARNING "Redis authentication is NOT supported! Data stored by sysrepo in Redis will be accessible by anyone.")
+        message(STATUS "Datastore plugin ds_redis not supported.")
     endif()
 else()
-    message(STATUS "Datastore plugin ds_redis not supported.")
+    message(STATUS "Redis datastore plugin disabled")
 endif()
 
 # common database utility functions - optional
