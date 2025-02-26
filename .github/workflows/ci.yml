@@ -96,7 +96,7 @@ jobs:
             build-type: "Debug",
             dep-build-type: "Debug",
             cc: "gcc",
-            options: "-DDEFAULT_STARTUP_DS_PLG=\"MONGO DS\" -DDEFAULT_RUNNING_DS_PLG=\"MONGO DS\" -DDEFAULT_CANDIDATE_DS_PLG=\"MONGO DS\" -DDEFAULT_OPERATIONAL_DS_PLG=\"MONGO DS\" -DDEFAULT_FACTORY_DEFAULT_DS_PLG=\"MONGO DS\"",
+            options: "-DENABLE_DS_MONGO=ON -DDEFAULT_STARTUP_DS_PLG=\"MONGO DS\" -DDEFAULT_RUNNING_DS_PLG=\"MONGO DS\" -DDEFAULT_CANDIDATE_DS_PLG=\"MONGO DS\" -DDEFAULT_OPERATIONAL_DS_PLG=\"MONGO DS\" -DDEFAULT_FACTORY_DEFAULT_DS_PLG=\"MONGO DS\"",
             packages: "libcmocka-dev valgrind",
             snaps: "",
             make-target: ""
@@ -107,7 +107,7 @@ jobs:
             build-type: "Debug",
             dep-build-type: "Debug",
             cc: "gcc",
-            options: "-DDEFAULT_STARTUP_DS_PLG=\"MONGO DS\" -DDEFAULT_RUNNING_DS_PLG=\"MONGO DS\" -DDEFAULT_CANDIDATE_DS_PLG=\"MONGO DS\" -DDEFAULT_OPERATIONAL_DS_PLG=\"MONGO DS\" -DDEFAULT_FACTORY_DEFAULT_DS_PLG=\"MONGO DS\"",
+            options: "-DENABLE_DS_MONGO=ON -DDEFAULT_STARTUP_DS_PLG=\"MONGO DS\" -DDEFAULT_RUNNING_DS_PLG=\"MONGO DS\" -DDEFAULT_CANDIDATE_DS_PLG=\"MONGO DS\" -DDEFAULT_OPERATIONAL_DS_PLG=\"MONGO DS\" -DDEFAULT_FACTORY_DEFAULT_DS_PLG=\"MONGO DS\"",
             packages: "libcmocka-dev valgrind",
             snaps: "",
             make-target: ""
@@ -118,7 +118,7 @@ jobs:
             build-type: "Debug",
             dep-build-type: "Debug",
             cc: "gcc",
-            options: "-DDEFAULT_STARTUP_DS_PLG=\"REDIS DS\" -DDEFAULT_RUNNING_DS_PLG=\"REDIS DS\" -DDEFAULT_CANDIDATE_DS_PLG=\"REDIS DS\" -DDEFAULT_OPERATIONAL_DS_PLG=\"REDIS DS\" -DDEFAULT_FACTORY_DEFAULT_DS_PLG=\"REDIS DS\"",
+            options: "-DENABLE_DS_REDIS=ON -DDEFAULT_STARTUP_DS_PLG=\"REDIS DS\" -DDEFAULT_RUNNING_DS_PLG=\"REDIS DS\" -DDEFAULT_CANDIDATE_DS_PLG=\"REDIS DS\" -DDEFAULT_OPERATIONAL_DS_PLG=\"REDIS DS\" -DDEFAULT_FACTORY_DEFAULT_DS_PLG=\"REDIS DS\"",
             packages: "libcmocka-dev valgrind",
             snaps: "",
             make-target: ""
@@ -129,7 +129,7 @@ jobs:
             build-type: "Debug",
             dep-build-type: "Debug",
             cc: "gcc",
-            options: "-DDEFAULT_STARTUP_DS_PLG=\"REDIS DS\" -DDEFAULT_RUNNING_DS_PLG=\"REDIS DS\" -DDEFAULT_CANDIDATE_DS_PLG=\"REDIS DS\" -DDEFAULT_OPERATIONAL_DS_PLG=\"REDIS DS\" -DDEFAULT_FACTORY_DEFAULT_DS_PLG=\"REDIS DS\"",
+            options: "-DENABLE_DS_REDIS=ON -DDEFAULT_STARTUP_DS_PLG=\"REDIS DS\" -DDEFAULT_RUNNING_DS_PLG=\"REDIS DS\" -DDEFAULT_CANDIDATE_DS_PLG=\"REDIS DS\" -DDEFAULT_OPERATIONAL_DS_PLG=\"REDIS DS\" -DDEFAULT_FACTORY_DEFAULT_DS_PLG=\"REDIS DS\"",
             packages: "libcmocka-dev valgrind",
             snaps: "",
             make-target: ""
