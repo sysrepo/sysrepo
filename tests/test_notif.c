@@ -4,8 +4,8 @@
  * @brief test for sending/receiving notifications
  *
  * @copyright
- * Copyright (c) 2018 - 2021 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2025 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2025 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -1602,6 +1602,7 @@ test_send_nowait(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_subscription_ctx_t *subscr = NULL;
+    uint32_t sub_id;
     int ret;
 
     ATOMIC_STORE_RELAXED(st->cb_called, 0);
@@ -1609,6 +1610,7 @@ test_send_nowait(void **state)
     /* subscribe #1 */
     ret = sr_notif_subscribe(st->sess, "ops", NULL, NULL, NULL, notif_send_nowait_cb, st, SR_SUBSCR_NO_THREAD, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
+    sub_id = sr_subscription_get_last_sub_id(subscr);
 
     /* send notif #1 */
     ret = sr_notif_send(st->sess, "/ops:notif4", NULL, 0, 0, 0);
@@ -1622,6 +1624,19 @@ test_send_nowait(void **state)
     ret = sr_subscription_process_events(subscr, NULL, NULL);
     assert_int_equal(ret, SR_ERR_OK);
     ATOMIC_STORE_RELAXED(st->cb_called, 1);
+
+    /* send notif #2 */
+    ret = sr_notif_send(st->sess, "/ops:notif4", NULL, 0, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* unsubscribe one sub */
+    ret = sr_unsubscribe_sub(subscr, sub_id);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* process events, single sub left */
+    ret = sr_subscription_process_events(subscr, NULL, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+    ATOMIC_STORE_RELAXED(st->cb_called, 2);
 
     sr_unsubscribe(subscr);
 }
