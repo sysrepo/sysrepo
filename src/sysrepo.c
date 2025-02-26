@@ -3705,6 +3705,87 @@ cleanup:
 }
 
 API int
+sr_delete_discard_items(sr_session_ctx_t *session, const char *xpath, const sr_edit_options_t opts)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *node = NULL;
+    const struct lys_module *ly_mod;
+    int rc;
+
+    SR_CHECK_ARG_APIRET(!session || (session->ds != SR_DS_OPERATIONAL) || !xpath || (opts && (opts != SR_EDIT_STRICT)),
+            session, err_info);
+
+    if (!session->oper_edit_fetched) {
+        assert(!session->dt[session->ds].edit);
+
+        /* prepare the current stored oper data to be modified */
+        if ((rc = sr_get_oper_changes(session, NULL, &session->dt[session->ds].edit))) {
+            goto cleanup;
+        }
+
+        /* remember that oper changes have been fetched */
+        session->oper_edit_fetched = 1;
+
+        /* set the default replace operation on top-level nodes */
+        if (session->dt[session->ds].edit) {
+            LY_LIST_FOR(session->dt[session->ds].edit->tree, node) {
+                if ((err_info = sr_edit_set_oper(node, "replace"))) {
+                    goto cleanup;
+                }
+            }
+        }
+    }
+    if (session->dt[session->ds].edit) {
+        /* find the specific 'discard-items' node */
+        while (1) {
+            if (!node) {
+                /* first node */
+                node = session->dt[session->ds].edit->tree;
+            } else {
+                /* next node */
+                node = node->next;
+            }
+            if ((err_info = sr_lyd_find_sibling_opaq_next(node, "discard-items", &node))) {
+                goto cleanup;
+            }
+            if (!node) {
+                break;
+            }
+
+            /* module check */
+            ly_mod = lyd_node_module(node);
+            if (!ly_mod || strcmp(ly_mod->name, "sysrepo")) {
+                continue;
+            }
+
+            /* value check */
+            if (strcmp(lyd_get_value(node), xpath)) {
+                continue;
+            }
+
+            /* found */
+            break;
+        }
+    }
+
+    if (node) {
+        /* delete the found node */
+        sr_lyd_free_tree_safe(node, &session->dt[session->ds].edit->tree);
+    } else if (opts & SR_EDIT_STRICT) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "No 'discard-items' node for \"%s\" found in session push oper data.",
+                xpath);
+        goto cleanup;
+    }
+
+cleanup:
+    if (session->dt[session->ds].edit && !session->dt[session->ds].edit->tree) {
+        sr_release_data(session->dt[session->ds].edit);
+        session->dt[session->ds].edit = NULL;
+    }
+    return sr_api_ret(session, err_info);
+}
+
+API int
 sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_position_t position, const char *list_keys,
         const char *leaflist_value, const char *UNUSED(origin), const sr_edit_options_t opts)
 {

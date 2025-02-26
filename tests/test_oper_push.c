@@ -2058,6 +2058,10 @@ test_discard_items(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_discard_items(sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']/description");
     assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_discard_items(sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']/type");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_delete_discard_items(sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']/type", SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);

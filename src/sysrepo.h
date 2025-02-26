@@ -990,6 +990,21 @@ int sr_oper_delete_item_str(sr_session_ctx_t *session, const char *path, const c
 int sr_discard_items(sr_session_ctx_t *session, const char *xpath);
 
 /**
+ * @brief Remove a 'discard-items' node from a push oper data of a session. Usable only for ::SR_DS_OPERATIONAL
+ * datastore. These changes are applied only after calling ::sr_apply_changes().
+ *
+ * Removes nodes set by ::sr_discard_items().
+ *
+ * Only ::SR_EDIT_STRICT flag is allowed and if set, the specified 'discard-items' node must must exist.
+ *
+ * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
+ * @param[in] xpath [XPath](@ref paths) expression set for 'discard-items'.
+ * @param[in] opts Options overriding the default behavior of this call.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_delete_discard_items(sr_session_ctx_t *session, const char *xpath, const sr_edit_options_t opts);
+
+/**
  * @brief Prepare to move/create the instance of an user-ordered list or leaf-list to the specified position.
  * These changes are applied only after calling ::sr_apply_changes().
  *
