@@ -13,9 +13,10 @@ processed manually. That can be achieved by a function that processes all pendin
 the [subscription event pipe](@ref ::sr_get_event_pipe) being ready for reading.
 
 To safely destroy a subscription managed by a custom loop, there are specific steps needed. First, ::sr_unsubscribe_sub()
-with `sub_id` `0` should be called, then the event loop should stop handling events on the subscription, and finally
-::sr_unsubscribe() can be called. This prevents the data race when there is a pending event but it is not processed
-because the subscription is being freed.
+with `sub_id` `0` should be called to delete all subscriptions. Then, the event loop should process events for the final
+time and then can stop handling events on this subscription. Finally, ::sr_unsubscribe() can be called to free the
+subscription structure. This prevents the data race when there is a pending event but it is not processed because the
+subscription is being freed.
 
 @ref subs_api
 

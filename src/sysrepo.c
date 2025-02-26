@@ -5589,10 +5589,15 @@ sr_unsubscribe_sub(sr_subscription_ctx_t *subscription, uint32_t sub_id)
         return sr_api_ret(NULL, err_info);
     }
 
-    err_info = sr_subscr_del_id(subscription, sub_id);
+    if (sub_id) {
+        err_info = sr_subscr_del_id(subscription, sub_id);
+    } else {
+        err_info = sr_subscr_del_all(subscription);
+    }
 
     /* CONTEXT UNLOCK */
     sr_lycc_unlock(subscription->conn, SR_LOCK_READ, 0, __func__);
+
     return sr_api_ret(NULL, err_info);
 }
 
