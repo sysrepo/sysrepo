@@ -1485,6 +1485,39 @@ cleanup:
     return err_info;
 }
 
+static sr_error_info_t *
+sr_module_oper_data_implicit_skip(struct sr_mod_info_mod_s *mod, sr_conn_ctx_t *conn, sr_get_oper_flag_t get_oper_opts, int *skip)
+{
+    sr_error_info_t *err_info = NULL;
+
+    *skip = 0;
+
+    /* cannot skip implicit data if explicitly asked to get it. */
+    if ((get_oper_opts & SR_OPER_WITH_NP_CONT)) {
+        return NULL;
+    }
+
+    /* not asked to get subscriber data, skip it. */
+    if ((get_oper_opts & SR_OPER_NO_SUBS)) {
+        *skip = 1;
+        return NULL;
+    }
+
+    /* OPER GET SUB READ LOCK */
+    if ((err_info = sr_rwlock(&mod->shm_mod->oper_get_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
+            __func__, NULL, NULL))) {
+        return err_info;
+    }
+
+    /* skip implicit data if there are no oper get subscribers for this module */
+    *skip = !mod->shm_mod->oper_get_sub_count;
+
+    /* OPER GET SUB READ UNLOCK */
+    sr_rwunlock(&mod->shm_mod->oper_get_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+
+    return NULL;
+}
+
 /**
  * @brief Update (replace or append) operational data for a specific module.
  *
@@ -1510,13 +1543,18 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
     const char *sub_xpath, **request_xpaths = NULL;
     char *parent_xpath = NULL;
     uint32_t i, j, req_xpath_count = 0;
-    int required, merged;
+    int required, merged, skip_implicit_data;
     struct ly_set *set = NULL;
     struct lyd_node *oper_data;
 
     if (!(get_oper_opts & SR_OPER_NO_STORED)) {
         /* process stored operational data */
         if ((err_info = sr_module_oper_data_load(mod, conn, NULL, NULL, data))) {
+            return err_info;
+        }
+
+        /* check whether we need any implicit data, or it can be skippped */
+        if ((err_info = sr_module_oper_data_implicit_skip(mod, conn, get_oper_opts, &skip_implicit_data)) || skip_implicit_data) {
             return err_info;
         }
 
