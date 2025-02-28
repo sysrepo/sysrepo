@@ -119,10 +119,6 @@ error_print(int sr_error, const char *format, ...)
     va_start(ap, format);
     vfprintf(stderr, msg, ap);
     va_end(ap);
-
-    if (log_level < SR_LL_INF) {
-        fprintf(stderr, "For more details you may try to increase the verbosity up to \"-v3\".\n");
-    }
 }
 
 static void
@@ -1105,6 +1101,9 @@ main(int argc, char **argv)
     default:
         error_print(0, "Internal");
         break;
+    }
+    if (rc && (log_level < SR_LL_INF)) {
+        fprintf(stderr, "For more details you may try to increase the verbosity up to \"-v3\".\n");
     }
 
 cleanup:
