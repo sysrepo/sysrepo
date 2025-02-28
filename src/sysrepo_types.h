@@ -305,8 +305,11 @@ typedef enum {
                                           one inherit the origin from parents. */
     SR_OPER_NO_POLL_CACHED = 0x20,   /**< Do not use cached oper data from operational poll subscriptions even if
                                           available. */
-    SR_OPER_NO_RUN_CACHED = 0x40     /**< Do not use connection running datastore cache data even if the connection
+    SR_OPER_NO_RUN_CACHED = 0x40,    /**< Do not use connection running datastore cache data even if the connection
                                           supports it, may prevent some dead locks. */
+    SR_OPER_NO_PUSH_NP_CONT = 0x80   /**< Do not add empty NP containers to loaded push operational data. Can only be
+                                          used if ::SR_OPER_NO_SUBS is also set (ignored othwerise) and may make getting
+                                          data faster. */
 } sr_get_oper_flag_t;
 
 #define SR_OPER_MASK 0xFFFF          /**< Mask for all get oper data flags. */

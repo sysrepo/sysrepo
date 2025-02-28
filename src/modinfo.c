@@ -1520,9 +1520,11 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
             return err_info;
         }
 
-        /* add any missing NP containers in the data */
-        if ((err_info = sr_lyd_new_implicit_module(data, mod->ly_mod, LYD_IMPLICIT_NO_DEFAULTS, NULL))) {
-            return err_info;
+        if (!(get_oper_opts & SR_OPER_NO_PUSH_NP_CONT)) {
+            /* add any missing NP containers in the data */
+            if ((err_info = sr_lyd_new_implicit_module(data, mod->ly_mod, LYD_IMPLICIT_NO_DEFAULTS, NULL))) {
+                return err_info;
+            }
         }
     }
 
@@ -3109,6 +3111,11 @@ sr_modinfo_consolidate(struct sr_mod_info_s *mod_info, sr_lock_mode_t mod_lock, 
 
     if (!mod_info->mod_count) {
         goto cleanup;
+    }
+
+    if ((get_oper_opts & SR_OPER_NO_PUSH_NP_CONT) && !(get_oper_opts & SR_OPER_NO_SUBS)) {
+        /* NP containers are required as existing parents of oper get subscriptions, ignore the flag */
+        get_oper_opts &= ~SR_OPER_NO_PUSH_NP_CONT;
     }
 
     if (mi_opts & SR_MI_NEW_DEPS) {
