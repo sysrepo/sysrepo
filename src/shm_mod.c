@@ -220,7 +220,8 @@ sr_shmmod_fill(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_node *sr_
             name = lyd_get_value(sr_child);
         } else if (!strcmp(sr_child->schema->name, "revision")) {
             /* copy revision */
-            strcpy(smod->rev, lyd_get_value(sr_child));
+            strncpy(smod->rev, lyd_get_value(sr_child), sizeof(smod->rev));
+            smod->rev[sizeof(smod->rev) - 1] = 0;
         } else if (!strcmp(sr_child->schema->name, "replay-support")) {
             /* set replay-support flag */
             smod->replay_supp = 1;
