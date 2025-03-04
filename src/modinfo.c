@@ -2049,7 +2049,8 @@ sr_modinfo_module_srmon_datastore(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_dat
         goto cleanup;
     }
 
-    if ((ds_handle->plugin->last_modif_cb(ly_mod, ds, ds_handle->plg_data, &mtime) == 0) && (mtime.tv_sec > 0)) {
+    err_info = ds_handle->plugin->last_modif_cb(ly_mod, ds, ds_handle->plg_data, &mtime);
+    if ((err_info == NULL) && (mtime.tv_sec > 0)) {
         /* datastore with name */
         if ((err_info = sr_lyd_new_list(sr_state, "datastore", sr_ds2ident(ds), &sr_store))) {
             goto cleanup;
