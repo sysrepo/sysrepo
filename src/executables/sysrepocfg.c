@@ -919,7 +919,7 @@ main(int argc, char **argv)
             operation = opt;
             break;
         case 'd':
-            if (arg_get_ds(optarg, &ds)) {
+            if (!optarg || arg_get_ds(optarg, &ds)) {
                 goto cleanup;
             }
             break;
@@ -944,6 +944,10 @@ main(int argc, char **argv)
             xpath = optarg;
             break;
         case 'f':
+            if (!optarg) {
+                error_print(0, "Invalid optarg (NULL pointer)");
+                goto cleanup;
+            }
             if (!strcmp(optarg, "xml")) {
                 format = LYD_XML;
             } else if (!strcmp(optarg, "json")) {
@@ -965,6 +969,10 @@ main(int argc, char **argv)
             opaq = 1;
             break;
         case 'p':
+            if (!optarg) {
+                error_print(0, "Invalid optarg (NULL pointer)");
+                goto cleanup;
+            }
             max_depth = strtoul(optarg, &ptr, 10);
             if (ptr[0]) {
                 error_print(0, "Invalid depth \"%s\"", optarg);
@@ -975,6 +983,10 @@ main(int argc, char **argv)
             no_subs = 1;
             break;
         case 't':
+            if (!optarg) {
+                error_print(0, "Invalid optarg (NULL pointer)");
+                goto cleanup;
+            }
             timeout = strtoul(optarg, &ptr, 10);
             if (ptr[0]) {
                 error_print(0, "Invalid timeout \"%s\"", optarg);
@@ -982,6 +994,10 @@ main(int argc, char **argv)
             }
             break;
         case 'e':
+            if (!optarg) {
+                error_print(0, "Invalid defaults mode (NULL pointer)");
+                goto cleanup;
+            }
             if (!strcmp(optarg, "report-all")) {
                 wd_opt = LYD_PRINT_WD_ALL;
             } else if (!strcmp(optarg, "report-all-tagged")) {
@@ -1001,6 +1017,10 @@ main(int argc, char **argv)
             value = optarg;
             break;
         case 'v':
+            if (!optarg) {
+                error_print(0, "Invalid verbosity (NULL pointer)");
+                goto cleanup;
+            }
             if (!strcmp(optarg, "none")) {
                 log_level = SR_LL_NONE;
             } else if (!strcmp(optarg, "error")) {
