@@ -114,6 +114,12 @@ srpntf_read_notif(int notif_fd, struct ly_ctx *ly_ctx, struct lyd_node **notif)
         goto cleanup;
     }
 
+    /* size sanity check */
+    if (notif_json_len > UINT32_MAX - 1) {
+        srplg_log_errinfo(&err_info, srpntf_name, NULL, SR_ERR_NO_MEMORY, "Memory allocation size would cause an overflow.");
+        goto cleanup;
+    }
+
     /* read the notification */
     notif_json = malloc(notif_json_len + 1);
     if (!notif_json) {
