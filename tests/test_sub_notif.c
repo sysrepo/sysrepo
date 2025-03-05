@@ -298,7 +298,7 @@ test_replay(void **state)
     int ret, fd;
     char *str, *exp;
     uint32_t sub_id;
-    struct timespec ts;
+    struct timespec ts, replay_start_time;
 
     /* remember realtime before the notification */
     clock_gettime(CLOCK_REALTIME, &ts);
@@ -308,7 +308,7 @@ test_replay(void **state)
     assert_int_equal(SR_ERR_OK, sr_notif_send(st->sess, "/ops:notif4", NULL, 0, 0, 0));
 
     /* subscribe to notifs with start-time */
-    assert_int_equal(SR_ERR_OK, srsn_subscribe(st->sess, "NETCONF", NULL, NULL, &ts, 0, NULL, NULL, &fd, &sub_id));
+    assert_int_equal(SR_ERR_OK, srsn_subscribe(st->sess, "NETCONF", NULL, NULL, &ts, 0, NULL, &replay_start_time, &fd, &sub_id));
 
     /* read and check the notifs */
     assert_int_equal(SR_ERR_OK, srsn_poll(fd, 1000));
@@ -317,6 +317,9 @@ test_replay(void **state)
     assert_string_equal(str, "<notif4 xmlns=\"urn:ops\"/>\n");
     free(str);
     lyd_free_tree(notif);
+
+    /* check that replay start time is set to the time of the first notification in the replay buffer */
+    assert_int_equal(replay_start_time.tv_sec, ts.tv_sec);
 
     assert_int_equal(SR_ERR_OK, srsn_poll(fd, 1000));
     assert_int_equal(SR_ERR_OK, srsn_read_notif(fd, st->ly_ctx, &ts, &notif));

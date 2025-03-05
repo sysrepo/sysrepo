@@ -1558,7 +1558,9 @@ srsn_sn_sr_subscribe(sr_session_ctx_t *sess, struct srsn_sub *sub, int sub_no_th
             sr_errinfo_new(&err_info, tmp_err->err[0].err_code, "%s", tmp_err->err[0].message);
             goto error;
         }
-        if (sr_time_cmp(replay_start, &ts) > 0) {
+
+        /* update the earliest stored notif */
+        if (!replay_start->tv_sec || (ts.tv_sec && (sr_time_cmp(replay_start, &ts) > 0))) {
             *replay_start = ts;
         }
 
