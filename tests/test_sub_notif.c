@@ -357,6 +357,77 @@ test_replay(void **state)
 
 /* TEST */
 static void
+test_replay_start_time(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *notif;
+    int ret, fd;
+    char *str, *exp;
+    uint32_t sub_id;
+    struct timespec ts, replay_start_time;
+
+    /* store a notification not supposed to be replayed */
+    assert_int_equal(SR_ERR_OK, sr_set_module_replay_support(st->conn, "ops", 1));
+    assert_int_equal(SR_ERR_OK, sr_notif_send(st->sess, "/ops:notif4", NULL, 0, 0, 0));
+
+    /* remember realtime after the notification */
+    clock_gettime(CLOCK_REALTIME, &ts);
+
+    /* store a notification for replay */
+    assert_int_equal(SR_ERR_OK, sr_set_module_replay_support(st->conn, "test", 1));
+    assert_int_equal(SR_ERR_OK, sr_notif_send(st->sess, "/test:notif1", NULL, 0, 0, 0));
+
+    /* subscribe to notifs with start-time */
+    assert_int_equal(SR_ERR_OK, srsn_subscribe(st->sess, "NETCONF", NULL, NULL, &ts, 0, NULL, &replay_start_time, &fd, &sub_id));
+
+    /* there are notifs from time earlier than the start time */
+    assert_int_equal(replay_start_time.tv_sec, 0);
+
+    /* read replayed notification */
+    assert_int_equal(SR_ERR_OK, srsn_poll(fd, 1000));
+    assert_int_equal(SR_ERR_OK, srsn_read_notif(fd, st->ly_ctx, &ts, &notif));
+    lyd_print_mem(&str, notif, LYD_XML, 0);
+    assert_string_equal(str, "<notif1 xmlns=\"urn:test\"/>\n");
+    free(str);
+    lyd_free_tree(notif);
+
+    /* replay completed */
+    assert_int_equal(SR_ERR_OK, srsn_poll(fd, 1000));
+    assert_int_equal(SR_ERR_OK, srsn_read_notif(fd, st->ly_ctx, &ts, &notif));
+    lyd_print_mem(&str, notif, LYD_XML, 0);
+    ret = asprintf(&exp,
+            "<replay-completed xmlns=\"urn:ietf:params:xml:ns:yang:ietf-subscribed-notifications\">\n"
+            "  <id>%" PRIu32 "</id>\n"
+            "</replay-completed>\n", sub_id);
+    assert_int_not_equal(ret, -1);
+    assert_string_equal(str, exp);
+    free(str);
+    free(exp);
+    lyd_free_tree(notif);
+
+    /* stop the subscription */
+    assert_int_equal(SR_ERR_OK, srsn_terminate(sub_id, "ietf-subscribed-notifications:no-such-subscription"));
+
+    /* read (no poll, pipe closed) and check the notif */
+    assert_int_equal(SR_ERR_OK, srsn_read_notif(fd, st->ly_ctx, &ts, &notif));
+    lyd_print_mem(&str, notif, LYD_XML, 0);
+    ret = asprintf(&exp,
+            "<subscription-terminated xmlns=\"urn:ietf:params:xml:ns:yang:ietf-subscribed-notifications\">\n"
+            "  <id>%" PRIu32 "</id>\n"
+            "  <reason>no-such-subscription</reason>\n"
+            "</subscription-terminated>\n", sub_id);
+    assert_int_not_equal(ret, -1);
+    assert_string_equal(str, exp);
+    free(str);
+    free(exp);
+    lyd_free_tree(notif);
+
+    /* cleanup */
+    close(fd);
+}
+
+/* TEST */
+static void
 test_suspend(void **state)
 {
     struct state *st = *state;
@@ -889,6 +960,7 @@ main(void)
         cmocka_unit_test(test_sub_delete),
         cmocka_unit_test(test_stop_time),
         cmocka_unit_test(test_replay),
+        cmocka_unit_test(test_replay_start_time),
         cmocka_unit_test(test_suspend),
         cmocka_unit_test(test_yp_periodic),
         cmocka_unit_test(test_yp_on_change),
