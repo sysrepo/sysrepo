@@ -4049,14 +4049,15 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
                         goto cleanup;
                     }
                 } else {
-                    /* stored oper data, determine if session Ext SHM data needs a `change` or `create` from the session's cached state */
+                    /* stored oper data, determine if session Ext SHM data needs a `change` or `create` from the
+                     * session's cached state */
                     sr_modinfo_push_oper_mod_learn_changes(session, mod->ly_mod->name, !!mod_data, &create, &change);
 
                     /* change info in mod/ext SHM or create only if necessary */
                     if (change && (err_info = sr_shmext_oper_push_change_has_data(mod_info->conn, mod->shm_mod, sid, !!mod_data))) {
                         goto cleanup;
-                    } else if (create && (err_info = sr_shmext_oper_push_update(mod_info->conn, mod->shm_mod, mod->ly_mod->name,
-                            sid, 0, !!mod_data, SR_LOCK_WRITE))) {
+                    } else if (create && (err_info = sr_shmext_oper_push_update(mod_info->conn, mod->shm_mod,
+                            mod->ly_mod->name, sid, 0, !!mod_data, SR_LOCK_WRITE))) {
                         goto cleanup;
                     }
 
@@ -4079,7 +4080,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
     }
 
     if (shmmod_session_del && !mod_info->mod_count && session->oper_push_mod_count) {
-        /* We are stopping a session, we had pushed some data in the past, but no current data, so mod_info->count is zero */
+        /* we are stopping a session, we had pushed some data in the past, but no current data, so mod_info->count is zero */
         for (i = 0; i < session->oper_push_mod_count; ++i) {
             mod_name = session->oper_push_mods[i].name;
             shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(mod_info->conn), mod_name);
