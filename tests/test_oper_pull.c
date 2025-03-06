@@ -2183,6 +2183,24 @@ test_xpath_check(void **state)
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
 
     sr_unsubscribe(subscr);
+    subscr = NULL;
+
+    /*
+     * subscribe as state data provider #4
+     */
+    ret = sr_oper_get_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state/interface/oper-status",
+            xpath_check_oper_cb, st, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read child from operational with a predicate, callback not called */
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state/interface[type='iana-if-type:fast']/admin-status |"
+            " /ietf-interfaces:interfaces-state/interface[type='iana-if-type:fast']/last-change", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    sr_release_data(data);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 0);
+
+    sr_unsubscribe(subscr);
 }
 
 /* TEST */

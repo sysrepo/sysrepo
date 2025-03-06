@@ -5130,7 +5130,7 @@ parse_name:
         ++next;
     }
 
-    if ((!end_chars && !next[0]) || (end_chars && next[0] && strchr(end_chars, next[0]))) {
+    if ((!end_chars && (!next[0] || (next[0] == '|'))) || (end_chars && next[0] && strchr(end_chars, next[0]))) {
         /* finished with this (sub)expression, add new atom if any found (parsed) */
         parsed = 1;
         if (!atom_stored && (strlen(prev_atom) < strlen(cur_atom)) &&
@@ -5186,12 +5186,6 @@ parse_name:
                 if ((err_info = sr_xpath_text_atom_add(&cur_atom, 0, atoms, atom_count))) {
                     goto cleanup;
                 }
-            }
-
-            if (!end_chars && (next[0] == '|')) {
-                /* main expression divided by union, return */
-                parsed = 1;
-                goto cleanup;
             }
 
             /* parse the following expression */
