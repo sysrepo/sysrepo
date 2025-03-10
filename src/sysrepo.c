@@ -3185,8 +3185,8 @@ sr_get_data_dup(sr_session_ctx_t *session, const struct ly_set *set, uint32_t ma
         /* get first created node parent (can be node itself) */
         for (node_parent = node; lyd_parent(node_parent) != parent; node_parent = lyd_parent(node_parent)) {}
 
-        /* duplicate only to the specified depth */
-        if (max_depth && (err_info = sr_lyd_dup_r(set->dnodes[i], max_depth, dup_opts, node))) {
+        /* duplicate only to the specified depth (the selected node was already duplicated, hence -1) */
+        if (max_depth && (err_info = sr_lyd_dup_r(set->dnodes[i], max_depth - 1, dup_opts, node))) {
             lyd_free_tree(node_parent);
             goto cleanup;
         }
