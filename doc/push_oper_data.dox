@@ -10,10 +10,9 @@ Oper push data are **strictly tied to the session**, each can have its own oper 
 the oper push data of that session are modified. If the session is **stopped**, all its push oper data are
 automatically **discarded**. You can do so also manually using ::sr_discard_oper_changes().
 
-Additionally, using ::sr_discard_items() an XPath can be set that will select all the nodes to be removed from
-**previous data**, which may be enabled *running* data or any push oper data of sessions with a lower order
-(higher priority). This mechanism should work well for simple edits and if it does not, use the advanced mechanism
-described further below.
+Additionally, using ::sr_discard_items() an XPath can be set that will select all the nodes to be removed from **previous data**,
+which may be enabled *running* data or any push oper data of sessions with a lower order (higher priority). This
+mechanism should work well for simple edits and if it does not, use the advanced mechanism described further below.
 
 When building the _operational_ datastore, all the stored push data are applied in a **specific** order. That means data
 for each session are loaded, previous items discarded (if any set), and then merged into the *operational* datastore.
