@@ -5847,6 +5847,18 @@ sr_subscription_thread_resume(sr_subscription_ctx_t *subscription)
     return sr_api_ret(NULL, NULL);
 }
 
+API int
+sr_subscription_thread_notify(sr_subscription_ctx_t *subscription)
+{
+    sr_error_info_t *err_info = NULL;
+
+    SR_CHECK_ARG_APIRET(!subscription, NULL, err_info);
+
+    err_info = sr_shmsub_notify_evpipe(subscription->evpipe_num, 0, NULL);
+
+    return sr_api_ret(NULL, err_info);
+}
+
 /**
  * @brief Unlocked unsubscribe (free) of all the subscriptions in a subscription structure.
  *

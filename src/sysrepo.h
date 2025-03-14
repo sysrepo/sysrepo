@@ -1364,6 +1364,15 @@ int sr_subscription_thread_suspend(sr_subscription_ctx_t *subscription);
 int sr_subscription_thread_resume(sr_subscription_ctx_t *subscription);
 
 /**
+ * @brief Notify (wake up) a subscription thread signalling there is a new event to process. Useful, for example,
+ * when an event return ::SR_ERR_CALLBACK_SHELVE to signal that the event can now be fully processed.
+ *
+ * @param[in] subscription Subscription context with a handler thread.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_subscription_thread_notify(sr_subscription_ctx_t *subscription);
+
+/**
  * @brief Unsubscribe all the subscriptions in a subscription structure and free it.
  *
  * @note On ::SR_ERR_TIME_OUT the function should be retried and must eventually succeed.
