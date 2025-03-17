@@ -538,7 +538,7 @@ srpds_add_conv_mod_data(const char *plg_name, sr_datastore_t ds, const char *pat
     switch (type) {
     case SRPDS_DB_LY_CONTAINER:    /* containers */
         if (lyd_new_inner(parent_node, node_module, name, 0, &new_node) != LY_SUCCESS) {
-            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_inner()", "");
+            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_inner()", ly_last_logmsg());
             goto cleanup;
         }
         break;
@@ -546,7 +546,7 @@ srpds_add_conv_mod_data(const char *plg_name, sr_datastore_t ds, const char *pat
     case SRPDS_DB_LY_LIST_UO:  /* user-ordered lists */
         if (lyd_new_list3(parent_node, node_module, name, (const char **)keys, lengths, LYD_NEW_VAL_STORE_ONLY,
                 &new_node) != LY_SUCCESS) {
-            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_list3()", "");
+            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_list3()", ly_last_logmsg());
             goto cleanup;
         }
         break;
@@ -554,14 +554,14 @@ srpds_add_conv_mod_data(const char *plg_name, sr_datastore_t ds, const char *pat
     case SRPDS_DB_LY_LEAFLIST_UO:  /* user-ordered leaf-lists */
         if (lyd_new_term(parent_node, node_module, name, value, LYD_NEW_VAL_STORE_ONLY,
                 &new_node) != LY_SUCCESS) {
-            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_term()", "");
+            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_term()", ly_last_logmsg());
             goto cleanup;
         }
         break;
     case SRPDS_DB_LY_ANY:   /* anydata and anyxml */
         if (lyd_new_any(parent_node, node_module, name, value, valtype ? LYD_ANYDATA_JSON : LYD_ANYDATA_XML,
                 LYD_NEW_VAL_STORE_ONLY, &new_node) != LY_SUCCESS) {
-            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_any()", "");
+            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_any()", ly_last_logmsg());
             goto cleanup;
         }
         break;
@@ -581,7 +581,7 @@ srpds_add_conv_mod_data(const char *plg_name, sr_datastore_t ds, const char *pat
     (*parent_nodes)[node_idx] = new_node;
     if (!node_idx) {
         if (lyd_insert_sibling(*mod_data, new_node, mod_data) != LY_SUCCESS) {
-            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_insert_sibling()", "");
+            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_insert_sibling()", ly_last_logmsg());
             goto cleanup;
         }
     }
