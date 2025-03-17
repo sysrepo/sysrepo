@@ -222,11 +222,12 @@ void srpds_cleanup_uo_lists(srpds_db_userordered_lists_t *uo_lists);
  * @brief Add a new node to the data tree in conventional datastore.
  *
  * @param[in] plg_name Plugin name.
+ * @param[in] ly_ctx Context to use.
  * @param[in] ds Datastore the data tree is in.
  * @param[in] path Path to node.
  * @param[in] name Name of the node.
  * @param[in] type Type of the node.
- * @param[in] node_module Module of the node.
+ * @param[in] module_name Module name of the node.
  * @param[in] value Value of the node.
  * @param[in] valtype Type of the value (XML=0 or JSON=1).
  * @param[in,out] dflt_flag Whether the node has default value.
@@ -241,9 +242,9 @@ void srpds_cleanup_uo_lists(srpds_db_userordered_lists_t *uo_lists);
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
-sr_error_info_t *srpds_add_conv_mod_data(const char *plg_name, sr_datastore_t ds, const char *path, const char *name,
-        enum srpds_db_ly_types type, struct lys_module *node_module, const char *value, int32_t valtype, int *dflt_flag,
-        const char **keys, uint32_t *lengths, int64_t order, const char *path_no_pred,
+sr_error_info_t *srpds_add_conv_mod_data(const char *plg_name, const struct ly_ctx *ly_ctx, sr_datastore_t ds,
+        const char *path, const char *name, enum srpds_db_ly_types type, const char *module_name, const char *value,
+        int32_t valtype, int *dflt_flag, const char **keys, uint32_t *lengths, int64_t order, const char *path_no_pred,
         srpds_db_userordered_lists_t *uo_lists, struct lyd_node ***parent_nodes, size_t *pnodes_size,
         struct lyd_node **mod_data);
 
@@ -251,12 +252,11 @@ sr_error_info_t *srpds_add_conv_mod_data(const char *plg_name, sr_datastore_t ds
  * @brief Add a new node to the data tree in operational datastore.
  *
  * @param[in] plg_name Plugin name.
- * @param[in] ctx Context of the new node.
+ * @param[in] ly_ctx Context to use.
  * @param[in] path Path to node.
  * @param[in] name Name of the node.
  * @param[in] type Type of the node.
- * @param[in] module_name Name of the node's module.
- * @param[in] node_module Module of the node.
+ * @param[in] module_name Module name of the node.
  * @param[in] value Value of the node.
  * @param[in] valtype Type of the value (XML=0 or JSON=1).
  * @param[in,out] dflt_flag Whether the node has default value.
@@ -268,8 +268,8 @@ sr_error_info_t *srpds_add_conv_mod_data(const char *plg_name, sr_datastore_t ds
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
-sr_error_info_t *srpds_add_oper_mod_data(const char *plg_name, struct ly_ctx *ctx, const char *path, const char *name,
-        enum srpds_db_ly_types type, const char *module_name, struct lys_module *node_module, const char *value,
+sr_error_info_t *srpds_add_oper_mod_data(const char *plg_name, const struct ly_ctx *ly_ctx, const char *path,
+        const char *name, enum srpds_db_ly_types type, const char *module_name, const char *value,
         int32_t valtype, int *dflt_flag, const char **keys, uint32_t *lengths, struct lyd_node ***parent_nodes,
         size_t *pnodes_size, struct lyd_node **mod_data);
 

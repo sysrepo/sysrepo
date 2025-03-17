@@ -518,7 +518,6 @@ srpds_load_oper(mongoc_collection_t *module, const struct lys_module *mod, bson_
     sr_error_info_t *err_info = NULL;
     bson_error_t error;
     const char *path, *name, *module_name = NULL, *path_to_node, *value = NULL;
-    struct lys_module *node_module = NULL;
     enum srpds_db_ly_types type;
     int32_t valtype = 0;
     int dflt_flag = 0;
@@ -714,15 +713,8 @@ srpds_load_oper(mongoc_collection_t *module, const struct lys_module *mod, bson_
             break;
         }
 
-        /* get module from module_name */
-        if (module_name) {
-            node_module = ly_ctx_get_module_implemented(mod->ctx, module_name);
-        } else {
-            node_module = NULL;
-        }
-
         /* add new node to the data tree */
-        if ((err_info = srpds_add_oper_mod_data(plugin_name, mod->ctx, path, name, type, module_name, node_module, value,
+        if ((err_info = srpds_add_oper_mod_data(plugin_name, mod->ctx, path, name, type, module_name, value,
                 valtype, &dflt_flag, (const char **)keys, lengths, &parent_nodes, &pnodes_size, mod_data))) {
             goto cleanup;
         }
@@ -770,7 +762,6 @@ srpds_load_conv(mongoc_collection_t *module, const struct lys_module *mod, sr_da
     int32_t valtype = 0;
     int64_t order = 0;
     int dflt_flag = 0;
-    struct lys_module *node_module = NULL;
     srpds_db_userordered_lists_t uo_lists = {0};
     struct lyd_node **parent_nodes = NULL;
     size_t pnodes_size = 0;
@@ -984,16 +975,10 @@ srpds_load_conv(mongoc_collection_t *module, const struct lys_module *mod, sr_da
             break;
         }
 
-        /* get module from module_name */
-        if (module_name) {
-            node_module = ly_ctx_get_module_implemented(mod->ctx, module_name);
-        } else {
-            node_module = NULL;
-        }
-
         /* add a new node to mod_data */
-        if ((err_info = srpds_add_conv_mod_data(plugin_name, ds, path, name, type, node_module, value, valtype, &dflt_flag,
-                (const char **)keys, lengths, order, path_no_pred, &uo_lists, &parent_nodes, &pnodes_size, mod_data))) {
+        if ((err_info = srpds_add_conv_mod_data(plugin_name, mod->ctx, ds, path, name, type, module_name, value, valtype,
+                &dflt_flag, (const char **)keys, lengths, order, path_no_pred, &uo_lists, &parent_nodes, &pnodes_size,
+                mod_data))) {
             goto cleanup;
         }
         free(keys);

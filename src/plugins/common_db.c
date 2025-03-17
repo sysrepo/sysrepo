@@ -520,12 +520,13 @@ srpds_cleanup_uo_lists(srpds_db_userordered_lists_t *uo_lists)
 }
 
 sr_error_info_t *
-srpds_add_conv_mod_data(const char *plg_name, sr_datastore_t ds, const char *path, const char *name, enum srpds_db_ly_types type,
-        struct lys_module *node_module, const char *value, int32_t valtype, int *dflt_flag, const char **keys,
-        uint32_t *lengths, int64_t order, const char *path_no_pred, srpds_db_userordered_lists_t *uo_lists,
-        struct lyd_node ***parent_nodes, size_t *pnodes_size, struct lyd_node **mod_data)
+srpds_add_conv_mod_data(const char *plg_name, const struct ly_ctx *ly_ctx, sr_datastore_t ds, const char *path,
+        const char *name, enum srpds_db_ly_types type, const char *module_name, const char *value, int32_t valtype,
+        int *dflt_flag, const char **keys, uint32_t *lengths, int64_t order, const char *path_no_pred,
+        srpds_db_userordered_lists_t *uo_lists, struct lyd_node ***parent_nodes, size_t *pnodes_size, struct lyd_node **mod_data)
 {
     sr_error_info_t *err_info = NULL;
+    const struct lys_module *node_module;
     struct lyd_node *new_node = NULL, *parent_node = NULL;
     struct lyd_node **tmp_pnodes = NULL;
     uint32_t node_idx = 0;
@@ -533,6 +534,16 @@ srpds_add_conv_mod_data(const char *plg_name, sr_datastore_t ds, const char *pat
     /* get index of the node in the parent_nodes array based on its height */
     node_idx = srpds_get_node_depth(path) - 1;
     parent_node = node_idx ? (*parent_nodes)[node_idx - 1] : NULL;
+
+    /* get the node module */
+    if (!module_name) {
+        node_module = NULL;
+    } else if (parent_node) {
+        /* use the parent context for ext data */
+        node_module = ly_ctx_get_module_implemented(LYD_CTX(parent_node), module_name);
+    } else {
+        node_module = ly_ctx_get_module_implemented(ly_ctx, module_name);
+    }
 
     /* create a node based on type */
     switch (type) {
@@ -626,11 +637,12 @@ cleanup:
 }
 
 sr_error_info_t *
-srpds_add_oper_mod_data(const char *plg_name, struct ly_ctx *ctx, const char *path, const char *name, enum srpds_db_ly_types type,
-        const char *module_name, struct lys_module *node_module, const char *value, int32_t valtype, int *dflt_flag,
+srpds_add_oper_mod_data(const char *plg_name, const struct ly_ctx *ly_ctx, const char *path, const char *name,
+        enum srpds_db_ly_types type, const char *module_name, const char *value, int32_t valtype, int *dflt_flag,
         const char **keys, uint32_t *lengths, struct lyd_node ***parent_nodes, size_t *pnodes_size, struct lyd_node **mod_data)
 {
     sr_error_info_t *err_info = NULL;
+    const struct lys_module *node_module;
     struct lyd_node **tmp_pnodes = NULL;
     struct lyd_node *meta_match = NULL, *new_node = NULL, *parent_node = NULL;
     struct ly_set *meta_match_nodes = NULL;
@@ -650,6 +662,16 @@ srpds_add_oper_mod_data(const char *plg_name, struct ly_ctx *ctx, const char *pa
             goto cleanup;
         }
         meta_match = meta_match_nodes->dnodes[0];
+    }
+
+    /* get the node module */
+    if (!module_name) {
+        node_module = NULL;
+    } else if (parent_node) {
+        /* use the parent context for ext data */
+        node_module = ly_ctx_get_module_implemented(LYD_CTX(parent_node), module_name);
+    } else {
+        node_module = ly_ctx_get_module_implemented(ly_ctx, module_name);
     }
 
     /* create a node based on type */
@@ -696,7 +718,7 @@ srpds_add_oper_mod_data(const char *plg_name, struct ly_ctx *ctx, const char *pa
         }
         break;
     case SRPDS_DB_LY_OPAQUE:       /* opaque nodes */
-        if (lyd_new_opaq(parent_node, ctx, name, value, NULL, module_name, &new_node) != LY_SUCCESS) {
+        if (lyd_new_opaq(parent_node, ly_ctx, name, value, NULL, module_name, &new_node) != LY_SUCCESS) {
             ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_opaq()", "");
             goto cleanup;
         }
