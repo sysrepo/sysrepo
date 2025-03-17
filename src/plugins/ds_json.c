@@ -56,6 +56,7 @@ srpds_json_store_(const char *path, const struct lyd_node *mod_data, const char 
     char *bck_path = NULL;
     int fd = -1, backup = 0, creat = 0;
     uint32_t print_opts;
+    FILE *fp = NULL;
 
     if (make_backup) {
         /* get original file perms */
@@ -118,8 +119,15 @@ srpds_json_store_(const char *path, const struct lyd_node *mod_data, const char 
         }
     }
 
+    /* use buffered FILE* instead of raw fd and truncate it to zero for writing */
+    fp = fdopen(fd, "w");
+    if (!fp) {
+        err_info = srpjson_open_error(srpds_name, path);
+        goto cleanup;
+    }
+
     /* create out handler */
-    if (ly_out_new_fd(fd, &out)) {
+    if (ly_out_new_file(fp, &out)) {
         err_info = srpjson_log_err_ly(srpds_name, NULL);
         goto cleanup;
     }
@@ -132,12 +140,8 @@ srpds_json_store_(const char *path, const struct lyd_node *mod_data, const char 
         goto cleanup;
     }
 
-    /* truncate the file to the exact size (to get rid of possible following old data) */
-    if (ftruncate(fd, ly_out_printed(out)) == -1) {
-        srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_SYS, "Failed to truncate \"%s\" (%s).", path,
-                strerror(errno));
-        goto cleanup;
-    }
+    /* flush the data */
+    ly_print_flush(out);
 
 cleanup:
     /* delete the backup file */
@@ -146,7 +150,7 @@ cleanup:
                 strerror(errno));
     }
 
-    ly_out_free(out, NULL, 0);
+    ly_out_free(out, NULL, 1);
     if (fd > -1) {
         close(fd);
     }
