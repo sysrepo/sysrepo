@@ -456,7 +456,8 @@ sr_ntf_handle_init(struct sr_ntf_handle_s **ntf_handles, uint32_t *ntf_handle_co
             goto next_file;
         }
         if (!srpntf->name || !srpntf->enable_cb || !srpntf->disable_cb || !srpntf->store_cb || !srpntf->replay_next_cb ||
-                !srpntf->earliest_get_cb || !srpntf->access_set_cb || !srpntf->access_get_cb || !srpntf->access_check_cb) {
+                !srpntf->earliest_get_cb || !srpntf->access_set_cb || !srpntf->access_get_cb || !srpntf->access_check_cb ||
+                !srpntf->destroy_cb) {
             SR_LOG_WRN("NTF plugin \"%s\" with incomplete callback structure.", path);
             goto next_file;
         }

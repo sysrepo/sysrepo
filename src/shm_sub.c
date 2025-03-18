@@ -39,6 +39,7 @@
 #include "ly_wrap.h"
 #include "modinfo.h"
 #include "plugins_datastore.h"
+#include "plugins_notification.h"
 #include "replay.h"
 #include "shm_ext.h"
 #include "shm_mod.h"
@@ -2381,9 +2382,10 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
     struct sr_mod_info_s mod_info;
     struct lyd_node *child;
     const struct lys_module *ly_mod;
+    const struct sr_ntf_handle_s *ntf_handle;
     sr_datastore_t ds;
     struct lyd_node *data[3] = {NULL};
-    int reset_ds[3] = {0}, mi_data_spent = -1;
+    int reset_ds[3] = {0}, reset_notif = 0, mi_data_spent = -1;
     uint32_t i, mi_opts;
 
     assert(input->schema->nodetype & (LYS_RPC | LYS_ACTION));
@@ -2426,27 +2428,35 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
         goto cleanup;
     }
     if (!lyd_child(child)) {
+        /* default reset of everything */
         reset_ds[SR_DS_STARTUP] = 1;
         reset_ds[SR_DS_RUNNING] = 1;
+        reset_notif = 1;
     } else {
         LY_LIST_FOR(lyd_child(child), child) {
-            switch (sr_ident2mod_ds(lyd_get_value(child))) {
-            case SR_DS_STARTUP:
-                reset_ds[SR_DS_STARTUP] = 1;
-                break;
-            case SR_DS_RUNNING:
-                reset_ds[SR_DS_RUNNING] = 1;
-                reset_ds[SR_DS_CANDIDATE] = 0;
-                break;
-            case SR_DS_CANDIDATE:
-                /* implicit reset if running is reset */
-                if (!reset_ds[SR_DS_RUNNING]) {
-                    reset_ds[SR_DS_CANDIDATE] = 1;
+            if (!strcmp(LYD_NAME(child), "datastore")) {
+                switch (sr_ident2mod_ds(lyd_get_value(child))) {
+                case SR_DS_STARTUP:
+                    reset_ds[SR_DS_STARTUP] = 1;
+                    break;
+                case SR_DS_RUNNING:
+                    reset_ds[SR_DS_RUNNING] = 1;
+
+                    /* implicit reset occurs */
+                    reset_ds[SR_DS_CANDIDATE] = 0;
+                    break;
+                case SR_DS_CANDIDATE:
+                    /* implicit reset if running is reset */
+                    if (!reset_ds[SR_DS_RUNNING]) {
+                        reset_ds[SR_DS_CANDIDATE] = 1;
+                    }
+                    break;
+                default:
+                    sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Invalid factory-reset datastore \"%s\".", lyd_get_value(child));
+                    goto cleanup;
                 }
-                break;
-            default:
-                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Invalid factory-reset datastore \"%s\".", lyd_get_value(child));
-                goto cleanup;
+            } else if (!strcmp(LYD_NAME(child), "notifications")) {
+                reset_notif = 1;
             }
         }
     }
@@ -2525,6 +2535,19 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
 
         /* MODULES UNLOCK */
         sr_shmmod_modinfo_unlock(&mod_info);
+    }
+
+    if (reset_notif) {
+        for (i = 0; i < mod_info.mod_count; ++i) {
+            /* find the ntf plugin handle */
+            if ((err_info = sr_ntf_handle_find(conn->mod_shm.addr + mod_info.mods[i].shm_mod->plugins[SR_MOD_DS_NOTIF],
+                    conn, &ntf_handle))) {
+                goto cleanup;
+            }
+
+            /* destroy the notifications */
+            ntf_handle->plugin->destroy_cb(mod_info.mods[i].ly_mod);
+        }
     }
 
     /* generate output */

@@ -4,8 +4,8 @@
  * @brief API for notification plugins
  *
  * @copyright
- * Copyright (c) 2021 - 2024 Deutsche Telekom AG.
- * Copyright (c) 2021 - 2024 CESNET, z.s.p.o.
+ * Copyright (c) 2021 - 2025 Deutsche Telekom AG.
+ * Copyright (c) 2021 - 2025 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ extern "C" {
 /**
  * @brief Notification plugin API version
  */
-#define SRPLG_NTF_API_VERSION 3
+#define SRPLG_NTF_API_VERSION 4
 
 /**
  * @brief Initialize notification storage for a specific module.
@@ -141,6 +141,13 @@ typedef sr_error_info_t *(*srntf_access_get)(const struct lys_module *mod, char 
 typedef sr_error_info_t *(*srntf_access_check)(const struct lys_module *mod, int *read, int *write);
 
 /**
+ * @brief Destroy (delete) all stored notifications of a module.
+ *
+ * @param[in] mod Specific module.
+ */
+typedef void (*srntf_destroy)(const struct lys_module *mod);
+
+/**
  * @brief Notification plugin structure
  */
 struct srplg_ntf_s {
@@ -153,6 +160,7 @@ struct srplg_ntf_s {
     srntf_access_set access_set_cb; /**< callback for setting access rights for notification data */
     srntf_access_get access_get_cb; /**< callback got getting access rights for notification data */
     srntf_access_check access_check_cb; /**< callback for checking user access to notificaion data */
+    srntf_destroy destroy_cb;       /**< destroy all notifications of a module */
 };
 
 /**

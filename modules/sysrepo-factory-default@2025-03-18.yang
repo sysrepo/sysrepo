@@ -22,6 +22,11 @@ module sysrepo-factory-default {
     description
         "Sysrepo YANG augment of the factory-reset RPC.";
 
+    revision "2025-03-18" {
+        description
+            "Add notifications special datastore parameter.";
+    }
+
     revision "2024-05-02" {
         description
             "Add datastore leaf-list parameter.";
@@ -34,8 +39,9 @@ module sysrepo-factory-default {
 
     augment /fd:factory-reset/fd:input {
         description
-            "Adds leaf-list of modules and datastores that are reset to the default factory state. If there are none, sysrepo
-             automatically populates the leaf-lists with all the modules and datastores (running, startup and candidate) being reset.";
+            "Adds leaf-list of modules and datastores that are reset to the default factory state. If there are none,
+             sysrepo automatically populates the leaf-lists with all the modules, datastores (running, startup and
+             candidate) and stored notifications being reset.";
 
         container modules {
             leaf-list module {
@@ -52,6 +58,11 @@ module sysrepo-factory-default {
                 }
                 description
                     "Datastore in which given modules will be reset to default factory state.";
+            }
+            leaf notifications {
+                type empty;
+                description
+                    "Notifications stored for replay.";
             }
         }
     }

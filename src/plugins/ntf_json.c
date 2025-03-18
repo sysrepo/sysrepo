@@ -212,8 +212,8 @@ cleanup:
  * @param[in] mod_name Module name.
  * @param[in] from_ts Earliest stored notification.
  * @param[in] to_ts Latest stored notification.
- * @param[out] file_from_ts Found file earliest notification.
- * @param[out] file_to_ts Found file latest notification.
+ * @param[out] file_from_ts Found file earliest notification, 0 if no matching file found.
+ * @param[out] file_to_ts Found file latest notification, 0 if no matching file found.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
@@ -793,6 +793,36 @@ cleanup:
     return err_info;
 }
 
+static void
+srpntf_json_destroy(const struct lys_module *mod)
+{
+    sr_error_info_t *err_info = NULL;
+    time_t file_from, file_to;
+    char *path;
+
+    /* find the first notification file */
+    if ((err_info = srpntf_find_file(mod->name, 1, 1, &file_from, &file_to))) {
+        goto cleanup;
+    }
+
+    while (file_from && file_to) {
+        /* unlink it */
+        if ((err_info = srpjson_get_notif_path(srpntf_name, mod->name, file_from, file_to, &path))) {
+            goto cleanup;
+        }
+        unlink(path);
+        free(path);
+
+        /* find next notification file */
+        if ((err_info = srpntf_find_file(mod->name, file_from, file_to, &file_from, &file_to))) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    srplg_errinfo_free(&err_info);
+}
+
 const struct srplg_ntf_s srpntf_json = {
     .name = srpntf_name,
     .enable_cb = srpntf_json_enable,
@@ -803,4 +833,5 @@ const struct srplg_ntf_s srpntf_json = {
     .access_set_cb = srpntf_json_access_set,
     .access_get_cb = srpntf_json_access_get,
     .access_check_cb = srpntf_json_access_check,
+    .destroy_cb = srpntf_json_destroy,
 };
