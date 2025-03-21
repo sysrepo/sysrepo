@@ -150,10 +150,16 @@ cleanup:
                 strerror(errno));
     }
 
-    ly_out_free(out, NULL, 1);
-    if (fd > -1) {
-        close(fd);
+    if (out) {
+        /* will call fclose(), so close() should not be called again */
+        ly_out_free(out, NULL, 1);
+    } else if (fd > -1) {
+        if (close(fd) < 0) {
+            srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_SYS, "Failed to close fd for \"%s\" (%s).", path,
+                    strerror(errno));
+        }
     }
+
     if (err_info && creat) {
         unlink(path);
     }
