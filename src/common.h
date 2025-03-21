@@ -444,6 +444,8 @@ sr_error_info_t *sr_path_main_shm(char **path);
  */
 sr_error_info_t *sr_path_mod_shm(char **path);
 
+sr_error_info_t *sr_path_ctx_shm(char **path);
+
 /**
  * @brief Get the path of the external SHM.
  *
