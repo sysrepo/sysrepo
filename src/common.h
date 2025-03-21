@@ -1008,15 +1008,6 @@ sr_error_info_t *sr_conn_run_cache_update_mod(sr_conn_ctx_t *conn, const struct 
 void sr_conn_run_cache_flush(sr_conn_ctx_t *conn);
 
 /**
- * @brief Switch the context of a connection while correctly handling all connection data in the context.
- *
- * @param[in] conn Connection to use.
- * @param[in,out] new_ctx New context to use, set to NULL after use.
- * @param[out] old_ctx Optional old context, destroyed if not set.
- */
-void sr_conn_ctx_switch(sr_conn_ctx_t *conn, struct ly_ctx **new_ctx, struct ly_ctx **old_ctx);
-
-/**
  * @brief Initialize all used DS plugins not yet initialized.
  *
  * @param[in] conn Connection to use.
