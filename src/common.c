@@ -3142,34 +3142,6 @@ sr_conn_oper_cache_del(sr_conn_ctx_t *conn, uint32_t sub_id)
     sr_rwunlock(&sr_oper_cache.lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
 }
 
-/**
- * @brief Replace cached schema-mount operational data (LY ext data) of a connection.
- *
- * @param[in] conn Connection to use.
- * @param[in] new_ext_data New LY ext data to use, may be NULL.
- */
-static void
-sr_conn_ext_data_replace(sr_conn_ctx_t *conn, struct lyd_node *new_ext_data)
-{
-    sr_error_info_t *err_info = NULL;
-
-    /* expected to be called with CTX LOCK so we can access the data */
-
-    /* LY EXT DATA WRITE LOCK */
-    err_info = sr_rwlock(&conn->ly_ext_data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
-            NULL, NULL);
-
-    /* replace LY ext data */
-    lyd_free_siblings(conn->ly_ext_data);
-    conn->ly_ext_data = new_ext_data;
-
-    if (!err_info) {
-        /* LY EXT DATA UNLOCK */
-        sr_rwunlock(&conn->ly_ext_data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
-    }
-    sr_errinfo_free(&err_info);
-}
-
 sr_error_info_t *
 sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_info, sr_lock_mode_t has_lock)
 {
@@ -3360,97 +3332,6 @@ sr_conn_run_cache_flush(sr_conn_ctx_t *conn)
     }
 
     sr_errinfo_free(&err_info);
-}
-
-/**
- * @brief Flush all cached oper data of a connection.
- *
- * Must be called only with WRITE mode context lock or conn->mod_remap_lock.
- *
- * @param[in] conn Connection to use.
- */
-static void
-sr_conn_oper_cache_flush(sr_conn_ctx_t *conn)
-{
-    sr_error_info_t *err_info = NULL;
-    uint32_t i, j;
-    struct sr_oper_poll_cache_s *cache;
-
-    /* CONN OPER CACHE READ LOCK */
-    if ((err_info = sr_rwlock(&conn->oper_cache_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
-            __func__, NULL, NULL))) {
-        /* should never happen */
-        sr_errinfo_free(&err_info);
-    }
-
-    for (i = 0; i < conn->oper_cache_count; ++i) {
-        cache = &conn->oper_caches[i];
-
-        /* CACHE DATA WRITE LOCK */
-        if ((err_info = sr_rwlock(&cache->data_lock, SR_CONN_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
-                __func__, NULL, NULL))) {
-            /* should never happen */
-            sr_errinfo_free(&err_info);
-        }
-
-        /* flush data */
-        lyd_free_siblings(cache->data);
-        cache->data = NULL;
-        memset(&cache->timestamp, 0, sizeof cache->timestamp);
-
-        /* CACHE DATA UNLOCK */
-        sr_rwunlock(&cache->data_lock, SR_CONN_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
-    }
-
-    /* CONN OPER CACHE UNLOCK */
-    sr_rwunlock(&conn->oper_cache_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
-
-    /* remove oper push data cache from all sessions */
-
-    /* safe because context_lock or conn->mod_remap_lock is WRITE locked, preventing all other operations */
-    /* conn->ptr_lock is always acquired after sr_lycc_lock, so conn->session_count cannot change */
-    for (i = 0; i < conn->session_count; i++) {
-        for (j = 0; j < conn->sessions[i]->oper_push_mod_count; j++) {
-            lyd_free_siblings(conn->sessions[i]->oper_push_mods[j].cache);
-            conn->sessions[i]->oper_push_mods[j].cache = NULL;
-        }
-    }
-}
-
-void
-sr_conn_ctx_switch(sr_conn_ctx_t *conn, struct ly_ctx **new_ctx, struct ly_ctx **old_ctx)
-{
-    sr_error_info_t *err_info = NULL;
-    struct lyd_node *new_ext_data = NULL;
-
-    assert(new_ctx);
-
-    if (conn->ly_ext_data) {
-        /* copy the ext data into the new context */
-        if ((err_info = sr_lyd_dup_siblings_to_ctx(conn->ly_ext_data, *new_ctx, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS,
-                &new_ext_data))) {
-            sr_errinfo_free(&err_info);
-        }
-    }
-
-    /* replace/flush caches before context destroy */
-    sr_conn_ext_data_replace(conn, new_ext_data);
-    sr_conn_run_cache_flush(conn);
-    sr_conn_oper_cache_flush(conn);
-
-    /* update content ID */
-    conn->content_id = SR_CONN_MAIN_SHM(conn)->content_id;
-
-    /* old ctx */
-    if (old_ctx) {
-        *old_ctx = conn->ly_ctx;
-    } else {
-        ly_ctx_destroy(conn->ly_ctx);
-    }
-
-    /* new ctx */
-    conn->ly_ctx = *new_ctx;
-    *new_ctx = NULL;
 }
 
 sr_error_info_t *

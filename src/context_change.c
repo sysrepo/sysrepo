@@ -40,6 +40,154 @@
 #include "sysrepo.h"
 #include "sysrepo_types.h"
 
+/**
+ * @brief Flush all cached oper data of a connection.
+ *
+ * Must be called only with WRITE mode context lock or mod_remap_lock.
+ *
+ * @param[in] conn Connection to use.
+ */
+static void
+sr_conn_oper_cache_flush(sr_conn_ctx_t *conn)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t i, j;
+    struct sr_oper_cache_sub_s *cache;
+
+    /* CONN OPER CACHE READ LOCK */
+    if ((err_info = sr_rwlock(&sr_oper_cache.lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
+            __func__, NULL, NULL))) {
+        /* should never happen */
+        sr_errinfo_free(&err_info);
+    }
+
+    for (i = 0; i < sr_oper_cache.sub_count; ++i) {
+        cache = &sr_oper_cache.subs[i];
+
+        /* CACHE DATA WRITE LOCK */
+        if ((err_info = sr_rwlock(&cache->data_lock, SR_CONN_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
+                __func__, NULL, NULL))) {
+            /* should never happen */
+            sr_errinfo_free(&err_info);
+        }
+
+        /* flush data */
+        lyd_free_siblings(cache->data);
+        cache->data = NULL;
+        memset(&cache->timestamp, 0, sizeof cache->timestamp);
+
+        /* CACHE DATA UNLOCK */
+        sr_rwunlock(&cache->data_lock, SR_CONN_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    }
+
+    /* CONN OPER CACHE UNLOCK */
+    sr_rwunlock(&sr_oper_cache.lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+
+    /* remove oper push data cache from all sessions */
+
+    /* safe because context_lock or conn->mod_remap_lock is WRITE locked, preventing all other operations */
+    /* conn->ptr_lock is always acquired after sr_lycc_lock, so conn->session_count cannot change */
+    for (i = 0; i < conn->session_count; i++) {
+        for (j = 0; j < conn->sessions[i]->oper_push_mod_count; j++) {
+            lyd_free_siblings(conn->sessions[i]->oper_push_mods[j].cache);
+            conn->sessions[i]->oper_push_mods[j].cache = NULL;
+        }
+    }
+}
+
+/**
+ * @brief Replace cached schema-mount operational data (LY ext data) of a connection.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] new_ext_data New LY ext data to use, may be NULL.
+ */
+static void
+sr_conn_ext_data_replace(sr_conn_ctx_t *conn, struct lyd_node *new_ext_data)
+{
+    sr_error_info_t *err_info = NULL;
+
+    /* expected to be called with CTX LOCK so we can access the data */
+
+    /* LY EXT DATA WRITE LOCK */
+    err_info = sr_rwlock(&sr_schema_mount_ctx.data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
+            NULL, NULL);
+
+    /* replace LY ext data */
+    lyd_free_siblings(sr_schema_mount_ctx.data);
+    sr_schema_mount_ctx.data = new_ext_data;
+
+    if (!err_info) {
+        /* LY EXT DATA UNLOCK */
+        sr_rwunlock(&sr_schema_mount_ctx.data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    }
+    sr_errinfo_free(&err_info);
+}
+
+/**
+ * @brief Switch the context of a connection while correctly handling all connection data in the context.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in,out] new_ctx New context to use, set to NULL after use.
+ */
+static void
+sr_conn_ctx_switch(sr_conn_ctx_t *conn, struct ly_ctx **new_ctx)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *new_ext_data = NULL;
+
+    assert(new_ctx);
+
+    if (sr_schema_mount_ctx.data) {
+        /* copy the ext data into the new context */
+        if ((err_info = sr_lyd_dup_siblings_to_ctx(sr_schema_mount_ctx.data, *new_ctx, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS,
+                &new_ext_data))) {
+            sr_errinfo_free(&err_info);
+        }
+    }
+
+    /* replace/flush caches before context destroy */
+    sr_conn_ext_data_replace(conn, new_ext_data);
+    // sr_conn_run_cache_flush(conn);
+    sr_conn_oper_cache_flush(conn);
+
+    /* update content ID */
+    sr_yang_ctx.content_id = SR_CONN_MAIN_SHM(conn)->content_id;
+
+    ly_ctx_destroy(sr_yang_ctx.ly_ctx);
+
+    /* new ctx */
+    sr_yang_ctx.ly_ctx = *new_ctx;
+    *new_ctx = NULL;
+}
+
+static sr_error_info_t *
+sr_ly_ctx_new(sr_conn_ctx_t *conn, struct ly_ctx **new_ctx)
+{
+    sr_error_info_t *err_info = NULL, *tmp_err;
+    char *path;
+
+    /* context was updated, create a new one with the current modules */
+    if ((err_info = sr_ly_ctx_init(conn, new_ctx))) {
+        return err_info;
+    }
+
+    if ((err_info = sr_shmmod_ctx_load_modules(SR_CTX_MOD_SHM(sr_yang_ctx), *new_ctx, NULL))) {
+        if (!strcmp(err_info->err[err_info->err_count - 1].message, "Loading \"ietf-datastores\" module failed.")) {
+            if (!(tmp_err = sr_path_yang_dir(&path))) {
+                sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED,
+                        "YANG modules directory \"%s\" is different than the one used when creating the SHM state. "
+                        "Either change the SHM state files prefix, too, or clear the current SHM state.",
+                        path);
+                free(path);
+            } else {
+                sr_errinfo_merge(&err_info, tmp_err);
+            }
+        }
+    }
+
+    return err_info;
+}
+
 sr_error_info_t *
 sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const char *func)
 {
