@@ -1521,7 +1521,7 @@ sr_lydmods_change_chng_replay_support(const struct lys_module *ly_mod, int enabl
     char *path = NULL;
 
     /* parse current module information */
-    if ((err_info = sr_lydmods_parse(conn->ly_ctx, conn, NULL, sr_mods))) {
+    if ((err_info = sr_lydmods_parse(sr_yang_ctx.ly_ctx, conn, NULL, sr_mods))) {
         goto cleanup;
     }
 
@@ -1549,7 +1549,7 @@ sr_lydmods_change_chng_replay_support(const struct lys_module *ly_mod, int enabl
             }
 
             /* find module */
-            ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, lyd_get_value(lyd_child(sr_mod)));
+            ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, lyd_get_value(lyd_child(sr_mod)));
             assert(ly_mod);
 
             /* set replay support */

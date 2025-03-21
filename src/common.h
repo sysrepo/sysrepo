@@ -58,8 +58,8 @@ struct srplg_ntf_s;
 /* macro for getting main SHM from a connection */
 #define SR_CONN_MAIN_SHM(conn) ((sr_main_shm_t *)(conn)->main_shm.addr)
 
-/* macro for getting mod SHM from a connection */
-#define SR_CONN_MOD_SHM(conn) ((sr_mod_shm_t *)(conn)->mod_shm.addr)
+/* macro for getting mod SHM from sysrepo's global context */
+#define SR_CTX_MOD_SHM(ctx) ((sr_mod_shm_t *)(ctx).mod_shm.addr)
 
 /* macro for getting ext SHM from a connection */
 #define SR_CONN_EXT_SHM(conn) ((sr_ext_shm_t *)(conn)->ext_shm.addr)
@@ -186,6 +186,21 @@ extern const struct srplg_ntf_s *sr_internal_ntf_plugins[];
 extern const sr_module_ds_t sr_module_ds_default;
 extern const sr_module_ds_t sr_module_ds_disabled_run;
 
+/**
+ * @brief Sysrepo's per process global YANG context.
+ */
+struct sr_yang_ctx_s {
+    uint32_t content_id;        /**< Content ID of the context */
+
+    sr_shm_t ly_ctx_shm;          /**< Printed libyang context SHM */
+    struct ly_ctx *ly_ctx;      /**< Process-local libyang context */
+
+    sr_shm_t mod_shm;          /**< Libyang modules SHM */
+    sr_rwlock_t remap_lock; /**< Lock for remapping libyang modules SHM */
+};
+
+/* global YANG context */
+extern struct sr_yang_ctx_s sr_yang_ctx;
 /** static initializer of the shared memory structure */
 #define SR_SHM_INITIALIZER {.fd = -1, .size = 0, .addr = NULL}
 
@@ -911,7 +926,7 @@ void sr_conn_oper_cache_del(sr_conn_ctx_t *conn, uint32_t sub_id);
  *
  * @param[in] conn Connection to use.
  * @param[in] mod_info Mod info with modules to cache.
- * @param[in] has_lock Currently held conn run cache lock mode.
+ * @param[in] has_lock Currently held run cache lock mode.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_info, sr_lock_mode_t has_lock);

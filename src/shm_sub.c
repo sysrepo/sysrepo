@@ -1367,7 +1367,7 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, const char *orig_
     assert(mod_info->notify_diff);
 
     *update_edit = NULL;
-    ly_ctx = mod_info->conn->ly_ctx;
+    ly_ctx = sr_yang_ctx.ly_ctx;
     cid = mod_info->conn->cid;
 
     while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->notify_diff, &aux))) {
@@ -2469,7 +2469,7 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
     }
     LY_LIST_FOR(lyd_child(child), child) {
         /* get LY module */
-        ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, lyd_get_value(child));
+        ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, lyd_get_value(child));
         if (!ly_mod) {
             sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", lyd_get_value(child));
             goto cleanup;
@@ -3618,7 +3618,7 @@ sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_sub
     }
 
     /* parse event diff */
-    if ((err_info = sr_lyd_parse_data(conn->ly_ctx, shm_data_ptr, NULL, LYD_LYB,
+    if ((err_info = sr_lyd_parse_data(sr_yang_ctx.ly_ctx, shm_data_ptr, NULL, LYD_LYB,
             LYD_PARSE_STORE_ONLY | LYD_PARSE_STRICT | LYD_PARSE_ORDERED, 0, &diff))) {
         SR_ERRINFO_INT(&err_info);
         goto cleanup;
@@ -3872,7 +3872,7 @@ sr_shmsub_oper_get_listen_process_module_events(struct modsub_operget_s *oper_ge
         shm_data_ptr += sr_strshmlen(request_xpath);
 
         /* parse data parent */
-        if ((err_info = sr_lyd_parse_data(conn->ly_ctx, shm_data_ptr, NULL, LYD_LYB, LYD_PARSE_STORE_ONLY | LYD_PARSE_STRICT,
+        if ((err_info = sr_lyd_parse_data(sr_yang_ctx.ly_ctx, shm_data_ptr, NULL, LYD_LYB, LYD_PARSE_STORE_ONLY | LYD_PARSE_STRICT,
                 0, &parent))) {
             SR_ERRINFO_INT(&err_info);
             goto error_rdunlock;
@@ -4032,7 +4032,7 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
     sr_get_options_t get_opts;
 
     /* find LY module */
-    ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, oper_poll_subs->module_name);
+    ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, oper_poll_subs->module_name);
     SR_CHECK_INT_GOTO(!ly_mod, err_info, cleanup);
 
     /* init mod info */
@@ -4200,7 +4200,7 @@ sr_shmsub_oper_poll_get_sub_change_notify_evpipe(sr_conn_ctx_t *conn, const char
     uint32_t i;
 
     /* find the module in SHM */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), module_name);
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), module_name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     /* OPER POLL SUB READ LOCK */
@@ -4325,8 +4325,8 @@ sr_shmsub_rpc_listen_call_callback(struct opsub_rpcsub_s *rpc_sub, sr_session_ct
             goto cleanup;
         }
         for (i = 0; i < output_val_count; ++i) {
-            val_str = sr_val_sr2ly_str(ev_sess->conn->ly_ctx, &output_vals[i], output_vals[i].xpath, buf, 1);
-            if ((err_info = sr_val_sr2ly(ev_sess->conn->ly_ctx, output_vals[i].xpath, val_str, output_vals[i].dflt, 1,
+            val_str = sr_val_sr2ly_str(sr_yang_ctx.ly_ctx, &output_vals[i], output_vals[i].xpath, buf, 1);
+            if ((err_info = sr_val_sr2ly(sr_yang_ctx.ly_ctx, output_vals[i].xpath, val_str, output_vals[i].dflt, 1,
                     output_op))) {
                 /* output sr_vals are invalid */
                 goto fake_cb_error;
@@ -4531,7 +4531,7 @@ sr_shmsub_rpc_listen_process_rpc_events(struct opsub_rpc_s *rpc_subs, sr_conn_ct
             }
 
             /* parse RPC/action input */
-            if ((err_info = sr_lyd_parse_op(conn->ly_ctx, shm_data_ptr, LYD_LYB, LYD_TYPE_RPC_YANG, &input))) {
+            if ((err_info = sr_lyd_parse_op(sr_yang_ctx.ly_ctx, shm_data_ptr, LYD_LYB, LYD_TYPE_RPC_YANG, &input))) {
                 SR_ERRINFO_INT(&err_info);
                 goto cleanup;
             }
@@ -4751,7 +4751,7 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
     shm_data_ptr += sizeof notif_ts_real;
 
     /* parse notification */
-    if ((err_info = sr_lyd_parse_op(conn->ly_ctx, shm_data_ptr, LYD_LYB, LYD_TYPE_NOTIF_YANG, &notif))) {
+    if ((err_info = sr_lyd_parse_op(sr_yang_ctx.ly_ctx, shm_data_ptr, LYD_LYB, LYD_TYPE_NOTIF_YANG, &notif))) {
         SR_ERRINFO_INT(&err_info);
         goto cleanup_rdunlock;
     }

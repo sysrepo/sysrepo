@@ -117,8 +117,6 @@ typedef struct {
  * @brief Sysrepo connection.
  */
 struct sr_conn_ctx_s {
-    struct ly_ctx *ly_ctx;          /**< Libyang context, also available to user. */
-    uint32_t content_id;            /**< Connection context content id. */
     sr_conn_options_t opts;         /**< Connection options. */
 
     pthread_mutex_t ptr_lock;       /**< Session-shared lock for accessing pointers to sessions. */
@@ -130,8 +128,6 @@ struct sr_conn_ctx_s {
 
     int create_lock;                /**< Process-shared file lock for creating main/mod/ext SHM. */
     sr_shm_t main_shm;              /**< Main SHM structure. */
-    sr_rwlock_t mod_remap_lock;     /**< Session-shared lock only for remapping mod SHM. */
-    sr_shm_t mod_shm;               /**< Mod SHM structure. */
     sr_rwlock_t ext_remap_lock;     /**< Session-shared lock only for remapping ext SHM. */
     sr_shm_t ext_shm;               /**< External SHM structure. */
 

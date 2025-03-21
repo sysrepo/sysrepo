@@ -56,7 +56,7 @@ sr_notif_write(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const struct lyd_node *no
     const struct sr_ntf_handle_s *ntf_handle;
 
     /* find handle */
-    if ((err_info = sr_ntf_handle_find(conn->mod_shm.addr + shm_mod->plugins[SR_MOD_DS_NOTIF], conn, &ntf_handle))) {
+    if ((err_info = sr_ntf_handle_find(sr_yang_ctx.mod_shm.addr + shm_mod->plugins[SR_MOD_DS_NOTIF], conn, &ntf_handle))) {
         goto cleanup;
     }
 
@@ -146,7 +146,7 @@ sr_replay_store(sr_conn_ctx_t *conn, sr_session_ctx_t *sess, const struct lyd_no
     SR_CHECK_INT_RET(notif_op->schema->nodetype != LYS_NOTIF, err_info);
 
     /* find SHM mod for replay lock and check if replay is even supported */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), ly_mod->name);
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), ly_mod->name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
     if (!shm_mod->replay_supp) {
@@ -212,7 +212,7 @@ sr_notif_buf_thread_write_notifs(sr_conn_ctx_t *conn, struct sr_sess_notif_buf_n
 
     while (first) {
         /* find SHM mod */
-        shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), lyd_owner_module(first->notif)->name);
+        shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), lyd_owner_module(first->notif)->name);
         if (!shm_mod) {
             SR_ERRINFO_INT(&err_info);
             return err_info;
@@ -322,7 +322,7 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
     }
 
     /* find SHM mod for replay lock and check if replay is even supported */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), mod_name);
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), mod_name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     /* create event session */
@@ -336,11 +336,11 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
     }
 
     /* find module */
-    ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, mod_name);
+    ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, mod_name);
     assert(ly_mod);
 
     /* find handle */
-    if ((err_info = sr_ntf_handle_find(conn->mod_shm.addr + shm_mod->plugins[SR_MOD_DS_NOTIF], conn, &ntf_handle))) {
+    if ((err_info = sr_ntf_handle_find(sr_yang_ctx.mod_shm.addr + shm_mod->plugins[SR_MOD_DS_NOTIF], conn, &ntf_handle))) {
         goto cleanup;
     }
 

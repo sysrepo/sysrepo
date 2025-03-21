@@ -48,6 +48,7 @@
 #include "plugins_datastore.h"
 #include "plugins_notification.h"
 #include "replay.h"
+#include "shm_ctx.h"
 #include "shm_ext.h"
 #include "shm_main.h"
 #include "shm_mod.h"
@@ -251,7 +252,7 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
 
     if (created) {
         /* parse SR mods */
-        if ((err_info = sr_lydmods_parse(conn->ly_ctx, conn, &initialized, &sr_mods))) {
+        if ((err_info = sr_lydmods_parse(sr_yang_ctx.ly_ctx, conn, &initialized, &sr_mods))) {
             goto cleanup_unlock;
         }
 
@@ -260,7 +261,7 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
         main_shm->content_id = ((struct lyd_node_term *)lyd_child(sr_mods))->value.uint32;
 
         /* add all the modules in lydmods data into mod SHM */
-        if ((err_info = sr_shmmod_store_modules(&conn->mod_shm, sr_mods))) {
+        if ((err_info = sr_shmmod_store_modules(&sr_yang_ctx.mod_shm, sr_mods))) {
             goto cleanup_unlock;
         }
 
@@ -270,7 +271,7 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
 
         /* add internal RPC subscription into ext SHM */
         rpc_path = SR_RPC_FACTORY_RESET_PATH;
-        shm_rpc = sr_shmmod_find_rpc(SR_CONN_MOD_SHM(conn), rpc_path);
+        shm_rpc = sr_shmmod_find_rpc(SR_CTX_MOD_SHM(sr_yang_ctx), rpc_path);
         SR_CHECK_INT_GOTO(!shm_rpc, err_info, cleanup_unlock);
 
         /* RPC SUB WRITE LOCK */
@@ -401,7 +402,7 @@ sr_acquire_context(sr_conn_ctx_t *conn)
         return NULL;
     }
 
-    return conn->ly_ctx;
+    return sr_yang_ctx.ly_ctx;
 }
 
 API const struct ly_ctx *
@@ -439,6 +440,7 @@ API uint32_t
 sr_get_content_id(sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t content_id;
 
     if (!conn) {
         return 0;
@@ -450,12 +452,13 @@ sr_get_content_id(sr_conn_ctx_t *conn)
         return 0;
     }
 
-    /* just so that the content ID is updated */
+    /* content ID should be updated by locking */
+    content_id = sr_yang_ctx.content_id;
 
     /* CONTEXT UNLOCK */
     sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
 
-    return conn->content_id;
+    return content_id;
 }
 
 API int
@@ -1437,7 +1440,7 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
     }
 
     /* use temporary context to load current modules */
-    if ((err_info = sr_shmmod_ctx_load_modules(SR_CONN_MOD_SHM(conn), new_ctx, NULL))) {
+    if ((err_info = sr_shmmod_ctx_load_modules(SR_CTX_MOD_SHM(sr_yang_ctx), new_ctx, NULL))) {
         goto cleanup;
     }
 
@@ -1447,7 +1450,7 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
     }
 
     /* set import callback */
-    imp_clb = ly_ctx_get_module_imp_clb(conn->ly_ctx, &imp_clb_data);
+    imp_clb = ly_ctx_get_module_imp_clb(sr_yang_ctx.ly_ctx, &imp_clb_data);
     ly_ctx_set_module_imp_clb(new_ctx, imp_clb, imp_clb_data);
 
     /* CONTEXT LOCK */
@@ -1533,7 +1536,7 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
     }
 
     /* update SHM modules */
-    if ((err_info = sr_shmmod_store_modules(&conn->mod_shm, sr_mods))) {
+    if ((err_info = sr_shmmod_store_modules(&sr_yang_ctx.mod_shm, sr_mods))) {
         goto error;
     }
     mod_shm_changed = 1;
@@ -1566,7 +1569,7 @@ error:
             for (j = 0; (*new_mods)[i].enable_features[j]; ++j) {}
             feat_set.count = j;
 
-            if ((tmp_err = sr_lydmods_change_chng_feature(conn->ly_ctx, (*new_mods)[i].ly_mod, new_ctx, &feat_set,
+            if ((tmp_err = sr_lydmods_change_chng_feature(sr_yang_ctx.ly_ctx, (*new_mods)[i].ly_mod, new_ctx, &feat_set,
                     0, conn, &sr_mods))) {
                 sr_errinfo_merge(&err_info, tmp_err);
             }
@@ -1575,14 +1578,14 @@ error:
             ly_set_add(&mod_set, (*new_mods)[i].ly_mod, 1, NULL);
         }
     }
-    if ((tmp_err = sr_lydmods_change_del_module(conn->ly_ctx, new_ctx, &mod_set, conn, &sr_del_mods, &sr_mods))) {
+    if ((tmp_err = sr_lydmods_change_del_module(sr_yang_ctx.ly_ctx, new_ctx, &mod_set, conn, &sr_del_mods, &sr_mods))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
     ly_set_erase(&mod_set, NULL);
     lyd_free_siblings(sr_del_mods);
 
     /* revert SHM module changes */
-    if (mod_shm_changed && (tmp_err = sr_shmmod_store_modules(&conn->mod_shm, sr_mods))) {
+    if (mod_shm_changed && (tmp_err = sr_shmmod_store_modules(&sr_yang_ctx.mod_shm, sr_mods))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
@@ -1789,7 +1792,7 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
 
     for (i = 0; module_names[i]; ++i) {
         /* try to find the modules */
-        ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, module_names[i]);
+        ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, module_names[i]);
         if (!ly_mod) {
             sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_names[i]);
             goto cleanup;
@@ -1824,7 +1827,7 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
     }
 
     /* use temporary context to load modules without the removed ones */
-    if ((err_info = sr_shmmod_ctx_load_modules(SR_CONN_MOD_SHM(conn), new_ctx, &mod_set))) {
+    if ((err_info = sr_shmmod_ctx_load_modules(SR_CTX_MOD_SHM(sr_yang_ctx), new_ctx, &mod_set))) {
         goto cleanup;
     }
 
@@ -1852,12 +1855,12 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
     }
 
     /* update lydmods data */
-    if ((err_info = sr_lydmods_change_del_module(conn->ly_ctx, new_ctx, &mod_set, conn, &sr_del_mods, &sr_mods))) {
+    if ((err_info = sr_lydmods_change_del_module(sr_yang_ctx.ly_ctx, new_ctx, &mod_set, conn, &sr_del_mods, &sr_mods))) {
         goto cleanup;
     }
 
     /* update SHM modules */
-    if ((err_info = sr_shmmod_store_modules(&conn->mod_shm, sr_mods))) {
+    if ((err_info = sr_shmmod_store_modules(&sr_yang_ctx.mod_shm, sr_mods))) {
         goto cleanup;
     }
 
@@ -1973,7 +1976,7 @@ sr_update_modules_prepare(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, const cha
         }
 
         /* try to find this module */
-        old_mod = ly_ctx_get_module_implemented(conn->ly_ctx, upd_mods[i].name);
+        old_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, upd_mods[i].name);
         if (!old_mod) {
             sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", upd_mods[i].name);
             goto cleanup;
@@ -1995,7 +1998,7 @@ sr_update_modules_prepare(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, const cha
     ly_ctx_set_module_imp_clb(new_ctx, sr_ly_update_module_imp_cb, upd_mods);
 
     /* load non-updated modules into the context */
-    if ((err_info = sr_shmmod_ctx_load_modules(SR_CONN_MOD_SHM(conn), new_ctx, old_mod_set))) {
+    if ((err_info = sr_shmmod_ctx_load_modules(SR_CTX_MOD_SHM(sr_yang_ctx), new_ctx, old_mod_set))) {
         goto cleanup;
     }
     ly_ctx_set_module_imp_clb(new_ctx, NULL, NULL);
@@ -2100,12 +2103,12 @@ sr_update_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *se
     }
 
     /* update lydmods data */
-    if ((err_info = sr_lydmods_change_upd_modules(conn->ly_ctx, &upd_mod_set, conn, &sr_mods))) {
+    if ((err_info = sr_lydmods_change_upd_modules(sr_yang_ctx.ly_ctx, &upd_mod_set, conn, &sr_mods))) {
         goto cleanup;
     }
 
     /* update SHM modules */
-    if ((err_info = sr_shmmod_store_modules(&conn->mod_shm, sr_mods))) {
+    if ((err_info = sr_shmmod_store_modules(&sr_yang_ctx.mod_shm, sr_mods))) {
         goto cleanup;
     }
 
@@ -2157,7 +2160,7 @@ sr_set_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, int e
 
     if (module_name) {
         /* try to find this module */
-        ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, module_name);
+        ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, module_name);
         if (!ly_mod) {
             sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
             goto cleanup;
@@ -2170,7 +2173,7 @@ sr_set_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, int e
     }
 
     /* update mod SHM module replay support */
-    if ((err_info = sr_shmmod_update_replay_support(SR_CONN_MOD_SHM(conn), &mod_set, enable))) {
+    if ((err_info = sr_shmmod_update_replay_support(SR_CTX_MOD_SHM(sr_yang_ctx), &mod_set, enable))) {
         goto cleanup;
     }
 
@@ -2205,7 +2208,7 @@ sr_get_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, struc
     }
 
     /* try to find this module */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), module_name);
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), module_name);
     if (!shm_mod) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
         goto cleanup;
@@ -2216,11 +2219,11 @@ sr_get_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, struc
 
     if (earliest_notif) {
         /* find LY module */
-        ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, module_name);
+        ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, module_name);
         assert(ly_mod);
 
         /* find NTF plugin handle */
-        if ((err_info = sr_ntf_handle_find(conn->mod_shm.addr + shm_mod->plugins[SR_MOD_DS_NOTIF], conn, &ntf_handle))) {
+        if ((err_info = sr_ntf_handle_find(sr_yang_ctx.mod_shm.addr + shm_mod->plugins[SR_MOD_DS_NOTIF], conn, &ntf_handle))) {
             goto cleanup;
         }
 
@@ -2261,7 +2264,7 @@ _sr_set_module_ds_access(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, s
 
     /* set owner and permissions of the DS */
     if (mod_ds == SR_MOD_DS_NOTIF) {
-        if ((err_info = sr_ntf_handle_find(conn->mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ntf_handle))) {
+        if ((err_info = sr_ntf_handle_find(sr_yang_ctx.mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ntf_handle))) {
             goto cleanup;
         }
         if ((err_info = ntf_handle->plugin->access_set_cb(ly_mod, owner, group, perm))) {
@@ -2273,7 +2276,7 @@ _sr_set_module_ds_access(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, s
             mod_ds = SR_DS_STARTUP;
         }
 
-        if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ds_handle))) {
+        if ((err_info = sr_ds_handle_find(sr_yang_ctx.mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ds_handle))) {
             goto cleanup;
         }
         if ((err_info = ds_handle->plugin->access_set_cb(ly_mod, mod_ds, owner, group, perm, ds_handle->plg_data))) {
@@ -2297,7 +2300,7 @@ sr_set_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_ds
 
     SR_CHECK_ARG_APIRET(!conn || (mod_ds >= SR_MOD_DS_PLUGIN_COUNT) || (mod_ds < 0) ||
             (!owner && !group && !perm) || (perm && (perm & 00111)), NULL, err_info);
-    mod_shm = SR_CONN_MOD_SHM(conn);
+    mod_shm = SR_CTX_MOD_SHM(sr_yang_ctx);
 
     if (perm & SR_UMASK) {
         SR_LOG_WRN("Ignoring permission bits %03o forbidden by Sysrepo umask.", (unsigned int)perm & SR_UMASK);
@@ -2326,7 +2329,7 @@ sr_set_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_ds
         }
 
         /* get LY module */
-        ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, module_name);
+        ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, module_name);
         assert(ly_mod);
 
         /* set access for the module */
@@ -2339,7 +2342,7 @@ sr_set_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_ds
             shm_mod = SR_SHM_MOD_IDX(mod_shm, i);
 
             /* get LY module */
-            ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, ((char *)mod_shm) + shm_mod->name);
+            ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, ((char *)mod_shm) + shm_mod->name);
             assert(ly_mod);
 
             /* set permissions of this module */
@@ -2369,19 +2372,19 @@ sr_get_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_ds
             (!owner && !group && !perm), NULL, err_info);
 
     /* find the module in SHM */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), module_name);
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), module_name);
     if (!shm_mod) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
         goto cleanup;
     }
 
     /* get LY module */
-    ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, module_name);
+    ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, module_name);
     assert(ly_mod);
 
     /* learn owner and permissions of the DS */
     if (mod_ds == SR_MOD_DS_NOTIF) {
-        if ((err_info = sr_ntf_handle_find(conn->mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ntf_handle))) {
+        if ((err_info = sr_ntf_handle_find(sr_yang_ctx.mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ntf_handle))) {
             goto cleanup;
         }
         if ((err_info = ntf_handle->plugin->access_get_cb(ly_mod, owner, group, perm))) {
@@ -2393,7 +2396,7 @@ sr_get_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_ds
             mod_ds = SR_DS_STARTUP;
         }
 
-        if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ds_handle))) {
+        if ((err_info = sr_ds_handle_find(sr_yang_ctx.mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ds_handle))) {
             goto cleanup;
         }
         if ((err_info = ds_handle->plugin->access_get_cb(ly_mod, mod_ds, ds_handle->plg_data, owner, group, perm))) {
@@ -2418,19 +2421,19 @@ sr_check_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_
             NULL, err_info);
 
     /* find the module in SHM */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), module_name);
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), module_name);
     if (!shm_mod) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
         goto cleanup;
     }
 
     /* get LY module */
-    ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, module_name);
+    ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, module_name);
     assert(ly_mod);
 
     /* check access for the DS */
     if (mod_ds == SR_MOD_DS_NOTIF) {
-        if ((err_info = sr_ntf_handle_find(conn->mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ntf_handle))) {
+        if ((err_info = sr_ntf_handle_find(sr_yang_ctx.mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ntf_handle))) {
             goto cleanup;
         }
         if ((err_info = ntf_handle->plugin->access_check_cb(ly_mod, read, write))) {
@@ -2442,7 +2445,7 @@ sr_check_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_
             mod_ds = SR_DS_STARTUP;
         }
 
-        if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ds_handle))) {
+        if ((err_info = sr_ds_handle_find(sr_yang_ctx.mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ds_handle))) {
             goto cleanup;
         }
         if ((err_info = ds_handle->plugin->access_check_cb(ly_mod, mod_ds, ds_handle->plg_data, read, write))) {
@@ -2558,7 +2561,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     ctx_mode = SR_LOCK_READ_UPGR;
 
     /* try to find this module */
-    ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, module_name);
+    ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, module_name);
     if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
         goto cleanup;
@@ -2597,7 +2600,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
         SR_ERRINFO_MEM(&err_info);
         goto cleanup;
     }
-    if ((err_info = sr_shmmod_ctx_load_modules(SR_CONN_MOD_SHM(conn), new_ctx, &mod_set))) {
+    if ((err_info = sr_shmmod_ctx_load_modules(SR_CTX_MOD_SHM(sr_yang_ctx), new_ctx, &mod_set))) {
         goto cleanup;
     }
 
@@ -2623,12 +2626,12 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     }
 
     /* update lydmods data */
-    if ((err_info = sr_lydmods_change_chng_feature(conn->ly_ctx, ly_mod, new_ctx, &feat_set, enable, conn, &sr_mods))) {
+    if ((err_info = sr_lydmods_change_chng_feature(sr_yang_ctx.ly_ctx, ly_mod, new_ctx, &feat_set, enable, conn, &sr_mods))) {
         goto cleanup;
     }
 
     /* update SHM modules */
-    if ((err_info = sr_shmmod_store_modules(&conn->mod_shm, sr_mods))) {
+    if ((err_info = sr_shmmod_store_modules(&sr_yang_ctx.mod_shm, sr_mods))) {
         goto cleanup;
     }
 
@@ -2731,7 +2734,7 @@ sr_get_module_info(sr_conn_ctx_t *conn, sr_data_t **sysrepo_data)
     }
 
     /* get internal sysrepo data */
-    if ((err_info = sr_lydmods_parse(conn->ly_ctx, conn, NULL, &(*sysrepo_data)->tree))) {
+    if ((err_info = sr_lydmods_parse(sr_yang_ctx.ly_ctx, conn, NULL, &(*sysrepo_data)->tree))) {
         goto cleanup;
     }
 
@@ -2805,7 +2808,7 @@ sr_get_item(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
     }
 
     /* collect all required modules */
-    if ((err_info = sr_modinfo_collect_xpath(session->conn->ly_ctx, path, session->ds, session,
+    if ((err_info = sr_modinfo_collect_xpath(sr_yang_ctx.ly_ctx, path, session->ds, session,
             MOD_INFO_XPATH_STORE_SESSION_CHANGES, &mod_info))) {
         goto cleanup;
     }
@@ -2909,7 +2912,7 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, 
     }
 
     /* collect all required modules */
-    if ((err_info = sr_modinfo_collect_xpath(session->conn->ly_ctx, xpath, session->ds, session,
+    if ((err_info = sr_modinfo_collect_xpath(sr_yang_ctx.ly_ctx, xpath, session->ds, session,
             MOD_INFO_XPATH_STORE_SESSION_CHANGES, &mod_info))) {
         goto cleanup;
     }
@@ -3074,7 +3077,7 @@ sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms,
     }
 
     /* collect all the required modules, do not store xpaths if some changes will be applied (we need all the base data then) */
-    if ((err_info = sr_modinfo_collect_xpath(session->conn->ly_ctx, path, session->ds, session,
+    if ((err_info = sr_modinfo_collect_xpath(sr_yang_ctx.ly_ctx, path, session->ds, session,
             MOD_INFO_XPATH_STORE_SESSION_CHANGES, &mod_info))) {
         goto cleanup;
     }
@@ -3494,7 +3497,7 @@ sr_get_node(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
     }
 
     /* collect all required modules */
-    if ((err_info = sr_modinfo_collect_xpath(session->conn->ly_ctx, path, session->ds, session,
+    if ((err_info = sr_modinfo_collect_xpath(sr_yang_ctx.ly_ctx, path, session->ds, session,
             MOD_INFO_XPATH_STORE_SESSION_CHANGES, &mod_info))) {
         goto cleanup;
     }
@@ -3649,7 +3652,7 @@ sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, 
         return sr_api_ret(session, err_info);
     }
 
-    str_val = sr_val_sr2ly_str(session->conn->ly_ctx, value, path, str, 0);
+    str_val = sr_val_sr2ly_str(sr_yang_ctx.ly_ctx, value, path, str, 0);
 
     /* CONTEXT UNLOCK */
     sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
@@ -3775,7 +3778,7 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
 
     if (session->ds == SR_DS_OPERATIONAL) {
         /* check that the xpath is valid */
-        if ((err_info = sr_lys_find_xpath(session->conn->ly_ctx, path, LYS_FIND_NO_MATCH_ERROR, NULL, &set))) {
+        if ((err_info = sr_lys_find_xpath(sr_yang_ctx.ly_ctx, path, LYS_FIND_NO_MATCH_ERROR, NULL, &set))) {
             goto cleanup;
         }
 
@@ -3799,7 +3802,7 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
 
     /* turn off logging */
     ly_temp_log_options(&temp_lo);
-    if ((path[strlen(path) - 1] != ']') && (snode = lys_find_path(session->conn->ly_ctx, NULL, path, 0)) &&
+    if ((path[strlen(path) - 1] != ']') && (snode = lys_find_path(sr_yang_ctx.ly_ctx, NULL, path, 0)) &&
             (snode->nodetype & (LYS_LEAFLIST | LYS_LIST)) &&
             !strcmp((path + strlen(path)) - strlen(snode->name), snode->name)) {
         op = "purge";
@@ -3872,7 +3875,7 @@ sr_discard_items(sr_session_ctx_t *session, const char *xpath)
     }
 
     /* add the operation into edit */
-    if ((err_info = sr_lyd_new_opaq(session->conn->ly_ctx, "discard-items", xpath, "sysrepo", "sysrepo", &node))) {
+    if ((err_info = sr_lyd_new_opaq(sr_yang_ctx.ly_ctx, "discard-items", xpath, "sysrepo", "sysrepo", &node))) {
         goto cleanup;
     }
     if ((err_info = sr_edit_set_oper(node, "replace"))) {
@@ -4036,7 +4039,7 @@ sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char
         goto cleanup;
     }
 
-    if (session->conn->ly_ctx != LYD_CTX(edit)) {
+    if (sr_yang_ctx.ly_ctx != LYD_CTX(edit)) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Data trees must be created using the session connection libyang context.");
         goto cleanup_unlock;
     }
@@ -4057,13 +4060,13 @@ sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char
             if (opaq->format != LY_VALUE_JSON) {
                 /* always have the xpath in JSON format, avoids hassle with later conversions */
                 opaq = (struct lyd_node_opaq *)root;
-                if ((err_info = sr_ly_canonize_xpath10_value(session->conn->ly_ctx, lyd_get_value(root),
+                if ((err_info = sr_ly_canonize_xpath10_value(sr_yang_ctx.ly_ctx, lyd_get_value(root),
                         opaq->format, opaq->val_prefix_data, &val_json))) {
                     goto cleanup_unlock;
                 }
 
                 /* insert the opaq node in JSON format and free the previous one */
-                err_info = sr_lyd_new_opaq(session->conn->ly_ctx, LYD_NAME(root), val_json, NULL, "sysrepo", &dup);
+                err_info = sr_lyd_new_opaq(sr_yang_ctx.ly_ctx, LYD_NAME(root), val_json, NULL, "sysrepo", &dup);
                 free(val_json);
                 if (err_info) {
                     goto cleanup_unlock;
@@ -4153,7 +4156,7 @@ sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t timeout
 
     if (module_name) {
         /* try to find this module */
-        ly_mod = ly_ctx_get_module_implemented(session->conn->ly_ctx, module_name);
+        ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, module_name);
         if (!ly_mod) {
             sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
             goto cleanup;
@@ -4198,7 +4201,7 @@ sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t timeout
                 goto cleanup;
             }
         } else {
-            if ((err_info = sr_modinfo_add_all_modules_with_data(session->conn->ly_ctx, 0, &mod_info))) {
+            if ((err_info = sr_modinfo_add_all_modules_with_data(sr_yang_ctx.ly_ctx, 0, &mod_info))) {
                 goto cleanup;
             }
         }
@@ -4759,7 +4762,7 @@ _sr_replace_config(sr_session_ctx_t *session, const struct lys_module *ly_mod, u
             goto cleanup;
         }
     } else {
-        if ((err_info = sr_modinfo_add_all_modules_with_data(session->conn->ly_ctx, 0, &mod_info))) {
+        if ((err_info = sr_modinfo_add_all_modules_with_data(sr_yang_ctx.ly_ctx, 0, &mod_info))) {
             goto cleanup;
         }
     }
@@ -4808,7 +4811,7 @@ sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd
         goto cleanup;
     }
 
-    if (src_config && (session->conn->ly_ctx != LYD_CTX(src_config))) {
+    if (src_config && (sr_yang_ctx.ly_ctx != LYD_CTX(src_config))) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Data trees must be created using the session connection libyang context.");
         goto cleanup_unlock;
     }
@@ -4822,7 +4825,7 @@ sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd
 
     if (module_name) {
         /* try to find this module */
-        ly_mod = ly_ctx_get_module_implemented(session->conn->ly_ctx, module_name);
+        ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, module_name);
         if (!ly_mod) {
             sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
             goto cleanup_unlock;
@@ -4878,7 +4881,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
 
     if (module_name) {
         /* try to find this module */
-        ly_mod = ly_ctx_get_module_implemented(session->conn->ly_ctx, module_name);
+        ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, module_name);
         if (!ly_mod) {
             sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
             goto cleanup;
@@ -4894,7 +4897,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
             goto cleanup;
         }
     } else {
-        if ((err_info = sr_modinfo_add_all_modules_with_data(session->conn->ly_ctx, 0, &mod_info))) {
+        if ((err_info = sr_modinfo_add_all_modules_with_data(sr_yang_ctx.ly_ctx, 0, &mod_info))) {
             goto cleanup;
         }
     }
@@ -4983,7 +4986,7 @@ _sr_discard_oper_changes(sr_session_ctx_t *session, const char *module_name, int
 
     if (module_name) {
         /* try to find this module */
-        ly_mod = ly_ctx_get_module_implemented(session->conn->ly_ctx, module_name);
+        ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, module_name);
         if (!ly_mod) {
             sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
             goto cleanup;
@@ -5058,7 +5061,7 @@ sr_get_oper_changes(sr_session_ctx_t *session, const char *module_name, sr_data_
 
     if (module_name) {
         /* try to find this module */
-        ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, module_name);
+        ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, module_name);
         if (!ly_mod) {
             sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
             goto cleanup;
@@ -5120,7 +5123,7 @@ sr_set_oper_changes_order(sr_session_ctx_t *session, const char *module_name, ui
     }
 
     /* try to find this module */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(session->conn), module_name);
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), module_name);
     if (!shm_mod) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
         goto cleanup;
@@ -5154,7 +5157,7 @@ sr_get_oper_changes_order(sr_session_ctx_t *session, const char *module_name, ui
     }
 
     /* try to find this module */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(session->conn), module_name);
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), module_name);
     if (!shm_mod) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
         goto cleanup;
@@ -5302,7 +5305,7 @@ _sr_un_lock(sr_session_ctx_t *session, const char *module_name, int lock, uint32
 
     if (module_name) {
         /* try to find this module */
-        ly_mod = ly_ctx_get_module_implemented(session->conn->ly_ctx, module_name);
+        ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, module_name);
         if (!ly_mod) {
             sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
             goto cleanup;
@@ -5315,7 +5318,7 @@ _sr_un_lock(sr_session_ctx_t *session, const char *module_name, int lock, uint32
             goto cleanup;
         }
     } else {
-        if ((err_info = sr_modinfo_add_all_modules_with_data(session->conn->ly_ctx, 0, &mod_info))) {
+        if ((err_info = sr_modinfo_add_all_modules_with_data(sr_yang_ctx.ly_ctx, 0, &mod_info))) {
             goto cleanup;
         }
     }
@@ -5391,7 +5394,7 @@ sr_get_lock(sr_conn_ctx_t *conn, sr_datastore_t datastore, const char *module_na
 
     if (module_name) {
         /* try to find this module */
-        ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, module_name);
+        ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, module_name);
         if (!ly_mod) {
             sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
             goto cleanup;
@@ -5404,7 +5407,7 @@ sr_get_lock(sr_conn_ctx_t *conn, sr_datastore_t datastore, const char *module_na
             goto cleanup;
         }
     } else {
-        if ((err_info = sr_modinfo_add_all_modules_with_data(conn->ly_ctx, 0, &mod_info))) {
+        if ((err_info = sr_modinfo_add_all_modules_with_data(sr_yang_ctx.ly_ctx, 0, &mod_info))) {
             goto cleanup;
         }
     }
@@ -5996,7 +5999,7 @@ sr_module_change_set_order(sr_conn_ctx_t *conn, const char *module_name, sr_data
     SR_CHECK_ARG_APIRET(!conn || !module_name, NULL, err_info);
 
     /* check module existence */
-    if (!(ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, module_name))) {
+    if (!(ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, module_name))) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
         goto cleanup;
     }
@@ -6022,7 +6025,7 @@ sr_module_change_get_order(sr_conn_ctx_t *conn, const char *module_name, sr_data
     SR_CHECK_ARG_APIRET(!conn || !module_name || !priority, NULL, err_info);
 
     /* check module existence */
-    if (!(ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, module_name))) {
+    if (!(ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, module_name))) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
         goto cleanup;
     }
@@ -6245,7 +6248,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     }
 
     /* check module name and xpath */
-    ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, module_name);
+    ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, module_name);
     if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
         goto cleanup;
@@ -6258,7 +6261,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     } else {
         config_flag = LYS_CONFIG_W;
     }
-    if (xpath && (err_info = sr_subscr_change_xpath_check(conn->ly_ctx, xpath, config_flag, NULL))) {
+    if (xpath && (err_info = sr_subscr_change_xpath_check(sr_yang_ctx.ly_ctx, xpath, config_flag, NULL))) {
         goto cleanup;
     }
 
@@ -6271,7 +6274,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     sub_id = ATOMIC_INC_RELAXED(SR_CONN_MAIN_SHM(conn)->new_sub_id);
 
     /* find the module in SHM */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), module_name);
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), module_name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     if (!*subscription) {
@@ -6431,7 +6434,7 @@ sr_module_change_sub_modify_xpath(sr_subscription_ctx_t *subscription, uint32_t 
     } else {
         config_flag = LYS_CONFIG_W;
     }
-    if (xpath && (err_info = sr_subscr_change_xpath_check(subscription->conn->ly_ctx, xpath, config_flag, NULL))) {
+    if (xpath && (err_info = sr_subscr_change_xpath_check(sr_yang_ctx.ly_ctx, xpath, config_flag, NULL))) {
         goto cleanup_unlock;
     }
 
@@ -6444,7 +6447,7 @@ sr_module_change_sub_modify_xpath(sr_subscription_ctx_t *subscription, uint32_t 
     }
 
     /* find the module in SHM */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(subscription->conn), module_name);
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), module_name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup_unlock);
 
     /* modify the subscription in ext SHM */
@@ -6863,7 +6866,7 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     }
 
     /* is the module name valid? */
-    ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, module_name);
+    ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, module_name);
     if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
         goto cleanup;
@@ -6875,7 +6878,7 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     }
 
     /* is the xpath valid? */
-    if ((err_info = sr_subscr_rpc_xpath_check(conn->ly_ctx, xpath, &path, &is_ext, NULL))) {
+    if ((err_info = sr_subscr_rpc_xpath_check(sr_yang_ctx.ly_ctx, xpath, &path, &is_ext, NULL))) {
         goto cleanup;
     }
 
@@ -6884,11 +6887,11 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
 
     if (is_ext) {
         /* find module */
-        shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), ly_mod->name);
+        shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), ly_mod->name);
         SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
     } else {
         /* find the RPC */
-        shm_rpc = sr_shmmod_find_rpc(SR_CONN_MOD_SHM(conn), path);
+        shm_rpc = sr_shmmod_find_rpc(SR_CTX_MOD_SHM(sr_yang_ctx), path);
         SR_CHECK_INT_GOTO(!shm_rpc, err_info, cleanup);
     }
 
@@ -7021,14 +7024,14 @@ sr_rpc_send(sr_session_ctx_t *session, const char *path, const sr_val_t *input, 
     }
 
     /* create the container */
-    if ((err_info = sr_val_sr2ly(session->conn->ly_ctx, path, NULL, 0, 0, &input_tree))) {
+    if ((err_info = sr_val_sr2ly(sr_yang_ctx.ly_ctx, path, NULL, 0, 0, &input_tree))) {
         goto cleanup;
     }
 
     /* transform input into a data tree */
     for (i = 0; i < input_cnt; ++i) {
-        val_str = sr_val_sr2ly_str(session->conn->ly_ctx, &input[i], input[i].xpath, buf, 0);
-        if ((err_info = sr_val_sr2ly(session->conn->ly_ctx, input[i].xpath, val_str, input[i].dflt, 0, &input_tree))) {
+        val_str = sr_val_sr2ly_str(sr_yang_ctx.ly_ctx, &input[i], input[i].xpath, buf, 0);
+        if ((err_info = sr_val_sr2ly(sr_yang_ctx.ly_ctx, input[i].xpath, val_str, input[i].dflt, 0, &input_tree))) {
             goto cleanup;
         }
     }
@@ -7076,12 +7079,11 @@ cleanup:
 /**
  * @brief Update the input of an internal RPC factory-reset.
  *
- * @param[in] conn Connection to use.
  * @param[in] input_op Input operation of the RPC.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_rpc_internal_input_update(sr_conn_ctx_t *conn, struct lyd_node *input_op)
+sr_rpc_internal_input_update(struct lyd_node *input_op)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod, *ly_srfd_mod;
@@ -7091,7 +7093,7 @@ sr_rpc_internal_input_update(sr_conn_ctx_t *conn, struct lyd_node *input_op)
     assert(!strcmp(LYD_NAME(input_op), "factory-reset"));
 
     /* find sysrepo-factory-default module */
-    ly_srfd_mod = ly_ctx_get_module_implemented(conn->ly_ctx, "sysrepo-factory-default");
+    ly_srfd_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, "sysrepo-factory-default");
     assert(ly_srfd_mod);
 
     /* check for explicitly defined modules */
@@ -7101,7 +7103,7 @@ sr_rpc_internal_input_update(sr_conn_ctx_t *conn, struct lyd_node *input_op)
 
     if (!lyd_child(node)) {
         /* no explicit modules, all should be reset */
-        while ((ly_mod = ly_ctx_get_module_iter(conn->ly_ctx, &i))) {
+        while ((ly_mod = ly_ctx_get_module_iter(sr_yang_ctx.ly_ctx, &i))) {
             if (!ly_mod->implemented) {
                 continue;
             } else if (!strcmp(ly_mod->name, "sysrepo")) {
@@ -7160,10 +7162,10 @@ _sr_rpc_send_tree(sr_session_ctx_t *session, struct sr_mod_info_s *mod_info, con
     }
 
     /* collect all required modules for input validation */
-    if ((err_info = sr_shmmod_get_rpc_deps(SR_CONN_MOD_SHM(session->conn), path, 0, &shm_deps, &shm_dep_count))) {
+    if ((err_info = sr_shmmod_get_rpc_deps(SR_CTX_MOD_SHM(sr_yang_ctx), path, 0, &shm_deps, &shm_dep_count))) {
         goto cleanup;
     }
-    if ((err_info = sr_shmmod_collect_deps(SR_CONN_MOD_SHM(session->conn), shm_deps, shm_dep_count, input, mod_info))) {
+    if ((err_info = sr_shmmod_collect_deps(SR_CTX_MOD_SHM(sr_yang_ctx), shm_deps, shm_dep_count, input, mod_info))) {
         goto cleanup;
     }
     if ((err_info = sr_modinfo_consolidate(mod_info, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_DATA_RO | SR_MI_PERM_NO,
@@ -7184,13 +7186,13 @@ _sr_rpc_send_tree(sr_session_ctx_t *session, struct sr_mod_info_s *mod_info, con
 
     if (!strcmp(path, SR_RPC_FACTORY_RESET_PATH)) {
         /* update the input as needed */
-        if ((err_info = sr_rpc_internal_input_update(session->conn, input_op))) {
+        if ((err_info = sr_rpc_internal_input_update(input_op))) {
             goto cleanup;
         }
     }
 
     /* find the RPC */
-    shm_rpc = sr_shmmod_find_rpc(SR_CONN_MOD_SHM(session->conn), path);
+    shm_rpc = sr_shmmod_find_rpc(SR_CTX_MOD_SHM(sr_yang_ctx), path);
     SR_CHECK_INT_GOTO(!shm_rpc, err_info, cleanup);
 
     /* RPC SUB READ LOCK */
@@ -7222,10 +7224,10 @@ _sr_rpc_send_tree(sr_session_ctx_t *session, struct sr_mod_info_s *mod_info, con
     }
 
     /* collect all required modules for output validation */
-    if ((err_info = sr_shmmod_get_rpc_deps(SR_CONN_MOD_SHM(session->conn), path, 1, &shm_deps, &shm_dep_count))) {
+    if ((err_info = sr_shmmod_get_rpc_deps(SR_CTX_MOD_SHM(sr_yang_ctx), path, 1, &shm_deps, &shm_dep_count))) {
         goto cleanup;
     }
-    if ((err_info = sr_shmmod_collect_deps(SR_CONN_MOD_SHM(session->conn), shm_deps, shm_dep_count, input, mod_info))) {
+    if ((err_info = sr_shmmod_collect_deps(SR_CTX_MOD_SHM(sr_yang_ctx), shm_deps, shm_dep_count, input, mod_info))) {
         goto cleanup;
     }
     if ((err_info = sr_modinfo_consolidate(mod_info, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_DATA_RO | SR_MI_PERM_NO,
@@ -7309,7 +7311,7 @@ _sr_rpc_ext_send_tree(sr_session_ctx_t *session, const struct lyd_node *ext_pare
     sr_shmmod_modinfo_unlock(mod_info);
 
     /* find the module */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(session->conn), lyd_owner_module(input)->name);
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), lyd_owner_module(input)->name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     /* RPC SUB READ LOCK */
@@ -7383,7 +7385,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
     SR_CHECK_ARG_APIRET(!session || !input || !output, session, err_info);
 
     for (input_top = input; input_top->parent; input_top = lyd_parent(input_top)) {}
-    if (session->conn->ly_ctx != LYD_CTX(input_top)) {
+    if (sr_yang_ctx.ly_ctx != LYD_CTX(input_top)) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Data trees must be created using the session connection libyang context.");
         return sr_api_ret(session, err_info);
     }
@@ -7543,7 +7545,7 @@ _sr_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const char 
     }
 
     /* is the module name valid? */
-    ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, mod_name);
+    ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, mod_name);
     if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", mod_name);
         goto cleanup;
@@ -7576,7 +7578,7 @@ _sr_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const char 
     sub_id = ATOMIC_INC_RELAXED(SR_CONN_MAIN_SHM(conn)->new_sub_id);
 
     /* find module */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), ly_mod->name);
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), ly_mod->name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     /* NOTIF SUB WRITE LOCK */
@@ -7679,14 +7681,14 @@ sr_notif_send(sr_session_ctx_t *session, const char *path, const sr_val_t *value
     }
 
     /* create the container */
-    if ((err_info = sr_val_sr2ly(session->conn->ly_ctx, path, NULL, 0, 0, &notif_tree))) {
+    if ((err_info = sr_val_sr2ly(sr_yang_ctx.ly_ctx, path, NULL, 0, 0, &notif_tree))) {
         goto cleanup;
     }
 
     /* transform values into a data tree */
     for (i = 0; i < values_cnt; ++i) {
-        val_str = sr_val_sr2ly_str(session->conn->ly_ctx, &values[i], values[i].xpath, buf, 0);
-        if ((err_info = sr_val_sr2ly(session->conn->ly_ctx, values[i].xpath, val_str, values[i].dflt, 0, &notif_tree))) {
+        val_str = sr_val_sr2ly_str(sr_yang_ctx.ly_ctx, &values[i], values[i].xpath, buf, 0);
+        if ((err_info = sr_val_sr2ly(sr_yang_ctx.ly_ctx, values[i].xpath, val_str, values[i].dflt, 0, &notif_tree))) {
             goto cleanup;
         }
     }
@@ -7719,7 +7721,7 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
     SR_CHECK_ARG_APIRET(!session || !notif, session, err_info);
 
     for (notif_top = notif; notif_top->parent; notif_top = lyd_parent(notif_top)) {}
-    if (session->conn->ly_ctx != LYD_CTX(notif_top)) {
+    if (sr_yang_ctx.ly_ctx != LYD_CTX(notif_top)) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Data trees must be created using the session connection libyang context.");
         return sr_api_ret(session, err_info);
     }
@@ -7757,7 +7759,7 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
     }
 
     /* check write/read perm */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(session->conn), lyd_owner_module(notif_top)->name);
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), lyd_owner_module(notif_top)->name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
     if ((err_info = sr_perm_check(session->conn, lyd_owner_module(notif_top), SR_DS_STARTUP, shm_mod->replay_supp, NULL))) {
         goto cleanup;
@@ -7787,11 +7789,11 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
             goto cleanup;
         }
     } else {
-        if ((err_info = sr_shmmod_get_notif_deps(SR_CONN_MOD_SHM(session->conn), lyd_owner_module(notif_top), notif_op,
+        if ((err_info = sr_shmmod_get_notif_deps(SR_CTX_MOD_SHM(sr_yang_ctx), lyd_owner_module(notif_top), notif_op,
                 &shm_deps, &shm_dep_count))) {
             goto cleanup;
         }
-        if ((err_info = sr_shmmod_collect_deps(SR_CONN_MOD_SHM(session->conn), shm_deps, shm_dep_count, notif_top, &mod_info))) {
+        if ((err_info = sr_shmmod_collect_deps(SR_CTX_MOD_SHM(sr_yang_ctx), shm_deps, shm_dep_count, notif_top, &mod_info))) {
             goto cleanup;
         }
     }
@@ -7919,7 +7921,7 @@ sr_notif_sub_modify_xpath(sr_subscription_ctx_t *subscription, uint32_t sub_id, 
     }
 
     /* find the module */
-    ly_mod = ly_ctx_get_module_implemented(subscription->conn->ly_ctx, mod_name);
+    ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, mod_name);
     assert(ly_mod);
 
     /* check xpath */
@@ -8046,7 +8048,7 @@ sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const 
         return sr_api_ret(session, err_info);
     }
 
-    ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, module_name);
+    ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, module_name);
     if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Module \"%s\" was not found in sysrepo.", module_name);
         goto cleanup;
@@ -8058,7 +8060,7 @@ sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const 
     }
 
     /* check path, find out what kinds of nodes are provided */
-    if ((err_info = sr_subscr_oper_path_check(conn->ly_ctx, path, &sub_type, NULL))) {
+    if ((err_info = sr_subscr_oper_path_check(sr_yang_ctx.ly_ctx, path, &sub_type, NULL))) {
         goto cleanup;
     }
 
@@ -8076,7 +8078,7 @@ sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const 
     sub_id = ATOMIC_INC_RELAXED(SR_CONN_MAIN_SHM(conn)->new_sub_id);
 
     /* find module */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), module_name);
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), module_name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     /* OPER GET SUB WRITE LOCK */
@@ -8166,7 +8168,7 @@ sr_oper_poll_subscribe(sr_session_ctx_t *session, const char *module_name, const
         return sr_api_ret(session, err_info);
     }
 
-    ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, module_name);
+    ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, module_name);
     if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Module \"%s\" was not found in sysrepo.", module_name);
         goto cleanup;
@@ -8178,7 +8180,7 @@ sr_oper_poll_subscribe(sr_session_ctx_t *session, const char *module_name, const
     }
 
     /* check the path */
-    if ((err_info = sr_subscr_oper_path_check(conn->ly_ctx, path, NULL, NULL))) {
+    if ((err_info = sr_subscr_oper_path_check(sr_yang_ctx.ly_ctx, path, NULL, NULL))) {
         goto cleanup;
     }
 
@@ -8196,7 +8198,7 @@ sr_oper_poll_subscribe(sr_session_ctx_t *session, const char *module_name, const
     sub_id = ATOMIC_INC_RELAXED(SR_CONN_MAIN_SHM(conn)->new_sub_id);
 
     /* find module */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), module_name);
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), module_name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     /* OPER POLL SUB WRITE LOCK */

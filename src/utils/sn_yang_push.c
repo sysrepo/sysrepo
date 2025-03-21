@@ -74,7 +74,7 @@ srsn_yp_ntf_update_send(struct srsn_sub *sub)
 
     /* create the notification */
     sprintf(buf, "%" PRIu32, sub->id);
-    if ((err_info = sr_lyd_new_path(NULL, sub->conn->ly_ctx, "/ietf-yang-push:push-update/id", buf, 0, &ly_ntf, NULL))) {
+    if ((err_info = sr_lyd_new_path(NULL, sr_yang_ctx.ly_ctx, "/ietf-yang-push:push-update/id", buf, 0, &ly_ntf, NULL))) {
         goto cleanup;
     }
 
