@@ -79,67 +79,42 @@ sr_conn_new(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     SR_CHECK_MEM_RET(!conn, err_info);
 
     conn->opts = opts;
-    if ((err_info = sr_ly_ctx_init(conn, &conn->ly_ctx))) {
+
+    if ((err_info = sr_mutex_init(&conn->ptr_lock, 0))) {
         goto error1;
     }
 
-    if ((err_info = sr_mutex_init(&conn->ptr_lock, 0))) {
-        goto error2;
-    }
-
-    if ((err_info = sr_rwlock_init(&conn->ly_ext_data_lock, 0))) {
-        goto error3;
-    }
-
     if ((err_info = sr_shmmain_createlock_open(&conn->create_lock))) {
-        goto error4;
+        goto error2;
     }
     conn->main_shm.fd = -1;
 
-    if ((err_info = sr_rwlock_init(&conn->mod_remap_lock, 0))) {
-        goto error5;
-    }
-    conn->mod_shm.fd = -1;
-
     if ((err_info = sr_rwlock_init(&conn->ext_remap_lock, 0))) {
-        goto error6;
+        goto error3;
     }
     conn->ext_shm.fd = -1;
 
     if ((err_info = sr_ds_handle_init(&conn->ds_handles, &conn->ds_handle_count))) {
-        goto error7;
-    }
-    if ((err_info = sr_rwlock_init(&conn->run_cache_lock, 0))) {
-        goto error8;
+        goto error4;
     }
     if ((err_info = sr_ntf_handle_init(&conn->ntf_handles, &conn->ntf_handle_count))) {
-        goto error9;
+        goto error5;
     }
-    if ((err_info = sr_rwlock_init(&conn->oper_cache_lock, 0))) {
-        goto error10;
-    }
+
+    /* increase connection count */
+    ATOMIC_INC_RELAXED(sr_conn_count);
 
     *conn_p = conn;
     return NULL;
 
-error10:
-    sr_ntf_handle_free(conn->ntf_handles, conn->ntf_handle_count);
-error9:
-    sr_rwlock_destroy(&conn->run_cache_lock);
-error8:
-    sr_ds_handle_free(conn->ds_handles, conn->ds_handle_count);
-error7:
-    sr_rwlock_destroy(&conn->ext_remap_lock);
-error6:
-    sr_rwlock_destroy(&conn->mod_remap_lock);
 error5:
-    close(conn->create_lock);
+    sr_ds_handle_free(conn->ds_handles, conn->ds_handle_count);
 error4:
-    sr_rwlock_destroy(&conn->ly_ext_data_lock);
+    sr_rwlock_destroy(&conn->ext_remap_lock);
 error3:
-    pthread_mutex_destroy(&conn->ptr_lock);
+    close(conn->create_lock);
 error2:
-    ly_ctx_destroy(conn->ly_ctx);
+    pthread_mutex_destroy(&conn->ptr_lock);
 error1:
     free(conn);
     return err_info;
@@ -162,37 +137,40 @@ sr_conn_free(sr_conn_ctx_t *conn)
     /* destroy DS plugin data */
     sr_conn_ds_destroy(conn);
 
-    assert(!conn->oper_caches);
+    assert(!sr_oper_cache.subs);
 
-    /* unlocked data destroy */
-    lyd_free_siblings(conn->ly_ext_data);
-
-    /* free run cache only if connection was fully setup */
-    if (conn->cid) {
-        sr_conn_run_cache_flush(conn);
-    }
-
-    for (i = 0; i < conn->oper_cache_count; ++i) {
-        lyd_free_siblings(conn->oper_caches[i].data);
-    }
-
-    /* context destroy */
-    ly_ctx_destroy(conn->ly_ctx);
-
-    pthread_mutex_destroy(&conn->ptr_lock);
-    sr_rwlock_destroy(&conn->ly_ext_data_lock);
+    pthread_mutex_destroy(&conn->ptr_lock);;
     if (conn->create_lock > -1) {
         close(conn->create_lock);
     }
     sr_shm_clear(&conn->main_shm);
-    sr_rwlock_destroy(&conn->mod_remap_lock);
-    sr_shm_clear(&conn->mod_shm);
     sr_rwlock_destroy(&conn->ext_remap_lock);
     sr_shm_clear(&conn->ext_shm);
     sr_ds_handle_free(conn->ds_handles, conn->ds_handle_count);
-    sr_rwlock_destroy(&conn->run_cache_lock);
     sr_ntf_handle_free(conn->ntf_handles, conn->ntf_handle_count);
-    sr_rwlock_destroy(&conn->oper_cache_lock);
+
+    /* decrease connection count */
+    ATOMIC_DEC_RELAXED(sr_conn_count);
+    if (!ATOMIC_LOAD_RELAXED(sr_conn_count)) {
+        /* last connection, destroy global contexts */
+        lyd_free_siblings(sr_schema_mount_ctx.data);
+        sr_schema_mount_ctx.data = NULL;
+
+        /* free run cache only if connection was fully setup */
+        if (conn->cid) {
+            sr_conn_run_cache_flush(conn);
+        }
+
+        for (i = 0; i < sr_oper_cache.sub_count; ++i) {
+            lyd_free_siblings(sr_oper_cache.subs[i].data);
+        }
+
+        ly_ctx_destroy(sr_yang_ctx.ly_ctx);
+        sr_yang_ctx.ly_ctx = NULL;
+
+        sr_shm_clear(&sr_yang_ctx.mod_shm);
+        sr_shm_clear(&sr_yang_ctx.ly_ctx_shm);
+    }
 
     free(conn);
 }
@@ -230,14 +208,20 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
         goto cleanup_unlock;
     }
 
-    /* open the mod SHM */
-    if ((err_info = sr_shmmod_open(&conn->mod_shm, created))) {
-        goto cleanup_unlock;
-    }
-
     /* open the ext SHM */
     if ((err_info = sr_shmext_open(&conn->ext_shm, created))) {
         goto cleanup_unlock;
+    }
+
+    if (ATOMIC_LOAD_RELAXED(sr_conn_count) == 1) {
+        /* first connection in this process, open mod_shm and create ly_ctx */
+        if ((err_info = sr_shmmod_open(&sr_yang_ctx.mod_shm, created))) {
+            goto cleanup_unlock;
+        }
+
+        if ((err_info = sr_ly_ctx_init(conn, &sr_yang_ctx.ly_ctx))) {
+            goto cleanup_unlock;
+        }
     }
 
     main_shm = SR_CONN_MAIN_SHM(conn);
@@ -297,6 +281,12 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     }
 
     /* context was updated */
+    if (created) {
+        /* this is the first connection on the system, print the context */
+        if ((err_info = sr_shmctx_print_context(&sr_yang_ctx.ly_ctx_shm, sr_yang_ctx.ly_ctx))) {
+            goto cleanup_unlock;
+        }
+    }
 
     /* CONTEXT UNLOCK */
     sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
@@ -1422,7 +1412,7 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
         LYD_FORMAT format, sr_int_install_mod_t **new_mods, uint32_t *new_mod_count)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
-    struct ly_ctx *new_ctx = NULL, *old_ctx = NULL;
+    struct ly_ctx *new_ctx = NULL;
     ly_module_imp_clb imp_clb;
     void *imp_clb_data;
     struct lyd_node *mod_data = NULL, *sr_mods = NULL, *sr_del_mods = NULL;
@@ -1551,9 +1541,21 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
         goto error;
     }
 
-    /* update content ID and safely switch the context */
+    /* clean this up now, because printing the context will make the pointers inside invalid */
+    sr_lycc_update_cleanup(&data_info, sr_mods, sr_del_mods);
+    memset(&data_info, 0, sizeof data_info);
+    sr_mods = sr_del_mods = NULL;
+
+    /* flush the running cache, since it contains pointers to the old context and needs to be updated */
+    sr_conn_run_cache_flush(conn);
+
+    /* update content ID */
     SR_CONN_MAIN_SHM(conn)->content_id = ly_ctx_get_modules_hash(new_ctx);
-    sr_conn_ctx_switch(conn, &new_ctx, &old_ctx);
+
+    /* print the new context, it will be obtained next time context is locked */
+    if ((err_info = sr_shmctx_print_context(&sr_yang_ctx.ly_ctx_shm, new_ctx))) {
+        goto error;
+    }
 
     /* send the notification */
     sr_generate_notif_module_change_installed(conn, *new_mods, *new_mod_count);
@@ -1595,10 +1597,7 @@ cleanup:
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
-    sr_lycc_update_data_clear(&data_info);
-    lyd_free_siblings(mod_data);
-    lyd_free_siblings(sr_mods);
-    ly_ctx_destroy(old_ctx);
+    sr_lycc_update_cleanup(&data_info, sr_mods, sr_del_mods);
     ly_ctx_destroy(new_ctx);
     free(mod_name);
 
@@ -1774,7 +1773,7 @@ API int
 sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
 {
     sr_error_info_t *err_info = NULL;
-    struct ly_ctx *new_ctx = NULL, *old_ctx = NULL;
+    struct ly_ctx *new_ctx = NULL;
     struct ly_set mod_set = {0};
     struct lyd_node *sr_mods = NULL, *sr_del_mods = NULL;
     struct sr_data_update_s data_info = {0};
@@ -1874,18 +1873,27 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
         goto cleanup;
     }
 
-    /* update content ID and safely switch the context */
+    /* clean this up now, because printing the context will make the pointers inside invalid */
+    sr_lycc_update_cleanup(&data_info, sr_mods, sr_del_mods);
+    memset(&data_info, 0, sizeof data_info);
+    sr_mods = sr_del_mods = NULL;
+
+    /* flush the running cache, since it contains pointers to the old context and needs to be updated */
+    sr_conn_run_cache_flush(conn);
+
+    /* update content ID */
     SR_CONN_MAIN_SHM(conn)->content_id = ly_ctx_get_modules_hash(new_ctx);
-    sr_conn_ctx_switch(conn, &new_ctx, &old_ctx);
+
+    /* print the new context, it will be obtained next time context is locked */
+    if ((err_info = sr_shmctx_print_context(&sr_yang_ctx.ly_ctx_shm, new_ctx))) {
+        goto cleanup;
+    }
 
     /* send the notification */
     sr_generate_notif_module_change_uninstalled(conn, &mod_set);
 
 cleanup:
-    sr_lycc_update_data_clear(&data_info);
-    lyd_free_siblings(sr_mods);
-    lyd_free_siblings(sr_del_mods);
-    ly_ctx_destroy(old_ctx);
+    sr_lycc_update_cleanup(&data_info, sr_mods, sr_del_mods);
     ly_ctx_destroy(new_ctx);
 
     /* CONTEXT UNLOCK */
@@ -2048,7 +2056,7 @@ API int
 sr_update_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *search_dirs)
 {
     sr_error_info_t *err_info = NULL;
-    struct ly_ctx *new_ctx = NULL, *old_ctx = NULL;
+    struct ly_ctx *new_ctx = NULL;
     struct ly_set old_mod_set = {0}, upd_mod_set = {0};
     struct lyd_node *sr_mods = NULL;
     struct sr_data_update_s data_info = {0};
@@ -2122,17 +2130,27 @@ sr_update_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *se
         goto cleanup;
     }
 
-    /* update content ID and safely switch the context */
+    /* clean this up now, because printing the context will make the pointers inside invalid */
+    sr_lycc_update_cleanup(&data_info, sr_mods, NULL);
+    memset(&data_info, 0, sizeof data_info);
+    sr_mods = NULL;
+
+    /* flush the running cache, since it contains pointers to the old context and needs to be updated */
+    sr_conn_run_cache_flush(conn);
+
+    /* update content ID */
     SR_CONN_MAIN_SHM(conn)->content_id = ly_ctx_get_modules_hash(new_ctx);
-    sr_conn_ctx_switch(conn, &new_ctx, &old_ctx);
+
+    /* print the new context, it will be obtained next time context is locked */
+    if ((err_info = sr_shmctx_print_context(&sr_yang_ctx.ly_ctx_shm, new_ctx))) {
+        goto cleanup;
+    }
 
     /* send the notification */
     sr_generate_notif_module_change_updated(conn, &old_mod_set, &upd_mod_set);
 
 cleanup:
-    sr_lycc_update_data_clear(&data_info);
-    lyd_free_siblings(sr_mods);
-    ly_ctx_destroy(old_ctx);
+    sr_lycc_update_cleanup(&data_info, sr_mods, NULL);
     ly_ctx_destroy(new_ctx);
 
     /* CONTEXT UNLOCK */
@@ -2546,7 +2564,7 @@ static sr_error_info_t *
 sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name, int enable)
 {
     sr_error_info_t *err_info = NULL;
-    struct ly_ctx *new_ctx = NULL, *old_ctx = NULL;
+    struct ly_ctx *new_ctx = NULL;
     struct ly_set mod_set = {0}, feat_set = {0};
     struct lyd_node *sr_mods = NULL;
     struct sr_data_update_s data_info = {0};
@@ -2640,17 +2658,27 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
         goto cleanup;
     }
 
+    /* clean this up now, because printing the context will make the pointers inside invalid */
+    sr_lycc_update_cleanup(&data_info, sr_mods, NULL);
+    memset(&data_info, 0, sizeof data_info);
+    sr_mods = NULL;
+
     /* update content ID and safely switch the context */
     SR_CONN_MAIN_SHM(conn)->content_id = ly_ctx_get_modules_hash(new_ctx);
-    sr_conn_ctx_switch(conn, &new_ctx, &old_ctx);
+
+    /* flush the running cache */
+    sr_conn_run_cache_flush(conn);
+
+    /* print the new context */
+    if ((err_info = sr_shmctx_print_context(&sr_yang_ctx.ly_ctx_shm, new_ctx))) {
+        goto cleanup;
+    }
 
     /* send the notification */
     sr_generate_notif_module_change_feature(conn, ly_mod, &feat_set, enable);
 
 cleanup:
-    sr_lycc_update_data_clear(&data_info);
-    lyd_free_siblings(sr_mods);
-    ly_ctx_destroy(old_ctx);
+    sr_lycc_update_cleanup(&data_info, sr_mods, NULL);
     ly_ctx_destroy(new_ctx);
 
     /* CONTEXT UNLOCK */
