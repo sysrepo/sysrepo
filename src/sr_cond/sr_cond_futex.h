@@ -32,6 +32,11 @@ typedef struct {
 } sr_cond_t;
 
 /**
+ * @brief Static initializer for #sr_cond_t.
+ */
+#define SR_COND_INITIALIZER {0}
+
+/**
  * @brief Wrapper for pthread_cond_init().
  *
  * @param[out] cond Condition variable to initialize.
