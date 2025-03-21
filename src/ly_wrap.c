@@ -154,7 +154,8 @@ sr_ly_ctx_init(sr_conn_ctx_t *conn, struct ly_ctx **ly_ctx)
     LY_ERR lyrc;
 
     /* context options */
-    ctx_opts = LY_CTX_NO_YANGLIBRARY | LY_CTX_DISABLE_SEARCHDIR_CWD | LY_CTX_REF_IMPLEMENTED | LY_CTX_EXPLICIT_COMPILE;
+    ctx_opts = LY_CTX_NO_YANGLIBRARY | LY_CTX_DISABLE_SEARCHDIR_CWD | LY_CTX_REF_IMPLEMENTED
+            | LY_CTX_EXPLICIT_COMPILE | LY_CTX_STATIC_PLUGINS_ONLY | LY_CTX_LYB_HASHES;
     if (conn && (conn->opts & SR_CONN_CTX_SET_PRIV_PARSED)) {
         ctx_opts |= LY_CTX_SET_PRIV_PARSED;
     }
