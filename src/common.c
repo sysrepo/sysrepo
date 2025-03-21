@@ -580,25 +580,27 @@ sr_remove_module_yang_r(const struct lys_module *ly_mod, const struct ly_ctx *ne
 
     pmod = ly_mod->parsed;
 
-    /* remove all submodule files */
-    LY_ARRAY_FOR(pmod->includes, u) {
-        if ((err_info = sr_path_yang_file(pmod->includes[u].submodule->name,
-                pmod->includes[u].submodule->revs ? pmod->includes[u].submodule->revs[0].date : NULL, &path))) {
-            goto cleanup;
+    if (pmod) {
+        /* remove all submodule files */
+        LY_ARRAY_FOR(pmod->includes, u) {
+            if ((err_info = sr_path_yang_file(pmod->includes[u].submodule->name,
+                    pmod->includes[u].submodule->revs ? pmod->includes[u].submodule->revs[0].date : NULL, &path))) {
+                goto cleanup;
+            }
+
+            if (unlink(path) == -1) {
+                SR_LOG_WRN("Failed to remove \"%s\" (%s).", path, strerror(errno));
+            } else {
+                SR_LOG_INF("File \"%s\" was removed.", strrchr(path, '/') + 1);
+            }
+            free(path);
         }
 
-        if (unlink(path) == -1) {
-            SR_LOG_WRN("Failed to remove \"%s\" (%s).", path, strerror(errno));
-        } else {
-            SR_LOG_INF("File \"%s\" was removed.", strrchr(path, '/') + 1);
-        }
-        free(path);
-    }
-
-    /* remove all (unused) imports recursively */
-    LY_ARRAY_FOR(pmod->imports, u) {
-        if ((err_info = sr_remove_module_yang_r(pmod->imports[u].module, new_ctx, del_mod))) {
-            goto cleanup;
+        /* remove all (unused) imports recursively */
+        LY_ARRAY_FOR(pmod->imports, u) {
+            if ((err_info = sr_remove_module_yang_r(pmod->imports[u].module, new_ctx, del_mod))) {
+                goto cleanup;
+            }
         }
     }
 
