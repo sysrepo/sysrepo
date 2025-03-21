@@ -34,6 +34,7 @@
 #include "modinfo.h"
 #include "plugins_datastore.h"
 #include "plugins_notification.h"
+#include "shm_ctx.h"
 #include "shm_ext.h"
 #include "shm_mod.h"
 #include "sysrepo.h"
@@ -42,11 +43,10 @@
 sr_error_info_t *
 sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const char *func)
 {
-    sr_error_info_t *err_info = NULL, *tmp_err;
+    sr_error_info_t *err_info = NULL;
     sr_main_shm_t *main_shm = SR_CONN_MAIN_SHM(conn);
     sr_lock_mode_t remap_mode = SR_LOCK_NONE;
     struct ly_ctx *new_ctx = NULL;
-    char *path;
 
     /* CONTEXT LOCK */
     if ((err_info = sr_rwlock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, mode, conn->cid, func, NULL, NULL))) {
@@ -54,51 +54,41 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
     }
 
     /* MOD REMAP LOCK */
-    if ((err_info = sr_rwlock(&conn->mod_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, func,
+    if ((err_info = sr_rwlock(&sr_yang_ctx.remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, func,
             NULL, NULL))) {
         goto cleanup_unlock;
     }
     remap_mode = SR_LOCK_READ;
 
     /* check whether the context is current and does not need to be updated */
-    if (main_shm->content_id != conn->content_id) {
+    if (main_shm->content_id != sr_yang_ctx.content_id) {
         /* MOD REMAP UNLOCK */
-        sr_rwunlock(&conn->mod_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, func);
+        sr_rwunlock(&sr_yang_ctx.remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, func);
         remap_mode = SR_LOCK_NONE;
 
         /* MOD REMAP LOCK */
-        if ((err_info = sr_rwlock(&conn->mod_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, func,
+        if ((err_info = sr_rwlock(&sr_yang_ctx.remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, func,
                 NULL, NULL))) {
             goto cleanup_unlock;
         }
         remap_mode = SR_LOCK_WRITE;
 
         /* remap mod SHM */
-        if ((err_info = sr_shm_remap(&conn->mod_shm, 0))) {
+        if ((err_info = sr_shm_remap(&sr_yang_ctx.mod_shm, 0))) {
             goto cleanup_unlock;
         }
 
-        /* context was updated, create a new one with the current modules */
-        if ((err_info = sr_ly_ctx_init(conn, &new_ctx))) {
+        if ((err_info = sr_shmctx_get_printed_context(&sr_yang_ctx.ly_ctx_shm, &new_ctx))) {
             goto cleanup_unlock;
         }
-        if ((err_info = sr_shmmod_ctx_load_modules(SR_CONN_MOD_SHM(conn), new_ctx, NULL))) {
-            if (!strcmp(err_info->err[err_info->err_count - 1].message, "Loading \"ietf-datastores\" module failed.")) {
-                if (!(tmp_err = sr_path_yang_dir(&path))) {
-                    sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED,
-                            "YANG modules directory \"%s\" is different than the one used when creating the SHM state. "
-                            "Either change the SHM state files prefix, too, or clear the current SHM state.",
-                            path);
-                    free(path);
-                } else {
-                    sr_errinfo_merge(&err_info, tmp_err);
-                }
+        if (!new_ctx) {
+            if ((err_info = sr_ly_ctx_new(conn, &new_ctx))) {
+                goto cleanup_unlock;
             }
-            goto cleanup_unlock;
         }
 
         /* use the new context */
-        sr_conn_ctx_switch(conn, &new_ctx, NULL);
+        sr_conn_ctx_switch(conn, &new_ctx);
 
         /* initialize new DS plugins */
         if ((err_info = sr_conn_ds_init(conn))) {
@@ -106,7 +96,7 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
         }
 
         /* MOD REMAP DOWNGRADE */
-        if ((err_info = sr_rwrelock(&conn->mod_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, func,
+        if ((err_info = sr_rwrelock(&sr_yang_ctx.remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, func,
                 NULL, NULL))) {
             goto cleanup_unlock;
         }
@@ -123,7 +113,7 @@ cleanup_unlock:
     if (err_info) {
         if (remap_mode) {
             /* MOD REMAP UNLOCK */
-            sr_rwunlock(&conn->mod_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, remap_mode, conn->cid, func);
+            sr_rwunlock(&sr_yang_ctx.remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, remap_mode, conn->cid, func);
         }
         /* CONTEXT UNLOCK */
         sr_rwunlock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, mode, conn->cid, func);
@@ -141,7 +131,8 @@ sr_lycc_relock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, const char *func)
     if ((err_info = sr_rwrelock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, mode, conn->cid, func, NULL, NULL))) {
         return err_info;
     }
-    assert(main_shm->content_id == conn->content_id);
+    //  TODO lock mod_remap_lock ?
+    assert(main_shm->content_id == sr_yang_ctx.content_id);
 
     return NULL;
 }
@@ -161,7 +152,7 @@ sr_lycc_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const
     }
 
     /* MOD REMAP UNLOCK */
-    sr_rwunlock(&conn->mod_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, func);
+    sr_rwunlock(&sr_yang_ctx.remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, func);
 
     /* CONTEXT UNLOCK */
     sr_rwunlock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, mode, conn->cid, func);
@@ -179,7 +170,7 @@ sr_lycc_check_add_modules(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx)
             continue;
         }
 
-        ly_mod2 = ly_ctx_get_module_implemented(conn->ly_ctx, ly_mod->name);
+        ly_mod2 = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, ly_mod->name);
         if (!ly_mod2) {
             continue;
         }
@@ -334,7 +325,7 @@ sr_lycc_add_modules_revert(sr_conn_ctx_t *conn, sr_int_install_mod_t *new_mods, 
 
         if (new_mods[i].yangs_stored) {
             /* remove YANG module(s) */
-            if ((err_info = sr_remove_module_yang_r(ly_mod, conn->ly_ctx, &del_set))) {
+            if ((err_info = sr_remove_module_yang_r(ly_mod, sr_yang_ctx.ly_ctx, &del_set))) {
                 goto cleanup;
             }
             new_mods[i].yangs_stored = 0;
@@ -617,12 +608,12 @@ sr_lycc_append_data(sr_conn_ctx_t *conn, const struct ly_ctx *ctx, struct sr_dat
         }
 
         /* get SHM mod */
-        shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), ly_mod->name);
+        shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), ly_mod->name);
         SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
         /* find startup plugin and append data */
         ds = SR_DS_STARTUP;
-        if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &ds_handle[ds]))) {
+        if ((err_info = sr_ds_handle_find(sr_yang_ctx.mod_shm.addr + shm_mod->plugins[ds], conn, &ds_handle[ds]))) {
             goto cleanup;
         }
         if ((err_info = sr_module_file_data_append(ly_mod, ds_handle, ds, 0, 0, NULL, 0, &data->start))) {
@@ -632,7 +623,7 @@ sr_lycc_append_data(sr_conn_ctx_t *conn, const struct ly_ctx *ctx, struct sr_dat
         /* find running plugin and append data, if not disabled */
         ds = SR_DS_RUNNING;
         if (shm_mod->plugins[ds]) {
-            if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &ds_handle[ds]))) {
+            if ((err_info = sr_ds_handle_find(sr_yang_ctx.mod_shm.addr + shm_mod->plugins[ds], conn, &ds_handle[ds]))) {
                 goto cleanup;
             }
             if ((err_info = sr_module_file_data_append(ly_mod, ds_handle, ds, 0, 0, NULL, 0, &data->run))) {
@@ -642,7 +633,7 @@ sr_lycc_append_data(sr_conn_ctx_t *conn, const struct ly_ctx *ctx, struct sr_dat
 
         /* find factory-default plugin and append data */
         ds = SR_DS_FACTORY_DEFAULT;
-        if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &ds_handle[ds]))) {
+        if ((err_info = sr_ds_handle_find(sr_yang_ctx.mod_shm.addr + shm_mod->plugins[ds], conn, &ds_handle[ds]))) {
             goto cleanup;
         }
         if ((err_info = sr_module_file_data_append(ly_mod, ds_handle, ds, 0, 0, NULL, 0, &data->fdflt))) {
@@ -770,7 +761,6 @@ cleanup:
 /**
  * @brief Check whether a module DS is enabled when updating its data.
  *
- * @param[in] conn Connection to use.
  * @param[in] ly_mod Module to use.
  * @param[in] ds Datastore to use.
  * @param[in] new_mods Array of new modules.
@@ -778,7 +768,7 @@ cleanup:
  * @return Whether the module DS is enabled or not.
  */
 static int
-sr_lycc_update_data_is_enabled(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_datastore_t ds,
+sr_lycc_update_data_is_enabled(const struct lys_module *ly_mod, sr_datastore_t ds,
         sr_int_install_mod_t *new_mods, uint32_t new_mod_count)
 {
     uint32_t i;
@@ -796,7 +786,7 @@ sr_lycc_update_data_is_enabled(sr_conn_ctx_t *conn, const struct lys_module *ly_
     }
 
     /* check installed SHM modules */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), ly_mod->name);
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), ly_mod->name);
     assert(shm_mod);
 
     if (shm_mod->plugins[ds]) {
@@ -818,7 +808,7 @@ sr_lycc_update_data(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx, struct ly
     memset(data_info, 0, sizeof *data_info);
 
     /* parse all the startup/running/operational/factory-default data using the old context (that must succeed) */
-    if ((err_info = sr_lycc_append_data(conn, conn->ly_ctx, &data_info->old))) {
+    if ((err_info = sr_lycc_append_data(conn, sr_yang_ctx.ly_ctx, &data_info->old))) {
         goto cleanup;
     }
 
@@ -867,7 +857,7 @@ sr_lycc_update_data(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx, struct ly
     idx = 0;
     while ((ly_mod = ly_ctx_get_module_iter(new_ctx, &idx))) {
         if (!ly_mod->implemented || !strcmp(ly_mod->name, "sysrepo") ||
-                !sr_lycc_update_data_is_enabled(conn, ly_mod, SR_DS_RUNNING, new_mods, new_mod_count)) {
+                !sr_lycc_update_data_is_enabled(ly_mod, SR_DS_RUNNING, new_mods, new_mod_count)) {
             continue;
         }
 
@@ -880,7 +870,7 @@ sr_lycc_update_data(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx, struct ly
     idx = 0;
     while ((ly_mod = ly_ctx_get_module_iter(new_ctx, &idx))) {
         if (!ly_mod->implemented || !strcmp(ly_mod->name, "sysrepo") ||
-                !sr_lycc_update_data_is_enabled(conn, ly_mod, SR_DS_RUNNING, new_mods, new_mod_count)) {
+                !sr_lycc_update_data_is_enabled(ly_mod, SR_DS_RUNNING, new_mods, new_mod_count)) {
             continue;
         }
 
@@ -934,7 +924,7 @@ sr_lycc_store_data_ds_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *new_ct
             continue;
         }
 
-        old_ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, new_ly_mod->name);
+        old_ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, new_ly_mod->name);
         if (old_ly_mod && !sr_module_has_data(old_ly_mod, 0) && !sr_module_has_data(new_ly_mod, 0)) {
             /* neither of the modules have configuration data so they cannot be changed */
             continue;

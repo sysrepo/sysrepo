@@ -947,7 +947,7 @@ sr_change_sub_del(sr_subscription_ctx_t *subscr, uint32_t idx1, uint32_t idx2, s
     sub_id = change_sub->subs[idx2].sub_id;
 
     /* find module */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(subscr->conn), change_sub->module_name);
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), change_sub->module_name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     /* keep lock order */
@@ -1043,7 +1043,7 @@ sr_oper_get_sub_del(sr_subscription_ctx_t *subscr, uint32_t idx1, uint32_t idx2,
     sub_id = oper_get_sub->subs[idx2].sub_id;
 
     /* find module */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(subscr->conn), oper_get_sub->module_name);
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), oper_get_sub->module_name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     /* keep lock order */
@@ -1142,7 +1142,7 @@ sr_oper_poll_sub_del(sr_subscription_ctx_t *subscr, uint32_t idx1, uint32_t idx2
     sub_id = oper_poll_sub->subs[idx2].sub_id;
 
     /* find module */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(subscr->conn), oper_poll_sub->module_name);
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), oper_poll_sub->module_name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     /* keep lock order */
@@ -1240,7 +1240,7 @@ sr_notif_sub_del(sr_subscription_ctx_t *subscr, uint32_t idx1, uint32_t idx2, sr
     sub_id = notif_sub->subs[idx2].sub_id;
 
     /* find module */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(subscr->conn), notif_sub->module_name);
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), notif_sub->module_name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     /* keep lock order */
@@ -1341,7 +1341,7 @@ sr_rpc_sub_del(sr_subscription_ctx_t *subscr, uint32_t idx1, uint32_t idx2, sr_l
         mod_name = sr_get_first_ns(rpc_sub->path);
 
         /* find module */
-        shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(subscr->conn), mod_name);
+        shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), mod_name);
         SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
         /* keep lock order */
@@ -1364,7 +1364,7 @@ sr_rpc_sub_del(sr_subscription_ctx_t *subscr, uint32_t idx1, uint32_t idx2, sr_l
         subs_lock = SR_LOCK_WRITE;
     } else {
         /* find RPC/action */
-        shm_rpc = sr_shmmod_find_rpc(SR_CONN_MOD_SHM(subscr->conn), rpc_sub->path);
+        shm_rpc = sr_shmmod_find_rpc(SR_CTX_MOD_SHM(sr_yang_ctx), rpc_sub->path);
         SR_CHECK_INT_GOTO(!shm_rpc, err_info, cleanup);
 
         /* keep lock order */
@@ -1784,7 +1784,7 @@ sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, sr_mod_notif
     sr_cid_t cid = 0;
     uint32_t i;
 
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), mod_name);
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), mod_name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
     *notif_subs = (sr_mod_notif_sub_t *)(conn->ext_shm.addr + shm_mod->notif_subs);
