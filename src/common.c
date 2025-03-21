@@ -1077,6 +1077,19 @@ sr_path_mod_shm(char **path)
 }
 
 sr_error_info_t *
+sr_path_ctx_shm(char **path)
+{
+    sr_error_info_t *err_info = NULL;
+
+    if (asprintf(path, "%s/%s_ctx", sr_get_shm_path(), sr_get_shm_prefix()) == -1) {
+        SR_ERRINFO_MEM(&err_info);
+        *path = NULL;
+    }
+
+    return err_info;
+}
+
+sr_error_info_t *
 sr_path_ext_shm(char **path)
 {
     sr_error_info_t *err_info = NULL;
