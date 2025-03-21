@@ -227,6 +227,26 @@ struct sr_run_cache_s {
 };
 
 extern struct sr_run_cache_s sr_run_cache;
+
+/**
+ * @brief Sysrepo's per process global operational data cache.
+ */
+struct sr_oper_cache_s {
+    struct sr_oper_cache_sub_s {
+        uint32_t sub_id;            /**< Operational poll subscription ID. */
+        char *module_name;          /**< Operational poll subscription module name. */
+        char *path;                 /**< Operational poll/get subscription path. */
+        
+        sr_rwlock_t data_lock;      /**< Lock for accessing the data and timestamp. */
+        struct lyd_node *data;      /**< Cached data of a single operational get subscription. */
+        struct timespec timestamp;  /**< Timestamp of the cached operational data. */
+    } *subs;                        /**< Operational subscription data caches. */
+    uint32_t sub_count;             /**< Operational subscription data cache count. */
+    sr_rwlock_t lock;               /**< Operational subscription data cache lock. */
+};
+
+extern struct sr_oper_cache_s sr_oper_cache;
+
 extern ATOMIC_T sr_conn_count;  /**< number of connections */
 
 #define SR_RWLOCK_INITIALIZER { \

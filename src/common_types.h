@@ -142,18 +142,6 @@ struct sr_conn_ctx_s {
         const struct srplg_ntf_s *plugin;   /**< Notification plugin. */
     } *ntf_handles;                 /**< Notification implementation handles. */
     uint32_t ntf_handle_count;      /**< Notification implementaion handle count. */
-
-    struct sr_oper_poll_cache_s {
-        uint32_t sub_id;            /**< Operational poll subscription ID. */
-        char *module_name;          /**< Operational poll subscription module name. */
-        char *path;                 /**< Operational poll/get subscription path. */
-
-        sr_rwlock_t data_lock;      /**< Lock for accessing the data and timestamp. */
-        struct lyd_node *data;      /**< Cached data of a single operational get subscription. */
-        struct timespec timestamp;  /**< Timestamp of the cached operational data. */
-    } *oper_caches;                 /**< Operational get subscription data caches. */
-    uint32_t oper_cache_count;      /**< Operational get subscription data cache count. */
-    sr_rwlock_t oper_cache_lock;    /**< Operational get subscription data cache lock. */
 };
 
 /**

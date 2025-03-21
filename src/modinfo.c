@@ -1292,28 +1292,28 @@ sr_module_oper_data_update_cached(struct sr_mod_info_mod_s *mod, const char *sub
         struct lyd_node **data, int *merged)
 {
     sr_error_info_t *err_info = NULL;
-    struct sr_oper_poll_cache_s *cache = NULL;
+    struct sr_oper_cache_sub_s *cache = NULL;
     uint32_t i;
     int len;
 
     *merged = 0;
 
     /* CONN OPER CACHE READ LOCK */
-    if ((err_info = sr_rwlock(&conn->oper_cache_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
+    if ((err_info = sr_rwlock(&sr_oper_cache.lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
             __func__, NULL, NULL))) {
         goto cleanup;
     }
 
     /* try to get data from the cache */
-    for (i = 0; i < conn->oper_cache_count; ++i) {
+    for (i = 0; i < sr_oper_cache.sub_count; ++i) {
         /* module name */
-        if (strcmp(conn->oper_caches[i].module_name, mod->ly_mod->name)) {
+        if (strcmp(sr_oper_cache.subs[i].module_name, mod->ly_mod->name)) {
             continue;
         }
 
         /* this subscription or any nested subscriptions are cached */
-        len = strlen(conn->oper_caches[i].path);
-        if (strncmp(conn->oper_caches[i].path, sub_xpath, len)) {
+        len = strlen(sr_oper_cache.subs[i].path);
+        if (strncmp(sr_oper_cache.subs[i].path, sub_xpath, len)) {
             continue;
         }
         if ((sub_xpath[len] != '\0') && (sub_xpath[len] != '/')) {
@@ -1321,7 +1321,7 @@ sr_module_oper_data_update_cached(struct sr_mod_info_mod_s *mod, const char *sub
         }
 
         /* cached subscription */
-        cache = &conn->oper_caches[i];
+        cache = &sr_oper_cache.subs[i];
         break;
     }
     if (!cache) {
@@ -1346,7 +1346,7 @@ cleanup_data_cache_unlock:
 
 cleanup_cache_unlock:
     /* CONN OPER CACHE UNLOCK */
-    sr_rwunlock(&conn->oper_cache_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+    sr_rwunlock(&sr_oper_cache.lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
 cleanup:
     return err_info;
