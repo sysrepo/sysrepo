@@ -252,6 +252,7 @@ set(LIB_SRC
     src/context_change.c
     src/shm_main.c
     src/shm_ext.c
+    src/shm_ctx.c
     src/shm_mod.c
     src/shm_sub.c
     src/sr_cond/${SR_COND_IMPL}.c
