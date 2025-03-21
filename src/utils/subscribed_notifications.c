@@ -197,7 +197,7 @@ srsn_subscribe(sr_session_ctx_t *session, const char *stream, const char *xpath_
     struct srsn_sub *s = NULL;
     struct timespec cur_ts, replay_start;
 
-    if (!(ly_mod = ly_ctx_get_module_implemented(session->conn->ly_ctx, "ietf-subscribed-notifications"))) {
+    if (!(ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, "ietf-subscribed-notifications"))) {
         sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Module \"ietf-subscribed-notifications\" is not implemented.");
         goto cleanup;
     } else if (start_time && lys_feature_value(ly_mod, "replay")) {
@@ -274,7 +274,7 @@ srsn_yang_push_periodic(sr_session_ctx_t *session, sr_datastore_t ds, const char
     sr_error_info_t *err_info = NULL;
     struct srsn_sub *s = NULL;
 
-    if (!ly_ctx_get_module_implemented(session->conn->ly_ctx, "ietf-yang-push")) {
+    if (!ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, "ietf-yang-push")) {
         sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Module \"ietf-yang-push\" is not implemented.");
         goto cleanup;
     }
@@ -332,7 +332,7 @@ srsn_yang_push_on_change(sr_session_ctx_t *session, sr_datastore_t ds, const cha
     const struct lys_module *ly_mod;
     struct srsn_sub *s = NULL;
 
-    if (!(ly_mod = ly_ctx_get_module_implemented(session->conn->ly_ctx, "ietf-yang-push"))) {
+    if (!(ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, "ietf-yang-push"))) {
         sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Module \"ietf-yang-push\" is not implemented.");
         goto cleanup;
     } else if (lys_feature_value(ly_mod, "on-change")) {

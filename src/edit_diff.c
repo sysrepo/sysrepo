@@ -3212,7 +3212,7 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
 
     if (!isolate) {
         /* find an existing node */
-        if ((err_info = sr_edit_add_find_match(session->conn->ly_ctx, session->dt[session->ds].edit->tree, xpath, value,
+        if ((err_info = sr_edit_add_find_match(sr_yang_ctx.ly_ctx, session->dt[session->ds].edit->tree, xpath, value,
                 &match))) {
             goto error_safe;
         }
@@ -3243,7 +3243,7 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
     }
 
     /* merge the change into existing edit */
-    err_info = sr_lyd_new_path(isolate ? NULL : session->dt[session->ds].edit->tree, session->conn->ly_ctx, xpath,
+    err_info = sr_lyd_new_path(isolate ? NULL : session->dt[session->ds].edit->tree, sr_yang_ctx.ly_ctx, xpath,
             (void *)value, opts, &parent, &node);
     if (err_info) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Invalid datastore edit.");

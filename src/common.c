@@ -56,6 +56,7 @@
 #include "plugins_datastore.h"
 #include "plugins_notification.h"
 #include "replay.h"
+#include "shm_ctx.h"
 #include "shm_ext.h"
 #include "shm_main.h"
 #include "shm_mod.h"
@@ -109,6 +110,14 @@ const sr_module_ds_t sr_module_ds_disabled_run = {{
         SR_DEFAULT_NOTIFICATION_DS /**< notification */
     }};
 
+/* global per-process context */
+struct sr_yang_ctx_s sr_yang_ctx = {
+    .content_id = 0,
+    .ly_ctx_shm = SR_SHM_INITIALIZER,
+    .ly_ctx = NULL,
+    .mod_shm = SR_SHM_INITIALIZER,
+    .remap_lock = SR_RWLOCK_INITIALIZER,
+};
 sr_error_info_t *
 sr_ptr_add(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *ptr_count, void *add_ptr)
 {
@@ -1323,7 +1332,7 @@ sr_perm_check(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_datastore
     int r, w;
 
     /* find the module in SHM */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), ly_mod->name);
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), ly_mod->name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     if ((ds == SR_DS_RUNNING) && !shm_mod->plugins[ds]) {
@@ -1332,7 +1341,7 @@ sr_perm_check(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_datastore
     }
 
     /* find the DS plugin */
-    if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &handle))) {
+    if ((err_info = sr_ds_handle_find(sr_yang_ctx.mod_shm.addr + shm_mod->plugins[ds], conn, &handle))) {
         goto cleanup;
     }
 
@@ -2964,7 +2973,7 @@ sr_conn_ext_data_update(sr_conn_ctx_t *conn)
     SR_MODINFO_INIT(mi, conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, 0);
 
     /* manually get ietf-yang-schema-mount operational data but avoid recursive call of this function */
-    ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, "ietf-yang-schema-mount");
+    ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, "ietf-yang-schema-mount");
     assert(ly_mod);
     if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, 1, &mi))) {
         goto cleanup;
@@ -2981,7 +2990,7 @@ sr_conn_ext_data_update(sr_conn_ctx_t *conn)
         }
 
         /* get ietf-yang-library operational data */
-        if ((err_info = sr_ly_ctx_get_yanglib_data(conn->ly_ctx, &yl_data, SR_CONN_MAIN_SHM(conn)->content_id))) {
+        if ((err_info = sr_ly_ctx_get_yanglib_data(sr_yang_ctx.ly_ctx, &yl_data, SR_CONN_MAIN_SHM(conn)->content_id))) {
             goto cleanup;
         }
 
@@ -3436,7 +3445,7 @@ sr_conn_ds_init(sr_conn_ctx_t *conn)
     sr_datastore_t ds;
     uint32_t i;
 
-    mod_shm = SR_CONN_MOD_SHM(conn);
+    mod_shm = SR_CTX_MOD_SHM(sr_yang_ctx);
 
     /* go through all the SHM modules */
     for (i = 0; i < mod_shm->mod_count; ++i) {
@@ -5742,7 +5751,7 @@ sr_generate_notif_module_change_installed(sr_conn_ctx_t *conn, sr_int_install_mo
     int subs_or_replay;
 
     /* get this module */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), "sysrepo-notifications");
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), "sysrepo-notifications");
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     /* check whether to even generate any notifications */
@@ -5752,7 +5761,7 @@ sr_generate_notif_module_change_installed(sr_conn_ctx_t *conn, sr_int_install_mo
 
     for (i = 0; i < new_mod_count; ++i) {
         /* generate the notifcation */
-        if ((err_info = sr_lyd_new_path(NULL, conn->ly_ctx, "/sysrepo-notifications:module-change", NULL, 0, NULL,
+        if ((err_info = sr_lyd_new_path(NULL, sr_yang_ctx.ly_ctx, "/sysrepo-notifications:module-change", NULL, 0, NULL,
                 &notif))) {
             goto cleanup;
         }
@@ -5791,7 +5800,7 @@ sr_generate_notif_module_change_uninstalled(sr_conn_ctx_t *conn, struct ly_set *
     int subs_or_replay;
 
     /* get this module */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), "sysrepo-notifications");
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), "sysrepo-notifications");
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     /* check whether to even generate any notifications */
@@ -5803,7 +5812,7 @@ sr_generate_notif_module_change_uninstalled(sr_conn_ctx_t *conn, struct ly_set *
         ly_mod = mod_set->objs[i];
 
         /* generate the notifcation */
-        if ((err_info = sr_lyd_new_path(NULL, conn->ly_ctx, "/sysrepo-notifications:module-change", NULL, 0, NULL,
+        if ((err_info = sr_lyd_new_path(NULL, sr_yang_ctx.ly_ctx, "/sysrepo-notifications:module-change", NULL, 0, NULL,
                 &notif))) {
             goto cleanup;
         }
@@ -5842,7 +5851,7 @@ sr_generate_notif_module_change_updated(sr_conn_ctx_t *conn, struct ly_set *old_
     int subs_or_replay;
 
     /* get this module */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), "sysrepo-notifications");
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), "sysrepo-notifications");
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     /* check whether to even generate any notifications */
@@ -5854,7 +5863,7 @@ sr_generate_notif_module_change_updated(sr_conn_ctx_t *conn, struct ly_set *old_
         ly_mod = upd_mod_set->objs[i];
 
         /* generate the notifcation */
-        if ((err_info = sr_lyd_new_path(NULL, conn->ly_ctx, "/sysrepo-notifications:module-change", NULL, 0, NULL,
+        if ((err_info = sr_lyd_new_path(NULL, sr_yang_ctx.ly_ctx, "/sysrepo-notifications:module-change", NULL, 0, NULL,
                 &notif))) {
             goto cleanup;
         }
@@ -5898,7 +5907,7 @@ sr_generate_notif_module_change_feature(sr_conn_ctx_t *conn, const struct lys_mo
     uint32_t i;
 
     /* get this module */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), "sysrepo-notifications");
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), "sysrepo-notifications");
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     /* check whether to even generate any notifications */
@@ -5909,7 +5918,7 @@ sr_generate_notif_module_change_feature(sr_conn_ctx_t *conn, const struct lys_mo
     for (i = 0; i < feat_set->count; ++i) {
         if (!feat_name) {
             /* generate the notifcation */
-            if ((err_info = sr_lyd_new_path(NULL, conn->ly_ctx, "/sysrepo-notifications:module-change", NULL, 0, NULL,
+            if ((err_info = sr_lyd_new_path(NULL, sr_yang_ctx.ly_ctx, "/sysrepo-notifications:module-change", NULL, 0, NULL,
                     &notif))) {
                 goto cleanup;
             }
