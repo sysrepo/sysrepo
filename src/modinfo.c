@@ -407,7 +407,7 @@ sr_modinfo_collect_ext_deps(const struct lysc_node *mp_node, struct sr_mod_info_
      * 2) collect all data in parent-references of the mount-point
      */
 
-    if (!mod_info->conn->ly_ext_data) {
+    if (!sr_schema_mount_ctx.data) {
         /* no parent references for sure */
         goto cleanup;
     }
@@ -419,7 +419,7 @@ sr_modinfo_collect_ext_deps(const struct lysc_node *mp_node, struct sr_mod_info_
         SR_ERRINFO_MEM(&err_info);
         goto cleanup;
     }
-    if ((err_info = sr_lyd_find_xpath(mod_info->conn->ly_ext_data, path, &set))) {
+    if ((err_info = sr_lyd_find_xpath(sr_schema_mount_ctx.data, path, &set))) {
         goto cleanup;
     }
 

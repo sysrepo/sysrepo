@@ -112,24 +112,24 @@ sr_ly_ext_data_clb(const struct lysc_ext_instance *ext,  const struct lyd_node *
     }
 
     /* LY EXT DATA READ LOCK */
-    if ((err_info = sr_rwlock(&conn->ly_ext_data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
+    if ((err_info = sr_rwlock(&sr_schema_mount_ctx.data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
             __func__, NULL, NULL))) {
         sr_errinfo_free(&err_info);
         return LY_ESYS;
     }
 
-    if (!conn->ly_ext_data) {
+    if (!sr_schema_mount_ctx.data) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND,
                 "No \"ietf-yang-schema-mount\" operational data set needed for parsing mounted data.");
         sr_errinfo_free(&err_info);
         r = LY_ENOTFOUND;
     } else {
         /* create LY ext data duplicate */
-        r = lyd_dup_siblings(conn->ly_ext_data, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, &ext_data_dup);
+        r = lyd_dup_siblings(sr_schema_mount_ctx.data, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, &ext_data_dup);
     }
 
     /* LY EXT DATA UNLOCK */
-    sr_rwunlock(&conn->ly_ext_data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+    sr_rwunlock(&sr_schema_mount_ctx.data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
     if (r) {
         return r;
@@ -169,7 +169,6 @@ sr_ly_ctx_init(sr_conn_ctx_t *conn, struct ly_ctx **ly_ctx)
     free(yang_dir);
     if (lyrc) {
         sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_logmsg());
-        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Failed to create a new libyang context.");
         goto cleanup;
     }
 
@@ -1550,6 +1549,7 @@ sr_ly_canonize_xpath10_value(const struct ly_ctx *ctx, const char *value, LY_VAL
     assert(leaf_xpath);
 
     type_plg = lysc_get_type_plugin(leaf_xpath->type->plugin_ref);
+    assert(!strcmp(type_plg->id, "ly2 xpath1.0"));
 
     /* get the path in canonical (JSON) format */
     if (type_plg->store(ctx, leaf_xpath->type, value, strlen(value), 0, format, prefix_data,

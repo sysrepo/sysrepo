@@ -201,6 +201,29 @@ struct sr_yang_ctx_s {
 
 /* global YANG context */
 extern struct sr_yang_ctx_s sr_yang_ctx;
+
+/**
+ * @brief Sysrepo's per process global schema mount context.
+ */
+struct sr_schema_mount_ctx_s {
+    struct lyd_node *data;      /**< YANG state data of 'ietf-yang-library' and 'ietf-yang-schema-mount' modules for LY ext data callback set for ly_ctx. */
+    sr_rwlock_t data_lock;           /**< Lock for accessing schema mount data. */
+    uint32_t data_id;                /**< ID of the last schema mount data change. */
+};
+
+extern struct sr_schema_mount_ctx_s sr_schema_mount_ctx;
+
+extern ATOMIC_T sr_conn_count;  /**< number of connections */
+
+#define SR_RWLOCK_INITIALIZER { \
+    .mutex = PTHREAD_MUTEX_INITIALIZER, \
+    .cond = SR_COND_INITIALIZER, \
+    .readers = {0}, \
+    .read_count = {0}, \
+    .upgr = 0, \
+    .writer = 0 \
+}
+
 /** static initializer of the shared memory structure */
 #define SR_SHM_INITIALIZER {.fd = -1, .size = 0, .addr = NULL}
 
