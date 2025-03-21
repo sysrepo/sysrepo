@@ -213,6 +213,20 @@ struct sr_schema_mount_ctx_s {
 
 extern struct sr_schema_mount_ctx_s sr_schema_mount_ctx;
 
+/**
+ * @brief Sysrepo's per process global running data cache.
+ */
+struct sr_run_cache_s {
+    struct lyd_node *data;              /**< Cached running data of all the modules. */
+    struct sr_run_cache_mod_s {
+        const struct lys_module *mod;   /**< Cached libyang module. */
+        uint32_t id;                    /**< Cached module data ID. */
+    } *mods;                            /**< Cached modules. */
+    uint32_t mod_count;                 /**< Cached module count. */
+    sr_rwlock_t lock;                   /**< Lock for accessing the cache. */
+};
+
+extern struct sr_run_cache_s sr_run_cache;
 extern ATOMIC_T sr_conn_count;  /**< number of connections */
 
 #define SR_RWLOCK_INITIALIZER { \
