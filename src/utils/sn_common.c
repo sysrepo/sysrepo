@@ -250,13 +250,14 @@ srsn_filter_xpath_print_node_module(const struct lyd_node *node, const struct ly
 
         switch (opaq->format) {
         case LY_VALUE_XML:
-            /* in dict */
-            if (m->ns == opaq->name.module_ns) {
+            /* one in schema dict, other in data dict, need strcmp */
+            if (!strcmp(m->ns, opaq->name.module_ns)) {
                 return NULL;
             }
             break;
         case LY_VALUE_JSON:
-            if (m->name == opaq->name.module_name) {
+            /* one in schema dict, other in data dict, need strcmp */
+            if (!strcmp(m->name, opaq->name.module_name)) {
                 return NULL;
             }
             break;
@@ -269,7 +270,7 @@ srsn_filter_xpath_print_node_module(const struct lyd_node *node, const struct ly
         opaq = (struct lyd_node_opaq *)node;
         opaq2 = (struct lyd_node_opaq *)parent;
 
-        /* in dict */
+        /* in data dict, can compare ptrs */
         if (opaq->name.module_ns == opaq2->name.module_ns) {
             return NULL;
         }
