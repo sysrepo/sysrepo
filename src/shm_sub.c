@@ -3991,7 +3991,7 @@ error:
  * @return Whether the cache data are valid or not.
  */
 static int
-sr_shmsub_oper_poll_listen_is_cache_valid(const struct sr_oper_poll_cache_s *cache, uint32_t valid_ms,
+sr_shmsub_oper_poll_listen_is_cache_valid(const struct sr_oper_cache_sub_s *cache, uint32_t valid_ms,
         struct timespec *invalid_in)
 {
     struct timespec cur_ts, timeout_ts;
@@ -4025,7 +4025,7 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
     const struct lys_module *ly_mod;
     struct sr_mod_info_s mod_info = {0};
     sr_lock_mode_t change_sub_lock = SR_LOCK_NONE;
-    struct sr_oper_poll_cache_s *cache;
+    struct sr_oper_cache_sub_s *cache;
     struct modsub_operpollsub_s *oper_poll_sub;
     struct timespec invalid_in;
     sr_session_ctx_t *ev_sess = NULL;
@@ -4051,7 +4051,7 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
     change_sub_lock = SR_LOCK_READ;
 
     /* CONN OPER CACHE READ LOCK */
-    if ((err_info = sr_rwlock(&conn->oper_cache_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
+    if ((err_info = sr_rwlock(&sr_oper_cache.lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
             __func__, NULL, NULL))) {
         goto cleanup;
     }
@@ -4066,9 +4066,9 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
 
         /* find the oper cache entry */
         cache = NULL;
-        for (j = 0; j < conn->oper_cache_count; ++j) {
-            if (conn->oper_caches[j].sub_id == oper_poll_sub->sub_id) {
-                cache = &conn->oper_caches[j];
+        for (j = 0; j < sr_oper_cache.sub_count; ++j) {
+            if (sr_oper_cache.subs[j].sub_id == oper_poll_sub->sub_id) {
+                cache = &sr_oper_cache.subs[j];
                 break;
             }
         }
@@ -4183,7 +4183,7 @@ cleanup_unlock:
     }
 
     /* CONN OPER CACHE READ UNLOCK */
-    sr_rwunlock(&conn->oper_cache_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+    sr_rwunlock(&sr_oper_cache.lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
 cleanup:
     lyd_free_siblings(mod_info.notify_diff);
