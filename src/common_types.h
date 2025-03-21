@@ -137,14 +137,6 @@ struct sr_conn_ctx_s {
     } *ds_handles;                  /**< Datastore implementation handles. */
     uint32_t ds_handle_count;       /**< Datastore implementaion handle count. */
 
-    struct lyd_node *run_cache_data;    /**< Cached running data of all the modules. */
-    struct sr_run_cache_s {
-        const struct lys_module *mod;   /**< Cached libyang module. */
-        uint32_t id;                    /**< Cached module data ID. */
-    } *run_cache_mods;
-    uint32_t run_cache_mod_count;
-    sr_rwlock_t run_cache_lock;     /**< Session-shared lock for accessing running data cache. */
-
     struct sr_ntf_handle_s {
         void *dl_handle;            /**< Handle from dlopen(3) call. */
         const struct srplg_ntf_s *plugin;   /**< Notification plugin. */
