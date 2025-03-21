@@ -150,8 +150,10 @@ cleanup:
                 strerror(errno));
     }
 
-    ly_out_free(out, NULL, 1);
-    if (fd > -1) {
+    ly_out_free(out, NULL, 0);
+    if (fp) {
+        fclose(fp);
+    } else if (fd > -1) {
         close(fd);
     }
     if (err_info && creat) {
