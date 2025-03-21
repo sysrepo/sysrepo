@@ -375,6 +375,8 @@ sr_error_info_t *sr_remove_module_yang_r(const struct lys_module *ly_mod, const 
  */
 int sr_ly_module_is_internal(const struct lys_module *ly_mod);
 
+int sr_file_exists(const char *path);
+
 /**
  * @brief Read full contents of a file into a buffer.
  *

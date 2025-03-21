@@ -634,7 +634,7 @@ sr_ly_module_is_internal(const struct lys_module *ly_mod)
  * @param[in] path Path to the file.
  * @return 0 if file does not exist, non-zero if it exists.
  */
-static int
+int
 sr_file_exists(const char *path)
 {
     int ret;
