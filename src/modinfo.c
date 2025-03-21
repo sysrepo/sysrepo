@@ -164,7 +164,7 @@ sr_modinfo_collect_edit(const struct lyd_node *edit, struct sr_mod_info_s *mod_i
             }
 
             /* collect xpath to discard */
-            if ((err_info = sr_modinfo_collect_xpath(mod_info->conn->ly_ctx, xpath, SR_DS_OPERATIONAL, NULL, 0,
+            if ((err_info = sr_modinfo_collect_xpath(sr_yang_ctx.ly_ctx, xpath, SR_DS_OPERATIONAL, NULL, 0,
                     mod_info))) {
                 goto cleanup;
             }
@@ -324,7 +324,7 @@ sr_modinfo_collect_oper_sess(sr_session_ctx_t *sess, const struct lys_module *ly
             continue;
         }
 
-        ly_mod2 = ly_ctx_get_module_implemented(sess->conn->ly_ctx, sess->oper_push_mods[i].name);
+        ly_mod2 = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, sess->oper_push_mods[i].name);
         if (!ly_mod2) {
             /* could have been removed */
             continue;
@@ -354,8 +354,8 @@ sr_modinfo_collect_deps(struct sr_mod_info_s *mod_info)
         /* validate only changed required modules or inverse dependency modules */
         if (((mod->state & MOD_INFO_REQ) && (mod->state & MOD_INFO_CHANGED)) || (mod->state & MOD_INFO_INV_DEP)) {
             assert(mod->state & MOD_INFO_DATA);
-            if ((err_info = sr_shmmod_collect_deps(SR_CONN_MOD_SHM(mod_info->conn),
-                    (sr_dep_t *)(mod_info->conn->mod_shm.addr + mod->shm_mod->deps), mod->shm_mod->dep_count,
+            if ((err_info = sr_shmmod_collect_deps(SR_CTX_MOD_SHM(sr_yang_ctx),
+                    (sr_dep_t *)(sr_yang_ctx.mod_shm.addr + mod->shm_mod->deps), mod->shm_mod->dep_count,
                     mod_info->data, mod_info))) {
                 return err_info;
             }
@@ -398,7 +398,7 @@ sr_modinfo_collect_ext_deps(const struct lysc_node *mp_node, struct sr_mod_info_
     path = lysc_path(mp_node, LYSC_PATH_DATA, NULL, 0);
 
     /* collect all the mounted data */
-    if ((err_info = sr_modinfo_collect_xpath(mod_info->conn->ly_ctx, path, mod_info->ds, NULL,
+    if ((err_info = sr_modinfo_collect_xpath(sr_yang_ctx.ly_ctx, path, mod_info->ds, NULL,
             MOD_INFO_XPATH_STORE_ALL | MOD_INFO_XPATH_STORE_DUP, mod_info))) {
         goto cleanup;
     }
@@ -436,7 +436,7 @@ sr_modinfo_collect_ext_deps(const struct lysc_node *mp_node, struct sr_mod_info_
 
         /* get the module */
         mod_name = sr_get_first_ns(str_val);
-        mod = ly_ctx_get_module_implemented(mod_info->conn->ly_ctx, mod_name);
+        mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, mod_name);
         free(mod_name);
         SR_CHECK_INT_GOTO(!mod, err_info, cleanup);
 
@@ -1950,7 +1950,7 @@ sr_modinfo_module_data_load_yanglib(struct sr_mod_info_s *mod_info, struct sr_mo
     content_id = SR_CONN_MAIN_SHM(mod_info->conn)->content_id;
 
     /* get the data from libyang */
-    if ((err_info = sr_ly_ctx_get_yanglib_data(mod_info->conn->ly_ctx, &mod_data, content_id))) {
+    if ((err_info = sr_ly_ctx_get_yanglib_data(sr_yang_ctx.ly_ctx, &mod_data, content_id))) {
         goto cleanup;
     }
 
@@ -2034,7 +2034,7 @@ sr_modinfo_module_srmon_datastore(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_dat
     char *buf = NULL;
 
     /* get LY module */
-    ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, conn->mod_shm.addr + shm_mod->name);
+    ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, sr_yang_ctx.mod_shm.addr + shm_mod->name);
     assert(ly_mod);
 
     if (!strcmp(ly_mod->name, "ietf-netconf") || !sr_module_has_data(ly_mod, 0)) {
@@ -2042,7 +2042,7 @@ sr_modinfo_module_srmon_datastore(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_dat
         goto cleanup;
     }
 
-    if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &ds_handle))) {
+    if ((err_info = sr_ds_handle_find(sr_yang_ctx.mod_shm.addr + shm_mod->plugins[ds], conn, &ds_handle))) {
         goto cleanup;
     }
 
@@ -2487,7 +2487,7 @@ sr_modinfo_module_srmon_module(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, struct ly
     char buf[BUF_LEN], *str = NULL;
 
     /* module with name */
-    if ((err_info = sr_lyd_new_list(sr_state, "module", conn->mod_shm.addr + shm_mod->name, &sr_mod))) {
+    if ((err_info = sr_lyd_new_list(sr_state, "module", sr_yang_ctx.mod_shm.addr + shm_mod->name, &sr_mod))) {
         return err_info;
     }
 
@@ -2602,7 +2602,7 @@ sr_modinfo_module_srmon_rpc(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, struct lyd_n
     char buf[22];
 
     /* rpc with path */
-    if ((err_info = sr_lyd_new_list(sr_state, "rpc", conn->mod_shm.addr + shm_rpc->path, &sr_rpc))) {
+    if ((err_info = sr_lyd_new_list(sr_state, "rpc", sr_yang_ctx.mod_shm.addr + shm_rpc->path, &sr_rpc))) {
         return err_info;
     }
 
@@ -2783,8 +2783,8 @@ sr_modinfo_module_data_load_srmon(struct sr_mod_info_s *mod_info, struct sr_mod_
     uint32_t i, j;
     int req;
 
-    mod_shm = SR_CONN_MOD_SHM(mod_info->conn);
-    ly_mod = ly_ctx_get_module_implemented(mod_info->conn->ly_ctx, "sysrepo-monitoring");
+    mod_shm = SR_CTX_MOD_SHM(sr_yang_ctx);
+    ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, "sysrepo-monitoring");
     assert(ly_mod);
 
     /* main container */
@@ -2800,7 +2800,7 @@ sr_modinfo_module_data_load_srmon(struct sr_mod_info_s *mod_info, struct sr_mod_
         for (i = 0; i < mod_shm->mod_count; ++i) {
             shm_mod = SR_SHM_MOD_IDX(mod_shm, i);
             if ((err_info = sr_modinfo_module_data_oper_required(mod, &req,
-                    "/sysrepo-monitoring:sysrepo-state/module[name='%s']", mod_info->conn->mod_shm.addr + shm_mod->name))) {
+                    "/sysrepo-monitoring:sysrepo-state/module[name='%s']", sr_yang_ctx.mod_shm.addr + shm_mod->name))) {
                 goto cleanup;
             }
 
@@ -2817,10 +2817,10 @@ sr_modinfo_module_data_load_srmon(struct sr_mod_info_s *mod_info, struct sr_mod_
     if (req) {
         for (i = 0; i < mod_shm->mod_count; ++i) {
             shm_mod = SR_SHM_MOD_IDX(mod_shm, i);
-            shm_rpc = (sr_rpc_t *)(mod_info->conn->mod_shm.addr + shm_mod->rpcs);
+            shm_rpc = (sr_rpc_t *)(sr_yang_ctx.mod_shm.addr + shm_mod->rpcs);
             for (j = 0; j < shm_mod->rpc_count; ++j) {
                 if ((err_info = sr_modinfo_module_data_oper_required(mod, &req,
-                        "/sysrepo-monitoring:sysrepo-state/rpc[path='%s']", mod_info->conn->mod_shm.addr + shm_rpc[j].path))) {
+                        "/sysrepo-monitoring:sysrepo-state/rpc[path='%s']", sr_yang_ctx.mod_shm.addr + shm_rpc[j].path))) {
                     goto cleanup;
                 }
 
@@ -3041,7 +3041,7 @@ sr_modinfo_mod_new(const struct lys_module *ly_mod, uint32_t mod_type, struct sr
     }
 
     /* find module in SHM */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(mod_info->conn), ly_mod->name);
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), ly_mod->name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
     /* find main DS handle */
@@ -3051,7 +3051,7 @@ sr_modinfo_mod_new(const struct lys_module *ly_mod, uint32_t mod_type, struct sr
     } else {
         ds = mod_info->ds;
     }
-    if ((err_info = sr_ds_handle_find(mod_info->conn->mod_shm.addr + shm_mod->plugins[ds], mod_info->conn, &ds_handle[ds]))) {
+    if ((err_info = sr_ds_handle_find(sr_yang_ctx.mod_shm.addr + shm_mod->plugins[ds], mod_info->conn, &ds_handle[ds]))) {
         return err_info;
     }
 
@@ -3062,7 +3062,7 @@ sr_modinfo_mod_new(const struct lys_module *ly_mod, uint32_t mod_type, struct sr
         break;
     case SR_DS_RUNNING:
         /* get candidate as well if we need to reset it */
-        if ((err_info = sr_ds_handle_find(mod_info->conn->mod_shm.addr + shm_mod->plugins[SR_DS_CANDIDATE],
+        if ((err_info = sr_ds_handle_find(sr_yang_ctx.mod_shm.addr + shm_mod->plugins[SR_DS_CANDIDATE],
                 mod_info->conn, &ds_handle[SR_DS_CANDIDATE]))) {
             return err_info;
         }
@@ -3075,7 +3075,7 @@ sr_modinfo_mod_new(const struct lys_module *ly_mod, uint32_t mod_type, struct sr
         } else {
             ds = SR_DS_RUNNING;
         }
-        if ((err_info = sr_ds_handle_find(mod_info->conn->mod_shm.addr + shm_mod->plugins[ds], mod_info->conn,
+        if ((err_info = sr_ds_handle_find(sr_yang_ctx.mod_shm.addr + shm_mod->plugins[ds], mod_info->conn,
                 &ds_handle[ds]))) {
             return err_info;
         }
@@ -3117,10 +3117,10 @@ sr_modinfo_mod_inv_deps(sr_mod_t *shm_mod, struct sr_mod_info_s *mod_info)
     uint32_t i;
 
     /* add all inverse dependencies (modules dependening on this module) */
-    shm_inv_deps = (off_t *)(mod_info->conn->mod_shm.addr + shm_mod->inv_deps);
+    shm_inv_deps = (off_t *)(sr_yang_ctx.mod_shm.addr + shm_mod->inv_deps);
     for (i = 0; i < shm_mod->inv_dep_count; ++i) {
         /* find ly module */
-        ly_mod = ly_ctx_get_module_implemented(mod_info->conn->ly_ctx, mod_info->conn->mod_shm.addr + shm_inv_deps[i]);
+        ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, sr_yang_ctx.mod_shm.addr + shm_inv_deps[i]);
         SR_CHECK_INT_RET(!ly_mod, err_info);
 
         /* add inverse dependency */
@@ -3925,7 +3925,7 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     }
 
     /* get this module and check replay support */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(mod_info->conn), "ietf-netconf-notifications");
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), "ietf-netconf-notifications");
     SR_CHECK_INT_RET(!shm_mod, err_info);
     if (!shm_mod->replay_supp && !notif_sub_count) {
         /* nothing to do */
@@ -3948,7 +3948,7 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     }
 
     /* generate notifcation with all the changes */
-    if ((err_info = sr_lyd_new_path(NULL, mod_info->conn->ly_ctx, "/ietf-netconf-notifications:netconf-config-change",
+    if ((err_info = sr_lyd_new_path(NULL, sr_yang_ctx.ly_ctx, "/ietf-netconf-notifications:netconf-config-change",
             NULL, 0, NULL, &notif))) {
         goto cleanup;
     }
@@ -4254,7 +4254,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
         /* we are stopping a session, we had pushed some data in the past, but no current data, so mod_info->count is zero */
         for (i = 0; i < session->oper_push_mod_count; ++i) {
             mod_name = session->oper_push_mods[i].name;
-            shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(mod_info->conn), mod_name);
+            shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), mod_name);
             if (!shm_mod) {
                 /* module was removed, sr_remove_module should have removed Ext SHM data for it as well */
                 continue;
