@@ -141,6 +141,9 @@ struct sr_oper_cache_s sr_oper_cache = {
     .lock = SR_RWLOCK_INITIALIZER,
 };
 
+/* global per-process connection count */
+ATOMIC_T sr_conn_count = 0;
+
 sr_error_info_t *
 sr_ptr_add(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *ptr_count, void *add_ptr)
 {
