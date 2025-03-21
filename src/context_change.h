@@ -191,4 +191,13 @@ sr_error_info_t *sr_lycc_store_data_if_differ(sr_conn_ctx_t *conn, const struct 
  */
 void sr_lycc_update_data_clear(struct sr_data_update_s *data_info);
 
+/**
+ * @brief Cleanup after a LY context update.
+ * 
+ * @param[in] data_info Data info to clear.
+ * @param[in] sr_mods Updated SR internal module data.
+ * @param[in] sr_del_mods Deleted SR internal module data.
+ */
+void sr_lycc_update_cleanup(struct sr_data_update_s *data_info, struct lyd_node *sr_mods, struct lyd_node *sr_del_mods);
+
 #endif
