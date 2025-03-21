@@ -1179,3 +1179,11 @@ sr_lycc_update_data_clear(struct sr_data_update_s *data_info)
     lyd_free_siblings(data_info->new.run);
     lyd_free_siblings(data_info->new.fdflt);
 }
+
+void
+sr_lycc_update_cleanup(struct sr_data_update_s *data_info, struct lyd_node *sr_mods, struct lyd_node *sr_del_mods)
+{
+    lyd_free_siblings(sr_mods);
+    lyd_free_siblings(sr_del_mods);
+    sr_lycc_update_data_clear(data_info);
+}
