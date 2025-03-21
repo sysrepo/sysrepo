@@ -123,8 +123,6 @@ struct sr_conn_ctx_s {
     sr_session_ctx_t **sessions;    /**< Array of sessions for this connection. */
     uint32_t session_count;         /**< Session count. */
     sr_cid_t cid;                   /**< Globally unique connection ID */
-    sr_rwlock_t ly_ext_data_lock;   /**< Session-shared lock for accessing ly_ext_data. */
-    struct lyd_node *ly_ext_data;   /**< Data for LY ext data callback set for ly_ctx. */
 
     int create_lock;                /**< Process-shared file lock for creating main/mod/ext SHM. */
     sr_shm_t main_shm;              /**< Main SHM structure. */

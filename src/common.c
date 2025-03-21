@@ -118,6 +118,13 @@ struct sr_yang_ctx_s sr_yang_ctx = {
     .mod_shm = SR_SHM_INITIALIZER,
     .remap_lock = SR_RWLOCK_INITIALIZER,
 };
+
+/* global per-process ext data context (schema mount) */
+struct sr_schema_mount_ctx_s sr_schema_mount_ctx = {
+    .data = NULL,
+    .data_lock = SR_RWLOCK_INITIALIZER,
+    .data_id = 0
+};
 sr_error_info_t *
 sr_ptr_add(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *ptr_count, void *add_ptr)
 {
@@ -3003,18 +3010,18 @@ sr_conn_ext_data_update(sr_conn_ctx_t *conn)
     }
 
     /* LY EXT DATA WRITE LOCK */
-    if ((err_info = sr_rwlock(&conn->ly_ext_data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
+    if ((err_info = sr_rwlock(&sr_schema_mount_ctx.data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
             __func__, NULL, NULL))) {
         goto cleanup;
     }
 
     /* update LY ext data */
-    lyd_free_siblings(conn->ly_ext_data);
-    conn->ly_ext_data = new_ext_data;
+    lyd_free_siblings(sr_schema_mount_ctx.data);
+    sr_schema_mount_ctx.data = new_ext_data;
     new_ext_data = NULL;
 
     /* LY EXT DATA UNLOCK */
-    sr_rwunlock(&conn->ly_ext_data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    sr_rwunlock(&sr_schema_mount_ctx.data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
 
 cleanup:
     /* MODULES UNLOCK */
