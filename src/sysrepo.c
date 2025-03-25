@@ -165,7 +165,12 @@ sr_conn_free(sr_conn_ctx_t *conn)
 
     /* unlocked data destroy */
     lyd_free_siblings(conn->ly_ext_data);
-    sr_conn_run_cache_flush(conn);
+
+    /* free run cache only if connection was fully setup */
+    if (conn->cid) {
+        sr_conn_run_cache_flush(conn);
+    }
+
     for (i = 0; i < conn->oper_cache_count; ++i) {
         lyd_free_siblings(conn->oper_caches[i].data);
     }
