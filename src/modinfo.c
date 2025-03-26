@@ -1376,7 +1376,7 @@ sr_module_oper_data_load(struct sr_mod_info_mod_s *mod, sr_conn_ctx_t *conn, sr_
             }
             /* load push oper data for the session from the datastore plugin if cache was empty */
             if (!mod_data && (err_info = sr_module_file_data_append(mod->ly_mod, mod->ds_handle, SR_DS_OPERATIONAL,
-                    oper_push_dup[i].cid, oper_push_dup[i].sid, NULL, 0, &mod_data))) {
+                    oper_push_dup[i].cid, oper_push_dup[i].sid, mod->xpaths, mod->xpath_count, &mod_data))) {
                 goto cleanup;
             }
         } else {

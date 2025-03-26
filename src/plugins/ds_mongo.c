@@ -396,13 +396,14 @@ cleanup:
  * @param[in] ctx Libyang context.
  * @param[in] xpaths Array of XPaths.
  * @param[in] xpath_cnt XPath count.
+ * @param[in] oper_ds Flag if the filter is for loading operational data and special handling is needed.
  * @param[out] is_valid Whether the @p xpath_filter is valid.
  * @param[out] xpath_filter XPath filter for the database.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_process_load_paths(struct ly_ctx *ctx, const char **xpaths, uint32_t xpath_cnt, int *is_valid, bson_t *xpath_filter)
+srpds_process_load_paths(struct ly_ctx *ctx, const char **xpaths, uint32_t xpath_cnt, int oper_ds, int *is_valid, bson_t *xpath_filter)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
@@ -415,6 +416,17 @@ srpds_process_load_paths(struct ly_ctx *ctx, const char **xpaths, uint32_t xpath
     /* prepare the start of the filter document */
     bson_init(xpath_filter);
     bson_append_array_begin(xpath_filter, "$or", 3, &top);
+
+    if (oper_ds) {
+        /*
+         * TODO
+         * xpath filtering is unimplemented for MONGO DS operational datastore.
+         * /sysrepo:discard-items and metadata (ietf-origin) needs to be explicitly retrieved.
+         *
+         * So, just fetch all the data until then.
+         */
+        goto cleanup;
+    }
 
     /* create new data node for lyd_find_path to work correctly */
     if (lyd_new_path(NULL, ctx, "/ietf-yang-library:yang-library", NULL, 0, &ctx_node) != LY_SUCCESS) {
@@ -3399,7 +3411,7 @@ srpds_mongo_load(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, 
         goto cleanup;
     }
 
-    if ((err_info = srpds_process_load_paths(mod->ctx, xpaths, xpath_count, &is_valid, &xpath_filter))) {
+    if ((err_info = srpds_process_load_paths(mod->ctx, xpaths, xpath_count, (ds == SR_DS_OPERATIONAL), &is_valid, &xpath_filter))) {
         goto cleanup;
     }
 
