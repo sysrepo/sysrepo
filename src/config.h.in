@@ -198,4 +198,7 @@
 /** socket for Redis database */
 #define SR_DS_PLG_REDIS_SOCKET        "@REDIS_SOCKET@"
 
+/** memory address to try to map the printed libyang context to */
+#define SR_PRINTED_LYCTX_ADDRESS      (void *)@PRINTED_CONTEXT_ADDRESS@
+
 #endif /* _CONFIG_H */

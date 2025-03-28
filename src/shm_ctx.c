@@ -41,8 +41,6 @@
 #include "ly_wrap.h"
 #include "sysrepo.h"
 
-#define CTX_ADDR (void *)0x400000257000
-
 sr_error_info_t *
 sr_shmctx_print_context(sr_shm_t *shm, const struct ly_ctx *ctx)
 {
@@ -78,7 +76,7 @@ sr_shmctx_print_context(sr_shm_t *shm, const struct ly_ctx *ctx)
     }
 
     /* allocate memory for the printed context */
-    mem = mmap(CTX_ADDR, ctx_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED_NOREPLACE, fd, 0);
+    mem = mmap(SR_PRINTED_LYCTX_ADDRESS, ctx_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED_NOREPLACE, fd, 0);
     if (mem == MAP_FAILED) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to map the printed context (%s).", strerror(errno));
         mem = NULL;
@@ -146,7 +144,7 @@ sr_shmctx_get_printed_context(sr_shm_t *shm, struct ly_ctx **ctx)
             shm->size = 0;
         }
 
-        shm->addr = mmap(CTX_ADDR, shm_file_size, PROT_READ, MAP_PRIVATE | MAP_FIXED_NOREPLACE, shm->fd, 0);
+        shm->addr = mmap(SR_PRINTED_LYCTX_ADDRESS, shm_file_size, PROT_READ, MAP_PRIVATE | MAP_FIXED_NOREPLACE, shm->fd, 0);
         if (shm->addr == MAP_FAILED) {
             sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to map the printed context (%s).", strerror(errno));
             shm->addr = NULL;
