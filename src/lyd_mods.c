@@ -54,6 +54,7 @@
 
 #if SR_YANGLIB_REVISION == 2019 - 01 - 04
 # include "../modules/ietf_yang_library@2019_01_04_yang.h"
+# include "../modules/ietf_yang_library_augmentedby@2023_10_27_yang.h"
 #elif SR_YANGLIB_REVISION == 2016 - 06 - 21
 # include "../modules/ietf_yang_library@2016_06_21_yang.h"
 #else
@@ -994,6 +995,11 @@ sr_lydmods_create(sr_conn_ctx_t *conn, struct ly_ctx *ly_ctx, struct lyd_node **
 
     /* install ietf-yang-library */
     SR_INSTALL_INT_MOD(ly_ctx, ietf_yang_library_yang, 0, new_mods, new_mod_count);
+
+#if SR_YANGLIB_REVISION == 2019 - 01 - 04
+    /* install ietf-yang-library-augmentedby */
+    SR_INSTALL_INT_MOD(ly_ctx, ietf_yang_library_augmentedby_yang, 0, new_mods, new_mod_count);
+#endif
 
     /* install sysrepo-monitoring */
     SR_INSTALL_INT_MOD(ly_ctx, sysrepo_monitoring_yang, 0, new_mods, new_mod_count);

@@ -2742,6 +2742,10 @@ sr_is_module_internal(const struct lys_module *ly_mod)
         return 1;
     } else if (!strcmp(ly_mod->name, "ietf-yang-library")) {
         return 1;
+#if SR_YANGLIB_REVISION == 2019 - 01 - 04
+    } else if (!strcmp(ly_mod->name, "ietf-yang-library-augmentedby")) {
+        return 1;
+#endif
     } else if (!strcmp(ly_mod->name, "ietf-netconf")) {
         return 1;
     } else if (!strcmp(ly_mod->name, "ietf-netconf-with-defaults") && !strcmp(ly_mod->revision, "2011-06-01")) {

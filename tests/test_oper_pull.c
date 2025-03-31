@@ -391,6 +391,11 @@ test_sr_mon(void **state)
             "  <module>\n"
             "    <name>ietf-yang-library</name>\n"
             "  </module>\n"
+#if SR_YANGLIB_REVISION == 2019 - 01 - 04
+            "  <module>\n"
+            "    <name>ietf-yang-library-augmentedby</name>\n"
+            "  </module>\n"
+#endif
             "  <module>\n"
             "    <name>sysrepo-monitoring</name>\n"
             "  </module>\n"
@@ -652,6 +657,11 @@ test_sr_mon(void **state)
             "  <module>\n"
             "    <name>ietf-yang-library</name>\n"
             "  </module>\n"
+#if SR_YANGLIB_REVISION == 2019 - 01 - 04
+            "  <module>\n"
+            "    <name>ietf-yang-library-augmentedby</name>\n"
+            "  </module>\n"
+#endif
             "  <module>\n"
             "    <name>sysrepo-monitoring</name>\n"
             "  </module>\n"
