@@ -40,7 +40,7 @@ extern "C" {
 /**
  * @brief Datastore plugin API version
  */
-#define SRPLG_DS_API_VERSION 12
+#define SRPLG_DS_API_VERSION 13
 
 /**
  * @brief Setup datastore of a newly installed module.
@@ -111,7 +111,7 @@ typedef sr_error_info_t *(*srds_conn_init)(sr_conn_ctx_t *conn, void **plg_data)
 typedef void (*srds_conn_destroy)(sr_conn_ctx_t *conn, void *plg_data);
 
 /**
- * @brief Store data for a module. Either a diff can be applied manually (if available) or full new data tree stored.
+ * @brief Prepare to store data for a module. Either a diff can be applied manually (if available) or full new data tree store prepared.
  *
  * If @p ds is ::SR_DS_CANDIDATE and it has not been modified (::srds_candidate_modified() returns 0) then @p mod_diff
  * is actually the difference between previous ::SR_DS_RUNNING contents and the new ::SR_DS_CANDIDATE contents.
@@ -119,6 +119,10 @@ typedef void (*srds_conn_destroy)(sr_conn_ctx_t *conn, void *plg_data);
  * May be called simultaneously but with unique @p mod and @p ds pairs.
  *
  * Write access rights do not have to be checked, ::srds_access_check() is called before this callback.
+ *
+ * This callback must only prepare to store the data in a next step by calling srds_store_commit().
+ * Module READ-UPGRADE lock or higher is acquired before calling srds_store_prepare() callback.
+ * So, the callback should not rely on having a WRITE lock.
  *
  * @param[in] mod Specific module.
  * @param[in] ds Specific datastore.
@@ -131,7 +135,33 @@ typedef void (*srds_conn_destroy)(sr_conn_ctx_t *conn, void *plg_data);
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
-typedef sr_error_info_t *(*srds_store)(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, uint32_t sid,
+typedef sr_error_info_t *(*srds_store_prepare)(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, uint32_t sid,
+        const struct lyd_node *mod_diff, const struct lyd_node *mod_data, void *plg_data);
+
+/**
+ * @brief Store data for a module. Either a diff can be applied manually (if available) or full new data tree stored.
+ *
+ * If @p ds is ::SR_DS_CANDIDATE and it has not been modified (::srds_candidate_modified() returns 0) then @p mod_diff
+ * is actually the difference between previous ::SR_DS_RUNNING contents and the new ::SR_DS_CANDIDATE contents.
+ *
+ * May be called simultaneously but with unique @p mod and @p ds pairs.
+ *
+ * Write access rights do not have to be checked, ::srds_access_check() is called before this callback.
+ *
+ * Module WRITE locks are expected to be held for this operation.
+ *
+ * @param[in] mod Specific module.
+ * @param[in] ds Specific datastore.
+ * @param[in] cid ID of the connection storing the data, relevant for @p ds ::SR_DS_OPERATIONAL.
+ * @param[in] sid ID of the session storing the data, relevant for @p ds ::SR_DS_OPERATIONAL.
+ * @param[in] mod_diff Diff of currently stored module data and the new @p mod_data. __Not always available.__
+ * @param[in] mod_data New module data tree to store. If @p ds ::SR_DS_OPERATIONAL, every node may have a metadata
+ * instance of 'ietf-origin:origin' that needs to be stored. Also, top-level 'discard-items' opaque nodes may be present.
+ * @param[in] plg_data Plugin data.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+typedef sr_error_info_t *(*srds_store_commit)(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, uint32_t sid,
         const struct lyd_node *mod_diff, const struct lyd_node *mod_data, void *plg_data);
 
 /**
@@ -285,8 +315,9 @@ struct srplg_ds_s {
     srds_uninstall uninstall_cb;    /**< callback for uninstalling a removed module */
     srds_init init_cb;              /**< callback for after-boot initialization of a module */
     srds_conn_init conn_init_cb;    /**< callback for per-connection data initialization */
-    srds_conn_destroy conn_destroy_cb;  /**< callback for per-connection data destroy */
-    srds_store store_cb;            /**< callback for storing module data */
+    srds_conn_destroy conn_destroy_cb;      /**< callback for per-connection data destroy */
+    srds_store_prepare store_prepare_cb;    /**< callback for preparing to store module data (called with module READ UPGR or higher lock) */
+    srds_store_commit store_commit_cb;      /**< callback for storing module data (called with module WRITE lock) */
     srds_load load_cb;              /**< callback for loading stored module data */
     srds_copy copy_cb;              /**< callback for copying stored module data from one datastore to another */
     srds_candidate_modified candidate_modified_cb;  /**< callback for checking whether candidate was modified */

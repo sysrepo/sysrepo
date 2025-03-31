@@ -4388,13 +4388,18 @@ store:
         goto cleanup;
     }
 
+    /* prepare to store updated datastore before upgrading to WRITE lock */
+    if ((err_info = sr_modinfo_data_store(mod_info, session, shmmod_session_del, 0))) {
+        goto cleanup;
+    }
+
     /* MODULES WRITE LOCK (upgrade) */
     if ((err_info = sr_shmmod_modinfo_rdlock_upgrade(mod_info, sid, timeout_ms, timeout_ms))) {
         goto cleanup;
     }
 
-    /* store updated datastore or remove left over session in Ext SHM if deleting */
-    if ((err_info = sr_modinfo_data_store(mod_info, session, shmmod_session_del))) {
+    /* commit and store updated datastore or remove left over session in Ext SHM if deleting */
+    if ((err_info = sr_modinfo_data_store(mod_info, session, shmmod_session_del, 1))) {
         goto cleanup;
     }
 

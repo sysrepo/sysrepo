@@ -341,9 +341,10 @@ sr_error_info_t *sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *m
  * @param[in] mod_info Mod info to use.
  * @param[in] session Session to use, if operational DS.
  * @param[in] shmmod_session_del Set if @p session oper data entry should be deleted from mod SHM.
+ * @param[in] commit Whether to prepare to store the data or commit it.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_modinfo_data_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session, int shmmod_session_del);
+sr_error_info_t *sr_modinfo_data_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session, int shmmod_session_del, int commit);
 
 /**
  * @brief Reset (unlock SHM files) all candidate data for mod info.

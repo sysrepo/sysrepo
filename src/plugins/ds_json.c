@@ -53,10 +53,15 @@ srpds_json_store_(const char *path, const struct lyd_node *mod_data, const char 
     sr_error_info_t *err_info = NULL;
     struct stat st;
     struct ly_out *out = NULL;
-    char *bck_path = NULL;
+    char *bck_path = NULL, *tmp_path = NULL;
     int fd = -1, backup = 0, creat = 0;
     uint32_t print_opts;
     FILE *fp = NULL;
+
+    if (asprintf(&tmp_path, "%s%s", path, SRPJSON_FILE_TMP_SUFFIX) == -1) {
+        srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_NO_MEMORY, "Memory allocation failed.");
+        goto cleanup;
+    }
 
     if (make_backup) {
         /* get original file perms */
@@ -97,24 +102,24 @@ srpds_json_store_(const char *path, const struct lyd_node *mod_data, const char 
     }
 
     if (perm) {
-        /* try to create the file */
-        fd = srpjson_open(srpds_name, path, O_WRONLY | O_CREAT | O_EXCL, perm);
+        /* try to create the tmp_file */
+        fd = srpjson_open(srpds_name, tmp_path, O_WRONLY | O_CREAT | O_EXCL, perm);
         if (fd > 0) {
             creat = 1;
         }
     }
     if (fd == -1) {
-        /* open existing file */
-        fd = srpjson_open(srpds_name, path, O_WRONLY, perm);
+        /* open existing tmp_file */
+        fd = srpjson_open(srpds_name, tmp_path, O_WRONLY, perm);
     }
     if (fd == -1) {
-        err_info = srpjson_open_error(srpds_name, path);
+        err_info = srpjson_open_error(srpds_name, tmp_path);
         goto cleanup;
     }
 
     if (creat && (owner || group)) {
-        /* change the owner of the created file */
-        if ((err_info = srpjson_chmodown(srpds_name, path, owner, group, 0))) {
+        /* change the owner of the created tmp_file */
+        if ((err_info = srpjson_chmodown(srpds_name, tmp_path, owner, group, 0))) {
             goto cleanup;
         }
     }
@@ -122,7 +127,7 @@ srpds_json_store_(const char *path, const struct lyd_node *mod_data, const char 
     /* use buffered FILE* instead of raw fd and truncate it to zero for writing */
     fp = fdopen(fd, "w");
     if (!fp) {
-        err_info = srpjson_open_error(srpds_name, path);
+        err_info = srpjson_open_error(srpds_name, tmp_path);
         goto cleanup;
     }
 
@@ -136,7 +141,7 @@ srpds_json_store_(const char *path, const struct lyd_node *mod_data, const char 
     print_opts = LYD_PRINT_SHRINK | LYD_PRINT_KEEPEMPTYCONT | LYD_PRINT_WD_IMPL_TAG;
     if (lyd_print_all(out, mod_data, LYD_JSON, print_opts)) {
         err_info = srpjson_log_err_ly(srpds_name, LYD_CTX(mod_data));
-        srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_INTERNAL, "Failed to store data into \"%s\".", path);
+        srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_INTERNAL, "Failed to store data into \"%s\".", tmp_path);
         goto cleanup;
     }
 
@@ -157,9 +162,10 @@ cleanup:
         close(fd);
     }
     if (err_info && creat) {
-        unlink(path);
+        unlink(tmp_path);
     }
     free(bck_path);
+    free(tmp_path);
     return err_info;
 }
 
@@ -179,7 +185,7 @@ srpds_json_install_persistent(const struct lys_module *mod, sr_datastore_t ds, c
         mode_t perm, void *UNUSED(plg_data))
 {
     sr_error_info_t *err_info = NULL;
-    char *path = NULL;
+    char *path = NULL, *tmp_path = NULL;
 
     /* check whether the file does not exist */
     if ((err_info = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
@@ -195,8 +201,18 @@ srpds_json_install_persistent(const struct lys_module *mod, sr_datastore_t ds, c
         goto cleanup;
     }
 
+    if (asprintf(&tmp_path, "%s%s", path, SRPJSON_FILE_TMP_SUFFIX) == -1) {
+        srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_NO_MEMORY, "Memory allocation failed.");
+        goto cleanup;
+    }
+    if (rename(tmp_path, path) == -1) {
+        srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_SYS, "Renaming \"%s\" to \"%s\" failed (%s).",
+                tmp_path, path, strerror(errno));
+    }
+
 cleanup:
     free(path);
+    free(tmp_path);
     return err_info;
 }
 
@@ -354,24 +370,27 @@ srpds_json_conn_destroy(sr_conn_ctx_t *UNUSED(conn), void *UNUSED(plg_data))
 }
 
 static sr_error_info_t *
-srpds_json_store(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, uint32_t sid,
-        const struct lyd_node *UNUSED(mod_diff), const struct lyd_node *mod_data, void *UNUSED(plg_data))
+srpds_json_store_helper(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, uint32_t sid, char **path, mode_t *perm)
 {
     sr_error_info_t *err_info = NULL;
-    mode_t perm = 0;
-    char *path = NULL;
 
     switch (ds) {
     case SR_DS_STARTUP:
     case SR_DS_FACTORY_DEFAULT:
         /* file must exist, just generate the path */
-        if ((err_info = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
+        if ((err_info = srpjson_get_path(srpds_name, mod->name, ds, path))) {
             goto cleanup;
         }
+
+        /* get the correct permissions to set for the new file (not owner/group because we may not have permissions to set them) */
+        if ((err_info = srpds_json_access_get(mod, ds, NULL, NULL, NULL, perm))) {
+            goto cleanup;
+        }
+
         break;
     case SR_DS_OPERATIONAL:
         /* get oper data file path */
-        if ((err_info = srpjson_get_oper_path(srpds_name, mod->name, cid, sid, &path))) {
+        if ((err_info = srpjson_get_oper_path(srpds_name, mod->name, cid, sid, path))) {
             goto cleanup;
         }
     /* fallthrough */
@@ -380,32 +399,80 @@ srpds_json_store(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, 
     /* fallthrough */
     case SR_DS_CANDIDATE:
         /* get data file path */
-        if (!path && (err_info = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
+        if (!*path && (err_info = srpjson_get_path(srpds_name, mod->name, ds, path))) {
             goto cleanup;
-        }
-
-        if (srpjson_file_exists(srpds_name, path)) {
-            /* file exists */
-            break;
         }
 
         /* get the correct permissions to set for the new file (not owner/group because we may not have permissions to set them) */
-        if ((err_info = srpds_json_access_get(mod, ds, NULL, NULL, NULL, &perm))) {
+        if ((err_info = srpds_json_access_get(mod, ds, NULL, NULL, NULL, perm))) {
             goto cleanup;
         }
         break;
+    }
+
+cleanup:
+    if (err_info) {
+        free(*path);
+        *path = NULL;
+    }
+
+    return err_info;
+}
+
+static sr_error_info_t *
+srpds_json_store_prepare(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, uint32_t sid,
+        const struct lyd_node *UNUSED(mod_diff), const struct lyd_node *mod_data, void *UNUSED(plg_data))
+{
+    sr_error_info_t *err_info = NULL;
+    mode_t perm = 0;
+    char *path = NULL;
+
+    if ((err_info = srpds_json_store_helper(mod, ds, cid, sid, &path, &perm))) {
+        goto cleanup;
+    }
+
+    /* prepare store */
+    if ((ds != SR_DS_OPERATIONAL) || mod_data) {
+        if ((err_info = srpds_json_store_(path, mod_data, NULL, NULL, perm, (ds == SR_DS_STARTUP) ? 1 : 0))) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    free(path);
+    return err_info;
+}
+
+static sr_error_info_t *
+srpds_json_store_commit(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, uint32_t sid,
+        const struct lyd_node *UNUSED(mod_diff), const struct lyd_node *mod_data, void *UNUSED(plg_data))
+{
+    sr_error_info_t *err_info = NULL;
+    mode_t perm = 0;
+    char *path = NULL, *tmp_path = NULL;
+
+    if ((err_info = srpds_json_store_helper(mod, ds, cid, sid, &path, &perm))) {
+        goto cleanup;
     }
 
     /* store */
     if ((ds == SR_DS_OPERATIONAL) && !mod_data) {
         /* just remove the file, it may not even exist */
         unlink(path);
-    } else if ((err_info = srpds_json_store_(path, mod_data, NULL, NULL, perm, (ds == SR_DS_STARTUP) ? 1 : 0))) {
-        goto cleanup;
+    } else {
+        if (asprintf(&tmp_path, "%s%s", path, SRPJSON_FILE_TMP_SUFFIX) == -1) {
+            srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_NO_MEMORY, "Memory allocation failed.");
+            goto cleanup;
+        }
+        if (rename(tmp_path, path) == -1) {
+            srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_SYS, "Renaming \"%s\" to \"%s\" failed (%s).",
+                    tmp_path, path, strerror(errno));
+        }
     }
 
 cleanup:
     free(path);
+    free(tmp_path);
     return err_info;
 }
 
@@ -964,7 +1031,8 @@ const struct srplg_ds_s srpds_json = {
     .init_cb = srpds_json_init,
     .conn_init_cb = srpds_json_conn_init,
     .conn_destroy_cb = srpds_json_conn_destroy,
-    .store_cb = srpds_json_store,
+    .store_prepare_cb = srpds_json_store_prepare,
+    .store_commit_cb = srpds_json_store_commit,
     .load_cb = srpds_json_load,
     .copy_cb = srpds_json_copy,
     .candidate_modified_cb = srpds_json_candidate_modified,

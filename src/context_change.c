@@ -987,7 +987,11 @@ sr_lycc_store_data_ds_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *new_ct
 
         if (diff) {
             /* store new data */
-            if ((err_info = ds_handle->plugin->store_cb(new_ly_mod, ds, 0, 0, mod_diff, new_mod_data, ds_handle->plg_data))) {
+            if ((err_info = ds_handle->plugin->store_prepare_cb(new_ly_mod, ds, 0, 0, mod_diff, new_mod_data, ds_handle->plg_data))) {
+                break;
+            }
+
+            if ((err_info = ds_handle->plugin->store_commit_cb(new_ly_mod, ds, 0, 0, mod_diff, new_mod_data, ds_handle->plg_data))) {
                 break;
             }
         }
