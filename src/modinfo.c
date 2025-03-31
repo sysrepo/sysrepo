@@ -3985,7 +3985,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_modinfo_data_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session, int shmmod_session_del)
+sr_modinfo_data_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session, int shmmod_session_del, int commit)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
@@ -4014,15 +4014,22 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
                 store_ds = mod_info->ds;
             }
 
-            /* store the new data */
-            if ((err_info = mod->ds_handle[store_ds]->plugin->store_cb(mod->ly_mod, store_ds, mod_info->conn->cid,
-                    sid, mod_diff, mod_data, mod->ds_handle[store_ds]->plg_data))) {
+            if (commit) {
+                /* store the new data */
+                err_info = mod->ds_handle[store_ds]->plugin->store_commit_cb(mod->ly_mod, store_ds, mod_info->conn->cid,
+                        sid, mod_diff, mod_data, mod->ds_handle[store_ds]->plg_data);
+            } else {
+                /* prepare to store the new data */
+                err_info = mod->ds_handle[store_ds]->plugin->store_prepare_cb(mod->ly_mod, store_ds, mod_info->conn->cid,
+                        sid, mod_diff, mod_data, mod->ds_handle[store_ds]->plg_data);
+            }
+            if (err_info) {
                 lyd_free_siblings(mod_diff);
                 lyd_free_siblings(mod_data);
                 goto cleanup;
             }
 
-            if (mod_info->ds == SR_DS_RUNNING) {
+            if (commit && (mod_info->ds == SR_DS_RUNNING)) {
                 /* update the cache ID because data were modified, ignored if data_version callback is used instead */
                 mod->shm_mod->run_cache_id++;
 
@@ -4039,7 +4046,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
                 }
             }
 
-            if ((mod_info->ds == SR_DS_OPERATIONAL) && (mod_info->ds2 == SR_DS_OPERATIONAL)) {
+            if (commit && (mod_info->ds == SR_DS_OPERATIONAL) && (mod_info->ds2 == SR_DS_OPERATIONAL)) {
                 assert(session);
                 if (shmmod_session_del) {
                     /* no stored oper data and session stopped, remove info from mod/ext SHM */
@@ -4079,7 +4086,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
         }
     }
 
-    if (shmmod_session_del && !mod_info->mod_count && session->oper_push_mod_count) {
+    if (commit && shmmod_session_del && !mod_info->mod_count && session->oper_push_mod_count) {
         /* we are stopping a session, we had pushed some data in the past, but no current data, so mod_info->count is zero */
         for (i = 0; i < session->oper_push_mod_count; ++i) {
             mod_name = session->oper_push_mods[i].name;

@@ -2942,12 +2942,27 @@ cleanup:
     return err_info;
 }
 
+sr_error_info_t *
+srpds_mongo_store_prepare(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, uint32_t sid,
+        const struct lyd_node *mod_diff, const struct lyd_node *mod_data, void *plg_data)
+{
+    (void) mod;
+    (void) ds;
+    (void) cid;
+    (void) sid;
+    (void) mod_diff;
+    (void) mod_data;
+    (void) plg_data;
+
+    return NULL;
+}
+
 /**
  * @brief Comment for this function can be found in "plugins_datastore.h".
  *
  */
 sr_error_info_t *
-srpds_mongo_store(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, uint32_t sid,
+srpds_mongo_store_commit(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, uint32_t sid,
         const struct lyd_node *mod_diff, const struct lyd_node *mod_data, void *plg_data)
 {
     mongo_data_t mdata;
@@ -3514,7 +3529,8 @@ const struct srplg_ds_s srpds_mongo = {
     .init_cb = srpds_mongo_init,
     .conn_init_cb = srpds_mongo_conn_init,
     .conn_destroy_cb = srpds_mongo_conn_destroy,
-    .store_cb = srpds_mongo_store,
+    .store_prepare_cb = srpds_mongo_store_prepare,
+    .store_commit_cb = srpds_mongo_store_commit,
     .load_cb = srpds_mongo_load,
     .copy_cb = srpds_mongo_copy,
     .candidate_modified_cb = srpds_mongo_candidate_modified,

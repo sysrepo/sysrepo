@@ -894,8 +894,13 @@ sr_shmmod_del_module_sess_oper_data(sr_conn_ctx_t *conn, const struct lys_module
         }
 
         /* store the empty data */
-        if ((err_info = oper_ds_handle->plugin->store_cb(ly_mod, SR_DS_OPERATIONAL, cid, sid, mod_diff, NULL,
-                oper_ds_handle->plg_data))) {
+        if ((err_info = oper_ds_handle->plugin->store_prepare_cb(ly_mod, SR_DS_OPERATIONAL, cid, sid, mod_diff,
+                NULL, oper_ds_handle->plg_data))) {
+            goto cleanup;
+        }
+
+        if ((err_info = oper_ds_handle->plugin->store_commit_cb(ly_mod, SR_DS_OPERATIONAL, cid, sid, mod_diff,
+                NULL, oper_ds_handle->plg_data))) {
             goto cleanup;
         }
     }
@@ -1728,7 +1733,11 @@ sr_shmmod_copy_mod(const struct lys_module *ly_mod, const struct sr_ds_handle_s 
     }
 
     /* write data to target */
-    if ((err_info = tds_handle->plugin->store_cb(ly_mod, tds, 0, 0, mod_diff, s_mod_data, tds_handle->plg_data))) {
+    if ((err_info = tds_handle->plugin->store_prepare_cb(ly_mod, tds, 0, 0, mod_diff, s_mod_data, tds_handle->plg_data))) {
+        goto cleanup;
+    }
+
+    if ((err_info = tds_handle->plugin->store_commit_cb(ly_mod, tds, 0, 0, mod_diff, s_mod_data, tds_handle->plg_data))) {
         goto cleanup;
     }
 

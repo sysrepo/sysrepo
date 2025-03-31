@@ -273,7 +273,8 @@ sr_ds_handle_init(struct sr_ds_handle_s **ds_handles, uint32_t *ds_handle_count)
             SR_LOG_WRN("DS plugin \"%s\" missing the callback structure.", path);
             goto next_file;
         }
-        if (!srpds->name || !srpds->install_cb || !srpds->uninstall_cb || !srpds->init_cb || !srpds->store_cb ||
+        if (!srpds->name || !srpds->install_cb || !srpds->uninstall_cb || !srpds->init_cb ||
+                !srpds->store_prepare_cb || !srpds->store_commit_cb ||
                 !srpds->load_cb || !srpds->copy_cb || !srpds->candidate_modified_cb || !srpds->candidate_reset_cb ||
                 !srpds->access_set_cb || !srpds->access_get_cb || !srpds->access_check_cb || !srpds->last_modif_cb) {
             SR_LOG_WRN("DS plugin \"%s\" with incomplete callback structure.", path);

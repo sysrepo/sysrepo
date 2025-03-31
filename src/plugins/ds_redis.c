@@ -3454,12 +3454,27 @@ cleanup:
     return err_info;
 }
 
+sr_error_info_t *
+srpds_redis_store_prepare(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, uint32_t sid,
+        const struct lyd_node *mod_diff, const struct lyd_node *mod_data, void *plg_data)
+{
+    (void) mod;
+    (void) ds;
+    (void) cid;
+    (void) sid;
+    (void) mod_diff;
+    (void) mod_data;
+    (void) plg_data;
+
+    return NULL;
+}
+
 /**
  * @brief Comment for this function can be found in "plugins_datastore.h".
  *
  */
 sr_error_info_t *
-srpds_redis_store(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, uint32_t sid,
+srpds_redis_store_commit(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, uint32_t sid,
         const struct lyd_node *mod_diff, const struct lyd_node *mod_data, void *plg_data)
 {
     redis_plg_conn_data_t *pdata = (redis_plg_conn_data_t *)plg_data;
@@ -4045,7 +4060,8 @@ const struct srplg_ds_s srpds_redis = {
     .init_cb = srpds_redis_init,
     .conn_init_cb = srpds_redis_conn_init,
     .conn_destroy_cb = srpds_redis_conn_destroy,
-    .store_cb = srpds_redis_store,
+    .store_prepare_cb = srpds_redis_store_prepare,
+    .store_commit_cb = srpds_redis_store_commit,
     .load_cb = srpds_redis_load,
     .copy_cb = srpds_redis_copy,
     .candidate_modified_cb = srpds_redis_candidate_modified,
