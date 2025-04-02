@@ -2011,6 +2011,7 @@ sr_nacm_get_node_set_read_filter(sr_session_ctx_t *session, struct ly_set *set)
     char **groups = NULL;
     uint32_t group_count = 0;
     struct ly_set denied_set = {0};
+    struct lyd_node *node;
     uint32_t i, j;
     int denied;
 
@@ -2035,9 +2036,12 @@ sr_nacm_get_node_set_read_filter(sr_session_ctx_t *session, struct ly_set *set)
 
         denied = 0;
         for (j = 0; j < denied_set.count; ++j) {
-            if (denied_set.dnodes[j] == set->dnodes[i]) {
-                denied = 1;
-                break;
+            /* any parent could have been denied instead of the node */
+            for (node = set->dnodes[i]; node; node = lyd_parent(node)) {
+                if (denied_set.dnodes[j] == node) {
+                    denied = 1;
+                    break;
+                }
             }
         }
         ly_set_erase(&denied_set, NULL);
