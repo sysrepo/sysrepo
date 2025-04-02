@@ -176,7 +176,7 @@ jobs:
           cd uncrustify
           mkdir build
           cd build
-          CC=${{ matrix.config.cc }} cmake ..
+          CC=${{ matrix.config.cc }} cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
           make
           sudo make install
         if: ${{ matrix.config.name == 'Debug, gcc' }}
@@ -223,7 +223,7 @@ jobs:
           cd mongo-c-driver-1.24.0
           mkdir cmake-build
           cd cmake-build
-          cmake -DENABLE_AUTOMATIC_INIT_AND_CLEANUP=OFF ..
+          cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DENABLE_AUTOMATIC_INIT_AND_CLEANUP=OFF ..
           cmake --build .
           sudo cmake --build . --target install
         if: ${{ matrix.config.name == 'MONGO DS plugin' }}
@@ -233,7 +233,7 @@ jobs:
         run: |
           git clone https://github.com/mongodb/mongo-c-driver.git
           cd mongo-c-driver
-          cmake -S . -B ./_build -D ENABLE_EXTRA_ALIGNMENT=OFF -D ENABLE_AUTOMATIC_INIT_AND_CLEANUP=OFF -D CMAKE_BUILD_TYPE=RelWithDebInfo -D ENABLE_MONGOC=ON
+          cmake -S . -B ./_build -DENABLE_EXTRA_ALIGNMENT=OFF -DENABLE_AUTOMATIC_INIT_AND_CLEANUP=OFF -DCMAKE_BUILD_TYPE=RelWithDebInfo -DENABLE_MONGOC=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5
           cmake --build ./_build --config RelWithDebInfo --parallel
           sudo cmake --install "./_build" --prefix "/usr/local"
         if: ${{ matrix.config.name == 'MONGO DS plugin latest' }}
