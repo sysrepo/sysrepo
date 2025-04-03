@@ -1585,6 +1585,7 @@ error:
     }
     ly_set_erase(&mod_set, NULL);
     lyd_free_siblings(sr_del_mods);
+    sr_del_mods = NULL;
 
     /* revert SHM module changes */
     if (mod_shm_changed && (tmp_err = sr_shmmod_store_modules(&sr_yang_ctx.mod_shm, sr_mods))) {
