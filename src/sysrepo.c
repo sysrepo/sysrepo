@@ -134,6 +134,21 @@ sr_conn_free(sr_conn_ctx_t *conn)
         return;
     }
 
+    /* decrease connection count */
+    ATOMIC_DEC_RELAXED(sr_conn_count);
+    if (!ATOMIC_LOAD_RELAXED(sr_conn_count)) {
+        /* YANG CTX LOCK to get the current ctx */
+        if (sr_lycc_lock(conn, SR_LOCK_WRITE, 0, __func__)) {
+            /* should not happen when there are no other connections */
+            assert(0);
+        }
+
+        /* context updated to the latest */
+
+        /* YANG CTX UNLOCK */
+        sr_lycc_unlock(conn, SR_LOCK_WRITE, 0, __func__);
+    }
+
     /* destroy DS plugin data */
     sr_conn_ds_destroy(conn);
 
@@ -149,8 +164,7 @@ sr_conn_free(sr_conn_ctx_t *conn)
     sr_ds_handle_free(conn->ds_handles, conn->ds_handle_count);
     sr_ntf_handle_free(conn->ntf_handles, conn->ntf_handle_count);
 
-    /* decrease connection count */
-    ATOMIC_DEC_RELAXED(sr_conn_count);
+    /* check again if we are the last connection */
     if (!ATOMIC_LOAD_RELAXED(sr_conn_count)) {
         /* last connection, destroy global contexts */
         lyd_free_siblings(sr_schema_mount_ctx.data);
@@ -165,11 +179,14 @@ sr_conn_free(sr_conn_ctx_t *conn)
             lyd_free_siblings(sr_oper_cache.subs[i].data);
         }
 
+        /* context was updated to the latest, destroy it */
         ly_ctx_destroy(sr_yang_ctx.ly_ctx);
         sr_yang_ctx.ly_ctx = NULL;
 
         sr_shm_clear(&sr_yang_ctx.mod_shm);
         sr_shm_clear(&sr_yang_ctx.ly_ctx_shm);
+
+        sr_yang_ctx.content_id = 0;
     }
 
     free(conn);
@@ -1439,15 +1456,15 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
         goto cleanup;
     }
 
-    /* set import callback */
-    imp_clb = ly_ctx_get_module_imp_clb(sr_yang_ctx.ly_ctx, &imp_clb_data);
-    ly_ctx_set_module_imp_clb(new_ctx, imp_clb, imp_clb_data);
-
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ_UPGR, 1, __func__))) {
         goto cleanup;
     }
     ctx_mode = SR_LOCK_READ_UPGR;
+
+    /* set import callback */
+    imp_clb = ly_ctx_get_module_imp_clb(sr_yang_ctx.ly_ctx, &imp_clb_data);
+    ly_ctx_set_module_imp_clb(new_ctx, imp_clb, imp_clb_data);
 
     for (i = 0; i < *new_mod_count; ++i) {
         nmod = &(*new_mods)[i];
