@@ -114,30 +114,57 @@ static sr_error_info_t *
 srsn_filter_xpath_buf_append_attrs(const struct lyd_node *node, char **buf, int *size)
 {
     sr_error_info_t *err_info = NULL;
-    const struct lyd_meta *next;
+    const struct lyd_meta *m;
+    const struct lyd_attr *a;
+    const struct lys_module *mod;
+    const char *mod_name;
     int new_size;
     char *buf_new, quot;
 
     if (node->schema) {
-        LY_LIST_FOR(node->meta, next) {
-            if (!lyd_metadata_should_print(next)) {
+        LY_LIST_FOR(node->meta, m) {
+            if (!lyd_metadata_should_print(m)) {
                 continue;
             }
-            new_size = *size + 2 + strlen(next->annotation->module->name) + 1 + strlen(next->name) + 2 +
-                    strlen(lyd_get_meta_value(next)) + 2;
+            new_size = *size + 2 + strlen(m->annotation->module->name) + 1 + strlen(m->name) + 2 +
+                    strlen(lyd_get_meta_value(m)) + 2;
             buf_new = realloc(*buf, new_size);
             SR_CHECK_MEM_RET(!buf_new, err_info);
             *buf = buf_new;
-            quot = strchr(lyd_get_meta_value(next), '\'') ? '\"' : '\'';
-            sprintf((*buf) + (*size - 1), "[@%s:%s=%c%s%c]", next->annotation->module->name, next->name, quot,
-                    lyd_get_meta_value(next), quot);
+            quot = strchr(lyd_get_meta_value(m), '\'') ? '\"' : '\'';
+            sprintf((*buf) + (*size - 1), "[@%s:%s=%c%s%c]", m->annotation->module->name, m->name, quot,
+                    lyd_get_meta_value(m), quot);
             *size = new_size;
         }
     } else {
-        if (((struct lyd_node_opaq *)node)->attr) {
-            /* TODO unsupported */
-            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Cannot filter based on unknown attributes.");
-            return err_info;
+        LY_LIST_FOR(((struct lyd_node_opaq *)node)->attr, a) {
+            /* get module name */
+            switch (a->format) {
+            case LY_VALUE_XML:
+                mod = ly_ctx_get_module_implemented_ns(LYD_CTX(node), a->name.module_ns);
+                mod_name = mod ? mod->name : NULL;
+                break;
+            case LY_VALUE_JSON:
+                mod_name = a->name.module_name;
+                break;
+            default:
+                mod_name = NULL;
+                break;
+            }
+
+            new_size = *size + 2;
+            if (mod_name) {
+                new_size += strlen(mod_name) + 1;
+            }
+            new_size += strlen(a->name.name) + 2 + strlen(a->value) + 2;
+            buf_new = realloc(*buf, new_size);
+            SR_CHECK_MEM_RET(!buf_new, err_info);
+            *buf = buf_new;
+
+            quot = strchr(a->value, '\'') ? '\"' : '\'';
+            sprintf((*buf) + (*size - 1), "[@%s%s%s=%c%s%c]", mod_name ? mod_name : "", mod_name ? ":" : "",
+                    a->name.name, quot, a->value, quot);
+            *size = new_size;
         }
     }
 
