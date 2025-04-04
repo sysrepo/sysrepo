@@ -628,7 +628,7 @@ main(int argc, char **argv)
     rc = EXIT_SUCCESS;
 
 cleanup:
-    for (i = 0; i < plugin_count; ++i) {
+    for (i = plugin_count - 1; i >= 0; --i) {
         /* plugin cleanup */
         if (plugins[i].initialized) {
             plugins[i].cleanup_cb(sess, plugins[i].private_data);
