@@ -628,17 +628,17 @@ main(int argc, char **argv)
     rc = EXIT_SUCCESS;
 
 cleanup:
-    for (i = plugin_count; i > 0; --i) {
-        const int idx = i - 1;
+    while (plugin_count > 0) {
         /* plugin cleanup */
-        if (plugins[idx].initialized) {
-            plugins[idx].cleanup_cb(sess, plugins[idx].private_data);
+        if (plugins[plugin_count - 1].initialized) {
+            plugins[plugin_count - 1].cleanup_cb(sess, plugins[plugin_count - 1].private_data);
         }
 
-        if (plugins[idx].handle) {
-            dlclose(plugins[idx].handle);
+        if (plugins[plugin_count - 1].handle) {
+            dlclose(plugins[plugin_count - 1].handle);
         }
-        free(plugins[idx].plugin_name);
+        free(plugins[plugin_count - 1].plugin_name);
+        --plugin_count;
     }
     free(plugins);
 
