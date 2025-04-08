@@ -456,6 +456,11 @@ srpntf_json_store(const struct lys_module *mod, const struct lyd_node *notif, co
 
             /* we are done */
             goto cleanup;
+        } else if ((notif_ts->tv_sec == from_ts) && (notif_ts->tv_sec == to_ts)) {
+            srplg_log_errinfo(&err_info, srpntf_name, NULL, SR_ERR_OPERATION_FAILED,
+                    "Notification file %" PRId64 "-%" PRId64 " exceeded the maximum size of %d KB.",
+                    (int64_t)from_ts, (int64_t)to_ts, SRPJSON_NOTIF_FILE_MAX_SIZE);
+            goto cleanup;
         }
 
         /* we will create a new file, close this one */
