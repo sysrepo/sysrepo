@@ -1826,6 +1826,7 @@ sr_nacm_check_operation(sr_session_ctx_t *session, const struct lyd_node *op)
     }
 
 cleanup:
+    free(denied.rule_name);
     return sr_api_ret(session, err_info);
 }
 
