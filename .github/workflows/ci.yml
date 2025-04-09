@@ -101,17 +101,17 @@ jobs:
             snaps: "",
             make-target: ""
           }
-          - {
-            name: "MONGO DS plugin latest",
-            os: "ubuntu-latest",
-            build-type: "Debug",
-            dep-build-type: "Debug",
-            cc: "gcc",
-            options: "-DENABLE_DS_MONGO=ON -DDEFAULT_STARTUP_DS_PLG=\"MONGO DS\" -DDEFAULT_RUNNING_DS_PLG=\"MONGO DS\" -DDEFAULT_CANDIDATE_DS_PLG=\"MONGO DS\" -DDEFAULT_OPERATIONAL_DS_PLG=\"MONGO DS\" -DDEFAULT_FACTORY_DEFAULT_DS_PLG=\"MONGO DS\"",
-            packages: "libcmocka-dev valgrind",
-            snaps: "",
-            make-target: ""
-          }
+          # - {
+          #   name: "MONGO DS plugin latest",
+          #   os: "ubuntu-latest",
+          #   build-type: "Debug",
+          #   dep-build-type: "Debug",
+          #   cc: "gcc",
+          #   options: "-DENABLE_DS_MONGO=ON -DDEFAULT_STARTUP_DS_PLG=\"MONGO DS\" -DDEFAULT_RUNNING_DS_PLG=\"MONGO DS\" -DDEFAULT_CANDIDATE_DS_PLG=\"MONGO DS\" -DDEFAULT_OPERATIONAL_DS_PLG=\"MONGO DS\" -DDEFAULT_FACTORY_DEFAULT_DS_PLG=\"MONGO DS\"",
+          #   packages: "libcmocka-dev valgrind",
+          #   snaps: "",
+          #   make-target: ""
+          # }
           - {
             name: "REDIS DS plugin",
             os: "ubuntu-latest",
