@@ -27,6 +27,7 @@
 #include <cmocka.h>
 #include <libyang/libyang.h>
 
+#include "common.h"
 #include "sysrepo.h"
 #include "tests/tcommon.h"
 
@@ -56,7 +57,7 @@ setup_f(void **state)
     *state = st;
 
     /* connection 1 */
-    if (sr_connect(0, &(st->conn1)) != SR_ERR_OK) {
+    if (sr_connect(SR_CONN_CACHE_RUNNING, &(st->conn1)) != SR_ERR_OK) {
         return 1;
     }
     if (sr_session_start(st->conn1, SR_DS_RUNNING, &st->sess1) != SR_ERR_OK) {
@@ -64,7 +65,7 @@ setup_f(void **state)
     }
 
     /* connection 2 */
-    if (sr_connect(0, &(st->conn2)) != SR_ERR_OK) {
+    if (sr_connect(SR_CONN_CACHE_RUNNING, &(st->conn2)) != SR_ERR_OK) {
         return 1;
     }
     if (sr_session_start(st->conn2, SR_DS_RUNNING, &st->sess2) != SR_ERR_OK) {
@@ -72,7 +73,7 @@ setup_f(void **state)
     }
 
     /* connection 3 */
-    if (sr_connect(0, &(st->conn3)) != SR_ERR_OK) {
+    if (sr_connect(SR_CONN_CACHE_RUNNING, &(st->conn3)) != SR_ERR_OK) {
         return 1;
     }
     if (sr_session_start(st->conn3, SR_DS_RUNNING, &st->sess3) != SR_ERR_OK) {
@@ -173,7 +174,7 @@ new_conn_thread(void *arg)
 }
 
 static void
-test_new(void **state)
+test_new_conn(void **state)
 {
     struct state *st = (struct state *)*state;
     const int thread_count = 10;
@@ -418,13 +419,116 @@ test_sub_suspend(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 }
 
+static void *
+test_oper_read_helper(void *state)
+{
+    struct state *st = (struct state *)state;
+    sr_session_ctx_t *sess = NULL;
+    int i, ret;
+    sr_data_t *data;
+    static ATOMIC_T thread_id = 0;
+    uint32_t id = ATOMIC_INC_RELAXED(thread_id);
+
+    ret = sr_session_start(st->conn2, SR_DS_OPERATIONAL, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for subscription before applying changes */
+    pthread_barrier_wait(&st->barrier);
+
+    for (i = 0; i < 3; i++) {
+        ret = sr_get_data(sess, (id % 2) ? "/test:*" : "/ietf-interfaces:*", 0, 0, 0, &data);
+        assert_int_equal(ret, SR_ERR_OK);
+        sr_release_data(data);
+    }
+
+    ret = sr_session_stop(sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    return NULL;
+}
+
+/* TEST */
+static int
+slow_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
+{
+    (void)session;
+    (void)sub_id;
+    (void)module_name;
+    (void)xpath;
+    (void)request_xpath;
+    (void)request_id;
+    (void)parent;
+    (void)private_data;
+
+    /* Wait longer than run cache lock timeout */
+    usleep(1000 * (1 + SR_CONN_RUN_CACHE_LOCK_TIMEOUT));
+
+    return SR_ERR_OK;
+}
+
+static void
+test_run_change_oper_get(void **state)
+{
+    struct state *st = (struct state *)*state;
+    const int thread_count = 2;
+    int i, ret;
+    pthread_t tid[thread_count];
+    sr_subscription_ctx_t *subscr = NULL;
+
+    pthread_barrier_init(&st->barrier, NULL, thread_count + 1);
+    /* register as a oper get subscriber */
+    ret = sr_oper_get_subscribe(st->sess1, "ietf-interfaces", "/ietf-interfaces:interfaces-state", slow_oper_cb,
+            NULL, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_oper_get_subscribe(st->sess1, "test", "/test:l1", slow_oper_cb,
+            NULL, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    for (i = 0; i < thread_count; ++i) {
+        pthread_create(&tid[i], NULL, test_oper_read_helper, st);
+    }
+
+    /* wait for subscription before applying changes */
+    pthread_barrier_wait(&st->barrier);
+
+    /* modify running datastore to invalidate run-cache */
+    ret = sr_set_item_str(st->sess1, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess1, "/test:l1[k='key1']/v", "1", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_apply_changes(st->sess1, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_delete_item(st->sess1, "/ietf-interfaces:interfaces", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_delete_item(st->sess1, "/test:l1", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_apply_changes(st->sess1, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    for (i = 0; i < thread_count; ++i) {
+        pthread_join(tid[i], NULL);
+    }
+
+    ret = sr_unsubscribe(subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+    pthread_barrier_destroy(&st->barrier);
+}
+
 int
 main(void)
 {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test_teardown(test_create1, clear_interfaces),
-        cmocka_unit_test(test_new),
+        cmocka_unit_test(test_new_conn),
         cmocka_unit_test_teardown(test_sub_suspend, clear_interfaces),
+        cmocka_unit_test_teardown(test_run_change_oper_get, clear_interfaces),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

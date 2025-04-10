@@ -2902,6 +2902,12 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
     }
 
     if (run_cached_data_cur) {
+        /* CACHE READ LOCK */
+        if ((err_info = sr_rwlock(&conn->run_cache_lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
+                __func__, NULL, NULL))) {
+            return err_info;
+        }
+
         /* there are cached data */
         switch (mod_info->ds) {
         case SR_DS_STARTUP:
@@ -2929,6 +2935,10 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
                     1, &mod_data);
             break;
         }
+
+        /* CACHE READ UNLOCK */
+        sr_rwunlock(&conn->run_cache_lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+
         if (err_info) {
             return err_info;
         }
@@ -3161,22 +3171,24 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int read_only, sr_session_c
 {
     sr_error_info_t *err_info = NULL;
     sr_conn_ctx_t *conn;
+    sr_lock_mode_t cache_lock_mode = SR_LOCK_NONE;
     struct sr_mod_info_mod_s *mod;
     uint32_t i;
     int run_data_cache_cur = 0;
 
     conn = mod_info->conn;
 
-    /* CACHE READ LOCK */
-    if ((err_info = sr_rwlock(&conn->run_cache_lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
-            __func__, NULL, NULL))) {
-        return err_info;
-    }
-
     /* cache may be useful only for some datastores */
     if (!mod_info->data_cached && mod_info->mod_count && (conn->opts & SR_CONN_CACHE_RUNNING) &&
             !(get_oper_opts & SR_OPER_NO_RUN_CACHED) &&
             ((mod_info->ds == SR_DS_RUNNING) || (mod_info->ds == SR_DS_CANDIDATE) || (mod_info->ds2 == SR_DS_RUNNING))) {
+
+        /* CACHE READ LOCK */
+        if ((err_info = sr_rwlock(&conn->run_cache_lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
+                __func__, NULL, NULL))) {
+            return err_info;
+        }
+        cache_lock_mode = SR_LOCK_READ;
 
         /* update the data in the cache */
         if ((err_info = sr_conn_run_cache_update(conn, mod_info, SR_LOCK_READ))) {
@@ -3213,6 +3225,10 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int read_only, sr_session_c
             }
             goto cleanup;
         }
+
+        /* CACHE READ UNLOCK */
+        sr_rwunlock(&conn->run_cache_lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+        cache_lock_mode = SR_LOCK_NONE;
     }
 
     /* load data for each module */
@@ -3234,10 +3250,11 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int read_only, sr_session_c
     }
 
 cleanup:
-    if (!mod_info->data_cached) {
+    if ((cache_lock_mode != SR_LOCK_NONE) && !mod_info->data_cached) {
         /* CACHE READ UNLOCK */
         sr_rwunlock(&conn->run_cache_lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
     } /* else the flag marks held READ lock */
+
     return err_info;
 }
 
