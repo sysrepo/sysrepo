@@ -943,6 +943,63 @@ sr_shmsub_change_filter_is_valid(const char *xpath, const struct lyd_node *diff)
     return ret;
 }
 
+sr_error_info_t *
+sr_shmsub_change_notify_collect_xpaths(sr_conn_ctx_t *conn, struct sr_mod_info_mod_s *mod, sr_datastore_t ds,
+        char ***xpaths)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_mod_change_sub_t *shm_sub;
+    uint32_t i, xp_count = 0;
+    void *mem;
+
+    *xpaths = NULL;
+
+    /* EXT READ LOCK */
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
+        return err_info;
+    }
+
+    shm_sub = (sr_mod_change_sub_t *)(conn->ext_shm.addr + mod->shm_mod->change_sub[ds].subs);
+    for (i = 0; i < mod->shm_mod->change_sub[ds].sub_count; i++) {
+        /* check subscription aliveness */
+        if (!sr_conn_is_alive(shm_sub[i].cid)) {
+            continue;
+        }
+
+        /* skip suspended subscriptions */
+        if (ATOMIC_LOAD_RELAXED(shm_sub[i].suspended)) {
+            continue;
+        }
+
+        /* no xpath */
+        if (!shm_sub[i].xpath) {
+            continue;
+        }
+
+        /* add the xpath */
+        mem = realloc(*xpaths, (xp_count + 2) * sizeof **xpaths);
+        SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
+        *xpaths = mem;
+        (*xpaths)[xp_count] = strdup(conn->ext_shm.addr + shm_sub[i].xpath);
+        SR_CHECK_MEM_GOTO(!(*xpaths)[xp_count], err_info, cleanup);
+        ++xp_count;
+        (*xpaths)[xp_count] = NULL;
+    }
+
+cleanup:
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
+
+    if (err_info && *xpaths) {
+        for (i = 0; (*xpaths)[i]; ++i) {
+            free((*xpaths)[i]);
+        }
+        free(*xpaths);
+        *xpaths = NULL;
+    }
+    return err_info;
+}
+
 /**
  * @brief Learn whether there is a subscription for a change event.
  *

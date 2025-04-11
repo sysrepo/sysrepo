@@ -92,6 +92,18 @@ sr_error_info_t *sr_shmsub_data_create(const char *name, const char *suffix1, in
 sr_error_info_t *sr_shmsub_data_unlink(const char *name, const char *suffix1, int64_t suffix2);
 
 /**
+ * @brief Collect all XPaths of specific module change subscriptions.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] mod Mod info module to use.
+ * @param[in] ds Datastore.
+ * @param[out] xpaths XPaths of all the change subscriptions for @p mod.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmsub_change_notify_collect_xpaths(sr_conn_ctx_t *conn, struct sr_mod_info_mod_s *mod,
+        sr_datastore_t ds, char ***xpaths);
+
+/**
  * @brief Write into a subscriber event pipe to notify it there is a new event.
  *
  * @param[in] evpipe_num Subscriber event pipe number.

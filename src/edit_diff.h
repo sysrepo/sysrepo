@@ -64,6 +64,18 @@ enum edit_op sr_edit_str2op(const char *str);
 sr_error_info_t *sr_edit_oper_check_op(struct lyd_node *oper_data, enum edit_op *op);
 
 /**
+ * @brief Create/find missing parents when appending edit/diff subtree into existing edit/diff tree.
+ *
+ * @param[in] node Node (subtree) to append.
+ * @param[in,out] tree Existing edit/diff tree, is updated.
+ * @param[out] top_parent First created parent, NULL if no parents were created.
+ * @param[out] node_parent Parent of @p node, may exist or be created.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_edit_diff_create_parents(const struct lyd_node *node, struct lyd_node **tree,
+        struct lyd_node **top_parent, struct lyd_node **node_parent);
+
+/**
  * @brief Callback for libyang diff apply.
  *
  * @param[in] diff_node Diff node.
@@ -163,17 +175,6 @@ sr_error_info_t *sr_edit_mod_apply(const struct lyd_node *edit, const struct lys
  */
 sr_error_info_t *sr_oper_edit_mod_apply(const struct lyd_node *tree, const struct lys_module *ly_mod,
         struct lyd_node **data, struct lyd_node **diff, int *change);
-
-/**
- * @brief Merge missing nodes in a diff from data and use 'none' operation for them.
- *
- * @param[in,out] diff Diff to merge into.
- * @param[in] ly_mod Data tree module.
- * @param[in] data Data tree to merge.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_edit_mod_diff_merge(struct lyd_node **diff, const struct lys_module *ly_mod,
-        const struct lyd_node *data);
 
 /**
  * @brief Add change into sysrepo edit.

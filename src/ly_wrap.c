@@ -1038,11 +1038,20 @@ sr_lyd_merge_module(struct lyd_node **target, const struct lyd_node *source, con
 {
     sr_error_info_t *err_info = NULL;
     uint32_t temp_lo = LY_LOSTORE;
+    const struct ly_ctx *ly_ctx;
 
     ly_temp_log_options(&temp_lo);
 
+    if (mod) {
+        ly_ctx = mod->ctx;
+    } else if (source) {
+        ly_ctx = LYD_CTX(source);
+    } else {
+        ly_ctx = LYD_CTX(*target);
+    }
+
     if (lyd_merge_module(target, source, mod, merge_cb, cb_data, options)) {
-        sr_errinfo_new_ly(&err_info, mod->ctx, NULL, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, ly_ctx, NULL, SR_ERR_LY);
         goto cleanup;
     }
 

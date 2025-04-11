@@ -547,16 +547,7 @@ cleanup:
     return err_info;
 }
 
-/**
- * @brief Create/find missing parents when appending edit/diff subtree into existing edit/diff tree.
- *
- * @param[in] node Node (subtree) to append.
- * @param[in,out] tree Existing edit/diff tree, is updated.
- * @param[out] top_parent First created parent, NULL if no parents were created.
- * @param[out] node_parent Parent of @p node, may exist or be created.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
+sr_error_info_t *
 sr_edit_diff_create_parents(const struct lyd_node *node, struct lyd_node **tree, struct lyd_node **top_parent,
         struct lyd_node **node_parent)
 {
@@ -2666,47 +2657,6 @@ cleanup:
     lyd_free_siblings(mod_diff);
     ly_set_erase(&opaq_set, NULL);
     return err_info;
-}
-
-/**
- * @brief Callback for merging data as diff with 'none' operations.
- */
-static LY_ERR
-sr_edit_mod_merge_diff_cb(struct lyd_node *trg_node, const struct lyd_node *src_node, void *UNUSED(cb_data))
-{
-    sr_error_info_t *err_info = NULL;
-    struct lyd_node *iter;
-
-    if (src_node) {
-        /* nodes are merged, should always be equal */
-        return LY_SUCCESS;
-    }
-
-    /* subtree is merged, set 'none' operation for it */
-    if ((err_info = sr_diff_set_oper(trg_node, "none"))) {
-        sr_errinfo_free(&err_info);
-        return LY_EOTHER;
-    }
-
-    /* set 'orig-default' for all the term nodes */
-    LYD_TREE_DFS_BEGIN(trg_node, iter) {
-        if (iter->schema->nodetype & LYD_NODE_TERM) {
-            if ((err_info = sr_lyd_new_meta(iter, NULL, "yang:orig-default", (iter->flags & LYD_DEFAULT) ? "true" : "false"))) {
-                sr_errinfo_free(&err_info);
-                return LY_EOTHER;
-            }
-        }
-        LYD_TREE_DFS_END(trg_node, iter);
-    }
-
-    return LY_SUCCESS;
-}
-
-sr_error_info_t *
-sr_edit_mod_diff_merge(struct lyd_node **diff, const struct lys_module *ly_mod, const struct lyd_node *data)
-{
-    /* use normal merge with a callback to set the 'none' operations */
-    return sr_lyd_merge_module(diff, data, ly_mod, sr_edit_mod_merge_diff_cb, NULL, LYD_MERGE_DEFAULTS);
 }
 
 /**
