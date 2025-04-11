@@ -8115,7 +8115,6 @@ sr_oper_poll_subscribe(sr_session_ctx_t *session, const char *module_name, const
     uint32_t sub_id;
     sr_subscr_options_t sub_opts;
     sr_mod_t *shm_mod;
-    struct modsub_operpoll_s *oper_poll_subs;
 
     SR_CHECK_ARG_APIRET(!session || SR_IS_EVENT_SESS(session) || !path || !valid_ms || !subscription, session, err_info);
 
@@ -8195,13 +8194,7 @@ sr_oper_poll_subscribe(sr_session_ctx_t *session, const char *module_name, const
         goto error3;
     }
 
-    /* perform the first cache update */
-    oper_poll_subs = &(*subscription)->oper_poll_subs[(*subscription)->oper_poll_sub_count - 1];
-    if ((err_info = sr_shmsub_oper_poll_listen_process_module_events(oper_poll_subs, conn, NULL))) {
-        goto error4;
-    }
-
-    /* make sure the event handler updates its wake up period */
+    /* notify the event handler to perform the first cache update */
     if ((err_info = sr_shmsub_notify_evpipe((*subscription)->evpipe_num, 0, NULL))) {
         goto error4;
     }

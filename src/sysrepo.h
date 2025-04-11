@@ -1841,8 +1841,7 @@ int sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, co
  * requires data of the cached operational get subscription at @p path, the callback is not called and the cached data
  * are used instead. Additionally, if @p opts include ::SR_SUBSCR_OPER_POLL_DIFF, any changes detected on cache data
  * refresh are reported to corresponding subscribers. For an operational get subscription, there can only be a
- * __single__ operational poll subscription with this flag. The first cache update is performed directly by this
- * function.
+ * __single__ operational poll subscription with this flag.
  *
  * Required READ access.
  *

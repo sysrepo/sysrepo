@@ -3327,6 +3327,10 @@ test_cache(void **state)
     ret = sr_oper_poll_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", 3000, 0, &subscr2);
     assert_int_equal(ret, SR_ERR_OK);
 
+    /* make sure the callback is called and cache updated */
+    ret = sr_subscription_process_events(subscr2, NULL, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
     /* another subscribe fails */
     ret = sr_oper_poll_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", 1000, 0, &subscr2);
     assert_int_equal(ret, SR_ERR_INVAL_ARG);
@@ -3758,7 +3762,7 @@ test_cache_diff(void **state)
     sr_unsubscribe(subscr1);
     sr_unsubscribe(subscr2);
 
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 6);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
 }
 
 /* TEST */
@@ -3817,6 +3821,10 @@ test_cache_nested(void **state)
     /* subscribe for oper poll */
     ret = sr_oper_poll_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state/interface[name='eth11']",
             5000, 0, &subscr2);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* make sure the callback is called and cache updated */
+    ret = sr_subscription_process_events(subscr2, NULL, NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the data from operational #1 */
