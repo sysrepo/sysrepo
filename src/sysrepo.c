@@ -4254,14 +4254,16 @@ cleanup:
 
 sr_error_info_t *
 sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session, int shmmod_session_del,
-        uint32_t timeout_ms, sr_error_info_t **err_info2)
+        uint32_t timeout_ms, sr_lock_mode_t has_change_sub_lock, sr_error_info_t **err_info2)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_denied denied = {0};
-    sr_lock_mode_t change_sub_lock = SR_LOCK_NONE;
+    sr_lock_mode_t change_sub_lock = has_change_sub_lock;
     uint32_t sid = 0, err_count;
     char *orig_name = NULL;
     void *orig_data = NULL;
+
+    assert((has_change_sub_lock == SR_LOCK_NONE) || (has_change_sub_lock == SR_LOCK_READ));
 
     /* get session info */
     if (session) {
@@ -4355,11 +4357,13 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
         goto cleanup;
     }
 
-    /* CHANGE SUB READ LOCK */
-    if ((err_info = sr_modinfo_changesub_rdlock(mod_info))) {
-        goto cleanup;
+    if (!change_sub_lock) {
+        /* CHANGE SUB READ LOCK */
+        if ((err_info = sr_modinfo_changesub_rdlock(mod_info))) {
+            goto cleanup;
+        }
+        change_sub_lock = SR_LOCK_READ;
     }
-    change_sub_lock = SR_LOCK_READ;
 
     /* first publish "update" event for the diff to be updated */
     if ((err_info = sr_modinfo_change_notify_update(mod_info, session, timeout_ms, &change_sub_lock, err_info2)) ||
@@ -4419,7 +4423,7 @@ store:
     }
 
 cleanup:
-    if (change_sub_lock) {
+    if (change_sub_lock && !has_change_sub_lock) {
         assert(change_sub_lock == SR_LOCK_READ);
 
         /* CHANGE SUB READ UNLOCK */
@@ -4452,6 +4456,7 @@ sr_apply_oper_changes(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
     const struct lyd_node *oper_edit;
     uint32_t mi_opts, i;
     int update_sm_data = 0;
+    sr_lock_mode_t change_sub_lock = SR_LOCK_NONE;
 
     assert(session && (session->ds == SR_DS_OPERATIONAL));
 
@@ -4493,7 +4498,13 @@ sr_apply_oper_changes(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
         goto cleanup;
     }
 
-    /* create the notify diff and use the new session oper data */
+    /* CHANGE SUB READ LOCK */
+    if ((err_info = sr_modinfo_changesub_rdlock(mod_info))) {
+        goto cleanup;
+    }
+    change_sub_lock = SR_LOCK_READ;
+
+    /* create the notify diff and use the new session oper data (data depend also on change subscriptions and their xpaths) */
     if ((err_info = sr_modinfo_oper_notify_diff(mod_info, &old_oper_ds))) {
         goto cleanup;
     }
@@ -4510,11 +4521,15 @@ sr_apply_oper_changes(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
     }
 
     /* notify all the subscribers and store the changes */
-    if ((err_info = sr_changes_notify_store(mod_info, session, shmmod_session_del, timeout_ms, err_info2))) {
+    if ((err_info = sr_changes_notify_store(mod_info, session, shmmod_session_del, timeout_ms, change_sub_lock, err_info2))) {
         goto cleanup;
     } else if (*err_info2) {
         goto cleanup;
     }
+
+    /* CHANGE SUB READ UNLOCK */
+    sr_modinfo_changesub_rdunlock(mod_info);
+    change_sub_lock = SR_LOCK_NONE;
 
     if (update_sm_data) {
         /* operational schema-mount data were changed, update them in the connection */
@@ -4524,6 +4539,11 @@ sr_apply_oper_changes(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
     }
 
 cleanup:
+    if (change_sub_lock) {
+        /* CHANGE SUB READ UNLOCK */
+        sr_modinfo_changesub_rdunlock(mod_info);
+    }
+
     sr_release_data(old_oper_data);
     lyd_free_siblings(data_diff);
     lyd_free_siblings(old_oper_ds);
@@ -4584,7 +4604,7 @@ sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms)
     }
 
     /* notify all the subscribers and store the changes */
-    if ((err_info = sr_changes_notify_store(&mod_info, session, 0, timeout_ms, &err_info2))) {
+    if ((err_info = sr_changes_notify_store(&mod_info, session, 0, timeout_ms, SR_LOCK_NONE, &err_info2))) {
         goto cleanup;
     } else if (err_info2) {
         goto cleanup;
@@ -4741,7 +4761,7 @@ _sr_replace_config(sr_session_ctx_t *session, const struct lys_module *ly_mod, u
     }
 
     /* notify all the subscribers and store the changes */
-    err_info = sr_changes_notify_store(&mod_info, session, 0, timeout_ms, &cb_err_info);
+    err_info = sr_changes_notify_store(&mod_info, session, 0, timeout_ms, SR_LOCK_NONE, &cb_err_info);
 
 cleanup:
     /* MODULES UNLOCK */

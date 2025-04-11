@@ -2579,7 +2579,8 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
         }
 
         /* notify all the subscribers and store the changes */
-        if ((err_info = sr_changes_notify_store(&mod_info, NULL, 0, SR_CHANGE_CB_TIMEOUT, &cb_err_info)) || cb_err_info) {
+        if ((err_info = sr_changes_notify_store(&mod_info, NULL, 0, SR_CHANGE_CB_TIMEOUT, SR_LOCK_NONE, &cb_err_info)) ||
+                cb_err_info) {
             goto cleanup;
         }
 
