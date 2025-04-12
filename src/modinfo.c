@@ -4179,7 +4179,9 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
                     /* store the changed data in the cache */
                     if ((err_info = sr_conn_run_cache_update_mod(mod_info->conn, mod->ly_mod, mod->shm_mod->run_cache_id,
                             mod_data))) {
-                        goto cleanup;
+                        /* not a fatal error, cache can be updated in a future operation */
+                        sr_errinfo_free(&err_info);
+                        lyd_free_siblings(mod_data);
                     }
 
                     /* mod data spent */
