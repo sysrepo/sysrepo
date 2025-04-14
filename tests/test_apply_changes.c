@@ -4,8 +4,8 @@
  * @brief test for sr_apply_changes()
  *
  * @copyright
- * Copyright (c) 2018 - 2024 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2024 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2025 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2025 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -36,6 +36,7 @@
 
 struct state {
     sr_conn_ctx_t *conn;
+    sr_session_ctx_t *sm_sess;
     ATOMIC_T cb_called, cb_called2, cb_called3;
     pthread_barrier_t barrier, barrier2, barrier4;
 };
@@ -61,6 +62,18 @@ setup(void **state)
     *state = st;
 
     if (sr_connect(0, &(st->conn)) != SR_ERR_OK) {
+        return 1;
+    }
+
+    /* set schema-mount data */
+    if (sr_session_start(st->conn, SR_DS_OPERATIONAL, &(st->sm_sess)) != SR_ERR_OK) {
+        return 1;
+    }
+    if (sr_set_item_str(st->sm_sess,
+            "/ietf-yang-schema-mount:schema-mounts/mount-point[module='sm'][label='root']/shared-schema", NULL, NULL, 0)) {
+        return 1;
+    }
+    if (sr_apply_changes(st->sm_sess, 0)) {
         return 1;
     }
 
@@ -90,6 +103,7 @@ teardown(void **state)
 
     sr_remove_modules(st->conn, module_names, 0);
 
+    sr_session_stop(st->sm_sess);
     sr_disconnect(st->conn);
     free(st);
     return 0;
@@ -6759,91 +6773,74 @@ module_change_schema_mount_cb(sr_session_ctx_t *session, uint32_t sub_id, const 
 
     switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
-    case 1:
-        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 0) {
-            assert_int_equal(event, SR_EV_CHANGE);
-        } else {
-            assert_int_equal(event, SR_EV_DONE);
-        }
+        assert_int_equal(event, SR_EV_CHANGE);
 
         /* get changes iter */
         ret = sr_get_changes_iter(session, "/sm:*//.", &iter);
         assert_int_equal(ret, SR_ERR_OK);
 
-        /* 1st change */
+        /* interface if1 */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
-
-        assert_int_equal(op, SR_OP_CREATED);
-        assert_null(old_val);
+        assert_int_equal(op, SR_OP_MODIFIED);
+        assert_non_null(old_val);
         assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/sm:root/ietf-interfaces:interfaces");
-
+        assert_string_equal(new_val->xpath, "/sm:root/ietf-interfaces:interfaces/interface[name='if1']/enabled");
+        assert_int_equal(new_val->data.bool_val, 0);
+        sr_free_val(old_val);
         sr_free_val(new_val);
 
-        /* 2nd change */
+        /* interface if2 */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
-
         assert_int_equal(op, SR_OP_CREATED);
         assert_null(old_val);
         assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/sm:root/ietf-interfaces:interfaces/interface[name='bu']");
-
+        assert_string_equal(new_val->xpath, "/sm:root/ietf-interfaces:interfaces/interface[name='if2']");
         sr_free_val(new_val);
 
-        /* 3rd change */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
-
         assert_int_equal(op, SR_OP_CREATED);
         assert_null(old_val);
         assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/sm:root/ietf-interfaces:interfaces/interface[name='bu']/name");
-
+        assert_string_equal(new_val->xpath, "/sm:root/ietf-interfaces:interfaces/interface[name='if2']/name");
         sr_free_val(new_val);
 
-        /* 4th change */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
-
         assert_int_equal(op, SR_OP_CREATED);
         assert_null(old_val);
         assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/sm:root/ietf-interfaces:interfaces/interface[name='bu']/type");
-
+        assert_string_equal(new_val->xpath, "/sm:root/ietf-interfaces:interfaces/interface[name='if2']/type");
         sr_free_val(new_val);
 
-        /* 5th change */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
-
         assert_int_equal(op, SR_OP_CREATED);
         assert_null(old_val);
         assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/sm:root/ietf-interfaces:interfaces/interface[name='bu']/enabled");
-
+        assert_string_equal(new_val->xpath, "/sm:root/ietf-interfaces:interfaces/interface[name='if2']/enabled");
         sr_free_val(new_val);
 
         /* no more changes */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_NOT_FOUND);
-
         sr_free_change_iter(iter);
 
         /* check data */
         ret = sr_get_items(session, "/sm:root//.", 0, 0, &new_val, &val_count);
         assert_int_equal(ret, SR_ERR_OK);
-        assert_int_equal(val_count, 6);
-
+        assert_int_equal(val_count, 10);
         sr_free_values(new_val, val_count);
         break;
     default:
         fail();
     }
 
+    /* commit fails */
     ATOMIC_INC_RELAXED(st->cb_called);
-    return SR_ERR_OK;
+    return SR_ERR_NO_MEMORY;
 }
 
 static void *
@@ -6853,11 +6850,13 @@ apply_change_schema_mount_thread(void *arg)
     sr_session_ctx_t *sess;
     int ret;
 
-    /* create a session and set ext data */
-    ret = sr_session_start(st->conn, SR_DS_OPERATIONAL, &sess);
+    /* create some initial running data */
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(sess,
-            "/ietf-yang-schema-mount:schema-mounts/mount-point[module='sm'][label='root']/shared-schema", NULL, NULL, 0);
+    ret = sr_set_item_str(sess, "/sm:root/ietf-interfaces:interfaces/interface[name='if1']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/sm:root/ietf-interfaces:interfaces/interface[name='if1']/enabled", "true", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -6868,13 +6867,16 @@ apply_change_schema_mount_thread(void *arg)
     /* wait for subscription */
     pthread_barrier_wait(&st->barrier);
 
-    /* create some running data */
-    ret = sr_set_item_str(sess, "/sm:root/ietf-interfaces:interfaces/interface[name='bu']/type",
+    /* create some running data, fails */
+    sr_session_switch_ds(sess, SR_DS_RUNNING);
+    ret = sr_set_item_str(sess, "/sm:root/ietf-interfaces:interfaces/interface[name='if1']/enabled", "false", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/sm:root/ietf-interfaces:interfaces/interface[name='if2']/type",
             "iana-if-type:ethernetCsmacd", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ATOMIC_STORE_RELAXED(st->cb_called, 0);
+    assert_int_equal(ret, SR_ERR_NO_MEMORY);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     /* signal that we have finished applying changes */
     pthread_barrier_wait(&st->barrier);
