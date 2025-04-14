@@ -1920,7 +1920,8 @@ restart_loop:
     for (i = 0; i < shm_mod->oper_get_sub_count; ++i) {
         valid = 0;
         xp_subs = (sr_mod_oper_get_xpath_sub_t *)(conn->ext_shm.addr + subs[i].xpath_subs);
-        for (j = 0; j < subs[i].xpath_sub_count; ++j) {
+        j = 0;
+        if (j < subs[i].xpath_sub_count) {
             if (!sr_conn_is_alive(xp_subs[j].cid)) {
                 /* need to upgrade to WRITE lock */
                 if (has_locks != SR_LOCK_WRITE) {
@@ -1952,7 +1953,6 @@ restart_loop:
             }
 
             valid = 1;
-            break;
         }
         if (!valid) {
             continue;
