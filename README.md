@@ -41,6 +41,7 @@ Each directory describes the changes between the specific SO versions. Be aware 
 * YANG 1.1 support
 * Custom RPC, Event Notifications, YANG 1.1 Actions support
 * Notification store & notification replay
+* YANG Schema Mount support (RFC 8528)
 * Factory Default Datastore support (RFC 8808)
 
 ## Packages
@@ -274,6 +275,14 @@ managed YANG modules and stored YANG data, respectively. Full CLI is available o
 
 * [onm-cli](https://github.com/okda-networks/onm-cli) (`C`)
 * [netconf-cli](https://github.com/CESNET/netconf-cli) (`C++`) - includes `sysrepo-cli`
+
+## Schema Mount
+
+Full support of this extension is provided by *libyang*. But for mounted data trees to be parsed successfully, the
+extension needs state data of [ietf-yang-schema-mount](https://datatracker.ietf.org/doc/html/rfc8528#section-3.3)
+describing the supported mount points and `ietf-yang-library` defining the mounted YANG schema (context). These data
+should be provided as standard *sysrepo* `operational` data and will automatically be used when parsing YANG data
+with mounted data.
 
 ## Factory Default
 
