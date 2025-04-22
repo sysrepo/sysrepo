@@ -106,10 +106,10 @@
 
 # define ATOMIC_STORE_RELAXED(var, x) atomic_store_explicit(&(var), x, memory_order_relaxed)
 # define ATOMIC_LOAD_RELAXED(var) atomic_load_explicit(&(var), memory_order_relaxed)
-# define ATOMIC_INC_RELAXED(var) atomic_fetch_add_explicit(&(var), 1, memory_order_relaxed)
 # define ATOMIC_ADD_RELAXED(var, x) atomic_fetch_add_explicit(&(var), x, memory_order_relaxed)
-# define ATOMIC_DEC_RELAXED(var) atomic_fetch_sub_explicit(&(var), 1, memory_order_relaxed)
 # define ATOMIC_SUB_RELAXED(var, x) atomic_fetch_sub_explicit(&(var), x, memory_order_relaxed)
+# define ATOMIC_INC_RELAXED(var) ATOMIC_ADD_RELAXED(var, 1)
+# define ATOMIC_DEC_RELAXED(var) ATOMIC_SUB_RELAXED(var, 1)
 # define ATOMIC_COMPARE_EXCHANGE_RELAXED(var, exp, des, result) \
         result = atomic_compare_exchange_strong_explicit(&(var), &(exp), des, memory_order_relaxed, memory_order_relaxed)
 
@@ -125,21 +125,17 @@
 
 # define ATOMIC_PTR_T void *
 
-# define ATOMIC_STORE_RELAXED(var, x) ((var) = (x))
-# define ATOMIC_LOAD_RELAXED(var) (var)
-# define ATOMIC_INC_RELAXED(var) __sync_fetch_and_add(&(var), 1)
-# define ATOMIC_ADD_RELAXED(var, x) __sync_fetch_and_add(&(var), x)
-# define ATOMIC_DEC_RELAXED(var) __sync_fetch_and_sub(&(var), 1)
-# define ATOMIC_SUB_RELAXED(var, x) __sync_fetch_and_sub(&(var), x)
+# define ATOMIC_STORE_RELAXED(var, x) __atomic_store_n(&(var), x, __ATOMIC_RELAXED)
+# define ATOMIC_LOAD_RELAXED(var) __atomic_load_n(&(var), __ATOMIC_RELAXED)
+# define ATOMIC_ADD_RELAXED(var, x) __atomic_fetch_add(&(var), x, __ATOMIC_RELAXED)
+# define ATOMIC_SUB_RELAXED(var, x) __atomic_fetch_sub(&(var), x, __ATOMIC_RELAXED)
+# define ATOMIC_INC_RELAXED(var) ATOMIC_ADD_RELAXED(var, 1)
+# define ATOMIC_DEC_RELAXED(var) ATOMIC_SUB_RELAXED(var, 1)
 # define ATOMIC_COMPARE_EXCHANGE_RELAXED(var, exp, des, result) \
-        { \
-            ATOMIC_T __old = __sync_val_compare_and_swap(&(var), exp, des); \
-            result = ATOMIC_LOAD_RELAXED(__old) == ATOMIC_LOAD_RELAXED(exp) ? 1 : 0; \
-            ATOMIC_STORE_RELAXED(exp, ATOMIC_LOAD_RELAXED(__old)); \
-        }
+            result = __atomic_compare_exchange_n(&(var), &(exp), des, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED)
 
-# define ATOMIC_PTR_STORE_RELAXED(var, x) ((var) = (x))
-# define ATOMIC_PTR_LOAD_RELAXED(var) (var)
+# define ATOMIC_PTR_STORE_RELAXED(var, x) ATOMIC_STORE_RELAXED(var, x)
+# define ATOMIC_PTR_LOAD_RELAXED(var) ATOMIC_LOAD_RELAXED(var)
 #endif
 
 #ifndef HAVE_PTHREAD_MUTEX_TIMEDLOCK
