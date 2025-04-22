@@ -108,17 +108,24 @@ static void
 error_print(int sr_error, const char *format, ...)
 {
     va_list ap;
-    char msg[2048];
+    char *msg = NULL, *nomem_msg = "error_print: Out of memory\n";
 
     if (!sr_error) {
-        sprintf(msg, "sysrepocfg error: %s\n", format);
+        if (asprintf(&msg, "sysrepocfg error: %s\n", format) == -1) {
+            msg = nomem_msg;
+        }
     } else {
-        sprintf(msg, "sysrepocfg error: %s (%s)\n", format, sr_strerror(sr_error));
+        if (asprintf(&msg, "sysrepocfg error: %s (%s)\n", format, sr_strerror(sr_error)) == -1) {
+            msg = nomem_msg;
+        }
     }
 
     va_start(ap, format);
     vfprintf(stderr, msg, ap);
     va_end(ap);
+    if (msg != nomem_msg) {
+        free(msg);
+    }
 }
 
 static void
