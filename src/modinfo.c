@@ -2040,7 +2040,7 @@ sr_modinfo_module_srmon_datastore(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_dat
     ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, conn->mod_shm.addr + shm_mod->name);
     assert(ly_mod);
 
-    if (!sr_module_has_data(ly_mod, 0)) {
+    if (!strcmp(ly_mod->name, "ietf-netconf") || !sr_module_has_data(ly_mod, 0)) {
         /* skip modules without configuration data */
         goto cleanup;
     }
