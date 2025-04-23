@@ -50,6 +50,13 @@ setup_f(void **state)
         TESTS_SRC_DIR "/files/ietf-interfaces.yang",
         TESTS_SRC_DIR "/files/iana-if-type.yang",
         TESTS_SRC_DIR "/files/ops.yang",
+        TESTS_SRC_DIR "/files/alarms.yang",
+        TESTS_SRC_DIR "/files/example-module.yang",
+        TESTS_SRC_DIR "/files/mixed-config.yang",
+        TESTS_SRC_DIR "/files/simple.yang",
+        TESTS_SRC_DIR "/files/test-module.yang",
+        TESTS_SRC_DIR "/files/when1.yang",
+        TESTS_SRC_DIR "/files/when2.yang",
         NULL
     };
 
@@ -96,6 +103,13 @@ teardown_f(void **state)
         "iana-if-type",
         "test",
         "ops",
+        "alarms",
+        "example-module",
+        "mixed-config",
+        "simple",
+        "test-module",
+        "when1",
+        "when2",
         NULL
     };
 
@@ -115,6 +129,15 @@ clear_interfaces(void **state)
 
     sr_delete_item(st->sess1, "/ietf-interfaces:interfaces", 0);
     sr_apply_changes(st->sess1, 0);
+
+    /* restart sessions to flush Ext SHM data */
+    sr_session_stop(st->sess1);
+    sr_session_stop(st->sess2);
+    sr_session_stop(st->sess3);
+
+    sr_session_start(st->conn1, SR_DS_RUNNING, &st->sess1);
+    sr_session_start(st->conn2, SR_DS_RUNNING, &st->sess2);
+    sr_session_start(st->conn3, SR_DS_RUNNING, &st->sess3);
 
     return 0;
 }
@@ -521,6 +544,90 @@ test_run_change_oper_get(void **state)
     pthread_barrier_destroy(&st->barrier);
 }
 
+static void *
+test_add_del_change_sub(void *arg)
+{
+    sr_conn_ctx_t *conn;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *subscr;
+    static ATOMIC_T id = 0;
+    char id_str[20] = "";
+    int i, j, k, ret;
+
+    (void)arg;
+    struct cb_data pvt_data = {0};
+    uint32_t local_id = ATOMIC_INC_RELAXED(id);
+    const int ITERATIONS = 20;
+    char *module_name[] = {
+        "ietf-interfaces",
+        "test",
+        "alarms",
+        "example-module",
+        "mixed-config",
+        "simple",
+        "test-module",
+        "when1",
+        "when2",
+        "ops",
+    };
+    const int MODULE_COUNT = 10;
+    char xpath[32] = "";
+
+    ret = sr_connect(0, &conn);
+    assert_int_equal(ret, SR_ERR_OK);
+    snprintf(id_str, sizeof id_str, "%u", local_id);
+    for (j = 0; j < ITERATIONS; j++) {
+        /* start a new session */
+        sess = NULL;
+        subscr = NULL;
+        ret = sr_session_start(conn, SR_DS_OPERATIONAL, &sess);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* create many oper change subs */
+        for (i = 0; i < MODULE_COUNT; i++) {
+            snprintf(xpath, sizeof xpath, "/%s:*", module_name[i]);
+            for (k = 0; k < 10; k++) {
+                ret = sr_module_change_subscribe(sess, module_name[i], xpath, module_change_cb, &pvt_data, 0, 0, &subscr);
+                assert_int_equal(ret, SR_ERR_OK);
+            }
+        }
+
+        if (local_id == 0) {
+            /* push some operational data */
+            ret = sr_set_item_str(sess, "/test:test-leaf", id_str, NULL, 0);
+            assert_int_equal(ret, SR_ERR_OK);
+
+            ret = sr_apply_changes(sess, 0);
+            assert_int_equal(ret, SR_ERR_OK);
+        }
+
+        ret = sr_unsubscribe(subscr);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* stop the session */
+        ret = sr_session_stop(sess);
+        assert_int_equal(ret, SR_ERR_OK);
+    }
+    sr_disconnect(conn);
+    return NULL;
+}
+
+static void
+test_ext_shm_remap(void **state)
+{
+    (void)state;
+    const int thread_count = getenv("SR_TEST_SCALE") ? 10 : 2;
+    int i;
+    pthread_t tid[thread_count];
+
+    for (i = 0; i < thread_count; ++i) {
+        pthread_create(&tid[i], NULL, test_add_del_change_sub, NULL);
+    }
+    for (i = 0; i < thread_count; ++i) {
+        pthread_join(tid[i], NULL);
+    }
+}
+
 int
 main(void)
 {
@@ -529,6 +636,7 @@ main(void)
         cmocka_unit_test(test_new_conn),
         cmocka_unit_test_teardown(test_sub_suspend, clear_interfaces),
         cmocka_unit_test_teardown(test_run_change_oper_get, clear_interfaces),
+        cmocka_unit_test(test_ext_shm_remap),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
