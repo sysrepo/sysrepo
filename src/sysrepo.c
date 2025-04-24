@@ -6598,11 +6598,7 @@ sr_change_ly2sr(const struct lyd_node *node, const char *value_str, const char *
 cleanup:
     lyd_free_tree(node_dup);
     if (err_info) {
-        if (sr_val) {
-            free(sr_val->origin);
-            free(sr_val->xpath);
-        }
-        free(sr_val);
+        sr_free_val(sr_val);
     } else {
         *sr_val_p = sr_val;
     }
