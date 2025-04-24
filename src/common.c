@@ -657,7 +657,6 @@ sr_file_read(const char *path, char **data)
     sr_error_info_t *err_info = NULL;
     FILE *f = NULL;
     size_t offset, r, size;
-    long ret_ftell;
 
     *data = NULL;
 
@@ -670,10 +669,8 @@ sr_file_read(const char *path, char **data)
 
     /* learn its size */
     fseek(f, 0L, SEEK_END);
-    ret_ftell = ftell(f);
+    size = ftell(f);
     rewind(f);
-    SR_CHECK_INT_GOTO((ret_ftell < 0) || (((unsigned long) ret_ftell) > SIZE_MAX - 1), err_info, cleanup);
-    size = (size_t) ret_ftell;
 
     /* alloc return value */
     *data = malloc(size + 1);
