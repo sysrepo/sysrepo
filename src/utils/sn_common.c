@@ -1261,8 +1261,6 @@ srsn_create_timer(void (*cb)(void *arg, int *freed), void *arg, const struct tim
     sr_error_info_t *err_info = NULL;
     int r;
 
-    pthread_mutex_lock(&sntimer->lock);
-
     /* prepare argument */
     sntimer->cb = cb;
     sntimer->arg = arg;
@@ -1274,12 +1272,9 @@ srsn_create_timer(void (*cb)(void *arg, int *freed), void *arg, const struct tim
     /* create the timer thread */
     if ((r = pthread_create(&sntimer->tid, NULL, srsn_timer_thread, sntimer))) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to create a thread (%s).", strerror(r));
-
-        pthread_mutex_unlock(&sntimer->lock);
         return err_info;
     }
 
-    pthread_mutex_unlock(&sntimer->lock);
     return NULL;
 }
 
