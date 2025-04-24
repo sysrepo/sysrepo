@@ -200,7 +200,7 @@ sr_shmmod_fill(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_node *sr_
     sr_mod_t *smod;
     struct lyd_node *sr_child;
     off_t *shm_features;
-    const char *name;
+    const char *name, *rev;
     char *shm_end;
     size_t feat_i, feat_names_len, ds_plugin_names_len, old_shm_size;
     sr_datastore_t ds;
@@ -220,8 +220,9 @@ sr_shmmod_fill(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_node *sr_
             name = lyd_get_value(sr_child);
         } else if (!strcmp(sr_child->schema->name, "revision")) {
             /* copy revision */
-            strncpy(smod->rev, lyd_get_value(sr_child), sizeof(smod->rev));
-            smod->rev[sizeof(smod->rev) - 1] = 0;
+            rev = lyd_get_value(sr_child);
+            assert(strlen(rev) < sizeof(smod->rev));
+            strcpy(smod->rev, rev);
         } else if (!strcmp(sr_child->schema->name, "replay-support")) {
             /* set replay-support flag */
             smod->replay_supp = 1;
