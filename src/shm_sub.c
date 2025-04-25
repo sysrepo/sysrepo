@@ -1570,6 +1570,7 @@ sr_shmsub_change_notify_clear(struct sr_mod_info_s *mod_info)
 
     /* we have not found the failed sub SHM */
     SR_ERRINFO_INT(&err_info);
+    free(aux);
     return err_info;
 
 cleanup_wrunlock:

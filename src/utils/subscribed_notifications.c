@@ -858,6 +858,7 @@ srsn_read_notif(int fd, const struct ly_ctx *ly_ctx, struct timespec *timestamp,
         sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to read notification size (%s).", strerror(errno));
         goto cleanup;
     }
+    assert(size < UINT32_MAX);
 
     buf = malloc(size + 1);
     SR_CHECK_MEM_GOTO(!buf, err_info, cleanup);

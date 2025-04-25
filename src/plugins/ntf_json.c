@@ -114,6 +114,9 @@ srpntf_read_notif(int notif_fd, struct ly_ctx *ly_ctx, struct lyd_node **notif)
         goto cleanup;
     }
 
+    /* size sanity check */
+    assert(notif_json_len <= (UINT32_MAX - 1));
+
     /* read the notification */
     notif_json = malloc(notif_json_len + 1);
     if (!notif_json) {
