@@ -255,7 +255,6 @@ sr_modinfo_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_data
     const struct lys_module *prev_ly_mod, *ly_mod;
     const struct lysc_node *snode;
     struct ly_set *set = NULL;
-    struct ly_ctx *sm_ctx = NULL;
     uint32_t i;
     int store_xpath, dup_xpath;
 
@@ -281,9 +280,7 @@ sr_modinfo_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_data
     for (i = 0; i < set->count; ++i) {
         snode = set->snodes[i];
         if (snode->module->ctx != ly_ctx) {
-            /* skip mounted schema nodes and destroy the context */
-            assert(!sm_ctx || (sm_ctx == snode->module->ctx));
-            sm_ctx = snode->module->ctx;
+            /* skip mounted schema nodes */
             continue;
         } else if ((snode->nodetype & (LYS_RPC | LYS_NOTIF)) || ((snode->flags & LYS_CONFIG_R) && SR_IS_CONVENTIONAL_DS(ds))) {
             /* skip uninteresting nodes */
@@ -313,7 +310,6 @@ sr_modinfo_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_data
     }
 
 cleanup:
-    ly_ctx_destroy(sm_ctx);
     ly_set_free(set, NULL);
     return err_info;
 }
