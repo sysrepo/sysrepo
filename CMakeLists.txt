@@ -171,6 +171,17 @@ if(NOT SR_COND_IMPL)
 endif()
 message(STATUS "Conditional variable implementation: ${SR_COND_IMPL}")
 
+# Ext SHM defaults
+if(NOT SYSREPO_EXT_SHM_BLOCK_SIZE)
+    set(SYSREPO_EXT_SHM_BLOCK_SIZE 64)
+endif()
+if(NOT SYSREPO_EXT_SHM_INIT_BLOCK_COUNT)
+    set(SYSREPO_EXT_SHM_INIT_BLOCK_COUNT 64)
+endif()
+if(NOT SYSREPO_EXT_SHM_GROW_BLOCKS)
+    set(SYSREPO_EXT_SHM_GROW_BLOCKS 64)
+endif()
+
 # paths
 if(NOT SHM_DIR)
     if("${CMAKE_SYSTEM_NAME}" STREQUAL "FreeBSD")
@@ -251,6 +262,7 @@ set(LIB_SRC
     src/lyd_mods.c
     src/context_change.c
     src/shm_main.c
+    src/shm_ext_alloc.c
     src/shm_ext.c
     src/shm_mod.c
     src/shm_sub.c
