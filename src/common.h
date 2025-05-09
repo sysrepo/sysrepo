@@ -226,6 +226,8 @@ struct sr_run_cache_s {
     sr_rwlock_t lock;                   /**< Lock for accessing the cache. */
 };
 
+typedef struct sr_run_cache_s sr_run_cache_t;
+
 extern struct sr_run_cache_s sr_run_cache;
 
 /**
@@ -244,6 +246,8 @@ struct sr_oper_cache_s {
     uint32_t sub_count;             /**< Operational subscription data cache count. */
     sr_rwlock_t lock;               /**< Operational subscription data cache lock. */
 };
+
+typedef struct sr_oper_cache_s sr_oper_cache_t;
 
 extern struct sr_oper_cache_s sr_oper_cache;
 
