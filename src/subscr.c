@@ -1182,8 +1182,8 @@ sr_oper_poll_sub_del(sr_subscription_ctx_t *subscr, uint32_t idx1, uint32_t idx2
     /* remove the subscription from the subscription structure */
     sr_subscr_oper_poll_sub_del(subscr, sub_id);
 
-    /* remove the oper cache entry from the connection after the subscription was removed from the structure */
-    sr_conn_oper_cache_del(subscr->conn, sub_id);
+    /* remove the oper cache entry after the subscription was removed from the structure */
+    sr_oper_cache_del(&sr_oper_cache, sub_id);
 
 cleanup_unlock:
     /* OPER POLL SUB WRITE UNLOCK */

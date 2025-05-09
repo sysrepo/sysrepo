@@ -45,28 +45,26 @@
  *
  * Must be called only with WRITE mode context lock or mod_remap_lock.
  *
- * @param[in] conn Connection to use.
+ * @param[in] oper_cache Oper cache to flush.
  */
 static void
-sr_conn_oper_cache_flush(sr_conn_ctx_t *conn)
+sr_oper_cache_flush(sr_oper_cache_t *oper_cache)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, j;
     struct sr_oper_cache_sub_s *cache;
 
-    /* CONN OPER CACHE READ LOCK */
-    if ((err_info = sr_rwlock(&sr_oper_cache.lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
-            __func__, NULL, NULL))) {
+    /* OPER CACHE READ LOCK */
+    if ((err_info = sr_prwlock(&oper_cache->lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ))) {
         /* should never happen */
         sr_errinfo_free(&err_info);
     }
 
-    for (i = 0; i < sr_oper_cache.sub_count; ++i) {
-        cache = &sr_oper_cache.subs[i];
+    for (i = 0; i < oper_cache->sub_count; ++i) {
+        cache = &oper_cache->subs[i];
 
         /* CACHE DATA WRITE LOCK */
-        if ((err_info = sr_rwlock(&cache->data_lock, SR_CONN_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
-                __func__, NULL, NULL))) {
+        if ((err_info = sr_prwlock(&cache->data_lock, SR_CONN_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE))) {
             /* should never happen */
             sr_errinfo_free(&err_info);
         }
@@ -77,11 +75,11 @@ sr_conn_oper_cache_flush(sr_conn_ctx_t *conn)
         memset(&cache->timestamp, 0, sizeof cache->timestamp);
 
         /* CACHE DATA UNLOCK */
-        sr_rwunlock(&cache->data_lock, SR_CONN_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+        sr_prwunlock(&cache->data_lock);
     }
 
-    /* CONN OPER CACHE UNLOCK */
-    sr_rwunlock(&sr_oper_cache.lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+    /* OPER CACHE UNLOCK */
+    sr_prwunlock(&oper_cache->lock);
 
     /* remove oper push data cache from all sessions */
 
