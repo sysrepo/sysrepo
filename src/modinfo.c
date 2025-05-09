@@ -1282,13 +1282,12 @@ cleanup:
  *
  * @param[in] mod Mod info module.
  * @param[in] sub_xpath Subscription XPath.
- * @param[in] conn Connection to use.
  * @param[in,out] data Operational data tree to merge into.
  * @param[out] merged Whether the cached data were found and merged or not.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_module_oper_data_update_cached(struct sr_mod_info_mod_s *mod, const char *sub_xpath, sr_conn_ctx_t *conn,
+sr_module_oper_data_update_cached(struct sr_mod_info_mod_s *mod, const char *sub_xpath,
         struct lyd_node **data, int *merged)
 {
     sr_error_info_t *err_info = NULL;
@@ -1299,8 +1298,7 @@ sr_module_oper_data_update_cached(struct sr_mod_info_mod_s *mod, const char *sub
     *merged = 0;
 
     /* CONN OPER CACHE READ LOCK */
-    if ((err_info = sr_rwlock(&sr_oper_cache.lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
-            __func__, NULL, NULL))) {
+    if ((err_info = sr_prwlock(&sr_oper_cache.lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ))) {
         goto cleanup;
     }
 
@@ -1329,8 +1327,7 @@ sr_module_oper_data_update_cached(struct sr_mod_info_mod_s *mod, const char *sub
     }
 
     /* CACHE DATA READ LOCK */
-    if ((err_info = sr_rwlock(&cache->data_lock, SR_CONN_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
-            __func__, NULL, NULL))) {
+    if ((err_info = sr_prwlock(&cache->data_lock, SR_CONN_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_READ))) {
         goto cleanup_cache_unlock;
     }
 
@@ -1342,11 +1339,11 @@ sr_module_oper_data_update_cached(struct sr_mod_info_mod_s *mod, const char *sub
 
 cleanup_data_cache_unlock:
     /* CACHE DATA UNLOCK */
-    sr_rwunlock(&cache->data_lock, SR_CONN_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+    sr_prwunlock(&cache->data_lock);
 
 cleanup_cache_unlock:
     /* CONN OPER CACHE UNLOCK */
-    sr_rwunlock(&sr_oper_cache.lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+    sr_prwunlock(&sr_oper_cache.lock);
 
 cleanup:
     return err_info;
@@ -1725,7 +1722,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
 
         if (!(get_oper_opts & SR_OPER_NO_POLL_CACHED)) {
             /* try to get data from the cache */
-            if ((err_info = sr_module_oper_data_update_cached(mod, sub_xpath, conn, data, &merged))) {
+            if ((err_info = sr_module_oper_data_update_cached(mod, sub_xpath, data, &merged))) {
                 goto cleanup_opergetsub_ext_unlock;
             }
             if (merged) {
@@ -3186,14 +3183,13 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int read_only, sr_session_c
             ((mod_info->ds == SR_DS_RUNNING) || (mod_info->ds == SR_DS_CANDIDATE) || (mod_info->ds2 == SR_DS_RUNNING))) {
 
         /* CACHE READ LOCK */
-        if ((err_info = sr_rwlock(&sr_run_cache.lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
-                __func__, NULL, NULL))) {
+        if ((err_info = sr_prwlock(&sr_run_cache.lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ))) {
             return err_info;
         }
         cache_lock_mode = SR_LOCK_READ;
 
         /* update the data in the cache */
-        if ((err_info = sr_conn_run_cache_update(conn, mod_info, SR_LOCK_READ))) {
+        if ((err_info = sr_run_cache_update(&sr_run_cache, mod_info, SR_LOCK_READ))) {
             goto cleanup;
         }
         run_data_cache_cur = 1;
@@ -3254,7 +3250,7 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int read_only, sr_session_c
 cleanup:
     if ((cache_lock_mode != SR_LOCK_NONE) && !mod_info->data_cached) {
         /* CACHE READ UNLOCK */
-        sr_rwunlock(&sr_run_cache.lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+        sr_prwunlock(&sr_run_cache.lock);
     } /* else the flag marks held READ lock */
 
     return err_info;
@@ -3656,8 +3652,7 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
             mod_info->data_cached = 0;
 
             /* CACHE READ UNLOCK */
-            sr_rwunlock(&sr_run_cache.lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ,
-                    mod_info->conn->cid, __func__);
+            sr_prwunlock(&sr_run_cache.lock);
         }
 
         for (i = 0; (i < mod_info->mod_count) && (session->ds < SR_DS_COUNT); ++i) {
@@ -4196,7 +4191,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
 
                 if (mod_info->conn->opts & SR_CONN_CACHE_RUNNING) {
                     /* store the changed data in the cache */
-                    if ((err_info = sr_conn_run_cache_update_mod(mod_info->conn, mod->ly_mod, mod->shm_mod->run_cache_id,
+                    if ((err_info = sr_run_cache_update_mod(&sr_run_cache, mod->ly_mod, mod->shm_mod->run_cache_id,
                             mod_data))) {
                         /* not a fatal error, cache can be updated in a future operation */
                         sr_errinfo_free(&err_info);
@@ -4321,8 +4316,7 @@ sr_modinfo_erase(struct sr_mod_info_s *mod_info)
 
     if (mod_info->data_cached) {
         /* CACHE READ UNLOCK */
-        sr_rwunlock(&sr_run_cache.lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ,
-                mod_info->conn->cid, __func__);
+        sr_prwunlock(&sr_run_cache.lock);
     } else {
         lyd_free_siblings(mod_info->data);
     }

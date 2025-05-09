@@ -116,13 +116,13 @@ struct sr_yang_ctx_s sr_yang_ctx = {
     .ly_ctx_shm = SR_SHM_INITIALIZER,
     .ly_ctx = NULL,
     .mod_shm = SR_SHM_INITIALIZER,
-    .remap_lock = SR_RWLOCK_INITIALIZER,
+    .remap_lock = PTHREAD_RWLOCK_INITIALIZER,
 };
 
 /* global per-process ext data context (schema mount) */
 struct sr_schema_mount_ctx_s sr_schema_mount_ctx = {
     .data = NULL,
-    .data_lock = SR_RWLOCK_INITIALIZER,
+    .data_lock = PTHREAD_RWLOCK_INITIALIZER,
     .data_id = 0
 };
 
@@ -131,14 +131,14 @@ struct sr_run_cache_s sr_run_cache = {
     .data = NULL,
     .mods = NULL,
     .mod_count = 0,
-    .lock = SR_RWLOCK_INITIALIZER,
+    .lock = PTHREAD_RWLOCK_INITIALIZER,
 };
 
 /* global per-process operational data cache */
 struct sr_oper_cache_s sr_oper_cache = {
     .subs = NULL,
     .sub_count = 0,
-    .lock = SR_RWLOCK_INITIALIZER,
+    .lock = PTHREAD_RWLOCK_INITIALIZER,
 };
 
 /* global per-process connection count */
@@ -3122,7 +3122,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_conn_oper_cache_add(sr_conn_ctx_t *conn, uint32_t sub_id, const char *module_name, const char *path)
+sr_oper_cache_add(sr_oper_cache_t *oper_cache, uint32_t sub_id, const char *module_name, const char *path)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
@@ -3130,14 +3130,13 @@ sr_conn_oper_cache_add(sr_conn_ctx_t *conn, uint32_t sub_id, const char *module_
     struct sr_oper_cache_sub_s *cache;
 
     /* CONN OPER CACHE WRITE LOCK */
-    if ((err_info = sr_rwlock(&sr_oper_cache.lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
-            __func__, NULL, NULL))) {
+    if ((err_info = sr_prwlock(&oper_cache->lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE))) {
         return err_info;
     }
 
     /* look for a cache entry in the connection for the same path */
-    for (i = 0; i < sr_oper_cache.sub_count; ++i) {
-        if (!strcmp(sr_oper_cache.subs[i].path, path)) {
+    for (i = 0; i < oper_cache->sub_count; ++i) {
+        if (!strcmp(oper_cache->subs[i].path, path)) {
             sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Operational poll subscription for \"%s\" on the connection"
                     " already exists.", path);
             goto cleanup;
@@ -3145,10 +3144,10 @@ sr_conn_oper_cache_add(sr_conn_ctx_t *conn, uint32_t sub_id, const char *module_
     }
 
     /* add new cache entry */
-    mem = realloc(sr_oper_cache.subs, (sr_oper_cache.sub_count + 1) * sizeof *sr_oper_cache.subs);
+    mem = realloc(oper_cache->subs, (oper_cache->sub_count + 1) * sizeof *oper_cache->subs);
     SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
-    sr_oper_cache.subs = mem;
-    cache = &sr_oper_cache.subs[sr_oper_cache.sub_count];
+    oper_cache->subs = mem;
+    cache = &oper_cache->subs[oper_cache->sub_count];
     memset(cache, 0, sizeof *cache);
 
     /* fill */
@@ -3157,36 +3156,35 @@ sr_conn_oper_cache_add(sr_conn_ctx_t *conn, uint32_t sub_id, const char *module_
     SR_CHECK_MEM_GOTO(!cache->module_name, err_info, cleanup);
     cache->path = strdup(path);
     SR_CHECK_MEM_GOTO(!cache->path, err_info, cleanup);
-    if ((err_info = sr_rwlock_init(&cache->data_lock, 0))) {
+    if ((err_info = sr_prwlock_init(&cache->data_lock))) {
         goto cleanup;
     }
 
-    ++sr_oper_cache.sub_count;
+    ++oper_cache->sub_count;
 
 cleanup:
     /* CONN OPER CACHE UNLOCK */
-    sr_rwunlock(&sr_oper_cache.lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    sr_prwunlock(&oper_cache->lock);
     return err_info;
 }
 
 void
-sr_conn_oper_cache_del(sr_conn_ctx_t *conn, uint32_t sub_id)
+sr_oper_cache_del(sr_oper_cache_t *oper_cache, uint32_t sub_id)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
     struct sr_oper_cache_sub_s *cache = NULL;
 
     /* CONN OPER CACHE WRITE LOCK */
-    if ((err_info = sr_rwlock(&sr_oper_cache.lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
-            __func__, NULL, NULL))) {
+    if ((err_info = sr_prwlock(&oper_cache->lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE))) {
         /* should never happen */
         sr_errinfo_free(&err_info);
     }
 
     /* find the cache entry */
-    for (i = 0; i < sr_oper_cache.sub_count; ++i) {
-        if (sr_oper_cache.subs[i].sub_id == sub_id) {
-            cache = &sr_oper_cache.subs[i];
+    for (i = 0; i < oper_cache->sub_count; ++i) {
+        if (oper_cache->subs[i].sub_id == sub_id) {
+            cache = &oper_cache->subs[i];
             break;
         }
     }
@@ -3195,27 +3193,27 @@ sr_conn_oper_cache_del(sr_conn_ctx_t *conn, uint32_t sub_id)
     /* free members */
     free(cache->module_name);
     free(cache->path);
-    sr_rwlock_destroy(&cache->data_lock);
+    sr_prwlock_destroy(&cache->data_lock);
     lyd_free_siblings(cache->data);
 
     /* replace cache entry with the last */
-    if (i < sr_oper_cache.sub_count - 1) {
-        memcpy(cache, &sr_oper_cache.subs[sr_oper_cache.sub_count - 1], sizeof *cache);
+    if (i < oper_cache->sub_count - 1) {
+        memcpy(cache, &oper_cache->subs[oper_cache->sub_count - 1], sizeof *cache);
     }
-    --sr_oper_cache.sub_count;
+    --oper_cache->sub_count;
 
-    if (!sr_oper_cache.sub_count) {
+    if (!oper_cache->sub_count) {
         /* no other cache entries */
-        free(sr_oper_cache.subs);
-        sr_oper_cache.subs = NULL;
+        free(oper_cache->subs);
+        oper_cache->subs = NULL;
     }
 
     /* CONN OPER CACHE UNLOCK */
-    sr_rwunlock(&sr_oper_cache.lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    sr_prwunlock(&oper_cache->lock);
 }
 
 sr_error_info_t *
-sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_info, sr_lock_mode_t has_lock)
+sr_run_cache_update(sr_run_cache_t *run_cache, const struct sr_mod_info_s *mod_info, sr_lock_mode_t has_lock)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     struct sr_mod_info_mod_s *mod;
@@ -3239,9 +3237,9 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
 
         /* find the cache mod */
         cmod = NULL;
-        for (j = 0; j < sr_run_cache.mod_count; ++j) {
-            if (mod->ly_mod == sr_run_cache.mods[j].mod) {
-                cmod = &sr_run_cache.mods[j];
+        for (j = 0; j < run_cache->mod_count; ++j) {
+            if (mod->ly_mod == run_cache->mods[j].mod) {
+                cmod = &run_cache->mods[j];
                 break;
             }
         }
@@ -3249,27 +3247,26 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
         if (!cmod) {
             if (has_lock != SR_LOCK_WRITE) {
                 /* CACHE READ UNLOCK */
-                sr_rwunlock(&sr_run_cache.lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+                sr_prwunlock(&run_cache->lock);
                 has_lock = SR_LOCK_NONE;
 
                 /* CACHE WRITE LOCK */
-                if ((err_info = sr_rwlock(&sr_run_cache.lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE_URGE,
-                        conn->cid, __func__, NULL, NULL))) {
+                if ((err_info = sr_prwlock(&run_cache->lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE))) {
                     goto cleanup;
                 }
                 has_lock = SR_LOCK_WRITE;
             }
 
             /* add the module into the cache */
-            mem = realloc(sr_run_cache.mods, (sr_run_cache.mod_count + 1) * sizeof *sr_run_cache.mods);
+            mem = realloc(run_cache->mods, (run_cache->mod_count + 1) * sizeof *run_cache->mods);
             SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
-            sr_run_cache.mods = mem;
+            run_cache->mods = mem;
 
-            cmod = &sr_run_cache.mods[sr_run_cache.mod_count];
+            cmod = &run_cache->mods[run_cache->mod_count];
             cmod->mod = mod->ly_mod;
             cmod->id = UINT32_MAX;
 
-            ++sr_run_cache.mod_count;
+            ++run_cache->mod_count;
         }
 
         /* check whether the data are current */
@@ -3287,22 +3284,21 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
 
         if (has_lock != SR_LOCK_WRITE) {
             /* CACHE READ UNLOCK */
-            sr_rwunlock(&sr_run_cache.lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+            sr_prwunlock(&run_cache->lock);
             has_lock = SR_LOCK_NONE;
 
             /* CACHE WRITE LOCK */
-            if ((err_info = sr_rwlock(&sr_run_cache.lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE_URGE,
-                    conn->cid, __func__, NULL, NULL))) {
+            if ((err_info = sr_prwlock(&run_cache->lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE_URGE))) {
                 goto cleanup;
             }
             has_lock = SR_LOCK_WRITE;
 
             /* update cmod, there may have been modules added (realloc) but not removed */
-            cmod = &sr_run_cache.mods[j];
+            cmod = &run_cache->mods[j];
         }
 
         /* remove old data */
-        mod_data = sr_module_data_unlink(&sr_run_cache.data, cmod->mod, 0);
+        mod_data = sr_module_data_unlink(&run_cache->data, cmod->mod, 0);
         lyd_free_siblings(mod_data);
 
         /* replace with loaded current data */
@@ -3311,7 +3307,7 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
             goto cleanup;
         }
         if (mod_data) {
-            lyd_insert_sibling(sr_run_cache.data, mod_data, &sr_run_cache.data);
+            lyd_insert_sibling(run_cache->data, mod_data, &run_cache->data);
         }
 
         /* update the cached data ID */
@@ -3321,14 +3317,12 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
 cleanup:
     if (has_lock == SR_LOCK_WRITE) {
         /* CACHE READ RELOCK */
-        if ((tmp_err = sr_rwrelock(&sr_run_cache.lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
-                __func__, NULL, NULL))) {
+        if ((tmp_err = sr_prwrelock(&run_cache->lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ))) {
             sr_errinfo_merge(&err_info, tmp_err);
         }
     } else if (has_lock == SR_LOCK_NONE) {
         /* CACHE READ LOCK */
-        if ((tmp_err = sr_rwlock(&sr_run_cache.lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
-                __func__, NULL, NULL))) {
+        if ((tmp_err = sr_prwlock(&run_cache->lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ))) {
             sr_errinfo_merge(&err_info, tmp_err);
         }
     }
@@ -3336,8 +3330,8 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_conn_run_cache_update_mod(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, uint32_t mod_cache_id,
-        struct lyd_node *mod_data)
+sr_run_cache_update_mod(sr_run_cache_t *run_cache, const struct lys_module *ly_mod,
+        uint32_t mod_cache_id, struct lyd_node *mod_data)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_run_cache_mod_s *cmod = NULL;
@@ -3345,15 +3339,14 @@ sr_conn_run_cache_update_mod(sr_conn_ctx_t *conn, const struct lys_module *ly_mo
     uint32_t i;
 
     /* CACHE WRITE LOCK */
-    if ((err_info = sr_rwlock(&sr_run_cache.lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE_URGE,
-            conn->cid, __func__, NULL, NULL))) {
+    if ((err_info = sr_prwlock(&run_cache->lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE))) {
         return err_info;
     }
 
     /* find the cache mod, it must have been cached for this operation, if not before */
-    for (i = 0; i < sr_run_cache.mod_count; ++i) {
-        if (ly_mod == sr_run_cache.mods[i].mod) {
-            cmod = &sr_run_cache.mods[i];
+    for (i = 0; i < run_cache->mod_count; ++i) {
+        if (ly_mod == run_cache->mods[i].mod) {
+            cmod = &run_cache->mods[i];
             break;
         }
     }
@@ -3363,44 +3356,43 @@ sr_conn_run_cache_update_mod(sr_conn_ctx_t *conn, const struct lys_module *ly_mo
     assert(cmod->id != mod_cache_id);
 
     /* remove old data */
-    old_data = sr_module_data_unlink(&sr_run_cache.data, cmod->mod, 0);
+    old_data = sr_module_data_unlink(&run_cache->data, cmod->mod, 0);
     lyd_free_siblings(old_data);
 
     /* replace with current data */
     if (mod_data) {
-        lyd_insert_sibling(sr_run_cache.data, mod_data, &sr_run_cache.data);
+        lyd_insert_sibling(run_cache->data, mod_data, &run_cache->data);
     }
 
     /* update the cached data ID */
     cmod->id = mod_cache_id;
 
     /* CACHE WRITE UNLOCK */
-    sr_rwunlock(&sr_run_cache.lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    sr_prwunlock(&run_cache->lock);
 
     return err_info;
 }
 
 void
-sr_conn_run_cache_flush(sr_conn_ctx_t *conn)
+sr_run_cache_flush(sr_run_cache_t *run_cache)
 {
     sr_error_info_t *err_info = NULL;
 
     /* CACHE WRITE LOCK */
-    err_info = sr_rwlock(&sr_run_cache.lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE_URGE, conn->cid, __func__,
-            NULL, NULL);
+    err_info = sr_prwlock(&run_cache->lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE);
 
     /* nothing else to do but continue on error */
 
     /* free the running cache */
-    lyd_free_siblings(sr_run_cache.data);
-    sr_run_cache.data = NULL;
-    free(sr_run_cache.mods);
-    sr_run_cache.mods = NULL;
-    sr_run_cache.mod_count = 0;
+    lyd_free_siblings(run_cache->data);
+    run_cache->data = NULL;
+    free(run_cache->mods);
+    run_cache->mods = NULL;
+    run_cache->mod_count = 0;
 
     if (!err_info) {
         /* CACHE WRITE UNLOCK */
-        sr_rwunlock(&sr_run_cache.lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+        sr_prwunlock(&run_cache->lock);
     }
 
     sr_errinfo_free(&err_info);
