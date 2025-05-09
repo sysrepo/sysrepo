@@ -196,7 +196,7 @@ struct sr_yang_ctx_s {
     struct ly_ctx *ly_ctx;      /**< Process-local libyang context */
 
     sr_shm_t mod_shm;          /**< Libyang modules SHM */
-    sr_rwlock_t remap_lock; /**< Lock for remapping libyang modules SHM */
+    pthread_rwlock_t remap_lock; /**< Lock for remapping libyang modules SHM */
 };
 
 /* global YANG context */
@@ -207,7 +207,7 @@ extern struct sr_yang_ctx_s sr_yang_ctx;
  */
 struct sr_schema_mount_ctx_s {
     struct lyd_node *data;      /**< YANG state data of 'ietf-yang-library' and 'ietf-yang-schema-mount' modules for LY ext data callback set for ly_ctx. */
-    sr_rwlock_t data_lock;           /**< Lock for accessing schema mount data. */
+    pthread_rwlock_t data_lock;           /**< Lock for accessing schema mount data. */
     uint32_t data_id;                /**< ID of the last schema mount data change. */
 };
 
@@ -223,7 +223,7 @@ struct sr_run_cache_s {
         uint32_t id;                    /**< Cached module data ID. */
     } *mods;                            /**< Cached modules. */
     uint32_t mod_count;                 /**< Cached module count. */
-    sr_rwlock_t lock;                   /**< Lock for accessing the cache. */
+    pthread_rwlock_t lock;                   /**< Lock for accessing the cache. */
 };
 
 typedef struct sr_run_cache_s sr_run_cache_t;
@@ -238,13 +238,13 @@ struct sr_oper_cache_s {
         uint32_t sub_id;            /**< Operational poll subscription ID. */
         char *module_name;          /**< Operational poll subscription module name. */
         char *path;                 /**< Operational poll/get subscription path. */
-        
-        sr_rwlock_t data_lock;      /**< Lock for accessing the data and timestamp. */
+
+        pthread_rwlock_t data_lock;      /**< Lock for accessing the data and timestamp. */
         struct lyd_node *data;      /**< Cached data of a single operational get subscription. */
         struct timespec timestamp;  /**< Timestamp of the cached operational data. */
     } *subs;                        /**< Operational subscription data caches. */
     uint32_t sub_count;             /**< Operational subscription data cache count. */
-    sr_rwlock_t lock;               /**< Operational subscription data cache lock. */
+    pthread_rwlock_t lock;               /**< Operational subscription data cache lock. */
 };
 
 typedef struct sr_oper_cache_s sr_oper_cache_t;
@@ -1009,52 +1009,54 @@ int sr_conn_is_alive(sr_cid_t cid);
 sr_error_info_t *sr_conn_ext_data_update(sr_conn_ctx_t *conn);
 
 /**
- * @brief Add a new oper cache entry into a connection.
+ * @brief Add a new oper cache entry.
  *
- * @param[in] conn Connection to use.
+ * @param[in] oper_cache Oper cache to add to.
  * @param[in] sub_id Subscription ID of the oper poll subscription.
  * @param[in] module_name Subscription module name.
  * @param[in] path Subscription path.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_conn_oper_cache_add(sr_conn_ctx_t *conn, uint32_t sub_id, const char *module_name, const char *path);
+sr_error_info_t *sr_oper_cache_add(sr_oper_cache_t *oper_cache, uint32_t sub_id,
+        const char *module_name, const char *path);
 
 /**
- * @brief Delete an oper cache entry in a connection.
+ * @brief Delete an oper cache entry.
  *
- * @param[in] conn Connection to use.
+ * @param[in] oper_cache Oper cache to delete from.
  * @param[in] sub_id Subscription ID to delete.
  */
-void sr_conn_oper_cache_del(sr_conn_ctx_t *conn, uint32_t sub_id);
+void sr_oper_cache_del(sr_oper_cache_t *oper_cache, uint32_t sub_id);
 
 /**
- * @brief Update cached running data of a connection.
+ * @brief Update cached running data.
  *
- * @param[in] conn Connection to use.
+ * @param[in] run_cache Run cache to update.
  * @param[in] mod_info Mod info with modules to cache.
  * @param[in] has_lock Currently held run cache lock mode.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_info, sr_lock_mode_t has_lock);
+sr_error_info_t *sr_run_cache_update(sr_run_cache_t *run_cache, const struct sr_mod_info_s *mod_info,
+        sr_lock_mode_t has_lock);
 
 /**
- * @brief Update connection cached running data of a particular module with specific data.
+ * @brief Update cached running data of a particular module with specific data.
  *
- * @param[in] conn Connection to use.
+ * @param[in] run_cache Run cache to update.
  * @param[in] ly_mod Module to update.
  * @param[in] mod_cache_id Module @p mod_data cache ID.
  * @param[in] mod_data Current module data to store in the cache, are spent.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_conn_run_cache_update_mod(sr_conn_ctx_t *conn, const struct lys_module *ly_mod,
+sr_error_info_t *sr_run_cache_update_mod(sr_run_cache_t *run_cache, const struct lys_module *ly_mod,
         uint32_t mod_cache_id, struct lyd_node *mod_data);
 
 /**
- * @brief Flush all cached running data of a connection.
+ * @brief Flush all cached running data.
  *
- * @param[in] conn Connection to use.
+ * @param[in] run_cache Run cache to flush.
  */
-void sr_conn_run_cache_flush(sr_conn_ctx_t *conn);
+void sr_run_cache_flush(sr_run_cache_t *run_cache);
 
 /**
  * @brief Initialize all used DS plugins not yet initialized.
