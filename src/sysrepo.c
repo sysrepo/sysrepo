@@ -236,7 +236,7 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
             goto cleanup_unlock;
         }
 
-        if ((err_info = sr_ly_ctx_init(conn, &sr_yang_ctx.ly_ctx))) {
+        if ((err_info = sr_ly_ctx_new(conn, &sr_yang_ctx.ly_ctx))) {
             goto cleanup_unlock;
         }
     }
@@ -1442,7 +1442,7 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
     char *mod_name = NULL;
 
     /* create new temporary context */
-    if ((err_info = sr_ly_ctx_init(conn, &new_ctx))) {
+    if ((err_info = sr_ly_ctx_new(conn, &new_ctx))) {
         goto cleanup;
     }
 
@@ -1839,7 +1839,7 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
     }
 
     /* create new temporary context */
-    if ((err_info = sr_ly_ctx_init(conn, &new_ctx))) {
+    if ((err_info = sr_ly_ctx_new(conn, &new_ctx))) {
         goto cleanup;
     }
 
@@ -2084,7 +2084,7 @@ sr_update_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *se
     SR_CHECK_ARG_APIRET(!conn || !schema_paths, NULL, err_info);
 
     /* create new temporary context */
-    if ((err_info = sr_ly_ctx_init(conn, &new_ctx))) {
+    if ((err_info = sr_ly_ctx_new(conn, &new_ctx))) {
         goto cleanup;
     }
 
@@ -2627,7 +2627,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     }
 
     /* create new temporary context */
-    if ((err_info = sr_ly_ctx_init(conn, &new_ctx))) {
+    if ((err_info = sr_ly_ctx_new(conn, &new_ctx))) {
         goto cleanup;
     }
 

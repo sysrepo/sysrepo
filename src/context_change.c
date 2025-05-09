@@ -202,6 +202,21 @@ sr_ly_ext_data_clb(const struct lysc_ext_instance *ext,  const struct lyd_node *
 
     return LY_SUCCESS;
 }
+
+/**
+ * @brief Load all modules from mod SHM into a context.
+ *
+ * @param[in] ly_ctx Context to use.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_ly_ctx_init(struct ly_ctx *ly_ctx)
+{
+    sr_error_info_t *err_info = NULL, *tmp_err = NULL;
+    char *path = NULL;
+
+    /* load modules from the SHM */
+    if ((err_info = sr_shmmod_ctx_load_modules(SR_CTX_MOD_SHM(sr_yang_ctx), ly_ctx, NULL))) {
         if (!strcmp(err_info->err[err_info->err_count - 1].message, "Loading \"ietf-datastores\" module failed.")) {
             if (!(tmp_err = sr_path_yang_dir(&path))) {
                 sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED,
@@ -260,7 +275,13 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
             goto cleanup_unlock;
         }
         if (!new_ctx) {
+            /* create a new context */
             if ((err_info = sr_ly_ctx_new(conn, &new_ctx))) {
+                goto cleanup_unlock;
+            }
+
+            /* load all modules from the SHM into the new context */
+            if ((err_info = sr_ly_ctx_init(new_ctx))) {
                 goto cleanup_unlock;
             }
         }
