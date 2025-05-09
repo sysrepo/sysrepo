@@ -143,7 +143,7 @@ sr_ly_ext_data_clb(const struct lysc_ext_instance *ext,  const struct lyd_node *
 }
 
 sr_error_info_t *
-sr_ly_ctx_init(sr_conn_ctx_t *conn, struct ly_ctx **ly_ctx)
+sr_ly_ctx_new(sr_conn_ctx_t *conn, struct ly_ctx **ly_ctx)
 {
     sr_error_info_t *err_info = NULL;
     char *yang_dir;
@@ -199,9 +199,8 @@ sr_ly_ctx_init(sr_conn_ctx_t *conn, struct ly_ctx **ly_ctx)
         goto cleanup;
     }
 
-    /* compile */
-    if (ly_ctx_compile(*ly_ctx)) {
-        sr_errinfo_new_ly(&err_info, *ly_ctx, NULL, SR_ERR_LY);
+    /* compile the final context */
+    if ((err_info = sr_ly_ctx_compile(*ly_ctx))) {
         goto cleanup;
     }
 

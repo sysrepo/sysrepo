@@ -28,11 +28,11 @@
 /**
  * @brief Create a new libyang context.
  *
- * @param[in] conn Connection to read opts from and use for the LY ext data callback.
- * @param[out] ly_ctx libyang context.
+ * @param[in] conn Connection to read opts from.
+ * @param[out] ly_ctx Created libyang context.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_ly_ctx_init(sr_conn_ctx_t *conn, struct ly_ctx **ly_ctx);
+sr_error_info_t *sr_ly_ctx_new(sr_conn_ctx_t *conn, struct ly_ctx **ly_ctx);
 
 /**
  * @brief Parse a YANG module.
