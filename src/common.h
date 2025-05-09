@@ -876,11 +876,26 @@ void sr_munlock(pthread_mutex_t *lock);
 sr_error_info_t *sr_rwlock_init(sr_rwlock_t *rwlock, int shared);
 
 /**
+ * @brief Initialize a classic pthread RW lock.
+ *
+ * @param[in,out] rwlock RW lock to initialize.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_prwlock_init(pthread_rwlock_t *rwlock);
+
+/**
  * @brief Destroy a sysrepo RW lock.
  *
  * @param[in] rwlock RW lock to destroy.
  */
 void sr_rwlock_destroy(sr_rwlock_t *rwlock);
+
+/**
+ * @brief Destroy a classic pthread RW lock.
+ *
+ * @param[in] rwlock RW lock to destroy.
+ */
+void sr_prwlock_destroy(pthread_rwlock_t *rwlock);
 
 /**
  * @brief Lock a sysrepo RW lock with additional options for sub SHM. On failure, the lock is not changed in any way.
@@ -914,6 +929,16 @@ sr_error_info_t *sr_rwlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mod
         sr_lock_recover_cb cb, void *cb_data);
 
 /**
+ * @brief Lock a classic pthread RW lock. On failure, the lock is not changed in any way.
+ *
+ * @param[in] rwlock RW lock to lock.
+ * @param[in] timeout_ms Timeout in ms for locking.
+ * @param[in] mode Lock mode to set, either ::SR_LOCK_READ or ::SR_LOCK_WRITE.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_prwlock(pthread_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode);
+
+/**
  * @brief Relock a sysrepo RW lock (upgrade or downgrade). On failure, the lock is not changed in any way.
  *
  * If @p mode is ::SR_LOCK_WRITE, the @p rwlock must be locked with ::SR_LOCK_READ_UPGR.
@@ -933,6 +958,19 @@ sr_error_info_t *sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_m
         sr_lock_recover_cb cb, void *cb_data);
 
 /**
+ * @brief Relock a classic pthread RW lock (upgrade or downgrade). On failure, the lock is not changed in any way.
+ *
+ * If @p mode is ::SR_LOCK_WRITE, the @p rwlock must be locked with ::SR_LOCK_READ.
+ * If @p mode is ::SR_LOCK_READ, the @p rwlock must be locked with ::SR_LOCK_WRITE.
+ *
+ * @param[in] rwlock RW lock to relock.
+ * @param[in] timeout_ms Timeout in ms for locking.
+ * @param[in] mode Lock mode to set, either ::SR_LOCK_READ or ::SR_LOCK_WRITE.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_prwrelock(pthread_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode);
+
+/**
  * @brief Unlock a sysrepo RW lock. On failure, whatever steps are possible are still performed.
  *
  * @param[in] rwlock RW lock to unlock.
@@ -942,6 +980,13 @@ sr_error_info_t *sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_m
  * @param[in] func Name of the calling function for logging.
  */
 void sr_rwunlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func);
+
+/**
+ * @brief Unlock a classic pthread RW lock.
+ *
+ * @param[in] rwlock RW lock to unlock.
+ */
+void sr_prwunlock(pthread_rwlock_t *rwlock);
 
 /**
  * @brief Check whether a connection is alive.
