@@ -2250,11 +2250,32 @@ sr_rwlock_init(sr_rwlock_t *rwlock, int shared)
     return NULL;
 }
 
+sr_error_info_t *
+sr_prwlock_init(pthread_rwlock_t *rwlock)
+{
+    sr_error_info_t *err_info = NULL;
+    int r;
+
+    r = pthread_rwlock_init(rwlock, NULL);
+    if (r) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Initializing pthread rwlock failed (%s).", strerror(r));
+        return err_info;
+    }
+
+    return NULL;
+}
+
 void
 sr_rwlock_destroy(sr_rwlock_t *rwlock)
 {
     pthread_mutex_destroy(&rwlock->mutex);
     sr_cond_destroy(&rwlock->cond);
+}
+
+void
+sr_prwlock_destroy(pthread_rwlock_t *rwlock)
+{
+    pthread_rwlock_destroy(rwlock);
 }
 
 /**
@@ -2685,6 +2706,32 @@ sr_rwlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_cid_
     return sr_sub_rwlock(rwlock, &timeout_abs, mode, cid, func, cb, cb_data, 0);
 }
 
+sr_error_info_t *
+sr_prwlock(pthread_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode)
+{
+    int r;
+    sr_error_info_t *err_info = NULL;
+    struct timespec timeout_abs;
+
+    assert((mode == SR_LOCK_READ) || (mode == SR_LOCK_WRITE));
+
+    sr_timeouttime_get(&timeout_abs, timeout_ms);
+
+    if (mode == SR_LOCK_READ) {
+        r = pthread_rwlock_clockrdlock(rwlock, COMPAT_CLOCK_ID, &timeout_abs);
+        if (r) {
+            sr_errinfo_new(&err_info, SR_ERR_SYS, "Locking a rdlock in %s() failed (%s).", __func__, strerror(r));
+        }
+    } else {
+        r = pthread_rwlock_clockwrlock(rwlock, COMPAT_CLOCK_ID, &timeout_abs);
+        if (r) {
+            sr_errinfo_new(&err_info, SR_ERR_SYS, "Locking a wrlock in %s() failed (%s).", __func__, strerror(r));
+        }
+    }
+
+    return err_info;
+}
+
 /**
  * @brief Lock a rwlock mutex.
  *
@@ -2900,6 +2947,22 @@ cleanup_unlock:
     return err_info;
 }
 
+sr_error_info_t *
+sr_prwrelock(pthread_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode)
+{
+    assert((mode == SR_LOCK_READ) || (mode == SR_LOCK_WRITE));
+
+    if (mode == SR_LOCK_READ) {
+        /* downgrade from write-lock to read-lock */
+        sr_prwunlock(rwlock);
+        return sr_prwlock(rwlock, timeout_ms, SR_LOCK_READ);
+    } else {
+        /* upgrade from read-lock to write-lock */
+        sr_prwunlock(rwlock);
+        return sr_prwlock(rwlock, timeout_ms, SR_LOCK_WRITE);
+    }
+}
+
 void
 sr_rwunlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func)
 {
@@ -2969,6 +3032,12 @@ sr_rwunlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
         sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unlocking a mutex in %s() failed (%s).", __func__, strerror(ret));
         sr_errinfo_free(&err_info);
     }
+}
+
+void
+sr_prwunlock(pthread_rwlock_t *rwlock)
+{
+    pthread_rwlock_unlock(rwlock);
 }
 
 int
