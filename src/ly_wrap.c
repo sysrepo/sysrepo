@@ -205,11 +205,6 @@ sr_ly_ctx_init(sr_conn_ctx_t *conn, struct ly_ctx **ly_ctx)
         goto cleanup;
     }
 
-    if (conn) {
-        /* set the ext callback */
-        ly_ctx_set_ext_data_clb(*ly_ctx, sr_ly_ext_data_clb, conn);
-    }
-
 cleanup:
     if (err_info) {
         ly_ctx_destroy(*ly_ctx);

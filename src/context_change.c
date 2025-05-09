@@ -158,18 +158,50 @@ sr_conn_ctx_switch(sr_conn_ctx_t *conn, struct ly_ctx **new_ctx)
     *new_ctx = NULL;
 }
 
-static sr_error_info_t *
-sr_ly_ctx_new(sr_conn_ctx_t *conn, struct ly_ctx **new_ctx)
+/**
+ * @brief Ext data callback for providing the schema mount data.
+ */
+static LY_ERR
+sr_ly_ext_data_clb(const struct lysc_ext_instance *ext,  const struct lyd_node *UNUSED(parent),
+        void *UNUSED(user_data), void **ext_data, ly_bool *ext_data_free)
 {
-    sr_error_info_t *err_info = NULL, *tmp_err;
-    char *path;
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *ext_data_dup;
+    LY_ERR r;
 
-    /* context was updated, create a new one with the current modules */
-    if ((err_info = sr_ly_ctx_init(conn, new_ctx))) {
-        return err_info;
+    if (strcmp(ext->def->module->name, "ietf-yang-schema-mount") || strcmp(ext->def->name, "mount-point")) {
+        return LY_EINVAL;
     }
 
-    if ((err_info = sr_shmmod_ctx_load_modules(SR_CTX_MOD_SHM(sr_yang_ctx), *new_ctx, NULL))) {
+    /* LY EXT DATA READ LOCK */
+    if ((err_info = sr_prwlock(&sr_schema_mount_ctx.data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_READ))) {
+        sr_errinfo_free(&err_info);
+        return LY_ESYS;
+    }
+
+    if (!sr_schema_mount_ctx.data) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND,
+                "No \"ietf-yang-schema-mount\" operational data set needed for parsing mounted data.");
+        sr_errinfo_free(&err_info);
+        r = LY_ENOTFOUND;
+    } else {
+        /* create LY ext data duplicate */
+        r = lyd_dup_siblings(sr_schema_mount_ctx.data, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, &ext_data_dup);
+    }
+
+    /* LY EXT DATA UNLOCK */
+    sr_prwunlock(&sr_schema_mount_ctx.data_lock);
+
+    if (r) {
+        return r;
+    }
+
+    /* return a duplicate of ext data */
+    *ext_data = ext_data_dup;
+    *ext_data_free = 1;
+
+    return LY_SUCCESS;
+}
         if (!strcmp(err_info->err[err_info->err_count - 1].message, "Loading \"ietf-datastores\" module failed.")) {
             if (!(tmp_err = sr_path_yang_dir(&path))) {
                 sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED,
@@ -232,6 +264,9 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
                 goto cleanup_unlock;
             }
         }
+
+        /* set the ext callback */
+        ly_ctx_set_ext_data_clb(new_ctx, sr_ly_ext_data_clb, NULL);
 
         /* use the new context */
         sr_conn_ctx_switch(conn, &new_ctx);
