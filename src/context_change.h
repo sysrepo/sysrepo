@@ -193,7 +193,7 @@ void sr_lycc_update_data_clear(struct sr_data_update_s *data_info);
 
 /**
  * @brief Cleanup after a LY context update.
- * 
+ *
  * @param[in] data_info Data info to clear.
  * @param[in] sr_mods Updated SR internal module data.
  * @param[in] sr_del_mods Deleted SR internal module data.
