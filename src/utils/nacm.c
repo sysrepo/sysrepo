@@ -2255,11 +2255,19 @@ cleanup:
 sr_error_info_t *
 sr_nacm_check_yp_change_begin(const char *nacm_user, char ***groups, uint32_t *group_count)
 {
+    *groups = NULL;
+    *group_count = 0;
+
     /* NACM LOCK */
     pthread_mutex_lock(&nacm.lock);
 
     if (!nacm_user) {
         /* no groups to collect */
+        return NULL;
+    }
+
+    /* NACM is off */
+    if (!nacm.enabled) {
         return NULL;
     }
 
@@ -2279,6 +2287,12 @@ sr_nacm_check_yp_change_target(const char *nacm_user, char **groups, uint32_t gr
         goto cleanup;
     }
 
+    /* 1) NACM is off */
+    if (!nacm.enabled) {
+        goto cleanup;
+    }
+
+    /* 2) recovery session allowed */
     if (!strcmp(nacm_user, SR_NACM_RECOVERY_USER)) {
         goto cleanup;
     }
