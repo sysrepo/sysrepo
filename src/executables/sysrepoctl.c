@@ -5,7 +5,7 @@
  *
  * @copyright
  * Copyright (c) 2018 - 2022 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2022 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2025 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -40,7 +40,6 @@
 #define SRCTL_LIST_OWNER "Startup Owner"
 #define SRCTL_LIST_START_PERMS "Startup Perms"
 #define SRCTL_LIST_RUN_PERMS "Running Perms"
-#define SRCTL_LIST_SUBMODS "Submodules"
 #define SRCTL_LIST_FEATURES "Features"
 
 struct list_item {
@@ -51,8 +50,8 @@ struct list_item {
     char *owner;
     mode_t start_perms;
     mode_t run_perms;
-    char *submodules;
     char *features;
+    char *main_mod;
 };
 
 struct change_item {
@@ -353,7 +352,6 @@ srctl_list_collect(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct list
         /* init */
         memset(cur_item, 0, sizeof *cur_item);
         cur_item->impl_flag = "";
-        cur_item->submodules = strdup("");
         cur_item->features = strdup("");
 
         /* name and revision */
@@ -415,14 +413,23 @@ srctl_list_collect(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct list
             cur_item->owner = strdup("");
         }
 
-        /* learn submodules */
+        /* new submodules */
         LY_ARRAY_FOR(ly_mod->parsed->includes, u) {
-            str = ly_mod->parsed->includes[u].submodule->name;
-            cur_item->submodules = realloc(cur_item->submodules, strlen(cur_item->submodules) + 1 + strlen(str) + 1);
-            if (u) {
-                strcat(cur_item->submodules, " ");
-            }
-            strcat(cur_item->submodules, str);
+            *list = realloc(*list, (*list_count + 1) * sizeof **list);
+            cur_item = &(*list)[*list_count];
+            ++(*list_count);
+
+            /* init a submodule */
+            memset(cur_item, 0, sizeof *cur_item);
+            cur_item->impl_flag = "s";
+            cur_item->features = strdup("");
+            cur_item->owner = strdup("");
+            cur_item->main_mod = strdup(ly_mod->name);
+
+            /* name and revision */
+            asprintf(&cur_item->name, " %s", ly_mod->parsed->includes[u].submodule->name);
+            str = ly_mod->parsed->includes[u].submodule->revs ? ly_mod->parsed->includes[u].submodule->revs[0].date : NULL;
+            cur_item->revision = str ? strdup(str) : strdup("");
         }
     }
 
@@ -433,12 +440,23 @@ static int
 srctl_list_cmp(const void *ptr1, const void *ptr2)
 {
     struct list_item *item1, *item2;
+    const char *str1, *str2;
 
     item1 = (struct list_item *)ptr1;
     item2 = (struct list_item *)ptr2;
 
+    if (item1->main_mod && item2->main_mod && !strcmp(item1->main_mod, item2->main_mod)) {
+        /* use submodule names of submodules of the same module */
+        str1 = item1->name + 1;
+        str2 = item2->name + 1;
+    } else {
+        /* otherwise always compare module names */
+        str1 = item1->main_mod ? item1->main_mod : item1->name;
+        str2 = item2->main_mod ? item2->main_mod : item2->name;
+    }
+
     /* sort alphabetically */
-    return strcmp(item1->name, item2->name);
+    return strcmp(str1, str2);
 }
 
 static int
@@ -449,7 +467,7 @@ srctl_list(sr_conn_ctx_t *conn)
     char flags_str[5], s_perm_str[12], r_perm_str[12];
     struct list_item *list = NULL;
     size_t i, line_len, list_count = 0;
-    int max_name_len, max_owner_len, max_submod_len, max_feat_len;
+    int max_name_len, max_owner_len, max_feat_len;
     int rev_len, flag_len, s_perm_len, r_perm_len;
 
     /* acquire context */
@@ -470,7 +488,6 @@ srctl_list(sr_conn_ctx_t *conn)
     max_owner_len = strlen(SRCTL_LIST_OWNER);
     s_perm_len = strlen(SRCTL_LIST_START_PERMS);
     r_perm_len = strlen(SRCTL_LIST_RUN_PERMS);
-    max_submod_len = strlen(SRCTL_LIST_SUBMODS);
     max_feat_len = strlen(SRCTL_LIST_FEATURES);
     for (i = 0; i < list_count; ++i) {
         if ((int)strlen(list[i].name) > max_name_len) {
@@ -478,9 +495,6 @@ srctl_list(sr_conn_ctx_t *conn)
         }
         if ((int)strlen(list[i].owner) > max_owner_len) {
             max_owner_len = strlen(list[i].owner);
-        }
-        if ((int)strlen(list[i].submodules) > max_submod_len) {
-            max_submod_len = strlen(list[i].submodules);
         }
         if ((int)strlen(list[i].features) > max_feat_len) {
             max_feat_len = strlen(list[i].features);
@@ -491,14 +505,14 @@ srctl_list(sr_conn_ctx_t *conn)
     printf("Sysrepo repository: %s\n\n", sr_get_repo_path());
 
     /* print header */
-    printf("%-*s | %-*s | %-*s | %-*s | %-*s | %-*s | %-*s | %-*s\n", max_name_len, SRCTL_LIST_NAME, rev_len,
+    printf("%-*s | %-*s | %-*s | %-*s | %-*s | %-*s | %-*s\n", max_name_len, SRCTL_LIST_NAME, rev_len,
             SRCTL_LIST_REVISION, flag_len, SRCTL_LIST_FLAGS, max_owner_len, SRCTL_LIST_OWNER,
             s_perm_len, SRCTL_LIST_START_PERMS, r_perm_len, SRCTL_LIST_RUN_PERMS,
-            max_submod_len, SRCTL_LIST_SUBMODS, max_feat_len, SRCTL_LIST_FEATURES);
+            max_feat_len, SRCTL_LIST_FEATURES);
 
     /* print ruler */
     line_len = max_name_len + 3 + rev_len + 3 + flag_len + 3 + max_owner_len + 3 + s_perm_len + 3 + r_perm_len + 3 +
-            max_submod_len + 3 + max_feat_len;
+            max_feat_len;
     for (i = 0; i < line_len; ++i) {
         printf("-");
     }
@@ -514,13 +528,13 @@ srctl_list(sr_conn_ctx_t *conn)
             s_perm_str[0] = '\0';
             r_perm_str[0] = '\0';
         }
-        printf("%-*s | %-*s | %-*s | %-*s | %-*s | %-*s | %-*s | %-*s\n", max_name_len, list[i].name,
+        printf("%-*s | %-*s | %-*s | %-*s | %-*s | %-*s | %-*s\n", max_name_len, list[i].name,
                 rev_len, list[i].revision, flag_len, flags_str, max_owner_len, list[i].owner, s_perm_len, s_perm_str,
-                r_perm_len, r_perm_str, max_submod_len, list[i].submodules, max_feat_len, list[i].features);
+                r_perm_len, r_perm_str, max_feat_len, list[i].features);
     }
 
     /* print flag legend */
-    printf("\nFlags meaning: I - Installed/i - Imported; R - Replay support\n\n");
+    printf("\nFlags meaning: I - Installed/i - Imported/s - Submodule; R - Replay support\n\n");
 
 cleanup:
     sr_release_context(conn);
@@ -528,8 +542,8 @@ cleanup:
         free(list[i].name);
         free(list[i].revision);
         free(list[i].owner);
-        free(list[i].submodules);
         free(list[i].features);
+        free(list[i].main_mod);
     }
     free(list);
     return ret;
