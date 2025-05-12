@@ -2279,6 +2279,10 @@ sr_nacm_check_yp_change_target(const char *nacm_user, char **groups, uint32_t gr
         goto cleanup;
     }
 
+    if (!strcmp(nacm_user, SR_NACM_RECOVERY_USER)) {
+        goto cleanup;
+    }
+
     /* check the node */
     if ((err_info = sr_nacm_allowed_node(NULL, path, schema, SR_NACM_OP_READ, groups, group_count, nacm_user, &access,
             NULL, NULL))) {
