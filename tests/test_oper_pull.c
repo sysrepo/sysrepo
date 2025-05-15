@@ -3424,7 +3424,12 @@ test_cache_no_sub(void **state)
     ATOMIC_STORE_RELAXED(st->cb_called, 0);
 
     /* subscribe for oper poll */
-    ret = sr_oper_poll_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", 3000, 0, &subscr2);
+    ret = sr_oper_poll_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", 100, SR_SUBSCR_NO_THREAD,
+            &subscr2);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* #1 cache update */
+    ret = sr_subscription_process_events(subscr2, NULL, NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the data from operational #1 */
@@ -3442,7 +3447,8 @@ test_cache_no_sub(void **state)
             st, 0, &subscr1);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* manually fill the cache */
+    /* wait until #2 cache update */
+    usleep(100000);
     ret = sr_subscription_process_events(subscr2, NULL, NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -3471,7 +3477,8 @@ test_cache_no_sub(void **state)
     /* unsubscribe oper get */
     sr_unsubscribe(subscr1);
 
-    /* manually clear the cache */
+    /* wait until #3 cache update */
+    usleep(100000);
     ret = sr_subscription_process_events(subscr2, NULL, NULL);
     assert_int_equal(ret, SR_ERR_OK);
 

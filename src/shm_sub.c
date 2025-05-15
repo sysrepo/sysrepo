@@ -3963,68 +3963,6 @@ error:
 }
 
 /**
- * @brief Find an oper get subscription for an operational poll subscription.
- *
- * @param[in] conn Connection to use.
- * @param[in] module_name Subscription module name.
- * @param[in] oper_poll_path Operational poll subscription path.
- * @param[out] found Whether an oper get sub was found or not.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_shmsub_oper_poll_listen_find_get_sub(sr_conn_ctx_t *conn, const char *module_name, const char *oper_poll_path,
-        int *found)
-{
-    sr_error_info_t *err_info = NULL;
-    sr_mod_t *shm_mod;
-    sr_mod_oper_get_sub_t *shm_subs;
-    sr_mod_oper_get_xpath_sub_t *xpath_subs;
-    uint32_t i, j;
-
-    *found = 0;
-
-    /* find the module in SHM */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), module_name);
-    SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
-
-    /* OPER GET SUB READ LOCK */
-    if ((err_info = sr_rwlock(&shm_mod->oper_get_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__,
-            NULL, NULL))) {
-        goto cleanup;
-    }
-
-    /* EXT READ LOCK */
-    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
-        goto cleanup_opergetsub_unlock;
-    }
-
-    shm_subs = (sr_mod_oper_get_sub_t *)(conn->ext_shm.addr + shm_mod->oper_get_subs);
-    for (i = 0; i < shm_mod->oper_get_sub_count; ++i) {
-        if (!strcmp(oper_poll_path, conn->ext_shm.addr + shm_subs[i].xpath)) {
-            /* consider suspended oper get subscriptions as non-existent */
-            xpath_subs = (sr_mod_oper_get_xpath_sub_t *)(conn->ext_shm.addr + shm_subs[i].xpath_subs);
-            for (j = 0; j < shm_subs[i].xpath_sub_count; ++j) {
-                if (!ATOMIC_LOAD_RELAXED(xpath_subs[j].suspended)) {
-                    *found = 1;
-                    break;
-                }
-            }
-            break;
-        }
-    }
-
-    /* EXT READ UNLOCK */
-    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
-
-cleanup_opergetsub_unlock:
-    /* OPER GET SUB READ UNLOCK */
-    sr_rwunlock(&shm_mod->oper_get_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
-
-cleanup:
-    return err_info;
-}
-
-/**
  * @brief Check whether particular cached data are still valid.
  *
  * @param[in] cache Cached data to check.
@@ -4070,7 +4008,6 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
     struct sr_oper_poll_cache_s *cache;
     struct modsub_operpollsub_s *oper_poll_sub;
     struct timespec invalid_in;
-    int found;
     sr_session_ctx_t *ev_sess = NULL;
     sr_get_options_t get_opts;
 
@@ -4123,22 +4060,7 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
             goto cleanup_unlock;
         }
 
-        /* 1) check that there is an oper get subscription */
-        if ((err_info = sr_shmsub_oper_poll_listen_find_get_sub(conn, oper_poll_subs->module_name, oper_poll_sub->path,
-                &found))) {
-            goto finish_iter;
-        }
-        if (!found) {
-            /* free any previously cached data and timestamp */
-            lyd_free_siblings(cache->data);
-            cache->data = NULL;
-            memset(&cache->timestamp, 0, sizeof cache->timestamp);
-
-            SR_LOG_INF("No oper get subscription \"%s\" to cache.", oper_poll_sub->path);
-            goto finish_iter;
-        }
-
-        /* 2) check cache validity */
+        /* check cache validity */
         if (sr_shmsub_oper_poll_listen_is_cache_valid(cache, oper_poll_sub->valid_ms, &invalid_in)) {
             /* update when to wake up */
             if (wake_up_in && (!wake_up_in->tv_sec || (sr_time_cmp(&invalid_in, wake_up_in) < 0))) {
@@ -4167,7 +4089,8 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
         if (oper_poll_sub->opts & SR_SUBSCR_OPER_POLL_DIFF) {
             /* prepare mod info */
             mod_info.data = cache->data;
-            if ((err_info = sr_lyd_diff_siblings(cache->data, data->tree, LYD_DIFF_DEFAULTS, &mod_info.notify_diff))) {
+            if ((err_info = sr_lyd_diff_siblings(cache->data, data ? data->tree : NULL, LYD_DIFF_DEFAULTS,
+                    &mod_info.notify_diff))) {
                 goto finish_iter;
             }
 

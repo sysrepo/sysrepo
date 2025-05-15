@@ -1838,12 +1838,19 @@ int sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, co
  * @brief Start periodic retrieval and caching of operational data at the given path.
  *
  * The operational data are cached in the connection of @p session. When any session created on this connection
- * requires data of the cached operational get subscription at @p path, the callback is not called and the cached data
+ * requires data of the cached operational get subscriptions at @p path, the callback is not called and the cached data
  * are used instead. Additionally, if @p opts include ::SR_SUBSCR_OPER_POLL_DIFF, any changes detected on cache data
- * refresh are reported to corresponding subscribers. For an operational get subscription, there can only be a
- * __single__ operational poll subscription with this flag.
+ * refresh are reported to corresponding subscribers.
  *
  * Required READ access.
+ *
+ * @note For every operational get subscription, make sure there is only a __single__ operational poll subscription with
+ * the ::SR_SUBSCR_OPER_POLL_DIFF flag.
+ *
+ * @note As soon as the poll subscription is created, the operational data are cached even if there are no matching oper
+ * get subscriptions to cache. Meaning if the oper get subscription(s) are created after the oper poll subscription, the
+ * correct data are cached only after the next cache period elapses, empty data are used until then. Best to avoid this
+ * scenario by first creating oper get subscriptions and only then corresponding oper poll subscriptions.
  *
  * @note Be aware of some specific [threading limitations](@ref oper_subs). Especially note that you cannot have
  * an operational poll subscription in the same @p subscription structure as the operational get subscription being
@@ -1851,7 +1858,8 @@ int sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, co
  *
  * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] module_name Name of the affected module.
- * @param[in] path [Path](@ref paths) matching the operational get subscription(s) to poll.
+ * @param[in] path [Path](@ref paths) of the subtree with operational get subscription(s) to poll. Any oper get
+ * subscriptions matching @p path or nested in the path are cached.
  * @param[in] valid_ms Time the retrieved data are stored in cache until being considered invalid.
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
  * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
