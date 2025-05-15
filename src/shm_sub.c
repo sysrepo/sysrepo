@@ -823,7 +823,7 @@ sr_shmsub_notify_write_event(sr_sub_shm_t *sub_shm, sr_cid_t orig_cid, uint32_t 
     ATOMIC_STORE_RELAXED(sub_shm->request_id, request_id);
     ATOMIC_STORE_RELAXED(sub_shm->event, event);
     ATOMIC_STORE_RELAXED(sub_shm->priority, priority);
-    sub_shm->subscriber_count = subscriber_count;
+    ATOMIC_STORE_RELAXED(sub_shm->subscriber_count, subscriber_count);
     sub_shm->operation_id = operation_id;
 
     /* remap if needed */
@@ -1752,7 +1752,7 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, const char *orig_
                 continue;
             }
 
-            nsub->sub_shm->subscriber_count = subscriber_count;
+            ATOMIC_STORE_RELAXED(nsub->sub_shm->subscriber_count, subscriber_count);
             nsub->pending_event = 1;
             pending_events = 1;
         }
@@ -1946,7 +1946,7 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, const char *
                 continue;
             }
 
-            nsub->sub_shm->subscriber_count = subscriber_count;
+            ATOMIC_STORE_RELAXED(nsub->sub_shm->subscriber_count, subscriber_count);
             nsub->pending_event = 1;
             pending_events = 1;
         }
@@ -2087,7 +2087,7 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, const char 
         if (nsub->sub_shm->event == SR_SUB_EV_ERROR) {
             nsub->change_error = 1;
             nsub->err_priority = ATOMIC_LOAD_RELAXED(sub_shm->priority);
-            nsub->err_subscriber_count = sub_shm->subscriber_count;
+            nsub->err_subscriber_count = ATOMIC_LOAD_RELAXED(sub_shm->subscriber_count);
 
             /* clear the error */
             assert(nsub->sub_shm->request_id == nsub->mod->request_id);
@@ -2190,7 +2190,7 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, const char 
                 continue;
             }
 
-            nsub->sub_shm->subscriber_count = subscriber_count;
+            ATOMIC_STORE_RELAXED(nsub->sub_shm->subscriber_count, subscriber_count);
             nsub->pending_event = 1;
             pending_events = 1;
         }
@@ -3027,7 +3027,7 @@ clear_shm:
     /* remember what priority callback failed, that is the first priority callbacks that will NOT be called */
     assert(sub_shm->event == SR_SUB_EV_ERROR);
     err_priority = sub_shm->priority;
-    err_subscriber_count = sub_shm->subscriber_count;
+    err_subscriber_count = ATOMIC_LOAD_RELAXED(sub_shm->subscriber_count);
 
     /* print the input into LYB */
     if ((err_info = sr_lyd_print_data(input, LYD_LYB, 0, -1, &input_lyb, &input_lyb_len))) {
@@ -3318,11 +3318,11 @@ sr_shmsub_listen_write_event(sr_sub_shm_t *sub_shm, uint32_t valid_subscr_count,
     sr_error_info_t *err_info = NULL;
     sr_sub_event_t event;
 
-    assert(sub_shm->subscriber_count >= valid_subscr_count);
+    assert(ATOMIC_LOAD_RELAXED(sub_shm->subscriber_count) >= valid_subscr_count);
 
     event = ATOMIC_LOAD_RELAXED(sub_shm->event);
 
-    if ((sub_shm->subscriber_count == valid_subscr_count) || err_code) {
+    if ((ATOMIC_LOAD_RELAXED(sub_shm->subscriber_count) == valid_subscr_count) || err_code) {
         /* last subscriber finished or an error, update event */
         switch (event) {
         case SR_SUB_EV_UPDATE:
@@ -3354,7 +3354,7 @@ sr_shmsub_listen_write_event(sr_sub_shm_t *sub_shm, uint32_t valid_subscr_count,
             return err_info;
         }
     }
-    sub_shm->subscriber_count -= valid_subscr_count;
+    ATOMIC_SUB_RELAXED(sub_shm->subscriber_count, valid_subscr_count);
 
     if (data && data_len) {
         /* remap if needed */
@@ -3368,7 +3368,7 @@ sr_shmsub_listen_write_event(sr_sub_shm_t *sub_shm, uint32_t valid_subscr_count,
 
     SR_LOG_DBG("EV LISTEN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " %s (remaining %" PRIu32 " subscribers).",
             event_desc, sr_ev2str(event), sub_shm->operation_id, (uint32_t)ATOMIC_LOAD_RELAXED(sub_shm->priority),
-            result_str, sub_shm->subscriber_count);
+            result_str, (uint32_t)ATOMIC_LOAD_RELAXED(sub_shm->subscriber_count));
     return NULL;
 }
 
@@ -3545,7 +3545,7 @@ sr_error_info_t *
 sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_subs, sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL;
-    uint32_t i, data_len = 0, valid_subscr_count;
+    uint32_t i, data_len = 0, valid_subscr_count, remaining_subs;
     char *data = NULL, *shm_data_ptr;
     int ret = SR_ERR_OK, filter_valid;
     sr_lock_mode_t sub_lock = SR_LOCK_NONE;
@@ -3617,7 +3617,7 @@ sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_sub
     /* process event */
     SR_LOG_DBG("EV LISTEN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " processing (remaining %" PRIu32 " subscribers).",
             change_subs->module_name, sr_ev2str(sub_info.event), sub_info.operation_id, sub_info.priority,
-            sub_shm->subscriber_count);
+            (uint32_t)ATOMIC_LOAD_RELAXED(sub_shm->subscriber_count));
 
     /* process individual subscriptions (starting at the last found subscription, it was valid) */
     change_sub = &change_subs->subs[i];
@@ -3718,21 +3718,28 @@ process_event:
         goto cleanup;
     }
 
-    /* SUB UNLOCK */
-    sr_rwunlock(&sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, sub_lock, conn->cid, __func__);
-    sub_lock = SR_LOCK_NONE;
+    /* ATOMIC_SUB_RELAXED returns the previous value, so subtract valid_subscr_count again to get remaining_subs. */
+    remaining_subs = ATOMIC_SUB_RELAXED(sub_shm->subscriber_count, valid_subscr_count) - valid_subscr_count;
 
-    /* SUB WRITE URGE LOCK */
-    if (sr_shmsub_change_listen_relock(sub_shm, SR_LOCK_WRITE_URGE, &sub_info, change_sub, change_subs->module_name,
-            ret, filter_valid, ev_sess, &err_info)) {
-        goto cleanup;
-    }
-    sub_lock = SR_LOCK_WRITE_URGE;
+    /* only finish the event if there are no remaining subscribers, or there is some data or error to report back */
+    if (!remaining_subs || (data && data_len) || err_code) {
+        /* SUB UNLOCK */
+        sr_rwunlock(&sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, sub_lock, conn->cid, __func__);
+        sub_lock = SR_LOCK_NONE;
 
-    /* finish event */
-    if ((err_info = sr_shmsub_listen_write_event(sub_shm, valid_subscr_count, err_code, &shm_data_sub, data,
-            data_len, change_subs->module_name, err_code ? "fail" : "success"))) {
-        goto cleanup;
+        /* SUB WRITE URGE LOCK */
+        if (sr_shmsub_change_listen_relock(sub_shm, SR_LOCK_WRITE_URGE, &sub_info, change_sub, change_subs->module_name,
+                ret, filter_valid, ev_sess, &err_info)) {
+            goto cleanup;
+        }
+        sub_lock = SR_LOCK_WRITE_URGE;
+
+        /* finish event */
+        err_info = sr_shmsub_listen_write_event(sub_shm, remaining_subs ? valid_subscr_count : 0, err_code, &shm_data_sub, data,
+                data_len, change_subs->module_name, err_code ? "fail" : "success");
+    } else {
+        SR_LOG_DBG("EV LISTEN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " success (remaining %" PRIu32 " subscribers).",
+                change_subs->module_name, sr_ev2str(sub_info.event), sub_info.operation_id, sub_info.priority, remaining_subs);
     }
 
 cleanup:
@@ -4543,7 +4550,7 @@ sr_shmsub_rpc_listen_process_rpc_events(struct opsub_rpc_s *rpc_subs, sr_conn_ct
     /* process event */
     SR_LOG_DBG("EV LISTEN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " processing (remaining %" PRIu32 " subscribers).",
             rpc_subs->path, sr_ev2str(sub_info.event), sub_info.operation_id, sub_info.priority,
-            sub_shm->subscriber_count);
+            (uint32_t)ATOMIC_LOAD_RELAXED(sub_shm->subscriber_count));
 
     /* process individual subscriptions (starting at the last found subscription, it was valid) */
     valid_subscr_count = 0;
