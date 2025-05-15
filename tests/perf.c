@@ -707,6 +707,76 @@ test_items_create_oper(struct test_state *state, struct timespec *ts_start, stru
 }
 
 static int
+dummy_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath, sr_event_t event,
+        uint32_t request_id, void *private_data)
+{
+    (void)session;
+    (void)sub_id;
+    (void)module_name;
+    (void)xpath;
+    (void)event;
+    (void)request_id;
+    (void)private_data;
+    return SR_ERR_OK;
+}
+
+static int
+test_many_oper_change_subs(struct test_state *state, struct timespec *ts_start, struct timespec *ts_end)
+{
+    int r;
+    uint32_t i, j;
+    char path[64], l_val[32];
+    const uint32_t SCALE = 12;
+    sr_conn_ctx_t *conn[12] = {NULL};
+    sr_session_ctx_t *sess[12] = {NULL};
+    sr_subscription_ctx_t *subscr[12] = {NULL};
+
+    /* create many change_subs */
+    for (i = 0; i < SCALE; ++i) {
+        /* create connection */
+        if ((r = sr_connect(0, &conn[i]))) {
+            return r;
+        }
+        if ((r = sr_session_start(conn[i], SR_DS_OPERATIONAL, &sess[i]))) {
+            return r;
+        }
+
+        if ((r = sr_module_change_subscribe(sess[i], "perf", NULL, dummy_change_cb, NULL, 0, 0, &subscr[i]))) {
+            return r;
+        }
+    }
+
+    TEST_START(ts_start);
+    for (j = 0; j < 10; j++) {
+        for (i = 0; i < state->count; ++i) {
+            sprintf(path, "/perf:cont/lst[k1='%" PRIu32 "'][k2='str%" PRIu32 "']/l", i, i);
+            sprintf(l_val, "l%" PRIu32, i);
+            if ((r = sr_set_item_str(state->sess, path, l_val, NULL, 0))) {
+                return r;
+            }
+        }
+
+        if ((r = sr_apply_changes(state->sess, state->count * 100))) {
+            return r;
+        }
+
+        if ((r = sr_delete_item(state->sess, "/perf:cont/lst", 0))) {
+            return r;
+        }
+        if ((r = sr_apply_changes(state->sess, state->count * 100))) {
+            return r;
+        }
+    }
+    TEST_END(ts_end);
+
+    for (i = 0; i < SCALE; ++i) {
+        sr_unsubscribe(subscr[i]);
+        sr_disconnect(conn[i]);
+    }
+    return SR_ERR_OK;
+}
+
+static int
 test_items_remove(struct test_state *state, struct timespec *ts_start, struct timespec *ts_end)
 {
     int r;
@@ -927,6 +997,7 @@ struct test tests[] = {
     {"create user ordered items", setup_empty, test_user_order_items_create, teardown_empty},
     {"create all items", setup_empty, test_items_create, teardown_empty},
     {"create all items oper", setup_empty_oper, test_items_create_oper, teardown_empty},
+    {"many oper change_subs", setup_empty_oper, test_many_oper_change_subs, teardown_empty},
     {"remove all items", setup_running, test_items_remove, teardown_empty},
     {"remove all items cached", setup_running_cached, test_items_remove, teardown_empty},
     {"remove whole subtree", setup_running, test_items_remove_subtree, teardown_empty},
