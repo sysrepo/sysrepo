@@ -224,6 +224,7 @@ struct sr_session_ctx_s {
         } *first;                   /**< First stored notification buffer node. */
         struct sr_sess_notif_buf_node *last;    /**< Last stored notification buffer node. */
     } notif_buf;                    /**< Notification buffering attributes. */
+    uint32_t ds_locks;              /**< Count of datastore locks held by this session. */
 };
 
 /**
