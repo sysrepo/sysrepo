@@ -25,7 +25,7 @@
 #include "common_types.h"
 #include "sysrepo_types.h"
 
-#define SR_SHM_VER 19   /**< Main, mod, and ext SHM version of their expected content structures. */
+#define SR_SHM_VER 20   /**< Main, mod, and ext SHM version of their expected content structures. */
 #define SR_MAIN_SHM_LOCK "sr_main_lock"     /**< Main SHM file lock name. */
 
 /**
@@ -370,7 +370,7 @@ typedef struct {
     ATOMIC_T event;             /**< Event. */
 
     ATOMIC_T priority;          /**< Priority of the subscriber. */
-    uint32_t subscriber_count;  /**< Number of subscribers to process this event. */
+    ATOMIC_T subscriber_count;  /**< Number of subscribers to process this event. */
     uint32_t operation_id;      /**< Operation ID for the callback. */
 } sr_sub_shm_t;
 
