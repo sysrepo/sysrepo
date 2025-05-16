@@ -4,8 +4,8 @@
  * @brief header for modinfo routines
  *
  * @copyright
- * Copyright (c) 2018 - 2024 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2024 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2025 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2025 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -37,7 +37,6 @@
 
 #define MOD_INFO_DATA       0x0100 /* module data were loaded */
 #define MOD_INFO_CHANGED    0x0200 /* module data were changed */
-#define MOD_INFO_XPATH_DYN  0x0400 /* module XPaths are dynamically allocated and need to be freed */
 
 /**
  * @brief Mod info structure, used for keeping all relevant modules for a data operation.
@@ -56,7 +55,11 @@ struct sr_mod_info_s {
         sr_mod_t *shm_mod;      /**< Module SHM structure. */
         const struct lys_module *ly_mod;    /**< Module libyang structure. */
         const struct sr_ds_handle_s *ds_handle[SR_DS_READ_COUNT];  /**< Module DS plugin handles, only the required ones are set. */
-        const char **xpaths;    /**< XPaths selecting the required data from the module, all data if NULL. */
+        struct sr_mod_info_xpath_s {
+            const char *xpath;  /**< XPath itself. */
+            int dyn;            /**< Flag marking an XPath that needs to be freed. */
+            int parent_only;    /**< Flag marking an XPath that is selecting a parent node only, does not require the subtree. */
+        } *xpaths;              /**< XPaths selecting the required data from the module, all data if NULL. */
         uint32_t xpath_count;   /**< Count of XPaths. */
         uint32_t state;         /**< Module state (flags). */
         uint32_t request_id;    /**< Request ID of the published event. */
@@ -72,13 +75,14 @@ struct sr_mod_info_s {
  *
  * @param[in] ly_mod Module to be added.
  * @param[in] xpath Optional XPath selecting the required data of @p ly_mod.
- * @param[in] dup_xpath Whether to duplicate @p xpath or use it directly.
+ * @param[in] dyn Whether to duplicate @p xpath or use it directly.
+ * @param[in] parent_only Whether the XPath is for parent only, not requiring the subtree data.
  * @param[in] no_dup_check Skip duplicate module check and assume it was not yet added.
  * @param[in,out] mod_info Mod info to add the module to.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_modinfo_add(const struct lys_module *ly_mod, const char *xpath, int dup_xpath, int no_dup_check,
-        struct sr_mod_info_s *mod_info);
+sr_error_info_t *sr_modinfo_add(const struct lys_module *ly_mod, const char *xpath, int dyn, int parent_only,
+        int no_dup_check, struct sr_mod_info_s *mod_info);
 
 /**
  * @brief Add all modules defining some data into mod info.

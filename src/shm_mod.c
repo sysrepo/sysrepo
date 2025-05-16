@@ -1161,7 +1161,7 @@ sr_shmmod_collect_deps_lref(const char *target_path, const char *target_module, 
     SR_CHECK_INT_RET(!ly_mod, err_info);
 
     /* add dependency */
-    if ((err_info = sr_modinfo_add(ly_mod, target_path, 0, 0, mod_info))) {
+    if ((err_info = sr_modinfo_add(ly_mod, target_path, 0, 0, 0, mod_info))) {
         return err_info;
     }
 
@@ -1206,7 +1206,7 @@ sr_shmmod_collect_deps_instid(const char *source_path, const char *default_targe
             SR_CHECK_INT_GOTO(!ly_mod, err_info, cleanup);
 
             /* add module */
-            if ((err_info = sr_modinfo_add(ly_mod, val_str, 0, 0, mod_info))) {
+            if ((err_info = sr_modinfo_add(ly_mod, val_str, 0, 0, 0, mod_info))) {
                 goto cleanup;
             }
         }
@@ -1217,7 +1217,7 @@ sr_shmmod_collect_deps_instid(const char *source_path, const char *default_targe
         free(str);
         SR_CHECK_INT_GOTO(!ly_mod, err_info, cleanup);
 
-        if ((err_info = sr_modinfo_add(ly_mod, default_target_path, 0, 0, mod_info))) {
+        if ((err_info = sr_modinfo_add(ly_mod, default_target_path, 0, 0, 0, mod_info))) {
             goto cleanup;
         }
     }
@@ -1252,7 +1252,7 @@ sr_shmmod_collect_deps_xpath(const char *expr, char *mod_shm_addr, off_t *target
         SR_CHECK_INT_RET(!ly_mod, err_info);
 
         /* add dependency */
-        if ((err_info = sr_modinfo_add(ly_mod, expr, 0, 0, mod_info))) {
+        if ((err_info = sr_modinfo_add(ly_mod, expr, 0, 0, 0, mod_info))) {
             return err_info;
         }
     }

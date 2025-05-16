@@ -2897,7 +2897,7 @@ sr_conn_ext_data_update(sr_conn_ctx_t *conn)
     /* manually get ietf-yang-schema-mount operational data but avoid recursive call of this function */
     ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, "ietf-yang-schema-mount");
     assert(ly_mod);
-    if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 1, &mi))) {
+    if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, 1, &mi))) {
         goto cleanup;
     }
     if ((err_info = sr_modinfo_consolidate(&mi, SR_LOCK_READ, SR_MI_DATA_RO | SR_MI_PERM_READ, NULL,
@@ -5406,15 +5406,17 @@ sr_module_data_unlink(struct lyd_node **data, const struct lys_module *ly_mod, i
 
 sr_error_info_t *
 sr_module_file_data_append(const struct lys_module *ly_mod, const struct sr_ds_handle_s *ds_handle[], sr_datastore_t ds,
-        sr_cid_t cid, uint32_t sid, const char **xpaths, uint32_t xpath_count, struct lyd_node **data)
+        sr_cid_t cid, uint32_t sid, const struct sr_mod_info_xpath_s *xpaths, uint32_t xpath_count, struct lyd_node **data)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *mod_data;
     int modified;
+    const char **xps = NULL;
+    uint32_t i;
 
     if (ds == SR_DS_CANDIDATE) {
         if ((err_info = ds_handle[ds]->plugin->candidate_modified_cb(ly_mod, ds_handle[ds]->plg_data, &modified))) {
-            return err_info;
+            goto cleanup;
         }
 
         if (!modified) {
@@ -5428,10 +5430,17 @@ sr_module_file_data_append(const struct lys_module *ly_mod, const struct sr_ds_h
         ds = SR_DS_STARTUP;
     }
 
+    /* create an array of xpaths for the callback */
+    xps = malloc(xpath_count * sizeof *xps);
+    SR_CHECK_MEM_GOTO(!xps, err_info, cleanup);
+    for (i = 0; i < xpath_count; ++i) {
+        xps[i] = xpaths[i].xpath;
+    }
+
     /* get the data */
-    if ((err_info = ds_handle[ds]->plugin->load_cb(ly_mod, ds, cid, sid, xpaths, xpath_count, ds_handle[ds]->plg_data,
+    if ((err_info = ds_handle[ds]->plugin->load_cb(ly_mod, ds, cid, sid, xps, xpath_count, ds_handle[ds]->plg_data,
             &mod_data))) {
-        return err_info;
+        goto cleanup;
     }
 
     /* append module data */
@@ -5439,7 +5448,9 @@ sr_module_file_data_append(const struct lys_module *ly_mod, const struct sr_ds_h
         lyd_insert_sibling(*data, mod_data, data);
     }
 
-    return NULL;
+cleanup:
+    free(xps);
+    return err_info;
 }
 
 sr_error_info_t *

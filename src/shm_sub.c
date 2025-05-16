@@ -2476,7 +2476,7 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
             continue;
         }
 
-        if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, &mod_info))) {
+        if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, 0, &mod_info))) {
             goto cleanup;
         }
     }
@@ -4017,7 +4017,7 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
 
     /* init mod info */
     SR_MODINFO_INIT(mod_info, conn, SR_DS_OPERATIONAL, SR_DS_OPERATIONAL, 0);
-    if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, &mod_info))) {
+    if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, 0, &mod_info))) {
         goto cleanup;
     }
     if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_NONE, SR_MI_DATA_NO | SR_MI_PERM_NO, NULL, 0, 0, 0))) {

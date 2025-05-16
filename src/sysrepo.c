@@ -4165,7 +4165,7 @@ sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t timeout
                 goto cleanup;
             }
 
-            if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, &mod_info))) {
+            if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, 0, &mod_info))) {
                 goto cleanup;
             }
         } else {
@@ -4179,7 +4179,7 @@ sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t timeout
     case SR_DS_OPERATIONAL:
         /* specific module/all modules */
         if (ly_mod) {
-            if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, &mod_info))) {
+            if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, 0, &mod_info))) {
                 goto cleanup;
             }
         } else {
@@ -4740,7 +4740,7 @@ _sr_replace_config(sr_session_ctx_t *session, const struct lys_module *ly_mod, u
 
     /* single module/all modules */
     if (ly_mod) {
-        if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, &mod_info))) {
+        if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, 0, &mod_info))) {
             goto cleanup;
         }
     } else {
@@ -4875,7 +4875,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
 
     /* collect all required modules */
     if (ly_mod) {
-        if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, &mod_info))) {
+        if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, 0, &mod_info))) {
             goto cleanup;
         }
     } else {
@@ -5296,7 +5296,7 @@ _sr_un_lock(sr_session_ctx_t *session, const char *module_name, int lock, uint32
 
     /* collect all required modules and lock to wait until other sessions finish working with the data */
     if (ly_mod) {
-        if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, &mod_info))) {
+        if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, 0, &mod_info))) {
             goto cleanup;
         }
     } else {
@@ -5382,7 +5382,7 @@ sr_get_lock(sr_conn_ctx_t *conn, sr_datastore_t datastore, const char *module_na
 
     /* collect all required modules into mod_info */
     if (ly_mod) {
-        if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, &mod_info))) {
+        if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, 0, &mod_info))) {
             goto cleanup;
         }
     } else {
@@ -6046,7 +6046,7 @@ sr_module_change_subscribe_enable(sr_session_ctx_t *session, struct sr_mod_info_
 
     /* create mod_info structure with this module only, do not use cache to allow reading data in the callback
      * (avoid dead-lock) */
-    if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, mod_info))) {
+    if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, 0, mod_info))) {
         goto cleanup;
     }
     if ((err_info = sr_modinfo_consolidate(mod_info, SR_LOCK_READ, SR_MI_PERM_NO, session, 0, 0, SR_OPER_NO_SUBS))) {
@@ -7440,7 +7440,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
         parent_path = lyd_path(lyd_parent(input_op), LYD_PATH_STD, NULL, 0);
         SR_CHECK_MEM_GOTO(!parent_path, err_info, cleanup);
         /* only reference to parent_path is stored, so it cannot be freed! */
-        if ((err_info = sr_modinfo_add(lyd_owner_module(input_top), parent_path, 0, 0, &mod_info))) {
+        if ((err_info = sr_modinfo_add(lyd_owner_module(input_top), parent_path, 0, 1, 0, &mod_info))) {
             goto cleanup;
         }
         if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_DATA_RO | SR_MI_PERM_NO, session,
@@ -7745,7 +7745,7 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
         /* we need the OP parent to check it exists */
         parent_path = lyd_path(lyd_parent(notif_op), LYD_PATH_STD, NULL, 0);
         SR_CHECK_MEM_GOTO(!parent_path, err_info, cleanup);
-        if ((err_info = sr_modinfo_add(lyd_owner_module(notif_top), parent_path, 0, 0, &mod_info))) {
+        if ((err_info = sr_modinfo_add(lyd_owner_module(notif_top), parent_path, 0, 1, 0, &mod_info))) {
             goto cleanup;
         }
         if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_DATA_RO | SR_MI_PERM_NO, session,

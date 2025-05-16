@@ -49,7 +49,7 @@
 #include "utils/nacm.h"
 
 sr_error_info_t *
-sr_modinfo_add(const struct lys_module *ly_mod, const char *xpath, int dup_xpath, int no_dup_check,
+sr_modinfo_add(const struct lys_module *ly_mod, const char *xpath, int dyn, int parent_only, int no_dup_check,
         struct sr_mod_info_s *mod_info)
 {
     sr_error_info_t *err_info = NULL;
@@ -89,19 +89,10 @@ sr_modinfo_add(const struct lys_module *ly_mod, const char *xpath, int dup_xpath
 
     if (xpath) {
         for (i = 0; i < mod->xpath_count; ++i) {
-            if (!strcmp(mod->xpaths[i], xpath)) {
+            if (!strcmp(mod->xpaths[i].xpath, xpath)) {
                 /* xpath has already been added */
                 return NULL;
             }
-        }
-
-        if (dup_xpath && !(mod->state & MOD_INFO_XPATH_DYN)) {
-            /* duplicate all the current xpaths, they cannot be mixed */
-            for (i = 0; i < mod->xpath_count; ++i) {
-                mod->xpaths[i] = strdup(mod->xpaths[i]);
-                SR_CHECK_MEM_RET(!mod->xpaths[i], err_info);
-            }
-            mod->state |= MOD_INFO_XPATH_DYN;
         }
 
         /* add xpath for mod */
@@ -109,7 +100,9 @@ sr_modinfo_add(const struct lys_module *ly_mod, const char *xpath, int dup_xpath
         SR_CHECK_MEM_RET(!mem, err_info);
         mod->xpaths = mem;
 
-        mod->xpaths[mod->xpath_count] = dup_xpath ? strdup(xpath) : xpath;
+        mod->xpaths[mod->xpath_count].xpath = dyn ? strdup(xpath) : xpath;
+        mod->xpaths[mod->xpath_count].dyn = dyn ? 1 : 0;
+        mod->xpaths[mod->xpath_count].parent_only = parent_only;
         ++mod->xpath_count;
     }
 
@@ -137,7 +130,7 @@ sr_modinfo_add_all_modules_with_data(const struct ly_ctx *ly_ctx, int state_data
             continue;
         }
 
-        if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 1, mod_info))) {
+        if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, 1, mod_info))) {
             return err_info;
         }
     }
@@ -182,7 +175,7 @@ sr_modinfo_collect_edit(const struct lyd_node *edit, struct sr_mod_info_s *mod_i
         ly_mod = lyd_owner_module(root);
 
         /* remember the module */
-        if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, mod_info))) {
+        if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, 0, mod_info))) {
             goto cleanup;
         }
     }
@@ -256,7 +249,7 @@ sr_modinfo_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_data
     const struct lysc_node *snode;
     struct ly_set *set = NULL;
     uint32_t i;
-    int store_xpath, dup_xpath;
+    int store_xpath, xp_dyn;
 
     /* process (simple) xpath options */
     if (xpath_opts & MOD_INFO_XPATH_STORE_ALL) {
@@ -265,9 +258,9 @@ sr_modinfo_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_data
         store_xpath = 0;
     }
     if (xpath_opts & MOD_INFO_XPATH_STORE_DUP) {
-        dup_xpath = 1;
+        xp_dyn = 1;
     } else {
-        dup_xpath = 0;
+        xp_dyn = 0;
     }
 
     /* learn what nodes are needed for evaluation */
@@ -304,7 +297,7 @@ sr_modinfo_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_data
             store_xpath = !sr_modinfo_session_has_data_changes(session, ly_mod);
         }
 
-        if ((err_info = sr_modinfo_add(ly_mod, store_xpath ? xpath : NULL, dup_xpath, 0, mod_info))) {
+        if ((err_info = sr_modinfo_add(ly_mod, store_xpath ? xpath : NULL, xp_dyn, 0, 0, mod_info))) {
             goto cleanup;
         }
     }
@@ -336,7 +329,7 @@ sr_modinfo_collect_oper_sess(sr_session_ctx_t *sess, const struct lys_module *ly
             /* could have been removed */
             continue;
         }
-        if ((err_info = sr_modinfo_add(ly_mod2, NULL, 0, 0, mod_info))) {
+        if ((err_info = sr_modinfo_add(ly_mod2, NULL, 0, 0, 0, mod_info))) {
             return err_info;
         }
 
@@ -448,7 +441,7 @@ sr_modinfo_collect_ext_deps(const struct lysc_node *mp_node, struct sr_mod_info_
         SR_CHECK_INT_GOTO(!mod, err_info, cleanup);
 
         /* collect the XPath and the module */
-        if ((err_info = sr_modinfo_add(mod, str_val, 1, 0, mod_info))) {
+        if ((err_info = sr_modinfo_add(mod, str_val, 1, 0, 0, mod_info))) {
             goto cleanup;
         }
     }
@@ -1042,12 +1035,13 @@ sr_xpath_oper_data_text_atom_pred_match(const char *request_pred, const char *su
  *
  * @param[in] request_atom Request text atom.
  * @param[in] sub_atom Subscription text atom.
+ * @param[in] req_parent_only Request text atom is only for the parent node, without subtree data.
  * @return 0 data are not required based on the atoms;
  * @return 1 data are required;
  * @return 2 data are not required (would be filtered out).
  */
 static int
-sr_xpath_oper_data_text_atoms_required(const char *request_atom, const char *sub_atom)
+sr_xpath_oper_data_text_atoms_required(const char *request_atom, const char *sub_atom, int req_parent_only)
 {
     const char *req_ptr, *sub_ptr, *mod1, *name1, *mod2, *name2;
     int mlen1, mlen2, len1, len2, wildc1, wildc2;
@@ -1101,8 +1095,13 @@ sr_xpath_oper_data_text_atoms_required(const char *request_atom, const char *sub
         /* parse until the subscription path ends */
     } while (req_ptr[0] && sub_ptr[0]);
 
-    /* atom match */
-    return 1;
+    if (!req_ptr[0] && sub_ptr[0] && req_parent_only) {
+        /* subscription is for request subtree, not needed */
+        return 0;
+    } else {
+        /* atom match */
+        return 1;
+    }
 }
 
 /**
@@ -1110,11 +1109,12 @@ sr_xpath_oper_data_text_atoms_required(const char *request_atom, const char *sub
  *
  * @param[in] request_xpath Get request full XPath.
  * @param[in] sub_xpath Operational subscription XPath.
+ * @param[in] request_parent_only Get request xpath is only for the parent node, without subtree data.
  * @param[out] required Whether the oper data are required or not.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_xpath_oper_data_required(const char *request_xpath, const char *sub_xpath, int *required)
+sr_xpath_oper_data_required(const char *request_xpath, const char *sub_xpath, int request_parent_only, int *required)
 {
     sr_error_info_t *err_info = NULL;
     sr_xp_atoms_t *req_atoms = NULL, *sub_atoms = NULL;
@@ -1149,7 +1149,7 @@ sr_xpath_oper_data_required(const char *request_xpath, const char *sub_xpath, in
                     sub_atom = &sub_atoms->unions[j].atoms[l];
 
                     /* check atoms */
-                    r = sr_xpath_oper_data_text_atoms_required(req_atom->atom, sub_atom->atom);
+                    r = sr_xpath_oper_data_text_atoms_required(req_atom->atom, sub_atom->atom, request_parent_only);
                     if ((r == 0) && req_atom->selected && sub_atom->selected) {
                         /* specific selected nodes do not match, not required for the whole union */
                         *required = 0;
@@ -1230,7 +1230,7 @@ sr_xpath_oper_data_get(struct sr_mod_info_mod_s *mod, const char *xpath, const c
             SR_CHECK_MEM_GOTO(!parent_path, err_info, cleanup);
 
             for (i = 0; i < req_xpath_count; ++i) {
-                if ((err_info = sr_xpath_oper_data_required(request_xpaths[i], parent_path, &required))) {
+                if ((err_info = sr_xpath_oper_data_required(request_xpaths[i], parent_path, 0, &required))) {
                     goto cleanup;
                 }
                 if (required) {
@@ -1699,14 +1699,15 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
         if (mod->xpath_count) {
             /* check whether these data are even required */
             for (j = 0; j < mod->xpath_count; ++j) {
-                if ((err_info = sr_xpath_oper_data_required(mod->xpaths[j], sub_xpath, &required))) {
+                if ((err_info = sr_xpath_oper_data_required(mod->xpaths[j].xpath, sub_xpath, mod->xpaths[j].parent_only,
+                        &required))) {
                     goto cleanup_opergetsub_ext_unlock;
                 }
                 if (required) {
                     /* remember all xpaths causing these data to be required */
                     request_xpaths = sr_realloc(request_xpaths, (req_xpath_count + 1) * sizeof *request_xpaths);
                     SR_CHECK_MEM_GOTO(!request_xpaths, err_info, cleanup_opergetsub_ext_unlock);
-                    request_xpaths[req_xpath_count] = mod->xpaths[j];
+                    request_xpaths[req_xpath_count] = mod->xpaths[j].xpath;
                     ++req_xpath_count;
                 }
             }
@@ -2742,7 +2743,7 @@ sr_modinfo_module_data_oper_required(struct sr_mod_info_mod_s *mod, int *require
 
     /* check all the xpaths */
     for (i = 0; i < mod->xpath_count; ++i) {
-        if ((err_info = sr_xpath_oper_data_required(mod->xpaths[i], xpath, &req))) {
+        if ((err_info = sr_xpath_oper_data_required(mod->xpaths[i].xpath, xpath, mod->xpaths[i].parent_only, &req))) {
             goto cleanup;
         }
         if (req) {
@@ -2866,7 +2867,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
     sr_error_info_t *err_info = NULL;
     sr_conn_ctx_t *conn = mod_info->conn;
     struct lyd_node *mod_data = NULL;
-    const char **xpaths;
+    struct sr_mod_info_xpath_s *xpaths;
     uint32_t xpath_count;
     int modified, has_data;
     char *orig_name = NULL;
@@ -4329,9 +4330,9 @@ sr_modinfo_erase(struct sr_mod_info_s *mod_info)
         mod = &mod_info->mods[i];
         assert(!(mod->state & (MOD_INFO_RLOCK | MOD_INFO_RLOCK_UPGR | MOD_INFO_WLOCK | MOD_INFO_RLOCK2)));
 
-        if (mod->state & MOD_INFO_XPATH_DYN) {
-            for (j = 0; j < mod->xpath_count; ++j) {
-                free((char *)mod->xpaths[j]);
+        for (j = 0; j < mod->xpath_count; ++j) {
+            if (mod->xpaths[j].dyn) {
+                free((char *)mod->xpaths[j].xpath);
             }
         }
         free(mod->xpaths);

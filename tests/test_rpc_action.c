@@ -1566,6 +1566,64 @@ test_rpc_oper(void **state)
 
 /* TEST */
 static int
+rpc_action_parent_subtree_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_path, const struct lyd_node *input,
+        sr_event_t event, uint32_t request_id, struct lyd_node *output, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+
+    (void)session;
+    (void)sub_id;
+    (void)op_path;
+    (void)input;
+    (void)event;
+    (void)request_id;
+    (void)output;
+
+    /* callback called */
+    ATOMIC_INC_RELAXED(st->cb_called);
+
+    return SR_ERR_OK;
+}
+
+static void
+test_action_parent_subtree(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr = NULL;
+    sr_val_t *output;
+    size_t output_count;
+    int ret;
+
+    /* set parent oper data */
+    sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+
+    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='key']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+
+    /* action subscribe */
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1/cont2/act11", rpc_action_parent_subtree_cb, st, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* oper subscribe, should not be called */
+    ret = sr_oper_get_subscribe(st->sess, "ops", "/ops:cont/list1/cont2/nl", oper_rpc_oper_cb, NULL, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* send the action */
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
+    ret = sr_rpc_send(st->sess, "/ops:cont/list1[k='key']/cont2/act11", NULL, 0, 0, &output, &output_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
+
+    sr_free_values(output, output_count);
+    sr_unsubscribe(subscr);
+}
+
+/* TEST */
+static int
 rpc_schema_mount_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_path, const struct lyd_node *input,
         sr_event_t event, uint32_t request_id, struct lyd_node *output, void *private_data)
 {
@@ -2063,6 +2121,7 @@ main(void)
         cmocka_unit_test(test_input_parameters),
         cmocka_unit_test_teardown(test_rpc_action_with_no_thread, clear_ops),
         cmocka_unit_test(test_rpc_oper),
+        cmocka_unit_test(test_action_parent_subtree),
         cmocka_unit_test(test_schema_mount),
         cmocka_unit_test(test_factory_reset),
     };
