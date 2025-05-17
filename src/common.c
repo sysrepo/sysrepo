@@ -2852,9 +2852,11 @@ sr_rwunlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
     }
 
     /* write-unlock/last read-unlock, last read-unlock with read-upgr lock waiting for an upgrade,
-     * writer waiting, or upgradeable read-unlock (there may be another upgr-read-lock waiting) */
+     * writer waiting, or upgradeable read-unlock (there may be another upgr-read-lock waiting)
+     * or reader list was full, and one spot just opened up. */
     if (!rwlock->readers[0] || (!rwlock->readers[1] && (rwlock->read_count[0] == 1) && rwlock->upgr) ||
-            rwlock->writer || (mode == SR_LOCK_READ_UPGR)) {
+            rwlock->writer || (mode == SR_LOCK_READ_UPGR) ||
+            (rwlock->readers[SR_RWLOCK_READ_LIMIT - 2] && !rwlock->readers[SR_RWLOCK_READ_LIMIT - 1])) {
         /* broadcast on condition */
         sr_cond_broadcast(&rwlock->cond);
     }
