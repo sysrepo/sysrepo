@@ -2110,7 +2110,8 @@ sr_modinfo_module_srmon_locks_ds(sr_rwlock_t *rwlock, uint32_t skip_read_cid, co
         }
 
         snprintf(path, PATH_LEN, path_format, cid, "read");
-        if ((err_info = sr_lyd_new_path(ctx_node, NULL, path, NULL, 0, NULL, NULL))) {
+        /* use LYD_NEW_PATH_UPDATE to ignore duplicates due to unlocked access racing with reader_del */
+        if ((err_info = sr_lyd_new_path(ctx_node, NULL, path, NULL, LYD_NEW_PATH_UPDATE, NULL, NULL))) {
             goto cleanup;
         }
     }
