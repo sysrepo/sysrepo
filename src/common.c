@@ -2250,17 +2250,25 @@ cleanup:
  *
  * @param[in] rwlock Lock to remove the reader lock from.
  * @param[in] i Index of the reader.
+ * @param[in] dead If the reader is dead and should be completely removed.
  */
 static void
-sr_rwlock_reader_del_(sr_rwlock_t *rwlock, uint32_t i)
+sr_rwlock_reader_del_(sr_rwlock_t *rwlock, uint32_t i, int dead)
 {
     uint32_t move_count;
     sr_cid_t last_reader;
     uint8_t last_read_count;
 
-    /* decrease recursive read lock count */
-    assert(rwlock->read_count[i]);
-    --rwlock->read_count[i];
+    /* there should be at least 1 read_count or it must be a dead CID */
+    assert(rwlock->read_count[i] || dead);
+
+    if (dead) {
+        /* remove reader completely */
+        rwlock->read_count[i] = 0;
+    } else if (rwlock->read_count[i]) {
+        /* decrease recursive read lock count */
+        --rwlock->read_count[i];
+    }
 
     if (rwlock->read_count[i]) {
         /* read lock is still recursively held */
@@ -2315,7 +2323,7 @@ sr_rwlock_reader_del(sr_rwlock_t *rwlock, sr_cid_t cid)
     }
 
     /* remove the CID */
-    sr_rwlock_reader_del_(rwlock, i);
+    sr_rwlock_reader_del_(rwlock, i, 0);
 
 cleanup:
     return err_info;
@@ -2341,7 +2349,7 @@ sr_rwlock_recover(sr_rwlock_t *rwlock, const char *func, sr_lock_recover_cb cb, 
         if (!sr_conn_is_alive(rwlock->readers[i])) {
             /* remove the dead reader */
             cid = rwlock->readers[i];
-            sr_rwlock_reader_del_(rwlock, i);
+            sr_rwlock_reader_del_(rwlock, i, 1);
 
             /* recover */
             if (cb) {
