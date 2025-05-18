@@ -2255,9 +2255,7 @@ cleanup:
 static void
 sr_rwlock_reader_del_(sr_rwlock_t *rwlock, uint32_t i, int dead)
 {
-    uint32_t move_count;
-    sr_cid_t last_reader;
-    uint8_t last_read_count;
+    uint32_t j;
 
     /* there should be at least 1 read_count or it must be a dead CID */
     assert(rwlock->read_count[i] || dead);
@@ -2275,30 +2273,25 @@ sr_rwlock_reader_del_(sr_rwlock_t *rwlock, uint32_t i, int dead)
         return;
     }
 
-    /* move all the readers to replace the deleted one, avoid duplicates and try to keep the arrays consistent for
-     * sysrepo monitoring */
-    move_count = 0;
-    while ((move_count < SR_RWLOCK_READ_LIMIT - i - 1) && rwlock->readers[i + move_count + 1]) {
-        ++move_count;
+    /* find the last reader */
+    for (j = i + 1; j < SR_RWLOCK_READ_LIMIT && rwlock->readers[j]; j++) {}
+    j--;
+
+    /* swap last reader if it exists with deleted reader */
+    if (rwlock->readers[j]) {
+        /* first set read_count, and only then the reader CID. readers[i] holds deleted CID */
+        rwlock->read_count[i] = rwlock->read_count[j];
+        /* if we die now, recovery is easy as rwlock->readers[i] holds dead CID and will be removed. */
+
+        rwlock->readers[i] = rwlock->readers[j];
+        /* if we die now, recovery needs to delete the duplicated last reader */
+
+        rwlock->readers[j] = 0;
+        /* no recovery needed beyond this. */
+        rwlock->read_count[j] = 0;
+    } else {
+        rwlock->readers[i] = 0;
     }
-
-    /* temporarily remove the last reader to avoid duplicating it */
-    last_reader = rwlock->readers[i + move_count];
-    last_read_count = rwlock->read_count[i + move_count];
-    rwlock->readers[i + move_count] = 0;
-    rwlock->read_count[i + move_count] = 0;
-
-    if (!move_count) {
-        /* no readers left */
-        return;
-    }
-
-    memmove(&rwlock->readers[i], &rwlock->readers[i + 1], move_count * sizeof *rwlock->readers);
-    memmove(&rwlock->read_count[i], &rwlock->read_count[i + 1], move_count * sizeof *rwlock->read_count);
-
-    /* restore the last reader */
-    rwlock->readers[i + move_count - 1] = last_reader;
-    rwlock->read_count[i + move_count - 1] = last_read_count;
 }
 
 /**
@@ -2330,6 +2323,46 @@ cleanup:
 }
 
 /**
+ * @brief Make sysrepo rwlock's reader and read_count arrays consistent.
+ * if a process crashed during sr_rwlock_reader_del_ it can leave the readers array
+ * with duplicated last elements.
+ *
+ * Mutex must be held!
+ * Although we run through readers array few times,
+ * this should not be more expensive than a single connection liveness check.
+ *
+ * @param[in] rwlock RW lock to recover.
+ * @param[in] func Lock caller function.
+ */
+static void
+sr_rwlock_recover_readers(sr_rwlock_t *rwlock, const char *func)
+{
+    uint32_t i, j;
+    sr_cid_t last_cid;
+
+    /* find last reader */
+    for (i = 0; (i < SR_RWLOCK_READ_LIMIT) && rwlock->readers[i]; i++) {}
+    if (!i) {
+        /* there are no readers */
+        return;
+    }
+    i--;
+
+    last_cid = rwlock->readers[i];
+
+    /* if a duplicate of the last_cid exists, then remove the last_cid */
+    for (j = 0; (j < i) && rwlock->readers[j]; j++) {
+        if (rwlock->readers[j] == last_cid) {
+            assert(rwlock->read_count[j] == rwlock->read_count[i]);
+            rwlock->readers[i] = 0;
+            rwlock->read_count[i] = 0;
+            SR_LOG_WRN("Removed duplicate last reader of CID %" PRIu32 " (%s).", last_cid, func);
+            break;
+        }
+    }
+}
+
+/**
  * @brief Recover a sysrepo RW lock.
  * Mutex must be held!
  *
@@ -2343,6 +2376,8 @@ sr_rwlock_recover(sr_rwlock_t *rwlock, const char *func, sr_lock_recover_cb cb, 
 {
     uint32_t i = 0;
     sr_cid_t cid;
+
+    sr_rwlock_recover_readers(rwlock, func);
 
     /* readers */
     while ((i < SR_RWLOCK_READ_LIMIT) && rwlock->readers[i]) {
@@ -2408,7 +2443,7 @@ sr_sub_rwlock(sr_rwlock_t *rwlock, struct timespec *timeout_abs, sr_lock_mode_t 
         /* make it consistent */
         ret = pthread_mutex_consistent(&rwlock->mutex);
 
-        /* recover the lock */
+        /* recover the lock readers and the lock */
         sr_rwlock_recover(rwlock, func, cb, cb_data);
         SR_CHECK_INT_RET(ret, err_info);
     } else if (ret) {
@@ -2536,7 +2571,7 @@ sr_sub_rwlock(sr_rwlock_t *rwlock, struct timespec *timeout_abs, sr_lock_mode_t 
             sr_rwlock_recover(rwlock, func, cb, cb_data);
         }
 
-        /* wait until there is no writer waiting for lock */
+        /* wait until there is no writer waiting for lock and a readers are not full */
         ret = 0;
         while (!ret && (rwlock->readers[SR_RWLOCK_READ_LIMIT - 1] || rwlock->writer)) {
             /* COND WAIT */
@@ -2612,7 +2647,7 @@ sr_rwlock_mutex_lock(sr_rwlock_t *rwlock, uint32_t timeout_ms, const char *func,
         /* make it consistent */
         ret = pthread_mutex_consistent(&rwlock->mutex);
 
-        /* recover the lock */
+        /* recover the lock readers and the lock */
         sr_rwlock_recover(rwlock, func, cb, cb_data);
         SR_CHECK_INT_RET(ret, err_info);
     } else if (ret) {
