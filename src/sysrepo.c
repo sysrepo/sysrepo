@@ -725,16 +725,18 @@ _sr_session_stop(sr_session_ctx_t *session)
     tmp_err = sr_ptr_del(&session->conn->ptr_lock, (void ***)&session->conn->sessions, &session->conn->session_count, session);
     sr_errinfo_merge(&err_info, tmp_err);
 
-    /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
-        return err_info;
+    if (session->ds_locks) {
+        /* CONTEXT LOCK */
+        if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
+            return err_info;
+        }
+
+        /* release any held locks */
+        sr_shmmod_release_locks(session->conn, session->sid);
+
+        /* CONTEXT UNLOCK */
+        sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
     }
-
-    /* release any held locks */
-    sr_shmmod_release_locks(session->conn, session->sid);
-
-    /* CONTEXT UNLOCK */
-    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
 
     /* free attributes */
     free(session->user);
@@ -5313,6 +5315,9 @@ _sr_un_lock(sr_session_ctx_t *session, const char *module_name, int lock, uint32
     if ((err_info = sr_change_dslock(&mod_info, session->sid, lock))) {
         goto cleanup;
     }
+
+    /* update the session ds_locks counter to speed up _sr_session_stop() */
+    session->ds_locks += lock ? mod_info.mod_count : -mod_info.mod_count;
 
     /* candidate datastore unlocked, reset its state */
     if (!lock && (mod_info.ds == SR_DS_CANDIDATE)) {
