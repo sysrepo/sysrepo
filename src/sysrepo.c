@@ -605,7 +605,7 @@ sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_session
 
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
-        goto cleanup;
+        return sr_api_ret(NULL, err_info);
     }
 
     /* update LY ext data on every new explicit session creation */
@@ -4965,7 +4965,7 @@ _sr_discard_oper_changes(sr_session_ctx_t *session, const char *module_name, int
 
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
-        goto cleanup;
+        return sr_api_ret(NULL, err_info);
     }
 
     if (module_name) {
@@ -7134,9 +7134,11 @@ _sr_rpc_send_tree(sr_session_ctx_t *session, struct sr_mod_info_s *mod_info, con
     uint16_t shm_dep_count;
     uint32_t request_id = 0;
 
+    *output = NULL;
+
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
-        goto cleanup;
+        return err_info;
     }
 
     /* prepare data wrapper */
@@ -7264,9 +7266,11 @@ _sr_rpc_ext_send_tree(sr_session_ctx_t *session, const struct lyd_node *ext_pare
     sr_mod_t *shm_mod;
     uint32_t request_id = 0;
 
+    *output = NULL;
+
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
-        goto cleanup;
+        return err_info;
     }
 
     /* prepare data wrapper */
