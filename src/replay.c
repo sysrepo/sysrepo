@@ -158,7 +158,8 @@ sr_replay_store(sr_conn_ctx_t *conn, sr_session_ctx_t *sess, const struct lyd_no
         /* MUTEX LOCK */
         sr_timeouttime_get(&timeout_ts, SR_NOTIF_BUF_LOCK_TIMEOUT);
         if ((r = pthread_mutex_clocklock(&sess->notif_buf.lock.mutex, COMPAT_CLOCK_ID, &timeout_ts))) {
-            SR_ERRINFO_LOCK(&err_info, __func__, r);
+            sr_errinfo_new(&err_info, (r == ETIMEDOUT) ? SR_ERR_TIME_OUT : SR_ERR_INTERNAL, "Locking a mutex failed (%s: %s).",
+                    __func__, strerror(r));
             return err_info;
         }
 
@@ -248,7 +249,8 @@ sr_notif_buf_thread(void *arg)
     while (!last_check) {
         /* MUTEX LOCK */
         if ((r = pthread_mutex_clocklock(&sess->notif_buf.lock.mutex, COMPAT_CLOCK_ID, &timeout_ts))) {
-            SR_ERRINFO_LOCK(&err_info, __func__, r);
+            sr_errinfo_new(&err_info, (r == ETIMEDOUT) ? SR_ERR_TIME_OUT : SR_ERR_INTERNAL,
+                    "Locking a mutex failed (%s: %s).", __func__, strerror(r));
             goto cleanup;
         }
 

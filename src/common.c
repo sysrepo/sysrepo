@@ -2159,7 +2159,8 @@ sr_mlock(pthread_mutex_t *lock, int timeout_ms, const char *func, sr_lock_recove
 
         SR_LOG_WRN("Recovered a lock with a dead owner (%s).", func);
     } else if (ret) {
-        SR_ERRINFO_LOCK(&err_info, func, ret);
+        sr_errinfo_new(&err_info, (ret == ETIMEDOUT) ? SR_ERR_TIME_OUT : SR_ERR_INTERNAL, "Locking a mutex failed (%s: %s).",
+                __func__, strerror(ret));
         return err_info;
     }
 
@@ -2216,8 +2217,10 @@ sr_rwlock_destroy(sr_rwlock_t *rwlock)
 static sr_error_info_t *
 sr_rwlock_reader_add(sr_rwlock_t *rwlock, sr_cid_t cid)
 {
-    sr_error_info_t *err_info = NULL;
+    sr_error_info_t *err_info = NULL, *tmp_err;
     uint32_t i;
+    int conn_alive;
+    pid_t pid;
 
     /* find this connection or first free item */
     for (i = 0; (i < SR_RWLOCK_READ_LIMIT) && rwlock->readers[i] && (rwlock->readers[i] != cid); ++i) {}
@@ -2234,8 +2237,17 @@ sr_rwlock_reader_add(sr_rwlock_t *rwlock, sr_cid_t cid)
     } else {
         /* recursive read lock on the connection */
         if (rwlock->read_count[i] == UINT8_MAX) {
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Recursive reader limit %" PRIu8
-                    " reached, possibly because of missing unlocks.", UINT8_MAX);
+            if ((tmp_err = sr_shmmain_conn_check(rwlock->readers[i], &conn_alive, &pid))) {
+                sr_errinfo_merge(&err_info, tmp_err);
+            } else if (conn_alive) {
+                sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Recursive reader limit %" PRIu8 " reached by running"
+                        " process %ld (CID %" PRIu32 "), possibly because of missing unlocks.", UINT8_MAX, (long)pid,
+                        rwlock->readers[i]);
+            } else {
+                /* ahould be unreachable and the readers recovered */
+                sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Recursive reader limit %" PRIu8 " reached by a dead"
+                        " process (CID %" PRIu32 "), possibly because of missing unlocks.", UINT8_MAX, rwlock->readers[i]);
+            }
             goto cleanup;
         }
         ++rwlock->read_count[i];
@@ -2447,7 +2459,7 @@ sr_sub_rwlock(sr_rwlock_t *rwlock, struct timespec *timeout_abs, sr_lock_mode_t 
         sr_rwlock_recover(rwlock, func, cb, cb_data);
         SR_CHECK_INT_RET(ret, err_info);
     } else if (ret) {
-        SR_ERRINFO_LOCK(&err_info, func, ret);
+        sr_errinfo_new_lock(&err_info, func, ret, rwlock);
         return err_info;
     }
 
@@ -2607,7 +2619,7 @@ error_cond_unlock:
         pthread_mutex_unlock(&rwlock->mutex);
     }
 
-    SR_ERRINFO_COND(&err_info, func, ret);
+    sr_errinfo_new_lock(&err_info, func, ret, rwlock);
     return err_info;
 }
 
@@ -2651,7 +2663,7 @@ sr_rwlock_mutex_lock(sr_rwlock_t *rwlock, uint32_t timeout_ms, const char *func,
         sr_rwlock_recover(rwlock, func, cb, cb_data);
         SR_CHECK_INT_RET(ret, err_info);
     } else if (ret) {
-        SR_ERRINFO_LOCK(&err_info, func, ret);
+        sr_errinfo_new_lock(&err_info, func, ret, rwlock);
         return err_info;
     }
 
@@ -2702,7 +2714,7 @@ sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
             }
         }
         if (ret) {
-            SR_ERRINFO_COND(&err_info, func, ret);
+            sr_errinfo_new_lock(&err_info, func, ret, rwlock);
             goto cleanup_unlock;
         }
 
@@ -2768,7 +2780,7 @@ sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
             }
             rwlock->upgr = cid;
 
-            SR_ERRINFO_COND(&err_info, func, ret);
+            sr_errinfo_new_lock(&err_info, func, ret, rwlock);
             goto cleanup_unlock;
         }
 
@@ -2872,7 +2884,7 @@ sr_rwunlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
             /* recover the lock, no CB needed since when we are unlocking, the state is expected to be valid and cleared */
             sr_rwlock_recover(rwlock, func, NULL, NULL);
         } else if (ret) {
-            SR_ERRINFO_LOCK(&err_info, func, ret);
+            sr_errinfo_new_lock(&err_info, func, ret, rwlock);
             sr_errinfo_free(&err_info);
         }
 

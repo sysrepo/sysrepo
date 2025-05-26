@@ -18,8 +18,10 @@
 
 #include "compat.h"
 #include "log.h"
+#include "shm_main.h"
 
 #include <assert.h>
+#include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -319,6 +321,73 @@ sr_log(sr_log_level_t ll, const char *format, ...)
     va_end(ap);
 
     sr_log_msg(0, ll, msg);
+    free(msg);
+}
+
+void
+sr_errinfo_new_lock(sr_error_info_t **err_info, const char *func, int eno, const sr_rwlock_t *rwlock)
+{
+    sr_error_info_t *tmp_err = NULL;
+    char *msg = NULL, *buf;
+    uint32_t i;
+    int conn_alive;
+    pid_t pid;
+    int r;
+
+    if (eno != ETIMEDOUT) {
+        sr_errinfo_new(err_info, SR_ERR_SYS, "Locking a mutex failed (%s: %s).", func, strerror(eno));
+        return;
+    }
+
+    if (rwlock->writer) {
+        /* add writer lock info */
+        if ((tmp_err = sr_shmmain_conn_check(rwlock->writer, &conn_alive, &pid))) {
+            goto cleanup;
+        }
+        if (conn_alive) {
+            r = asprintf(&msg, "Locking a rwlock failed (%s: %s), writer lock held by running process %ld (CID %" PRIu32 ").",
+                    func, strerror(eno), (long)pid, rwlock->writer);
+        } else {
+            r = asprintf(&msg, "Locking a rwlock failed (%s: %s), writer lock held by a dead process (CID %" PRIu32 ").",
+                    func, strerror(eno), rwlock->writer);
+        }
+        SR_CHECK_MEM_GOTO(r == -1, *err_info, cleanup);
+    } else if (rwlock->readers[0]) {
+        /* add all readers lock info */
+        r = asprintf(&msg, "Locking a rwlock failed (%s: %s), read lock held by", func, strerror(eno));
+        SR_CHECK_MEM_GOTO(r == -1, *err_info, cleanup);
+
+        for (i = 0; (i < SR_RWLOCK_READ_LIMIT) && rwlock->readers[i]; ++i) {
+            if ((tmp_err = sr_shmmain_conn_check(rwlock->readers[i], &conn_alive, &pid))) {
+                goto cleanup;
+            }
+
+            if (conn_alive) {
+                r = asprintf(&buf, "%s%s running process %ld (CID %" PRIu32 ")", msg, i ? "," : "", (long)pid,
+                        rwlock->readers[i]);
+            } else {
+                r = asprintf(&buf, "%s%s a dead process (CID %" PRIu32 ")", msg, i ? "," : "", rwlock->readers[i]);
+            }
+            SR_CHECK_MEM_GOTO(r == -1, *err_info, cleanup);
+            free(msg);
+            msg = buf;
+        }
+
+        r = asprintf(&buf, "%s.", msg);
+        SR_CHECK_MEM_GOTO(r == -1, *err_info, cleanup);
+        free(msg);
+        msg = buf;
+    } else {
+        /* cannot time out without a held lock */
+        SR_ERRINFO_INT(err_info);
+        goto cleanup;
+    }
+
+    /* create err_info */
+    sr_errinfo_new(err_info, SR_ERR_TIME_OUT, "%s", msg);
+
+cleanup:
+    sr_errinfo_merge(err_info, tmp_err);
     free(msg);
 }
 

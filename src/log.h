@@ -21,8 +21,6 @@
 
 #define SR_ERRINFO_INT(err_info) sr_errinfo_new(err_info, SR_ERR_INTERNAL, "Internal error (%s:%d).", __FILE__, __LINE__)
 #define SR_ERRINFO_MEM(err_info) sr_errinfo_new(err_info, SR_ERR_NO_MEMORY, NULL)
-#define SR_ERRINFO_LOCK(err_info, func, ret) sr_errinfo_new(err_info, (ret == ETIMEDOUT) ? SR_ERR_TIME_OUT : SR_ERR_INTERNAL, \
-        "Locking a mutex failed (%s: %s).", func, strerror(ret))
 #define SR_ERRINFO_COND(err_info, func, ret) sr_errinfo_new(err_info, (ret == ETIMEDOUT) ? SR_ERR_TIME_OUT : SR_ERR_INTERNAL, \
         "Waiting on a conditional variable failed (%s: %s).", func, strerror(ret))
 #define SR_ERRINFO_SYSERRNO(err_info, func) sr_errinfo_new(err_info, SR_ERR_SYS, "%s() failed (%s).", func, strerror(errno))
@@ -122,5 +120,15 @@ void sr_errinfo_merge(sr_error_info_t **err_info, sr_error_info_t *err_info2);
  * @param[in] ... Format arguments.
  */
 void sr_log(sr_log_level_t ll, const char *format, ...) _FORMAT_PRINTF(2, 3);
+
+/**
+ * @brief Log a locking error and add the error_info into an error info structure.
+ *
+ * @param[in,out] err_info Existing error info.
+ * @param[in] func Name of the caller function.
+ * @param[in] eno System error code of the failure.
+ * @param[in] rwlock Failed rwlock structure.
+ */
+void sr_errinfo_new_lock(sr_error_info_t **err_info, const char *func, int eno, const sr_rwlock_t *rwlock);
 
 #endif
