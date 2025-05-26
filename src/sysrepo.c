@@ -507,6 +507,16 @@ sr_get_su_uid(void)
     return SR_SU_UID;
 }
 
+API sr_cid_t
+sr_get_cid(sr_conn_ctx_t *conn)
+{
+    if (!conn) {
+        return 0;
+    }
+
+    return conn->cid;
+}
+
 /**
  * @brief Set originator name and data for a session.
  *

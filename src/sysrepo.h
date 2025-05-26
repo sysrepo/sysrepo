@@ -205,6 +205,14 @@ int sr_get_plugins(sr_conn_ctx_t *conn, const char ***ds_plugins, const char ***
 uid_t sr_get_su_uid(void);
 
 /**
+ * @brief Get the connection ID.
+ *
+ * @param[in] conn Connection to use.
+ * @return CID of the connection.
+ */
+sr_cid_t sr_get_cid(sr_conn_ctx_t *conn);
+
+/**
  * @brief Start a new session.
  *
  * @param[in] conn Connection to use.
