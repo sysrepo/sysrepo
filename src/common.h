@@ -1022,6 +1022,19 @@ sr_error_info_t *sr_schema_mount_data_get(sr_conn_ctx_t *conn, const struct ly_c
 sr_error_info_t *sr_schema_mount_data_destroy(struct sr_schema_mount_ctx_s *sr_schema_mount_ctx);
 
 /**
+ * @brief Destroy schema mount contexts in the old context and create new ones in the new context based on the sysrepo data.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] old_ly_ctx Old libyang context to destroy schema mount contexts in.
+ * @param[in] new_ly_ctx New libyang context to create schema mount contexts in.
+ * @param[in] old_sr_data Old sysrepo data to find the old schema mount contexts with.
+ * @param[in] new_sr_data New sysrepo data to find the new schema mount contexts with.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_schema_mount_contexts_replace(sr_conn_ctx_t *conn, struct ly_ctx *old_ly_ctx,
+    struct ly_ctx *new_ly_ctx, struct lyd_node *old_sr_data, struct lyd_node *new_sr_data);
+
+/**
  * @brief Add a new oper cache entry.
  *
  * @param[in] oper_cache Oper cache to add to.
