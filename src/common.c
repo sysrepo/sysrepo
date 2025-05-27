@@ -3269,7 +3269,7 @@ sr_create_schema_mount_contexts(struct ly_ctx *ly_ctx, struct lyd_node *sr_data,
 
 sr_error_info_t *
 sr_schema_mount_contexts_replace(sr_conn_ctx_t *conn, struct ly_ctx *old_ly_ctx,
-    struct ly_ctx *new_ly_ctx, struct lyd_node *old_sr_data, struct lyd_node *new_sr_data)
+        struct ly_ctx *new_ly_ctx, struct lyd_node *old_sr_data, struct lyd_node *new_sr_data)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *schema_mount_data = NULL;

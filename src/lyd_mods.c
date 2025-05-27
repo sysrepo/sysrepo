@@ -731,7 +731,7 @@ sr_lydmods_add_all_deps_dfs_cb(struct lysc_node *node, void *data, ly_bool *dfs_
     }
     LY_ARRAY_FOR(node->exts, u) {
         if (!strcmp(node->exts[u].def->module->name, "ietf-yang-schema-mount") &&
-            !strcmp(node->exts[u].def->name, "mount-point")) {
+                !strcmp(node->exts[u].def->name, "mount-point")) {
             /* add the schema mount point to sysrepo internal data */
             sm_ext_path = lysc_path(node, LYSC_PATH_DATA, NULL, 0);
             err_info = sr_lydmods_add_sm_ext_path(sm_ext_path, arg->sr_mod);

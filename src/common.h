@@ -1032,7 +1032,7 @@ sr_error_info_t *sr_schema_mount_data_destroy(struct sr_schema_mount_ctx_s *sr_s
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_schema_mount_contexts_replace(sr_conn_ctx_t *conn, struct ly_ctx *old_ly_ctx,
-    struct ly_ctx *new_ly_ctx, struct lyd_node *old_sr_data, struct lyd_node *new_sr_data);
+        struct ly_ctx *new_ly_ctx, struct lyd_node *old_sr_data, struct lyd_node *new_sr_data);
 
 /**
  * @brief Add a new oper cache entry.
