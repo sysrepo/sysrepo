@@ -154,7 +154,7 @@ sr_conn_free(sr_conn_ctx_t *conn)
 
     assert(!sr_oper_cache.subs);
 
-    pthread_mutex_destroy(&conn->ptr_lock);;
+    pthread_mutex_destroy(&conn->ptr_lock);
     if (conn->create_lock > -1) {
         close(conn->create_lock);
     }
