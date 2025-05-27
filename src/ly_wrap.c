@@ -95,53 +95,6 @@ sr_errinfo_new_ly(sr_error_info_t **err_info, const struct ly_ctx *ly_ctx, const
     }
 }
 
-/**
- * @brief Ext data callback for a connection context to provide schema mount data.
- */
-static LY_ERR
-sr_ly_ext_data_clb(const struct lysc_ext_instance *ext,  const struct lyd_node *UNUSED(parent),
-        void *user_data, void **ext_data, ly_bool *ext_data_free)
-{
-    sr_error_info_t *err_info = NULL;
-    sr_conn_ctx_t *conn = user_data;
-    struct lyd_node *ext_data_dup;
-    LY_ERR r;
-
-    if (strcmp(ext->def->module->name, "ietf-yang-schema-mount") || strcmp(ext->def->name, "mount-point")) {
-        return LY_EINVAL;
-    }
-
-    /* LY EXT DATA READ LOCK */
-    if ((err_info = sr_rwlock(&sr_schema_mount_ctx.data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
-            __func__, NULL, NULL))) {
-        sr_errinfo_free(&err_info);
-        return LY_ESYS;
-    }
-
-    if (!sr_schema_mount_ctx.data) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND,
-                "No \"ietf-yang-schema-mount\" operational data set needed for parsing mounted data.");
-        sr_errinfo_free(&err_info);
-        r = LY_ENOTFOUND;
-    } else {
-        /* create LY ext data duplicate */
-        r = lyd_dup_siblings(sr_schema_mount_ctx.data, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, &ext_data_dup);
-    }
-
-    /* LY EXT DATA UNLOCK */
-    sr_rwunlock(&sr_schema_mount_ctx.data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
-
-    if (r) {
-        return r;
-    }
-
-    /* return a duplicate of ext data */
-    *ext_data = ext_data_dup;
-    *ext_data_free = 1;
-
-    return LY_SUCCESS;
-}
-
 sr_error_info_t *
 sr_ly_ctx_new(sr_conn_ctx_t *conn, struct ly_ctx **ly_ctx)
 {
