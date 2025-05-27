@@ -3057,68 +3057,78 @@ sr_conn_is_alive(sr_cid_t cid)
 }
 
 sr_error_info_t *
-sr_conn_ext_data_update(sr_conn_ctx_t *conn)
+sr_schema_mount_data_get(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct lyd_node **schema_mount_data)
 {
     sr_error_info_t *err_info = NULL;
-    const struct lys_module *ly_mod;
-    struct sr_mod_info_s mi;
-    struct lyd_node *yl_data = NULL, *new_ext_data = NULL;
+    struct lyd_node *node = NULL;
+    struct sr_mod_info_s mod_info;
+    struct lys_module *ly_mod, *ly_mod2;
 
-    /* init mod info for cleanup */
-    SR_MODINFO_INIT(mi, conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, 0);
+    *schema_mount_data = NULL;
 
-    /* manually get ietf-yang-schema-mount operational data but avoid recursive call of this function */
-    ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, "ietf-yang-schema-mount");
-    assert(ly_mod);
-    if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, 1, &mi))) {
-        goto cleanup;
-    }
-    if ((err_info = sr_modinfo_consolidate(&mi, SR_LOCK_READ, SR_MI_DATA_RO | SR_MI_PERM_READ, NULL,
-            SR_OPER_CB_TIMEOUT, 0, 0))) {
-        goto cleanup;
-    }
+    /* init modinfo */
+    SR_MODINFO_INIT(mod_info, conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, 0);
 
-    if (mi.data && !(mi.data->flags & LYD_DEFAULT)) {
-        /* validate them for the parent reference prefixes to be resolved */
-        if ((err_info = sr_lyd_validate_module(&mi.data, mi.data->schema->module, 0, NULL))) {
-            goto cleanup;
-        }
-
-        /* get ietf-yang-library operational data */
-        if ((err_info = sr_ly_ctx_get_yanglib_data(sr_yang_ctx.ly_ctx, &yl_data, SR_CONN_MAIN_SHM(conn)->content_id))) {
-            goto cleanup;
-        }
-
-        /* merge the data into one tree */
-        if ((err_info = sr_lyd_insert_sibling(yl_data, mi.data, &new_ext_data))) {
-            goto cleanup;
-        }
-        yl_data = NULL;
-        mi.data = NULL;
-    }
-
-    /* LY EXT DATA WRITE LOCK */
-    if ((err_info = sr_rwlock(&sr_schema_mount_ctx.data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
-            __func__, NULL, NULL))) {
+    /* get yang library and schema mount modules */
+    ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, "ietf-yang-library");
+    ly_mod2 = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, "ietf-yang-schema-mount");
+    if (!ly_mod || !ly_mod2) {
+        /* modules not found, they were not loaded yet */
         goto cleanup;
     }
 
-    /* update LY ext data */
-    lyd_free_siblings(sr_schema_mount_ctx.data);
-    sr_schema_mount_ctx.data = new_ext_data;
-    new_ext_data = NULL;
+    /* add the modules into mod_info */
+    if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, 1, &mod_info))) {
+        goto cleanup;
+    }
+    if ((err_info = sr_modinfo_add(ly_mod2, NULL, 0, 0, 1, &mod_info))) {
+        goto cleanup;
+    }
 
-    /* LY EXT DATA UNLOCK */
-    sr_rwunlock(&sr_schema_mount_ctx.data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    /* add modules into mod_info with deps, locking, and their data */
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_PERM_NO, NULL, SR_OPER_CB_TIMEOUT, 0, 0))) {
+        goto cleanup;
+    }
+
+    /* get the schema mount data */
+    if ((err_info = sr_lyd_find_path(mod_info.data, "/ietf-yang-schema-mount:schema-mounts", 0, &node))) {
+        goto cleanup;
+    }
+
+    if (node && !(node->flags & LYD_DEFAULT)) {
+        /* validate the sm data to resolve the parent reference prefixes */
+        if ((err_info = sr_lyd_validate_module(&node, node->schema->module, LYD_VALIDATE_OPERATIONAL, NULL))) {
+            goto cleanup;
+        }
+    }
+
+    if ((err_info = sr_lyd_dup_siblings_to_ctx(mod_info.data, ly_ctx, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, schema_mount_data))) {
+        goto cleanup;
+    }
 
 cleanup:
     /* MODULES UNLOCK */
-    sr_shmmod_modinfo_unlock(&mi);
-
-    sr_modinfo_erase(&mi);
-    lyd_free_siblings(yl_data);
-    lyd_free_siblings(new_ext_data);
+    sr_shmmod_modinfo_unlock(&mod_info);
+    sr_modinfo_erase(&mod_info);
     return err_info;
+}
+
+sr_error_info_t *
+sr_schema_mount_data_destroy(struct sr_schema_mount_ctx_s *sr_schema_mount_ctx)
+{
+    sr_error_info_t *err_info = NULL;
+
+    /* SM DATA WRITE LOCK */
+    if ((err_info = sr_prwlock(&sr_schema_mount_ctx->data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE))) {
+        return err_info;
+    }
+
+    lyd_free_siblings(sr_schema_mount_ctx->data);
+    sr_schema_mount_ctx->data = NULL;
+
+    /* SM DATA WRITE UNLOCK */
+    sr_prwunlock(&sr_schema_mount_ctx->data_lock);
+    return NULL;
 }
 
 sr_error_info_t *
