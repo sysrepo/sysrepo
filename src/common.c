@@ -3206,6 +3206,7 @@ static sr_error_info_t *
 sr_create_schema_mount_contexts(struct ly_ctx *ly_ctx, struct lyd_node *sr_data, struct lyd_node *schema_mount_data)
 {
     sr_error_info_t *err_info = NULL;
+    LY_ERR r;
     const struct lys_module *ly_mod;
     struct lyd_node *sr_mod, *ext_instance_node;
     const struct lysc_node *sm_ext_node;
@@ -3252,7 +3253,10 @@ sr_create_schema_mount_contexts(struct ly_ctx *ly_ctx, struct lyd_node *sr_data,
                 }
 
                 /* create shared context for this mount point */
-                if (lyplg_ext_schema_mount_create_shared_context(ext, schema_mount_data)) {
+                r = lyplg_ext_schema_mount_create_shared_context(ext, schema_mount_data);
+                if (r && (r != LY_ENOT)) {
+                    /* do not treat missing mount point data in schema_mount_data as an error,
+                     * the mount point will be created once the mount point oper data is set */
                     sr_errinfo_new(&err_info, SR_ERR_LY, "Failed to create shared context for schema mount extension instance \"%s\".",
                             lyd_get_value(ext_instance_node));
                     return err_info;
