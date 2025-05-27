@@ -774,6 +774,68 @@ sr_shmmod_add_notifs(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_nod
     return NULL;
 }
 
+/**
+ * @brief Add schema mount extension instance paths into mod SHM.
+ *
+ * @param[in] shm_mod Mod SHM structure to remap and append the data to.
+ * @param[in] shm_mod_idx Mod SHM mod index of @p sr_mod.
+ * @param[in] sr_mod Module to read the information from.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_shmmod_add_sm_ext_paths(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_node *sr_mod)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *sr_child;
+    sr_mod_t *smod;
+    char *shm_end;
+    size_t sm_ext_i, old_shm_size;
+    off_t *shm_sm_ext_paths;
+    size_t paths_len = 0;
+
+    smod = SR_SHM_MOD_IDX(shm_mod->addr, shm_mod_idx);
+
+    assert(!smod->sm_ext_path_count);
+
+    /* count schema mount extension instace paths */
+    LY_LIST_FOR(lyd_child(sr_mod), sr_child) {
+        if (!strcmp(sr_child->schema->name, "schema-mount-ext-instance")) {
+            /* another mount-point */
+            ++smod->sm_ext_path_count;
+            paths_len += sr_strshmlen(lyd_get_value(sr_child));
+        }
+    }
+
+    /* remember mod SHM size */
+    old_shm_size = shm_mod->size;
+
+    /* enlarge and possibly remap mod SHM */
+    if ((err_info = sr_shm_remap(shm_mod,
+            shm_mod->size + paths_len + SR_SHM_SIZE(smod->sm_ext_path_count * sizeof(off_t))))) {
+        return err_info;
+    }
+    smod = SR_SHM_MOD_IDX(shm_mod->addr, shm_mod_idx);
+    shm_end = shm_mod->addr + old_shm_size;
+
+    /* allocate schema mount extensions */
+    smod->sm_ext_paths = sr_shmcpy(shm_mod->addr, NULL, smod->sm_ext_path_count * sizeof(off_t), &shm_end);
+    shm_sm_ext_paths = (off_t *)(shm_mod->addr + smod->sm_ext_paths);
+
+    sm_ext_i = 0;
+    LY_LIST_FOR(lyd_child(sr_mod), sr_child) {
+        if (!strcmp(sr_child->schema->name, "schema-mount-ext-instance")) {
+            /* copy mount-point extension instance path */
+            shm_sm_ext_paths[sm_ext_i] = sr_shmstrcpy(shm_mod->addr, lyd_get_value(sr_child), &shm_end);
+            ++sm_ext_i;
+        }
+    }
+    SR_CHECK_INT_RET(sm_ext_i != smod->sm_ext_path_count, err_info);
+
+    /* mod SHM size must be exactly what we allocated */
+    assert(shm_end == shm_mod->addr + shm_mod->size);
+    return NULL;
+}
+
 sr_error_info_t *
 sr_shmmod_store_modules(sr_shm_t *shm_mod, const struct lyd_node *sr_mods)
 {
@@ -834,6 +896,9 @@ sr_shmmod_store_modules(sr_shm_t *shm_mod, const struct lyd_node *sr_mods)
             goto cleanup;
         }
         if ((err_info = sr_shmmod_add_notifs(shm_mod, i, sr_mod))) {
+            goto cleanup;
+        }
+        if ((err_info = sr_shmmod_add_sm_ext_paths(shm_mod, i, sr_mod))) {
             goto cleanup;
         }
     }

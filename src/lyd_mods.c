@@ -634,6 +634,20 @@ cleanup:
 }
 
 /**
+ * @brief Add a schema mount extension instance path into sysrepo module data.
+ *
+ * @param[in] mount_point_path Path to the node with the schema mount extension instance.
+ * @param[in] sr_mod Module to add the path to.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_lydmods_add_sm_ext_path(const char *mount_point_path, struct lyd_node *sr_mod)
+{
+    /* create new leaf-list */
+    return sr_lyd_new_term(sr_mod, NULL, "schema-mount-ext-instance", mount_point_path);
+}
+
+/**
  * @brief Add (collect) (operation) data dependencies into internal sysrepo data tree
  * from a node. Collected recursively in a DFS callback.
  *
@@ -654,6 +668,7 @@ sr_lydmods_add_all_deps_dfs_cb(struct lysc_node *node, void *data, ly_bool *dfs_
     LY_ARRAY_COUNT_TYPE u;
     int atom_opts;
     struct sr_lydmods_deps_dfs_arg *arg = data;
+    char *sm_ext_path = NULL;
 
     atom_opts = LYS_FIND_XP_SCHEMA;
 
@@ -712,6 +727,21 @@ sr_lydmods_add_all_deps_dfs_cb(struct lysc_node *node, void *data, ly_bool *dfs_
         ly_set_free(atoms, NULL);
         if (err_info) {
             goto cleanup;
+        }
+    }
+    LY_ARRAY_FOR(node->exts, u) {
+        if (!strcmp(node->exts[u].def->module->name, "ietf-yang-schema-mount") &&
+            !strcmp(node->exts[u].def->name, "mount-point")) {
+            /* add the schema mount point to sysrepo internal data */
+            sm_ext_path = lysc_path(node, LYSC_PATH_DATA, NULL, 0);
+            err_info = sr_lydmods_add_sm_ext_path(sm_ext_path, arg->sr_mod);
+            free(sm_ext_path);
+            if (err_info) {
+                goto cleanup;
+            }
+
+            /* only add the given node once */
+            break;
         }
     }
 
