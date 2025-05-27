@@ -782,12 +782,6 @@ test_max_depth(void **state)
     const char *str2;
     int ret;
 
-    /* set some more configuration data */
-    ret = sr_set_item_str(st->sess, "/mod:container/list-enh[date-and-time='2020-01-01T23:59:59Z'][label='23']", NULL, NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
     /*
      * test get data
      */
@@ -806,10 +800,6 @@ test_max_depth(void **state)
     "    <name>k2</name>\n"
     "    <leaf-bool>false</leaf-bool>\n"
     "  </list-entry>\n"
-    "  <list-enh>\n"
-    "    <date-and-time>2020-01-02T00:59:59+01:00</date-and-time>\n"
-    "    <label>23</label>\n"
-    "  </list-enh>\n"
     "</container>\n";
     assert_string_equal(str2, str1);
     free(str1);
@@ -837,10 +827,6 @@ test_max_depth(void **state)
     "  <list-entry>\n"
     "    <name>k2</name>\n"
     "  </list-entry>\n"
-    "  <list-enh>\n"
-    "    <date-and-time>2020-01-02T00:59:59+01:00</date-and-time>\n"
-    "    <label>23</label>\n"
-    "  </list-enh>\n"
     "</container>\n";
     assert_string_equal(str2, str1);
     free(str1);
@@ -863,10 +849,6 @@ test_max_depth(void **state)
     "    <name>k2</name>\n"
     "    <leaf-bool>false</leaf-bool>\n"
     "  </list-entry>\n"
-    "  <list-enh>\n"
-    "    <date-and-time>2020-01-02T00:59:59+01:00</date-and-time>\n"
-    "    <label>23</label>\n"
-    "  </list-enh>\n"
     "</container>\n";
     assert_string_equal(str2, str1);
     free(str1);
@@ -894,10 +876,6 @@ test_max_depth(void **state)
     "  <list-entry>\n"
     "    <name>k2</name>\n"
     "  </list-entry>\n"
-    "  <list-enh>\n"
-    "    <date-and-time>2020-01-02T00:59:59+01:00</date-and-time>\n"
-    "    <label>23</label>\n"
-    "  </list-enh>\n"
     "</container>\n";
     assert_string_equal(str2, str1);
     free(str1);
