@@ -146,6 +146,9 @@ typedef struct {
     off_t inv_deps;             /**< Array of inverse module data dependencies (off_t *) (offset in mod SHM). */
     uint16_t inv_dep_count;     /**< Number of inverse module data dependencies. */
 
+    off_t sm_ext_paths;         /**< Array of schema mount extension paths (offset in mod SHM). */
+    uint16_t sm_ext_path_count; /**< Number of schema mount extension paths. */
+
     off_t oper_push_data;       /**< Array of oper push data entries (offset in ext SHM), protected by operational DS
                                      mod data locks. */
     uint32_t oper_push_data_count;  /**< Number of oper push data entries, also protected by operational DS
@@ -199,6 +202,7 @@ typedef struct {
                                      and SHM mod modules. */
     pthread_mutex_t lydmods_lock;   /**< Process-shared lock for modifying SR internal module data. */
     uint32_t content_id;        /**< Context content ID of the latest context. */
+    uint32_t schema_mount_data_id; /**< ID of the latest schema mount data change. */
 
     ATOMIC_T new_sr_cid;        /**< Connection ID for a new connection. */
     ATOMIC_T new_sr_sid;        /**< SID for a new session. */
