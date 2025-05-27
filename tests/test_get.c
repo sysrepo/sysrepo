@@ -791,16 +791,16 @@ test_max_depth(void **state)
     sr_release_data(data);
     assert_int_equal(ret, 0);
     str2 =
-    "<container xmlns=\"urn:mod\">\n"
-    "  <list-entry>\n"
-    "    <name>k1</name>\n"
-    "    <leaf-bool>true</leaf-bool>\n"
-    "  </list-entry>\n"
-    "  <list-entry>\n"
-    "    <name>k2</name>\n"
-    "    <leaf-bool>false</leaf-bool>\n"
-    "  </list-entry>\n"
-    "</container>\n";
+            "<container xmlns=\"urn:mod\">\n"
+            "  <list-entry>\n"
+            "    <name>k1</name>\n"
+            "    <leaf-bool>true</leaf-bool>\n"
+            "  </list-entry>\n"
+            "  <list-entry>\n"
+            "    <name>k2</name>\n"
+            "    <leaf-bool>false</leaf-bool>\n"
+            "  </list-entry>\n"
+            "</container>\n";
     assert_string_equal(str2, str1);
     free(str1);
 
@@ -810,7 +810,7 @@ test_max_depth(void **state)
     sr_release_data(data);
     assert_int_equal(ret, 0);
     str2 =
-    "<container xmlns=\"urn:mod\"/>\n";
+            "<container xmlns=\"urn:mod\"/>\n";
     assert_string_equal(str2, str1);
     free(str1);
 
@@ -820,14 +820,14 @@ test_max_depth(void **state)
     sr_release_data(data);
     assert_int_equal(ret, 0);
     str2 =
-    "<container xmlns=\"urn:mod\">\n"
-    "  <list-entry>\n"
-    "    <name>k1</name>\n"
-    "  </list-entry>\n"
-    "  <list-entry>\n"
-    "    <name>k2</name>\n"
-    "  </list-entry>\n"
-    "</container>\n";
+            "<container xmlns=\"urn:mod\">\n"
+            "  <list-entry>\n"
+            "    <name>k1</name>\n"
+            "  </list-entry>\n"
+            "  <list-entry>\n"
+            "    <name>k2</name>\n"
+            "  </list-entry>\n"
+            "</container>\n";
     assert_string_equal(str2, str1);
     free(str1);
 
@@ -840,16 +840,16 @@ test_max_depth(void **state)
     sr_release_data(data);
     assert_int_equal(ret, 0);
     str2 =
-    "<container xmlns=\"urn:mod\">\n"
-    "  <list-entry>\n"
-    "    <name>k1</name>\n"
-    "    <leaf-bool>true</leaf-bool>\n"
-    "  </list-entry>\n"
-    "  <list-entry>\n"
-    "    <name>k2</name>\n"
-    "    <leaf-bool>false</leaf-bool>\n"
-    "  </list-entry>\n"
-    "</container>\n";
+            "<container xmlns=\"urn:mod\">\n"
+            "  <list-entry>\n"
+            "    <name>k1</name>\n"
+            "    <leaf-bool>true</leaf-bool>\n"
+            "  </list-entry>\n"
+            "  <list-entry>\n"
+            "    <name>k2</name>\n"
+            "    <leaf-bool>false</leaf-bool>\n"
+            "  </list-entry>\n"
+            "</container>\n";
     assert_string_equal(str2, str1);
     free(str1);
 
@@ -859,7 +859,7 @@ test_max_depth(void **state)
     sr_release_data(data);
     assert_int_equal(ret, 0);
     str2 =
-    "<container xmlns=\"urn:mod\"/>\n";
+            "<container xmlns=\"urn:mod\"/>\n";
     assert_string_equal(str2, str1);
     free(str1);
 
@@ -869,14 +869,14 @@ test_max_depth(void **state)
     sr_release_data(data);
     assert_int_equal(ret, 0);
     str2 =
-    "<container xmlns=\"urn:mod\">\n"
-    "  <list-entry>\n"
-    "    <name>k1</name>\n"
-    "  </list-entry>\n"
-    "  <list-entry>\n"
-    "    <name>k2</name>\n"
-    "  </list-entry>\n"
-    "</container>\n";
+            "<container xmlns=\"urn:mod\">\n"
+            "  <list-entry>\n"
+            "    <name>k1</name>\n"
+            "  </list-entry>\n"
+            "  <list-entry>\n"
+            "    <name>k2</name>\n"
+            "  </list-entry>\n"
+            "</container>\n";
     assert_string_equal(str2, str1);
     free(str1);
 }
