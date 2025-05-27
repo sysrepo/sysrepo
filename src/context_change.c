@@ -94,68 +94,71 @@ sr_oper_cache_flush(sr_oper_cache_t *oper_cache)
 }
 
 /**
- * @brief Replace cached schema-mount operational data (LY ext data) of a connection.
+ * @brief Move the schema mount data from the old context to the new one.
  *
  * @param[in] conn Connection to use.
- * @param[in] new_ext_data New LY ext data to use, may be NULL.
+ * @param[in] new_ctx New context to use.
+ * @return err_info, NULL on success.
  */
-static void
-sr_conn_ext_data_replace(sr_conn_ctx_t *conn, struct lyd_node *new_ext_data)
+static sr_error_info_t *
+sr_schema_mount_data_moveto_ctx(sr_conn_ctx_t *conn, struct ly_ctx *new_ctx)
 {
     sr_error_info_t *err_info = NULL;
+    struct lyd_node *new_sm_data = NULL;
 
-    /* expected to be called with CTX LOCK so we can access the data */
-
-    /* LY EXT DATA WRITE LOCK */
-    err_info = sr_rwlock(&sr_schema_mount_ctx.data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
-            NULL, NULL);
-
-    /* replace LY ext data */
-    lyd_free_siblings(sr_schema_mount_ctx.data);
-    sr_schema_mount_ctx.data = new_ext_data;
-
-    if (!err_info) {
-        /* LY EXT DATA UNLOCK */
-        sr_rwunlock(&sr_schema_mount_ctx.data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    /* get the current schema mount data and bind it to the new context */
+    if ((err_info = sr_schema_mount_data_get(conn, new_ctx, &new_sm_data))) {
+        return err_info;
     }
-    sr_errinfo_free(&err_info);
+
+    /* SM DATA WRITE LOCK */
+    if ((err_info = sr_prwlock(&sr_schema_mount_ctx.data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE))) {
+        return err_info;
+    }
+
+    /* replace the schema mount data */
+    lyd_free_siblings(sr_schema_mount_ctx.data);
+    sr_schema_mount_ctx.data = new_sm_data;
+
+    /* update the schema mount data ID */
+    sr_schema_mount_ctx.data_id = SR_CONN_MAIN_SHM(conn)->schema_mount_data_id;
+
+    /* SM DATA UNLOCK */
+    sr_prwunlock(&sr_schema_mount_ctx.data_lock);
+    return err_info;
 }
 
 /**
- * @brief Switch the context of a connection while correctly handling all connection data in the context.
+ * @brief Replace the current global libyang context with a new one.
  *
  * @param[in] conn Connection to use.
- * @param[in,out] new_ctx New context to use, set to NULL after use.
+ * @param[in] new_ctx New context to use.
+ * @return err_info, NULL on success.
  */
-static void
-sr_conn_ctx_switch(sr_conn_ctx_t *conn, struct ly_ctx **new_ctx)
+static sr_error_info_t *
+sr_ly_ctx_switch(sr_conn_ctx_t *conn, struct ly_ctx *new_ctx)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *new_ext_data = NULL;
 
     assert(new_ctx);
 
-    if (sr_schema_mount_ctx.data) {
-        /* copy the ext data into the new context */
-        if ((err_info = sr_lyd_dup_siblings_to_ctx(sr_schema_mount_ctx.data, *new_ctx, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS,
-                &new_ext_data))) {
-            sr_errinfo_free(&err_info);
-        }
+    /* move the schema mount data from the old context to the new one */
+    if ((err_info = sr_schema_mount_data_moveto_ctx(conn, new_ctx))) {
+        return err_info;
     }
 
     /* replace/flush caches before context destroy */
-    sr_conn_ext_data_replace(conn, new_ext_data);
-    // sr_conn_run_cache_flush(conn);
-    sr_conn_oper_cache_flush(conn);
+    sr_run_cache_flush(&sr_run_cache);
+    sr_oper_cache_flush(&sr_oper_cache);
 
     /* update content ID */
     sr_yang_ctx.content_id = SR_CONN_MAIN_SHM(conn)->content_id;
 
+    /* replace the context */
     ly_ctx_destroy(sr_yang_ctx.ly_ctx);
+    sr_yang_ctx.ly_ctx = new_ctx;
 
-    /* new ctx */
-    sr_yang_ctx.ly_ctx = *new_ctx;
-    *new_ctx = NULL;
+    return NULL;
 }
 
 /**
@@ -240,6 +243,7 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
     sr_main_shm_t *main_shm = SR_CONN_MAIN_SHM(conn);
     sr_lock_mode_t remap_mode = SR_LOCK_NONE;
     struct ly_ctx *new_ctx = NULL;
+    uint32_t schema_mount_data_id;
 
     /* CONTEXT LOCK */
     if ((err_info = sr_rwlock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, mode, conn->cid, func, NULL, NULL))) {
@@ -247,21 +251,29 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
     }
 
     /* MOD REMAP LOCK */
-    if ((err_info = sr_rwlock(&sr_yang_ctx.remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, func,
-            NULL, NULL))) {
+    if ((err_info = sr_prwlock(&sr_yang_ctx.remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ))) {
         goto cleanup_unlock;
     }
     remap_mode = SR_LOCK_READ;
 
+    /* SM DATA READ LOCK */
+    if ((err_info = sr_prwlock(&sr_schema_mount_ctx.data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_READ))) {
+        goto cleanup_unlock;
+    }
+
+    schema_mount_data_id = sr_schema_mount_ctx.data_id;
+
+    /* SM DATA UNLOCK */
+    sr_prwunlock(&sr_schema_mount_ctx.data_lock);
+
     /* check whether the context is current and does not need to be updated */
-    if (main_shm->content_id != sr_yang_ctx.content_id) {
+    if ((main_shm->content_id != sr_yang_ctx.content_id) || (main_shm->schema_mount_data_id != schema_mount_data_id)) {
         /* MOD REMAP UNLOCK */
-        sr_rwunlock(&sr_yang_ctx.remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, func);
+        sr_prwunlock(&sr_yang_ctx.remap_lock);
         remap_mode = SR_LOCK_NONE;
 
         /* MOD REMAP LOCK */
-        if ((err_info = sr_rwlock(&sr_yang_ctx.remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, func,
-                NULL, NULL))) {
+        if ((err_info = sr_prwlock(&sr_yang_ctx.remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_WRITE))) {
             goto cleanup_unlock;
         }
         remap_mode = SR_LOCK_WRITE;
@@ -290,7 +302,12 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
         ly_ctx_set_ext_data_clb(new_ctx, sr_ly_ext_data_clb, NULL);
 
         /* use the new context */
-        sr_conn_ctx_switch(conn, &new_ctx);
+        if ((err_info = sr_ly_ctx_switch(conn, new_ctx))) {
+            goto cleanup_unlock;
+        }
+
+        /* context successfully switched */
+        new_ctx = NULL;
 
         /* initialize new DS plugins */
         if ((err_info = sr_conn_ds_init(conn))) {
@@ -298,8 +315,7 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
         }
 
         /* MOD REMAP DOWNGRADE */
-        if ((err_info = sr_rwrelock(&sr_yang_ctx.remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, func,
-                NULL, NULL))) {
+        if ((err_info = sr_prwrelock(&sr_yang_ctx.remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ))) {
             goto cleanup_unlock;
         }
         remap_mode = SR_LOCK_READ;
@@ -315,7 +331,7 @@ cleanup_unlock:
     if (err_info) {
         if (remap_mode) {
             /* MOD REMAP UNLOCK */
-            sr_rwunlock(&sr_yang_ctx.remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, remap_mode, conn->cid, func);
+            sr_prwunlock(&sr_yang_ctx.remap_lock);
         }
         /* CONTEXT UNLOCK */
         sr_rwunlock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, mode, conn->cid, func);
@@ -354,7 +370,7 @@ sr_lycc_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const
     }
 
     /* MOD REMAP UNLOCK */
-    sr_rwunlock(&sr_yang_ctx.remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, func);
+    sr_prwunlock(&sr_yang_ctx.remap_lock);
 
     /* CONTEXT UNLOCK */
     sr_rwunlock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, mode, conn->cid, func);
