@@ -4,8 +4,8 @@
  * @brief test of getting data
  *
  * @copyright
- * Copyright (c) 2018 - 2021 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2025 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2025 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -690,9 +690,11 @@ test_factory_default(void **state)
     free(str1);
 
     /* cleanup */
+    sr_session_switch_ds(st->sess, SR_DS_RUNNING);
     sr_remove_module(st->conn, "example-module", 0);
 }
 
+/* TEST */
 static void
 test_subtree2xpath(void **state)
 {
@@ -770,6 +772,137 @@ test_subtree2xpath(void **state)
     lyd_free_all(edit_tree);
 }
 
+/* TEST */
+static void
+test_max_depth(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_data_t *data;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    /* set some more configuration data */
+    ret = sr_set_item_str(st->sess, "/mod:container/list-enh[date-and-time='2020-01-01T23:59:59Z'][label='23']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /*
+     * test get data
+     */
+    ret = sr_get_data(st->sess, "/mod:container", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    sr_release_data(data);
+    assert_int_equal(ret, 0);
+    str2 =
+    "<container xmlns=\"urn:mod\">\n"
+    "  <list-entry>\n"
+    "    <name>k1</name>\n"
+    "    <leaf-bool>true</leaf-bool>\n"
+    "  </list-entry>\n"
+    "  <list-entry>\n"
+    "    <name>k2</name>\n"
+    "    <leaf-bool>false</leaf-bool>\n"
+    "  </list-entry>\n"
+    "  <list-enh>\n"
+    "    <date-and-time>2020-01-02T00:59:59+01:00</date-and-time>\n"
+    "    <label>23</label>\n"
+    "  </list-enh>\n"
+    "</container>\n";
+    assert_string_equal(str2, str1);
+    free(str1);
+
+    ret = sr_get_data(st->sess, "/mod:container", 1, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_KEEPEMPTYCONT);
+    sr_release_data(data);
+    assert_int_equal(ret, 0);
+    str2 =
+    "<container xmlns=\"urn:mod\"/>\n";
+    assert_string_equal(str2, str1);
+    free(str1);
+
+    ret = sr_get_data(st->sess, "/mod:container", 2, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    sr_release_data(data);
+    assert_int_equal(ret, 0);
+    str2 =
+    "<container xmlns=\"urn:mod\">\n"
+    "  <list-entry>\n"
+    "    <name>k1</name>\n"
+    "  </list-entry>\n"
+    "  <list-entry>\n"
+    "    <name>k2</name>\n"
+    "  </list-entry>\n"
+    "  <list-enh>\n"
+    "    <date-and-time>2020-01-02T00:59:59+01:00</date-and-time>\n"
+    "    <label>23</label>\n"
+    "  </list-enh>\n"
+    "</container>\n";
+    assert_string_equal(str2, str1);
+    free(str1);
+
+    /*
+     * same test but with cached data
+     */
+    ret = sr_get_data(st->csess, "/mod:container", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    sr_release_data(data);
+    assert_int_equal(ret, 0);
+    str2 =
+    "<container xmlns=\"urn:mod\">\n"
+    "  <list-entry>\n"
+    "    <name>k1</name>\n"
+    "    <leaf-bool>true</leaf-bool>\n"
+    "  </list-entry>\n"
+    "  <list-entry>\n"
+    "    <name>k2</name>\n"
+    "    <leaf-bool>false</leaf-bool>\n"
+    "  </list-entry>\n"
+    "  <list-enh>\n"
+    "    <date-and-time>2020-01-02T00:59:59+01:00</date-and-time>\n"
+    "    <label>23</label>\n"
+    "  </list-enh>\n"
+    "</container>\n";
+    assert_string_equal(str2, str1);
+    free(str1);
+
+    ret = sr_get_data(st->csess, "/mod:container", 1, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_KEEPEMPTYCONT);
+    sr_release_data(data);
+    assert_int_equal(ret, 0);
+    str2 =
+    "<container xmlns=\"urn:mod\"/>\n";
+    assert_string_equal(str2, str1);
+    free(str1);
+
+    ret = sr_get_data(st->csess, "/mod:container", 2, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    sr_release_data(data);
+    assert_int_equal(ret, 0);
+    str2 =
+    "<container xmlns=\"urn:mod\">\n"
+    "  <list-entry>\n"
+    "    <name>k1</name>\n"
+    "  </list-entry>\n"
+    "  <list-entry>\n"
+    "    <name>k2</name>\n"
+    "  </list-entry>\n"
+    "  <list-enh>\n"
+    "    <date-and-time>2020-01-02T00:59:59+01:00</date-and-time>\n"
+    "    <label>23</label>\n"
+    "  </list-enh>\n"
+    "</container>\n";
+    assert_string_equal(str2, str1);
+    free(str1);
+}
+
 int
 main(void)
 {
@@ -785,6 +918,7 @@ main(void)
         cmocka_unit_test(test_key),
         cmocka_unit_test(test_factory_default),
         cmocka_unit_test(test_subtree2xpath),
+        cmocka_unit_test(test_max_depth),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
