@@ -1001,12 +1001,25 @@ void sr_prwunlock(pthread_rwlock_t *rwlock);
 int sr_conn_is_alive(sr_cid_t cid);
 
 /**
- * @brief Update cached schema-mount operational data (LY ext data) of a connection.
+ * @brief Get the current schema mount data from the mod SHM and make them compatible with @p ly_ctx.
+ *
+ * @note The caller must hold the global libyang context lock.
  *
  * @param[in] conn Connection to use.
+ * @param[in] ly_ctx libyang context to bind the schema mount data to.
+ * @param[out] schema_mount_data New schema mount data, should be freed by the caller.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_conn_ext_data_update(sr_conn_ctx_t *conn);
+sr_error_info_t *sr_schema_mount_data_get(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx,
+        struct lyd_node **schema_mount_data);
+
+/**
+ * @brief Destroy the schema mount data.
+ *
+ * @param[in] sr_schema_mount_ctx Schema mount context whose data to destroy.
+ * @return err_info if locking failed, NULL on success.
+ */
+sr_error_info_t *sr_schema_mount_data_destroy(struct sr_schema_mount_ctx_s *sr_schema_mount_ctx);
 
 /**
  * @brief Add a new oper cache entry.
