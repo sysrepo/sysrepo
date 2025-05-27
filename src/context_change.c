@@ -349,7 +349,6 @@ sr_lycc_relock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, const char *func)
     if ((err_info = sr_rwrelock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, mode, conn->cid, func, NULL, NULL))) {
         return err_info;
     }
-    //  TODO lock mod_remap_lock ?
     assert(main_shm->content_id == sr_yang_ctx.content_id);
 
     return NULL;
