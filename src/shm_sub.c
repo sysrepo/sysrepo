@@ -1752,6 +1752,7 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, const char *orig_
                 continue;
             }
 
+            /* remove any invalid subscribers */
             ATOMIC_STORE_RELAXED(nsub->sub_shm->subscriber_count, subscriber_count);
             nsub->pending_event = 1;
             pending_events = 1;
@@ -1946,6 +1947,7 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, const char *
                 continue;
             }
 
+            /* remove any invalid subscribers */
             ATOMIC_STORE_RELAXED(nsub->sub_shm->subscriber_count, subscriber_count);
             nsub->pending_event = 1;
             pending_events = 1;
@@ -2020,7 +2022,8 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, const char 
     sr_sub_shm_t *sub_shm;
     struct lyd_node *abort_diff = NULL;
     struct sr_mod_info_mod_s *mod = NULL;
-    uint32_t notify_count = 0, max_priority, cur_mpriority, subscriber_count, full_diff_lyb_len, diff_lyb_len, *aux = NULL, i;
+    uint32_t notify_count = 0, max_priority, cur_mpriority, subscriber_count, all_subscriber_count, notif_subscriber_count;
+    uint32_t full_diff_lyb_len, diff_lyb_len, *aux = NULL, i;
     struct sr_shmsub_many_info_change_s *notify_subs = NULL, *nsub;
     char *full_diff_lyb = NULL, *diff_lyb = NULL;
     int opts, last_priority = 0, pending_events, free_diff = 0;
@@ -2124,11 +2127,12 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, const char 
 
             /* get next subscriber(s) priority and subscriber count */
             if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, nsub->mod, mod_info->ds,
-                    mod_info->notify_diff, SR_SUB_EV_ABORT, nsub->cur_priority, &nsub->cur_priority, &subscriber_count,
+                    mod_info->notify_diff, SR_SUB_EV_ABORT, nsub->cur_priority, &nsub->cur_priority, &all_subscriber_count,
                     &opts))) {
                 goto cleanup;
             }
 
+            subscriber_count = all_subscriber_count;
             if (nsub->change_error && (nsub->err_priority == nsub->cur_priority)) {
                 /* current priority change event failed so no lower priority events could have been generated */
                 last_priority = 1;
@@ -2176,11 +2180,11 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, const char 
 
             /* notify the subscribers using an event pipe */
             if ((err_info = sr_shmsub_change_notify_evpipe(mod_info, nsub->mod, SR_SUB_EV_ABORT,
-                    nsub->cur_priority, &subscriber_count))) {
+                    nsub->cur_priority, &notif_subscriber_count))) {
                 goto cleanup;
             }
 
-            if (!subscriber_count) {
+            if (!notif_subscriber_count) {
                 nsub->sub_shm->orig_cid = 0;
                 ATOMIC_STORE_RELAXED(nsub->sub_shm->event, SR_SUB_EV_NONE);
 
@@ -2188,8 +2192,12 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, const char 
                 sr_rwunlock(&nsub->sub_shm->lock, 0, SR_LOCK_WRITE, cid, __func__);
                 nsub->lock = SR_LOCK_NONE;
                 continue;
+            } else {
+                /* assume that any subscribers that failed to be notified are the ones we wanted to notify */
+                subscriber_count -= all_subscriber_count - notif_subscriber_count;
             }
 
+            /* remove any invalid subscribers */
             ATOMIC_STORE_RELAXED(nsub->sub_shm->subscriber_count, subscriber_count);
             nsub->pending_event = 1;
             pending_events = 1;
