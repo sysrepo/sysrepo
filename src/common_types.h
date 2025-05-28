@@ -210,7 +210,8 @@ struct sr_session_ctx_s {
         sr_data_t *edit;            /**< Prepared edit data tree. */
         struct lyd_node *diff;      /**< Diff data tree, used for module change iterator. */
     } dt[SR_DS_COUNT];              /**< Session-exclusive prepared changes. */
-    int oper_edit_fetched;         /**< If current operational ds edit has been fetched, even if session->dt[SR_DS_OPERATIONAL]->edit == NULL. */
+    int oper_edit_fetched;          /**< Marks whether the current operational ds edit has been fetched, even if
+                                         session->dt[SR_DS_OPERATIONAL]->edit == NULL. */
 
     struct sr_sess_notif_buf {
         int thread_running;         /**< Flag whether the notification buffering thread of this session is running. */
