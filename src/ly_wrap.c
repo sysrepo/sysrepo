@@ -609,7 +609,7 @@ sr_lyd_validate_module_final(struct lyd_node *data, const struct lys_module *mod
     ly_err_clean(mod->ctx, NULL);
 
     if (lyd_validate_module_final(data, mod, options)) {
-        sr_errinfo_new_ly(&err_info, mod->ctx, NULL, SR_ERR_VALIDATION_FAILED);
+        sr_errinfo_new_ly(&err_info, mod->ctx, data, SR_ERR_VALIDATION_FAILED);
         goto cleanup;
     }
 
