@@ -3469,7 +3469,7 @@ sr_run_cache_update(sr_run_cache_t *run_cache, const struct sr_mod_info_s *mod_i
             has_lock = SR_LOCK_NONE;
 
             /* CACHE WRITE LOCK */
-            if ((err_info = sr_prwlock(&run_cache->lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE_URGE))) {
+            if ((err_info = sr_prwlock(&run_cache->lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE))) {
                 goto cleanup;
             }
             has_lock = SR_LOCK_WRITE;
