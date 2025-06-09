@@ -427,7 +427,10 @@ srctl_list_collect(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct list
             cur_item->main_mod = strdup(ly_mod->name);
 
             /* name and revision */
-            asprintf(&cur_item->name, " %s", ly_mod->parsed->includes[u].submodule->name);
+            if (asprintf(&cur_item->name, " %s", ly_mod->parsed->includes[u].submodule->name) == -1) {
+                error_print(0, "Memory allocation failed");
+                return SR_ERR_NO_MEMORY;
+            }
             str = ly_mod->parsed->includes[u].submodule->revs ? ly_mod->parsed->includes[u].submodule->revs[0].date : NULL;
             cur_item->revision = str ? strdup(str) : strdup("");
         }
