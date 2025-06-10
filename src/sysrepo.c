@@ -2629,7 +2629,7 @@ static sr_error_info_t *
 sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name, int enable)
 {
     sr_error_info_t *err_info = NULL;
-    struct ly_ctx *new_ctx = NULL;
+    struct ly_ctx *new_ctx = NULL, *new_ctx2 = NULL;
     struct ly_set mod_set = {0}, feat_set = {0};
     struct lyd_node *sr_mods = NULL, *sr_mods_old = NULL;
     struct sr_data_update_s data_info = {0};
@@ -2637,14 +2637,31 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     LY_ERR lyrc;
     sr_lock_mode_t ctx_mode = SR_LOCK_NONE;
 
+    /* create two temporary contexts
+     * new_ctx - for the new module with changed features, this context will be printed
+     * new_ctx2 - to get the feature information from the curr module, this is
+     * needed since the current context may not have the parsed data if the context is printed
+     */
+    if ((err_info = sr_ly_ctx_new(conn, &new_ctx))) {
+        goto cleanup;
+    }
+    if ((err_info = sr_ly_ctx_new(conn, &new_ctx2))) {
+        goto cleanup;
+    }
+
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ_UPGR, 1, __func__))) {
         goto cleanup;
     }
     ctx_mode = SR_LOCK_READ_UPGR;
 
-    /* try to find this module */
-    ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, module_name);
+    /* load all the current modules into the temp context 2 */
+    if ((err_info = sr_shmmod_ctx_load_modules(SR_CTX_MOD_SHM(sr_yang_ctx), new_ctx2, NULL))) {
+        goto cleanup;
+    }
+
+    /* find the module in temp context 2 */
+    ly_mod = ly_ctx_get_module_implemented(new_ctx2, module_name);
     if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
         goto cleanup;
@@ -2656,7 +2673,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     }
 
     if (strcmp(feature_name, "*")) {
-        /* check feature in the current context */
+        /* check feature in temp context 2, since it has the parsed data */
         lyrc = lys_feature_value(ly_mod, feature_name);
         if (lyrc == LY_ENOTFOUND) {
             sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Feature \"%s\" was not found in module \"%s\".",
@@ -2673,12 +2690,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
         }
     }
 
-    /* create new temporary context */
-    if ((err_info = sr_ly_ctx_new(conn, &new_ctx))) {
-        goto cleanup;
-    }
-
-    /* use temporary context to load modules skipping the modified one */
+    /* use temp context 1 to load modules skipping the modified one */
     if (ly_set_add(&mod_set, (void *)ly_mod, 1, NULL)) {
         SR_ERRINFO_MEM(&err_info);
         goto cleanup;
@@ -2762,6 +2774,7 @@ cleanup:
     sr_lycc_update_cleanup(&data_info, sr_mods, NULL);
     lyd_free_siblings(sr_mods_old);
     ly_ctx_destroy(new_ctx);
+    ly_ctx_destroy(new_ctx2);
 
     /* CONTEXT UNLOCK */
     sr_lycc_unlock(conn, ctx_mode, 1, __func__);
