@@ -31,6 +31,7 @@
 #include "config.h"
 #include "log.h"
 #include "ly_wrap.h"
+#include "shm_mod.h"
 #include "sn_common.h"
 #include "sn_yang_push.h"
 
@@ -196,8 +197,21 @@ srsn_subscribe(sr_session_ctx_t *session, const char *stream, const char *xpath_
     const struct lys_module *ly_mod;
     struct srsn_sub *s = NULL;
     struct timespec cur_ts, replay_start;
+    struct ly_ctx *tmp_ctx;
 
-    if (!(ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, "ietf-subscribed-notifications"))) {
+     /* create new temporary context */
+    if ((err_info = sr_ly_ctx_new(session->conn, &tmp_ctx))) {
+        goto cleanup;
+    }
+
+    /* use temporary context to load current modules */
+    if ((err_info = sr_shmmod_ctx_load_modules(SR_CTX_MOD_SHM(sr_yang_ctx), tmp_ctx, NULL))) {
+        goto cleanup;
+    }
+
+    /* find the subscribed-notifications module in the temporary context */
+    ly_mod = ly_ctx_get_module_implemented(tmp_ctx, "ietf-subscribed-notifications");
+    if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Module \"ietf-subscribed-notifications\" is not implemented.");
         goto cleanup;
     } else if (start_time && lys_feature_value(ly_mod, "replay")) {
@@ -263,6 +277,7 @@ cleanup:
         }
         srsn_sub_free(s);
     }
+    ly_ctx_destroy(tmp_ctx);
 
     return sr_api_ret(session, err_info);
 }
@@ -331,8 +346,21 @@ srsn_yang_push_on_change(sr_session_ctx_t *session, sr_datastore_t ds, const cha
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
     struct srsn_sub *s = NULL;
+    struct ly_ctx *tmp_ctx;
 
-    if (!(ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, "ietf-yang-push"))) {
+     /* create new temporary context */
+    if ((err_info = sr_ly_ctx_new(session->conn, &tmp_ctx))) {
+        goto cleanup;
+    }
+
+    /* use temporary context to load current modules */
+    if ((err_info = sr_shmmod_ctx_load_modules(SR_CTX_MOD_SHM(sr_yang_ctx), tmp_ctx, NULL))) {
+        goto cleanup;
+    }
+
+    /* find the yang-push module in the temporary context */
+    ly_mod = ly_ctx_get_module_implemented(tmp_ctx, "ietf-yang-push");
+    if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Module \"ietf-yang-push\" is not implemented.");
         goto cleanup;
     } else if (lys_feature_value(ly_mod, "on-change")) {
@@ -390,6 +418,7 @@ cleanup:
         }
         srsn_sub_free(s);
     }
+    ly_ctx_destroy(tmp_ctx);
 
     return sr_api_ret(session, err_info);
 }
