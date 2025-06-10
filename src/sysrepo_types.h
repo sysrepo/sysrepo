@@ -307,9 +307,11 @@ typedef enum {
                                           available. */
     SR_OPER_NO_RUN_CACHED = 0x40,    /**< Do not use connection running datastore cache data even if the connection
                                           supports it, may prevent some dead locks. */
-    SR_OPER_NO_PUSH_NP_CONT = 0x80   /**< Do not add empty NP containers to loaded push operational data. Can only be
+    SR_OPER_NO_PUSH_NP_CONT = 0x80,  /**< Do not add empty NP containers to loaded push operational data. Can only be
                                           used if ::SR_OPER_NO_SUBS is also set (ignored othwerise) and may make getting
                                           data faster. */
+    SR_OPER_NO_NEW_CHANGES = 0x0100  /**< Do not apply prepared changes in an edit or stored diff changes when reading
+                                          data in a change callback, effectively getting current (old) data. */
 } sr_get_oper_flag_t;
 
 #define SR_OPER_MASK 0xFFFF          /**< Mask for all get oper data flags. */

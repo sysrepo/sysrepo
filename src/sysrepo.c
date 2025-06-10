@@ -2817,7 +2817,7 @@ sr_get_item(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
     }
 
     /* filter the required data */
-    if ((err_info = sr_modinfo_get_filter(&mod_info, path, session, &set))) {
+    if ((err_info = sr_modinfo_get_filter(&mod_info, path, session, 0, &set))) {
         goto cleanup;
     }
 
@@ -2921,7 +2921,8 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, 
     }
 
     /* filter the required data */
-    if ((err_info = sr_modinfo_get_filter(&mod_info, (opts & SR_GET_NO_FILTER) ? "/*" : xpath, session, &set))) {
+    if ((err_info = sr_modinfo_get_filter(&mod_info, (opts & SR_GET_NO_FILTER) ? "/*" : xpath, session,
+            opts & SR_OPER_NO_NEW_CHANGES, &set))) {
         goto cleanup;
     }
 
@@ -3085,7 +3086,7 @@ sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms,
     }
 
     /* filter the required data */
-    if ((err_info = sr_modinfo_get_filter(&mod_info, path, session, &set))) {
+    if ((err_info = sr_modinfo_get_filter(&mod_info, path, session, 0, &set))) {
         goto cleanup;
     }
 
@@ -3420,7 +3421,8 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
     }
 
     /* filter the required data */
-    if ((err_info = sr_modinfo_get_filter(&mod_info, (opts & SR_GET_NO_FILTER) ? "/*" : xpath, session, &set))) {
+    if ((err_info = sr_modinfo_get_filter(&mod_info, (opts & SR_GET_NO_FILTER) ? "/*" : xpath, session,
+            opts & SR_OPER_NO_NEW_CHANGES, &set))) {
         goto cleanup;
     }
 
@@ -3504,7 +3506,7 @@ sr_get_node(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
     }
 
     /* filter the required data */
-    if ((err_info = sr_modinfo_get_filter(&mod_info, path, session, &set))) {
+    if ((err_info = sr_modinfo_get_filter(&mod_info, path, session, 0, &set))) {
         goto cleanup;
     }
 

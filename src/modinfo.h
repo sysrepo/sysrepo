@@ -311,11 +311,12 @@ sr_error_info_t *sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct l
  * @param[in] mod_info Mod info to use.
  * @param[in] xpath Selected data.
  * @param[in] session Sysrepo session.
+ * @param[in] ignore_new_changes If set, do not use prepared edit changes or stored diff.
  * @param[out] result Resulting set of matching nodes.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_session_ctx_t *session,
-        struct ly_set **result);
+        int ignore_new_changes, struct ly_set **result);
 
 /**
  * @brief Publish "update" event for diff in mod info and update it is needed.

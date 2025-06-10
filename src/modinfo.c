@@ -3612,7 +3612,7 @@ cleanup:
 
 sr_error_info_t *
 sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_session_ctx_t *session,
-        struct ly_set **result)
+        int ignore_new_changes, struct ly_set **result)
 {
     sr_error_info_t *err_info = NULL, *val_err_info = NULL;
     struct sr_mod_info_mod_s *mod;
@@ -3620,7 +3620,7 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
     uint32_t i;
     int is_oper_ds = (session->ds == SR_DS_OPERATIONAL) ? 1 : 0;
 
-    if (session->ds < SR_DS_COUNT) {
+    if (!ignore_new_changes && (session->ds < SR_DS_COUNT)) {
         /* collect edit/diff to be applied based on the handled event */
         switch (session->ev) {
         case SR_SUB_EV_CHANGE:
