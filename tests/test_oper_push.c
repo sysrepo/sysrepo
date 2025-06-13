@@ -2815,6 +2815,7 @@ oper_list_enabled_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const ch
         assert_int_equal(op, SR_OP_CREATED);
         assert_string_equal(prev_value, "");
         assert_string_equal(node->schema->name, "ll");
+        assert_string_equal(lyd_get_value(node), "a1");
 
         /* no more changes */
         ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
@@ -2841,7 +2842,9 @@ test_oper_list_enabled(void **state)
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* set some operational data */
+    /* set some operational data, update the value */
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll[1]", "old_val", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll[1]", "a1", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);

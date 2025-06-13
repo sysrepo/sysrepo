@@ -3218,7 +3218,8 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
         }
         if (match) {
             /* node exists, nothing to create */
-            if (match->schema && (match->schema->nodetype == LYS_LEAF)) {
+            if (match->schema && ((match->schema->nodetype == LYS_LEAF) ||
+                    ((match->schema->nodetype == LYS_LEAFLIST) && (match->schema->flags & LYS_CONFIG_R)))) {
                 /* update value */
                 if ((err_info = sr_lyd_change_term(match, value, 1))) {
                     goto error_safe;
