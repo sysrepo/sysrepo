@@ -65,6 +65,9 @@ static sr_error_info_t *_sr_unsubscribe(sr_subscription_ctx_t *subscription);
 /**
  * @brief Allocate a new connection structure.
  *
+ * This function leaves the YANG context create lock held on success,
+ * so it must be unlocked by the caller when it is no longer needed.
+ *
  * @param[in] opts Connection options.
  * @param[out] conn_p Allocated connection.
  * @return err_info, NULL on success.
@@ -74,6 +77,11 @@ sr_conn_new(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
 {
     sr_conn_ctx_t *conn;
     sr_error_info_t *err_info = NULL;
+
+    /* YANG CTX CREATE LOCK */
+    if ((err_info = sr_mlock(&sr_yang_ctx.create_lock, SR_YANG_CTX_LOCK_TIMEOUT, __func__, NULL, NULL))) {
+        return err_info;
+    }
 
     conn = calloc(1, sizeof *conn);
     SR_CHECK_MEM_RET(!conn, err_info);
@@ -102,7 +110,7 @@ sr_conn_new(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     }
 
     /* increase connection count */
-    ATOMIC_INC_RELAXED(sr_conn_count);
+    sr_yang_ctx.refcount++;
 
     *conn_p = conn;
     return NULL;
@@ -116,6 +124,8 @@ error3:
 error2:
     pthread_mutex_destroy(&conn->ptr_lock);
 error1:
+    /* YANG CTX CREATE UNLOCK */
+    sr_munlock(&sr_yang_ctx.create_lock);
     free(conn);
     return err_info;
 }
@@ -129,30 +139,62 @@ static void
 sr_conn_free(sr_conn_ctx_t *conn)
 {
     uint32_t i;
+    sr_error_info_t *err_info = NULL;
 
     if (!conn) {
         return;
     }
 
-    /* decrease connection count */
-    ATOMIC_DEC_RELAXED(sr_conn_count);
-    if (!ATOMIC_LOAD_RELAXED(sr_conn_count)) {
-        /* YANG CTX LOCK to get the current ctx */
+    /* YANG CTX CREATE LOCK */
+    if ((err_info = sr_mlock(&sr_yang_ctx.create_lock, SR_YANG_CTX_LOCK_TIMEOUT, __func__, NULL, NULL))) {
+        sr_errinfo_free(&err_info);
+        return;
+    }
+
+    /* decrease the conn refcount */
+    --sr_yang_ctx.refcount;
+
+    /* check if we are the last connection, if so then destroy global contexts */
+    if (!sr_yang_ctx.refcount) {
+        /* YANG CTX LOCK - just to get the most recent lyctx */
         if (sr_lycc_lock(conn, SR_LOCK_WRITE, 0, __func__)) {
             /* should not happen when there are no other connections */
             assert(0);
         }
 
-        /* context updated to the latest */
-
         /* YANG CTX UNLOCK */
         sr_lycc_unlock(conn, SR_LOCK_WRITE, 0, __func__);
+
+        /* free schema mount data */
+        lyd_free_siblings(sr_schema_mount_ctx.data);
+        sr_schema_mount_ctx.data = NULL;
+
+        /* free run cache only if connection was fully setup */
+        if (conn->cid) {
+            sr_run_cache_flush(&sr_run_cache);
+        }
+
+        /* free oper cache */
+        for (i = 0; i < sr_oper_cache.sub_count; ++i) {
+            lyd_free_siblings(sr_oper_cache.subs[i].data);
+        }
+
+        /* destroy lyctx */
+        ly_ctx_destroy(sr_yang_ctx.ly_ctx);
+        sr_yang_ctx.ly_ctx = NULL;
+
+        /* destroy shm */
+        sr_shm_clear(&sr_yang_ctx.mod_shm);
+        sr_shm_clear(&sr_yang_ctx.ly_ctx_shm);
+
+        sr_yang_ctx.content_id = 0;
     }
+
+    /* YANG CTX CREATE UNLOCK */
+    sr_munlock(&sr_yang_ctx.create_lock);
 
     /* destroy DS plugin data */
     sr_conn_ds_destroy(conn);
-
-    assert(!sr_oper_cache.subs);
 
     pthread_mutex_destroy(&conn->ptr_lock);
     if (conn->create_lock > -1) {
@@ -163,31 +205,6 @@ sr_conn_free(sr_conn_ctx_t *conn)
     sr_shm_clear(&conn->ext_shm);
     sr_ds_handle_free(conn->ds_handles, conn->ds_handle_count);
     sr_ntf_handle_free(conn->ntf_handles, conn->ntf_handle_count);
-
-    /* check again if we are the last connection */
-    if (!ATOMIC_LOAD_RELAXED(sr_conn_count)) {
-        /* last connection, destroy global contexts */
-        lyd_free_siblings(sr_schema_mount_ctx.data);
-        sr_schema_mount_ctx.data = NULL;
-
-        /* free run cache only if connection was fully setup */
-        if (conn->cid) {
-            sr_run_cache_flush(&sr_run_cache);
-        }
-
-        for (i = 0; i < sr_oper_cache.sub_count; ++i) {
-            lyd_free_siblings(sr_oper_cache.subs[i].data);
-        }
-
-        /* context was updated to the latest, destroy it */
-        ly_ctx_destroy(sr_yang_ctx.ly_ctx);
-        sr_yang_ctx.ly_ctx = NULL;
-
-        sr_shm_clear(&sr_yang_ctx.mod_shm);
-        sr_shm_clear(&sr_yang_ctx.ly_ctx_shm);
-
-        sr_yang_ctx.content_id = 0;
-    }
 
     free(conn);
 }
@@ -210,14 +227,14 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
         goto cleanup;
     }
 
-    /* create basic connection structure */
+    /* create basic connection structure + YANG CTX CREATE LOCK */
     if ((err_info = sr_conn_new(opts, &conn))) {
         goto cleanup;
     }
 
     /* CREATE LOCK */
     if ((err_info = sr_shmmain_createlock(conn->create_lock))) {
-        goto cleanup;
+        goto cleanup_unlock2;
     }
 
     /* open the main SHM */
@@ -230,8 +247,8 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
         goto cleanup_unlock;
     }
 
-    if (ATOMIC_LOAD_RELAXED(sr_conn_count) == 1) {
-        /* first connection in this process, open mod_shm and create ly_ctx */
+    if (sr_yang_ctx.refcount == 1) {
+        /* first connection, open mod_shm and create ly_ctx */
         if ((err_info = sr_shmmod_open(&sr_yang_ctx.mod_shm, created))) {
             goto cleanup_unlock;
         }
@@ -320,6 +337,10 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
 cleanup_unlock:
     /* CREATE UNLOCK */
     sr_shmmain_createunlock(conn->create_lock);
+
+cleanup_unlock2:
+    /* YANG CTX CREATE UNLOCK */
+    sr_munlock(&sr_yang_ctx.create_lock);
 
 cleanup:
     lyd_free_all(sr_mods);
