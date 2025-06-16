@@ -117,6 +117,8 @@ struct sr_yang_ctx_s sr_yang_ctx = {
     .ly_ctx = NULL,
     .mod_shm = SR_SHM_INITIALIZER,
     .remap_lock = PTHREAD_RWLOCK_INITIALIZER,
+    .refcount = 0,
+    .create_lock = PTHREAD_MUTEX_INITIALIZER
 };
 
 /* global per-process ext data context (schema mount) */
@@ -140,9 +142,6 @@ struct sr_oper_cache_s sr_oper_cache = {
     .sub_count = 0,
     .lock = PTHREAD_RWLOCK_INITIALIZER,
 };
-
-/* global per-process connection count */
-ATOMIC_T sr_conn_count = 0;
 
 sr_error_info_t *
 sr_ptr_add(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *ptr_count, void *add_ptr)
