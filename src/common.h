@@ -103,6 +103,9 @@ struct srplg_ntf_s;
 /** timeout for accessing stored connection ext data (duplication) (ms) */
 #define SR_CONN_EXT_DATA_LOCK_TIMEOUT 100
 
+/** timeout for locking global YANG context mutex; held only on connection creation and deletion (ms) */
+#define SR_YANG_CTX_LOCK_TIMEOUT 1000
+
 /** timeout for locking (data of) a module; maximum time a module write lock is expected to be held (ms) */
 #define SR_MOD_LOCK_TIMEOUT 5000
 
@@ -190,13 +193,16 @@ extern const sr_module_ds_t sr_module_ds_disabled_run;
  * @brief Sysrepo's per process global YANG context.
  */
 struct sr_yang_ctx_s {
-    uint32_t content_id;        /**< Content ID of the context */
+    uint32_t content_id;                /**< Content ID of the context. */
 
-    sr_shm_t ly_ctx_shm;          /**< Printed libyang context SHM */
-    struct ly_ctx *ly_ctx;      /**< Process-local libyang context */
+    sr_shm_t ly_ctx_shm;                /**< Printed libyang context SHM. */
+    struct ly_ctx *ly_ctx;              /**< Process-local libyang context. */
 
-    sr_shm_t mod_shm;          /**< Libyang modules SHM */
-    pthread_rwlock_t remap_lock; /**< Lock for remapping libyang modules SHM */
+    sr_shm_t mod_shm;                   /**< YANG modules SHM. */
+    pthread_rwlock_t remap_lock;        /**< Lock for remapping libyang modules SHM. */
+
+    uint32_t refcount;                  /**< Number of connections in this process using this context. */
+    pthread_mutex_t create_lock;        /**< Lock for refcount and managing the context on connection creation and deletion. */
 };
 
 /* global YANG context */
