@@ -103,6 +103,9 @@ struct srplg_ntf_s;
 /** timeout for accessing stored connection ext data (duplication) (ms) */
 #define SR_CONN_EXT_DATA_LOCK_TIMEOUT 100
 
+/** timeout for locking the global schema mount context; opening, truncating, writing (parsing) and closing the file (ms) */
+#define SR_SM_CTX_LOCK_TIMEOUT 2000
+
 /** timeout for locking global YANG context mutex; held only on connection creation and deletion (ms) */
 #define SR_YANG_CTX_LOCK_TIMEOUT 1000
 
@@ -190,37 +193,47 @@ extern const sr_module_ds_t sr_module_ds_default;
 extern const sr_module_ds_t sr_module_ds_disabled_run;
 
 /**
- * @brief Sysrepo's per process global YANG context.
+ * @brief Sysrepo's global YANG context.
  */
 struct sr_yang_ctx_s {
-    uint32_t content_id;                /**< Content ID of the context. */
+    uint32_t content_id;            /**< Content ID of the context. */
+    uint32_t sm_data_id;            /**< ID of the schema mount data supported by the context. */
 
-    sr_shm_t ly_ctx_shm;                /**< Printed libyang context SHM. */
-    struct ly_ctx *ly_ctx;              /**< Process-local libyang context. */
+    sr_shm_t ly_ctx_shm;            /**< Printed libyang context SHM. */
+    struct ly_ctx *ly_ctx;          /**< Process-local libyang context. */
 
-    sr_shm_t mod_shm;                   /**< YANG modules SHM. */
-    pthread_rwlock_t remap_lock;        /**< Lock for remapping libyang modules SHM. */
+    sr_shm_t mod_shm;               /**< YANG modules SHM. */
+    pthread_rwlock_t remap_lock;    /**< Lock for remapping libyang modules SHM. */
 
-    uint32_t refcount;                  /**< Number of connections in this process using this context. */
-    pthread_mutex_t create_lock;        /**< Lock for refcount and managing the context on connection creation and deletion. */
+    uint32_t refcount;              /**< Number of connections in this process using this context. */
+    pthread_mutex_t create_lock;    /**< Lock for refcount and managing the context on connection creation and deletion. */
 };
 
-/* global YANG context */
+/**
+ * @brief Global YANG context.
+ */
 extern struct sr_yang_ctx_s sr_yang_ctx;
 
 /**
- * @brief Sysrepo's per process global schema mount context.
+ * @brief Schema mount data cache.
+ *
+ * Used to cache schema mount data (yang-library + mount points).
+ * Schema mount data are stored in a file and are parsed and cached only when needed.
+ * Default schema mount data (only yang-library) are never stored, so the file may not always exist.
  */
-struct sr_schema_mount_ctx_s {
-    struct lyd_node *data;      /**< YANG state data of 'ietf-yang-library' and 'ietf-yang-schema-mount' modules for LY ext data callback set for ly_ctx. */
-    pthread_rwlock_t data_lock;           /**< Lock for accessing schema mount data. */
-    uint32_t data_id;                /**< ID of the last schema mount data change. */
+struct sr_schema_mount_cache_s {
+    struct lyd_node *data;      /**< Cached schema mount data (yang-library + mount points). */
+    uint32_t refcount;          /**< Number of connections referencing this schema mount context. */
+    pthread_mutex_t lock;       /**< Lock for accessing members of the schema mount context. */
 };
 
-extern struct sr_schema_mount_ctx_s sr_schema_mount_ctx;
+/**
+ * @brief Schema mount data cache.
+ */
+extern struct sr_schema_mount_cache_s sr_schema_mount_cache;
 
 /**
- * @brief Sysrepo's per process global running data cache.
+ * @brief Running data cache.
  */
 struct sr_run_cache_s {
     struct lyd_node *data;              /**< Cached running data of all the modules. */
@@ -229,15 +242,18 @@ struct sr_run_cache_s {
         uint32_t id;                    /**< Cached module data ID. */
     } *mods;                            /**< Cached modules. */
     uint32_t mod_count;                 /**< Cached module count. */
-    pthread_rwlock_t lock;                   /**< Lock for accessing the cache. */
+    pthread_rwlock_t lock;              /**< Lock for accessing the cache. */
 };
 
 typedef struct sr_run_cache_s sr_run_cache_t;
 
+/**
+ * @brief Running data cache.
+ */
 extern struct sr_run_cache_s sr_run_cache;
 
 /**
- * @brief Sysrepo's per process global operational data cache.
+ * @brief Operational data cache.
  */
 struct sr_oper_cache_s {
     struct sr_oper_cache_sub_s {
@@ -255,9 +271,10 @@ struct sr_oper_cache_s {
 
 typedef struct sr_oper_cache_s sr_oper_cache_t;
 
+/**
+ * @brief Operational data cache.
+ */
 extern struct sr_oper_cache_s sr_oper_cache;
-
-extern ATOMIC_T sr_conn_count;  /**< number of connections */
 
 #define SR_RWLOCK_INITIALIZER { \
     .mutex = PTHREAD_MUTEX_INITIALIZER, \
@@ -270,14 +287,6 @@ extern ATOMIC_T sr_conn_count;  /**< number of connections */
 
 /** static initializer of the shared memory structure */
 #define SR_SHM_INITIALIZER {.fd = -1, .size = 0, .addr = NULL}
-
-/** initializer of mod_info structure */
-#define SR_MODINFO_INIT(mi, c, d, d2, op_id) \
-        memset(&(mi), 0, sizeof (mi)); \
-        (mi).ds = (d); \
-        (mi).ds2 = (d2); \
-        (mi).conn = (c); \
-        (mi).operation_id = (op_id) ? (op_id) : ATOMIC_INC_RELAXED(SR_CONN_MAIN_SHM(c)->new_operation_id)
 
 /**
  * @brief Internal information about a module to be installed.
@@ -1007,38 +1016,34 @@ void sr_prwunlock(pthread_rwlock_t *rwlock);
 int sr_conn_is_alive(sr_cid_t cid);
 
 /**
- * @brief Get the current schema mount data from the mod SHM and make them compatible with @p ly_ctx.
- *
- * @note The caller must hold the global libyang context lock.
- *
- * @param[in] conn Connection to use.
- * @param[in] ly_ctx libyang context to bind the schema mount data to.
- * @param[out] schema_mount_data New schema mount data, should be freed by the caller.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_schema_mount_data_get(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx,
-        struct lyd_node **schema_mount_data);
-
-/**
- * @brief Destroy the schema mount data.
- *
- * @param[in] sr_schema_mount_ctx Schema mount context whose data to destroy.
- * @return err_info if locking failed, NULL on success.
- */
-sr_error_info_t *sr_schema_mount_data_destroy(struct sr_schema_mount_ctx_s *sr_schema_mount_ctx);
-
-/**
- * @brief Destroy schema mount contexts in the old context and create new ones in the new context based on the sysrepo data.
+ * @brief Destroy schema mount contexts in the old context and create new ones in the new context based on @p new_sr_data.
  *
  * @param[in] conn Connection to use.
  * @param[in] old_ly_ctx Old libyang context to destroy schema mount contexts in.
  * @param[in] new_ly_ctx New libyang context to create schema mount contexts in.
  * @param[in] old_sr_data Old sysrepo data to find the old schema mount contexts with.
  * @param[in] new_sr_data New sysrepo data to find the new schema mount contexts with.
+ * @param[out] schema_mount_data Optional new schema mount data, should be freed by the caller.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_schema_mount_contexts_replace(sr_conn_ctx_t *conn, struct ly_ctx *old_ly_ctx,
-        struct ly_ctx *new_ly_ctx, struct lyd_node *old_sr_data, struct lyd_node *new_sr_data);
+sr_error_info_t *sr_schema_mount_contexts_replace(sr_conn_ctx_t *conn, struct ly_ctx *old_ly_ctx, struct ly_ctx *new_ly_ctx,
+    struct lyd_node *old_sr_data, struct lyd_node *new_sr_data, struct lyd_node **schema_mount_data);
+
+/**
+ * @brief Write schema mount data to a file.
+ *
+ * @param[in] schema_mount_data Schema mount data to write.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_schema_mount_data_file_write(struct lyd_node *schema_mount_data);
+
+/**
+ * @brief Parse schema mount data from a file.
+ *
+ * @param[out] schema_mount_data Parsed schema mount data, should be freed by the caller.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_schema_mount_data_file_parse(struct lyd_node **schema_mount_data);
 
 /**
  * @brief Add a new oper cache entry.
