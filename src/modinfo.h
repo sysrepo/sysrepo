@@ -69,6 +69,22 @@ struct sr_mod_info_s {
 };
 
 /**
+ * @brief Initialize mod info structure and parse schema-mount data.
+ *
+ * @note The schema mount data are valid until ::sr_modinfo_erase() is called on the mod info.
+ *
+ * @param[in,out] mod_info Mod info to initialize.
+ * @param[in] conn Connection to use.
+ * @param[in] ds Main datastore to use.
+ * @param[in] ds2 Secondary datastore to use, if different from @p ds.
+ * @param[in] op_id Operation ID of the operation, if 0 it is automatically incremented.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *
+sr_modinfo_init_sm(struct sr_mod_info_s *mod_info, sr_conn_ctx_t *conn, sr_datastore_t ds, sr_datastore_t ds2,
+        uint32_t op_id);
+
+/**
  * @brief Add a new module and/or XPath into mod info.
  *
  * If the module is already in @p mod_info only an XPath is added to it, if any.
