@@ -104,9 +104,9 @@ _running_).
 @anchor oper_ds
 
 _Operational_ datastore maintains the currently used configuration. Details about what exactly it is supposed
-to represent can be found in the [NMDA RFC](https://tools.ietf.org/html/rfc8342#section-5.3). In short, it is
-read-only and generally corresponds to _running_ with some possible differences. Also, only this datastore includes
-any **state data** nodes.
+to represent can be found in the [NMDA RFC](https://tools.ietf.org/html/rfc8342#section-5.3). In short, it should
+generally correspond to the current operational state and actual behavior of the system. In practice it includes
+data from _running_ with some notable differences. Also, only this datastore includes any **state data** nodes.
 
 By default, this datastore is **empty**. From user perspective, this is how data becomes a part of this datastore:
 - any subscribed _running_ data (in-use concept) will appear in _operational_ datastore;
