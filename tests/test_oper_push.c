@@ -2364,7 +2364,6 @@ static void
 test_schema_mount(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_session_ctx_t *sess;
     sr_data_t *data;
     char *str1;
     const char *str2;
@@ -2380,11 +2379,6 @@ test_schema_mount(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
-
-    /* create a session just to update LY ext data */
-    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
-    assert_int_equal(ret, SR_ERR_OK);
-    sr_session_stop(sess);
 
     /* set some data */
     ret = sr_set_item_str(st->sess, "/sm:root/ietf-interfaces:interfaces/interface[name='eth1']/type",

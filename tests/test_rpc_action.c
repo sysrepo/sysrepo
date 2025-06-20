@@ -1746,7 +1746,6 @@ test_schema_mount(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_subscription_ctx_t *sub = NULL;
-    sr_session_ctx_t *sess;
     struct lyd_node *rpc;
     sr_data_t *output;
     int ret;
@@ -1765,11 +1764,6 @@ test_schema_mount(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
-
-    /* create a session just to update LY ext data */
-    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
-    assert_int_equal(ret, SR_ERR_OK);
-    sr_session_stop(sess);
 
     /* subscribe for rpc1 */
     ret = sr_rpc_subscribe_tree(st->sess, "/sm:root/ops:rpc1", rpc_schema_mount_cb, st, 0, 0, &sub);
