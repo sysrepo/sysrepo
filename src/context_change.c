@@ -243,6 +243,18 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
         }
         remap_mode = SR_LOCK_WRITE;
 
+        /* check the context again, we briefly unlocked the remap lock while relocking */
+        if (context_is_up_to_date(main_shm, sr_yang_ctx.content_id, sr_yang_ctx.sm_data_id)) {
+            /* context is current, abort the switch */
+
+            /* MOD REMAP DOWNGRADE */
+            if ((err_info = sr_prwrelock(&sr_yang_ctx.remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ))) {
+                goto cleanup_unlock;
+            }
+            remap_mode = SR_LOCK_READ;
+            goto cleanup_unlock;
+        }
+
         /* remap mod SHM */
         if ((err_info = sr_shm_remap(&sr_yang_ctx.mod_shm, 0))) {
             goto cleanup_unlock;
