@@ -94,58 +94,15 @@ sr_oper_cache_flush(sr_oper_cache_t *oper_cache)
 }
 
 /**
- * @brief Move the schema mount data from the old context to the new one.
- *
- * @param[in] conn Connection to use.
- * @param[in] new_ctx New context to use.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_schema_mount_data_moveto_ctx(sr_conn_ctx_t *conn, struct ly_ctx *new_ctx)
-{
-    sr_error_info_t *err_info = NULL;
-    struct lyd_node *new_sm_data = NULL;
-
-    /* get the current schema mount data and bind it to the new context */
-    if ((err_info = sr_schema_mount_data_get(conn, new_ctx, &new_sm_data))) {
-        return err_info;
-    }
-
-    /* SM DATA WRITE LOCK */
-    if ((err_info = sr_prwlock(&sr_schema_mount_ctx.data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE))) {
-        return err_info;
-    }
-
-    /* replace the schema mount data */
-    lyd_free_siblings(sr_schema_mount_ctx.data);
-    sr_schema_mount_ctx.data = new_sm_data;
-
-    /* update the schema mount data ID */
-    sr_schema_mount_ctx.data_id = SR_CONN_MAIN_SHM(conn)->schema_mount_data_id;
-
-    /* SM DATA UNLOCK */
-    sr_prwunlock(&sr_schema_mount_ctx.data_lock);
-    return err_info;
-}
-
-/**
  * @brief Replace the current global libyang context with a new one.
  *
  * @param[in] conn Connection to use.
- * @param[in] new_ctx New context to use.
- * @return err_info, NULL on success.
+ * @param[in] new_ctx New context to replace the current one with.
  */
-static sr_error_info_t *
+static void
 sr_ly_ctx_switch(sr_conn_ctx_t *conn, struct ly_ctx *new_ctx)
 {
-    sr_error_info_t *err_info = NULL;
-
-    assert(new_ctx);
-
-    /* move the schema mount data from the old context to the new one */
-    if ((err_info = sr_schema_mount_data_moveto_ctx(conn, new_ctx))) {
-        return err_info;
-    }
+    assert(!sr_schema_mount_cache.data);
 
     /* replace/flush caches before context destroy */
     sr_run_cache_flush(&sr_run_cache);
@@ -154,11 +111,12 @@ sr_ly_ctx_switch(sr_conn_ctx_t *conn, struct ly_ctx *new_ctx)
     /* update content ID */
     sr_yang_ctx.content_id = SR_CONN_MAIN_SHM(conn)->content_id;
 
+    /* update schema mount data ID */
+    sr_yang_ctx.sm_data_id = SR_CONN_MAIN_SHM(conn)->schema_mount_data_id;
+
     /* replace the context */
     ly_ctx_destroy(sr_yang_ctx.ly_ctx);
     sr_yang_ctx.ly_ctx = new_ctx;
-
-    return NULL;
 }
 
 /**
@@ -170,40 +128,48 @@ sr_ly_ext_data_clb(const struct lysc_ext_instance *ext,  const struct lyd_node *
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *ext_data_dup;
-    LY_ERR r;
+    LY_ERR ret = LY_SUCCESS;
 
     if (strcmp(ext->def->module->name, "ietf-yang-schema-mount") || strcmp(ext->def->name, "mount-point")) {
         return LY_EINVAL;
     }
 
-    /* LY EXT DATA READ LOCK */
-    if ((err_info = sr_prwlock(&sr_schema_mount_ctx.data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_READ))) {
+    /* SM DATA LOCK */
+    if ((err_info = sr_mlock(&sr_schema_mount_cache.lock, SR_SM_CTX_LOCK_TIMEOUT, __func__, NULL, NULL))) {
         sr_errinfo_free(&err_info);
         return LY_ESYS;
     }
 
-    if (!sr_schema_mount_ctx.data) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND,
-                "No \"ietf-yang-schema-mount\" operational data set needed for parsing mounted data.");
-        sr_errinfo_free(&err_info);
-        r = LY_ENOTFOUND;
+    if (!sr_schema_mount_cache.data) {
+        /* data not cached, this happens because the user is trying to parse some data that requires it,
+         * but they should be stored in a file, so just parse it */
+        if ((err_info = sr_schema_mount_data_file_parse(&ext_data_dup))) {
+            sr_errinfo_free(&err_info);
+            ret = LY_ESYS;
+            goto cleanup;
+        }
+
+        if (!ext_data_dup) {
+            /* no sm data */
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND,
+                    "No \"ietf-yang-schema-mount\" operational data set needed for parsing mounted data.");
+            sr_errinfo_free(&err_info);
+            ret = LY_ENOTFOUND;
+            goto cleanup;
+        }
+
+        *ext_data = ext_data_dup;
+        *ext_data_free = 1;
     } else {
-        /* create LY ext data duplicate */
-        r = lyd_dup_siblings(sr_schema_mount_ctx.data, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, &ext_data_dup);
+        /* data cached, some internal sysrepo data are being parsed, so just return the cached data */
+        *ext_data = sr_schema_mount_cache.data;
+        *ext_data_free = 0;
     }
 
-    /* LY EXT DATA UNLOCK */
-    sr_prwunlock(&sr_schema_mount_ctx.data_lock);
-
-    if (r) {
-        return r;
-    }
-
-    /* return a duplicate of ext data */
-    *ext_data = ext_data_dup;
-    *ext_data_free = 1;
-
-    return LY_SUCCESS;
+cleanup:
+    /* SM DATA UNLOCK */
+    sr_munlock(&sr_schema_mount_cache.lock);
+    return ret;
 }
 
 /**
@@ -236,6 +202,20 @@ sr_ly_ctx_init(struct ly_ctx *ly_ctx)
     return err_info;
 }
 
+/**
+ * @brief Check whether the current context is up to date, i.e., it has the same content ID and schema mount data ID.
+ *
+ * @param[in] main_shm Main SHM.
+ * @param[in] content_id Content ID of the context to check.
+ * @param[in] schema_mount_data_id Schema mount data ID of the context to check.
+ * @return 1 if the context is up to date, 0 otherwise.
+ */
+static int
+context_is_up_to_date(sr_main_shm_t *main_shm, uint32_t content_id, uint32_t schema_mount_data_id)
+{
+    return (main_shm->content_id == content_id) && (main_shm->schema_mount_data_id == schema_mount_data_id);
+}
+
 sr_error_info_t *
 sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const char *func)
 {
@@ -243,7 +223,6 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
     sr_main_shm_t *main_shm = SR_CONN_MAIN_SHM(conn);
     sr_lock_mode_t remap_mode = SR_LOCK_NONE;
     struct ly_ctx *new_ctx = NULL;
-    uint32_t schema_mount_data_id;
 
     /* CONTEXT LOCK */
     if ((err_info = sr_rwlock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, mode, conn->cid, func, NULL, NULL))) {
@@ -256,24 +235,10 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
     }
     remap_mode = SR_LOCK_READ;
 
-    /* SM DATA READ LOCK */
-    if ((err_info = sr_prwlock(&sr_schema_mount_ctx.data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_READ))) {
-        goto cleanup_unlock;
-    }
-
-    schema_mount_data_id = sr_schema_mount_ctx.data_id;
-
-    /* SM DATA UNLOCK */
-    sr_prwunlock(&sr_schema_mount_ctx.data_lock);
-
     /* check whether the context is current and does not need to be updated */
-    if ((main_shm->content_id != sr_yang_ctx.content_id) || (main_shm->schema_mount_data_id != schema_mount_data_id)) {
-        /* MOD REMAP UNLOCK */
-        sr_prwunlock(&sr_yang_ctx.remap_lock);
-        remap_mode = SR_LOCK_NONE;
-
-        /* MOD REMAP LOCK */
-        if ((err_info = sr_prwlock(&sr_yang_ctx.remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_WRITE))) {
+    if (!context_is_up_to_date(main_shm, sr_yang_ctx.content_id, sr_yang_ctx.sm_data_id)) {
+        /* MOD REMAP UPGRADE */
+        if ((err_info = sr_prwrelock(&sr_yang_ctx.remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_WRITE))) {
             goto cleanup_unlock;
         }
         remap_mode = SR_LOCK_WRITE;
@@ -283,11 +248,12 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
             goto cleanup_unlock;
         }
 
+        /* get the printed context from the SHM */
         if ((err_info = sr_shmctx_get_printed_context(&sr_yang_ctx.ly_ctx_shm, &new_ctx))) {
             goto cleanup_unlock;
         }
         if (!new_ctx) {
-            /* create a new context */
+            /* failed to get the printed context, create a new non-printed one */
             if ((err_info = sr_ly_ctx_new(conn, &new_ctx))) {
                 goto cleanup_unlock;
             }
@@ -302,9 +268,7 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
         ly_ctx_set_ext_data_clb(new_ctx, sr_ly_ext_data_clb, NULL);
 
         /* use the new context */
-        if ((err_info = sr_ly_ctx_switch(conn, new_ctx))) {
-            goto cleanup_unlock;
-        }
+        sr_ly_ctx_switch(conn, new_ctx);
 
         /* context successfully switched */
         new_ctx = NULL;

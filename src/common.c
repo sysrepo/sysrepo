@@ -110,25 +110,32 @@ const sr_module_ds_t sr_module_ds_disabled_run = {{
         SR_DEFAULT_NOTIFICATION_DS /**< notification */
     }};
 
-/* global per-process context */
+/**
+ * @brief Sysrepo YANG related context.
+ */
 struct sr_yang_ctx_s sr_yang_ctx = {
     .content_id = 0,
+    .sm_data_id = 0,
     .ly_ctx_shm = SR_SHM_INITIALIZER,
     .ly_ctx = NULL,
     .mod_shm = SR_SHM_INITIALIZER,
     .remap_lock = PTHREAD_RWLOCK_INITIALIZER,
     .refcount = 0,
-    .create_lock = PTHREAD_MUTEX_INITIALIZER
+    .create_lock = PTHREAD_MUTEX_INITIALIZER,
 };
 
-/* global per-process ext data context (schema mount) */
-struct sr_schema_mount_ctx_s sr_schema_mount_ctx = {
+/**
+ * @brief Schema mount data cache.
+ */
+struct sr_schema_mount_cache_s sr_schema_mount_cache = {
     .data = NULL,
-    .data_lock = PTHREAD_RWLOCK_INITIALIZER,
-    .data_id = 0
+    .refcount = 0,
+    .lock = PTHREAD_MUTEX_INITIALIZER,
 };
 
-/* global per-process running data cache */
+/**
+ * @brief Running data cache.
+ */
 struct sr_run_cache_s sr_run_cache = {
     .data = NULL,
     .mods = NULL,
@@ -136,7 +143,9 @@ struct sr_run_cache_s sr_run_cache = {
     .lock = PTHREAD_RWLOCK_INITIALIZER,
 };
 
-/* global per-process operational data cache */
+/**
+ * @brief Operational data cache.
+ */
 struct sr_oper_cache_s sr_oper_cache = {
     .subs = NULL,
     .sub_count = 0,
@@ -1116,6 +1125,19 @@ sr_path_ctx_shm(char **path)
     sr_error_info_t *err_info = NULL;
 
     if (asprintf(path, "%s/%s_ctx", sr_get_shm_path(), sr_get_shm_prefix()) == -1) {
+        SR_ERRINFO_MEM(&err_info);
+        *path = NULL;
+    }
+
+    return err_info;
+}
+
+static sr_error_info_t *
+sr_path_smdata_shm(char **path)
+{
+    sr_error_info_t *err_info = NULL;
+
+    if (asprintf(path, "%s/%s_smdata", sr_get_shm_path(), sr_get_shm_prefix()) == -1) {
         SR_ERRINFO_MEM(&err_info);
         *path = NULL;
     }
@@ -3055,18 +3077,30 @@ sr_conn_is_alive(sr_cid_t cid)
     return alive;
 }
 
-sr_error_info_t *
+/**
+ * @brief Get the current schema mount data and make them compatible with @p ly_ctx.
+ *
+ * @note The caller must hold the global libyang context READ lock.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] ly_ctx libyang context to bind the schema mount data to.
+ * @param[out] schema_mount_data New schema mount data, should be freed by the caller.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
 sr_schema_mount_data_get(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct lyd_node **schema_mount_data)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *node = NULL;
+    struct lyd_node *node = NULL, *sm_data = NULL;
     struct sr_mod_info_s mod_info;
     struct lys_module *ly_mod, *ly_mod2;
 
     *schema_mount_data = NULL;
 
-    /* init modinfo */
-    SR_MODINFO_INIT(mod_info, conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, 0);
+    /* init modinfo and parse schema mount data, requires ctx read lock */
+    if ((err_info = sr_modinfo_init_sm(&mod_info, conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, 0))) {
+        goto cleanup;
+    }
 
     /* get yang library and schema mount modules */
     ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, "ietf-yang-library");
@@ -3094,40 +3128,31 @@ sr_schema_mount_data_get(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struc
         goto cleanup;
     }
 
-    if (node && !(node->flags & LYD_DEFAULT)) {
-        /* validate the sm data to resolve the parent reference prefixes */
-        if ((err_info = sr_lyd_validate_module(&node, node->schema->module, LYD_VALIDATE_OPERATIONAL, NULL))) {
-            goto cleanup;
-        }
-    }
-
-    if ((err_info = sr_lyd_dup_siblings_to_ctx(mod_info.data, ly_ctx, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, schema_mount_data))) {
+    if (!node || (node->flags & LYD_DEFAULT)) {
+        /* empty data, do not store */
         goto cleanup;
     }
 
+    /* validate the sm data to resolve the parent reference prefixes */
+    if ((err_info = sr_lyd_validate_module(&node, node->schema->module, LYD_VALIDATE_OPERATIONAL, NULL))) {
+        goto cleanup;
+    }
+
+    /* make the data compatible with the given libyang context */
+    if ((err_info = sr_lyd_dup_siblings_to_ctx(mod_info.data, ly_ctx, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, &sm_data))) {
+        goto cleanup;
+    }
+
+    *schema_mount_data = sm_data;
+    sm_data = NULL;
+
 cleanup:
+    lyd_free_all(sm_data);
+
     /* MODULES UNLOCK */
     sr_shmmod_modinfo_unlock(&mod_info);
     sr_modinfo_erase(&mod_info);
     return err_info;
-}
-
-sr_error_info_t *
-sr_schema_mount_data_destroy(struct sr_schema_mount_ctx_s *sr_schema_mount_ctx)
-{
-    sr_error_info_t *err_info = NULL;
-
-    /* SM DATA WRITE LOCK */
-    if ((err_info = sr_prwlock(&sr_schema_mount_ctx->data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE))) {
-        return err_info;
-    }
-
-    lyd_free_siblings(sr_schema_mount_ctx->data);
-    sr_schema_mount_ctx->data = NULL;
-
-    /* SM DATA WRITE UNLOCK */
-    sr_prwunlock(&sr_schema_mount_ctx->data_lock);
-    return NULL;
 }
 
 /**
@@ -3271,11 +3296,11 @@ sr_create_schema_mount_contexts(struct ly_ctx *ly_ctx, struct lyd_node *sr_data,
 }
 
 sr_error_info_t *
-sr_schema_mount_contexts_replace(sr_conn_ctx_t *conn, struct ly_ctx *old_ly_ctx,
-        struct ly_ctx *new_ly_ctx, struct lyd_node *old_sr_data, struct lyd_node *new_sr_data)
+sr_schema_mount_contexts_replace(sr_conn_ctx_t *conn, struct ly_ctx *old_ly_ctx, struct ly_ctx *new_ly_ctx,
+        struct lyd_node *old_sr_data, struct lyd_node *new_sr_data, struct lyd_node **schema_mount_data)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *schema_mount_data = NULL;
+    struct lyd_node *sm_data = NULL;
 
     /* destroy the old schema mount contexts */
     err_info = sr_destroy_schema_mount_contexts(old_ly_ctx, old_sr_data);
@@ -3284,20 +3309,99 @@ sr_schema_mount_contexts_replace(sr_conn_ctx_t *conn, struct ly_ctx *old_ly_ctx,
     }
 
     /* get schema mount data for the new context */
-    err_info = sr_schema_mount_data_get(conn, new_ly_ctx, &schema_mount_data);
-    if (err_info || !schema_mount_data) {
+    if ((err_info = sr_schema_mount_data_get(conn, new_ly_ctx, &sm_data))) {
+        goto cleanup;
+    }
+
+    if (!sm_data) {
         /* no need to create new contexts if there is no schema mount data */
         goto cleanup;
     }
 
     /* create the new schema mount contexts */
-    err_info = sr_create_schema_mount_contexts(new_ly_ctx, new_sr_data, schema_mount_data);
+    err_info = sr_create_schema_mount_contexts(new_ly_ctx, new_sr_data, sm_data);
     if (err_info) {
         goto cleanup;
     }
 
+    if (schema_mount_data) {
+        /* return the schema mount data */
+        *schema_mount_data = sm_data;
+        sm_data = NULL;
+    }
+
 cleanup:
-    lyd_free_all(schema_mount_data);
+    lyd_free_siblings(sm_data);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_schema_mount_data_file_write(struct lyd_node *schema_mount_data)
+{
+    sr_error_info_t *err_info = NULL;
+    int fd;
+    char *file_path = NULL;
+    uint32_t data_len;
+
+    if ((err_info = sr_path_smdata_shm(&file_path))) {
+        goto cleanup;
+    }
+
+    /* open the file */
+    fd = sr_open(file_path, O_RDWR | O_CREAT | O_TRUNC, SR_SHM_PERM);
+    if (fd == -1) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to open schema mount data shared memory (%s).", strerror(errno));
+        goto cleanup;
+    }
+
+    /* print the data to the file */
+    if ((err_info = sr_lyd_print_data(schema_mount_data, LYD_LYB, LY_PRINT_SHRINK, fd, NULL, &data_len))) {
+        goto cleanup;
+    }
+
+    /* truncate the file to the actual data length */
+    if (ftruncate(fd, data_len)) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to truncate schema mount data shared memory (%s).", strerror(errno));
+        goto cleanup;
+    }
+
+cleanup:
+    if (fd > -1) {
+        close(fd);
+    }
+    free(file_path);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_schema_mount_data_file_parse(struct lyd_node **schema_mount_data)
+{
+    sr_error_info_t *err_info = NULL;
+    char *file_path = NULL;
+    struct lyd_node *sm_data = NULL;
+
+    *schema_mount_data = NULL;
+
+    if ((err_info = sr_path_smdata_shm(&file_path))) {
+        return err_info;
+    }
+
+    /* check if the file exists */
+    if (!sr_file_exists(file_path)) {
+        /* no schema mount data, nothing to parse */
+        goto cleanup;
+    }
+
+    /* parse the lyb schema mount data and validate them to resolve the parent reference prefixes */
+    if ((err_info = sr_lyd_parse_data(sr_yang_ctx.ly_ctx, NULL, file_path,
+            LYD_LYB, LYD_PARSE_STRICT, LYD_VALIDATE_OPERATIONAL, &sm_data))) {
+        goto cleanup;
+    }
+
+    *schema_mount_data = sm_data;
+
+cleanup:
+    free(file_path);
     return err_info;
 }
 

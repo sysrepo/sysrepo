@@ -2456,11 +2456,14 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
 
     assert(input->schema->nodetype & (LYS_RPC | LYS_ACTION));
 
-    SR_MODINFO_INIT(mod_info, conn, SR_DS_FACTORY_DEFAULT, SR_DS_FACTORY_DEFAULT, operation_id);
-
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
         return err_info;
+    }
+
+    /* init modinfo and parse schema mount data, requires ctx read lock */
+    if ((err_info = sr_modinfo_init_sm(&mod_info, conn, SR_DS_FACTORY_DEFAULT, SR_DS_FACTORY_DEFAULT, operation_id))) {
+        goto cleanup;
     }
 
     /* get modules which should be reset (NP container, must exist) */
@@ -4036,8 +4039,11 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
     ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, oper_poll_subs->module_name);
     SR_CHECK_INT_GOTO(!ly_mod, err_info, cleanup);
 
-    /* init mod info */
-    SR_MODINFO_INIT(mod_info, conn, SR_DS_OPERATIONAL, SR_DS_OPERATIONAL, 0);
+    /* init modinfo and parse schema mount data, requires ctx read lock */
+    if ((err_info = sr_modinfo_init_sm(&mod_info, conn, SR_DS_OPERATIONAL, SR_DS_OPERATIONAL, 0))) {
+        goto cleanup;
+    }
+
     if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, 0, &mod_info))) {
         goto cleanup;
     }
