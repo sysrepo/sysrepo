@@ -2929,7 +2929,7 @@ sr_get_item(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
 
     /* init modinfo and parse schema mount data, requires ctx read lock */
     if ((err_info = sr_modinfo_init_sm(&mod_info, session->conn, session->ds,
-            session->ds == SR_DS_OPERATIONAL ? SR_DS_RUNNING : session->ds, 0))) {
+            (session->ds == SR_DS_OPERATIONAL) ? SR_DS_RUNNING : session->ds, 0))) {
         goto cleanup;
     }
 
@@ -3037,7 +3037,7 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, 
 
     /* init modinfo and parse schema mount data, requires ctx read lock */
     if ((err_info = sr_modinfo_init_sm(&mod_info, session->conn, session->ds,
-            session->ds == SR_DS_OPERATIONAL ? SR_DS_RUNNING : session->ds, 0))) {
+            (session->ds == SR_DS_OPERATIONAL) ? SR_DS_RUNNING : session->ds, 0))) {
         goto cleanup;
     }
 
@@ -3201,7 +3201,7 @@ sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms,
 
     /* init modinfo and parse schema mount data, requires ctx read lock */
     if ((err_info = sr_modinfo_init_sm(&mod_info, session->conn, session->ds,
-            session->ds == SR_DS_OPERATIONAL ? SR_DS_RUNNING : session->ds, 0))) {
+            (session->ds == SR_DS_OPERATIONAL) ? SR_DS_RUNNING : session->ds, 0))) {
         goto cleanup;
     }
 
@@ -3666,7 +3666,7 @@ sr_get_node(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
 
     /* init modinfo and parse schema mount data, requires ctx read lock */
     if ((err_info = sr_modinfo_init_sm(&mod_info, session->conn, session->ds,
-            session->ds == SR_DS_OPERATIONAL ? SR_DS_RUNNING : session->ds, 0))) {
+            (session->ds == SR_DS_OPERATIONAL) ? SR_DS_RUNNING : session->ds, 0))) {
         goto cleanup;
     }
 
@@ -4332,7 +4332,7 @@ sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t timeout
 
     /* init modinfo and parse schema mount data, requires ctx read lock */
     if ((err_info = sr_modinfo_init_sm(&mod_info, session->conn, session->ds,
-            session->ds == SR_DS_OPERATIONAL ? SR_DS_RUNNING : session->ds, 0))) {
+            (session->ds == SR_DS_OPERATIONAL) ? SR_DS_RUNNING : session->ds, 0))) {
         goto cleanup;
     }
 
@@ -6646,7 +6646,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
 
     /* init modinfo and parse schema mount data, requires ctx read lock */
     if ((err_info = sr_modinfo_init_sm(&mod_info, session->conn, session->ds,
-            session->ds == SR_DS_OPERATIONAL ? SR_DS_RUNNING : session->ds, 0))) {
+            (session->ds == SR_DS_OPERATIONAL) ? SR_DS_RUNNING : session->ds, 0))) {
         goto cleanup;
     }
 
