@@ -199,7 +199,7 @@ srsn_subscribe(sr_session_ctx_t *session, const char *stream, const char *xpath_
     struct timespec cur_ts, replay_start;
     struct ly_ctx *tmp_ctx;
 
-     /* create new temporary context */
+    /* create new temporary context */
     if ((err_info = sr_ly_ctx_new(session->conn, &tmp_ctx))) {
         goto cleanup;
     }
@@ -348,7 +348,7 @@ srsn_yang_push_on_change(sr_session_ctx_t *session, sr_datastore_t ds, const cha
     struct srsn_sub *s = NULL;
     struct ly_ctx *tmp_ctx;
 
-     /* create new temporary context */
+    /* create new temporary context */
     if ((err_info = sr_ly_ctx_new(session->conn, &tmp_ctx))) {
         goto cleanup;
     }
