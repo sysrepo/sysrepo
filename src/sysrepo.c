@@ -61,6 +61,8 @@ static sr_error_info_t *_sr_session_stop(sr_session_ctx_t *session);
 static int _sr_discard_oper_changes(sr_session_ctx_t *session, const char *module_name, int session_stopped,
         uint32_t timeout_ms);
 static sr_error_info_t *_sr_unsubscribe(sr_subscription_ctx_t *subscription);
+static sr_error_info_t *sr_rpc_send_tree_internal(sr_session_ctx_t *session, struct lyd_node *input,
+        uint32_t timeout_ms, sr_data_t **output);
 
 /**
  * @brief Allocate a new connection structure.
@@ -7367,7 +7369,6 @@ sr_rpc_send(sr_session_ctx_t *session, const char *path, const sr_val_t *input, 
     sr_data_t *output_data = NULL;
     char *val_str, buf[22];
     size_t i;
-    int ret = SR_ERR_OK;
 
     SR_CHECK_ARG_APIRET(!session || !output || !output_cnt, session, err_info);
 
@@ -7395,8 +7396,8 @@ sr_rpc_send(sr_session_ctx_t *session, const char *path, const sr_val_t *input, 
         }
     }
 
-    /* API function */
-    if ((ret = sr_rpc_send_tree(session, input_tree, timeout_ms, &output_data)) != SR_ERR_OK) {
+    /* send the RPC tree */
+    if ((err_info = sr_rpc_send_tree_internal(session, input_tree, timeout_ms, &output_data))) {
         goto cleanup;
     }
     if (!output_data) {
@@ -7432,7 +7433,7 @@ cleanup:
     if (err_info) {
         sr_free_values(*output, *output_cnt);
     }
-    return ret ? ret : sr_api_ret(session, err_info);
+    return sr_api_ret(session, err_info);
 }
 
 /**
@@ -7541,7 +7542,11 @@ _sr_rpc_send_tree(sr_session_ctx_t *session, struct sr_mod_info_s *mod_info, con
     sr_shmmod_modinfo_unlock(mod_info);
 
     sr_modinfo_erase(mod_info);
-    SR_MODINFO_INIT(*mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, 0);
+
+    /* init modinfo and parse schema mount data, requires ctx read lock */
+    if ((err_info = sr_modinfo_init_sm(mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, 0))) {
+        goto cleanup;
+    }
 
     if (!strcmp(path, SR_RPC_FACTORY_RESET_PATH)) {
         /* update the input as needed */
@@ -7732,8 +7737,8 @@ cleanup:
     return err_info;
 }
 
-API int
-sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t timeout_ms, sr_data_t **output)
+static sr_error_info_t *
+sr_rpc_send_tree_internal(sr_session_ctx_t *session, struct lyd_node *input, uint32_t timeout_ms, sr_data_t **output)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_s mod_info;
@@ -7741,18 +7746,20 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
     char *path = NULL, *str, *parent_path = NULL;
     struct sr_denied denied = {0};
 
-    SR_CHECK_ARG_APIRET(!session || !input || !output, session, err_info);
+    if (!timeout_ms) {
+        timeout_ms = SR_RPC_CB_TIMEOUT;
+    }
 
     for (input_top = input; input_top->parent; input_top = lyd_parent(input_top)) {}
     if (sr_yang_ctx.ly_ctx != LYD_CTX(input_top)) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Data trees must be created using the session connection libyang context.");
-        return sr_api_ret(session, err_info);
+        return err_info;
     }
 
-    if (!timeout_ms) {
-        timeout_ms = SR_RPC_CB_TIMEOUT;
+    /* init modinfo and parse schema mount data, requires ctx read lock */
+    if ((err_info = sr_modinfo_init_sm(&mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, 0))) {
+        goto cleanup;
     }
-    SR_MODINFO_INIT(mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, 0);
 
     /* check input data tree */
     input_op = NULL;
@@ -7859,6 +7866,29 @@ cleanup:
     free(path);
     sr_modinfo_erase(&mod_info);
     free(denied.rule_name);
+    return err_info;
+}
+
+API int
+sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t timeout_ms, sr_data_t **output)
+{
+    sr_error_info_t *err_info = NULL;
+
+    SR_CHECK_ARG_APIRET(!session || !input || !output, session, err_info);
+
+    /* CONTEXT LOCK */
+    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
+        return sr_api_ret(session, err_info);
+    }
+
+    /* send the rpc tree */
+    if ((err_info = sr_rpc_send_tree_internal(session, input, timeout_ms, output))) {
+        goto cleanup;
+    }
+
+cleanup:
+    /* CONTEXT UNLOCK */
+    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
     return sr_api_ret(session, err_info);
 }
 
@@ -8022,51 +8052,8 @@ sr_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_name, cons
             subscription);
 }
 
-API int
-sr_notif_send(sr_session_ctx_t *session, const char *path, const sr_val_t *values, const size_t values_cnt,
-        uint32_t timeout_ms, int wait)
-{
-    sr_error_info_t *err_info = NULL;
-    struct lyd_node *notif_tree = NULL;
-    char *val_str, buf[22];
-    size_t i;
-    int ret = SR_ERR_OK;
-
-    SR_CHECK_ARG_APIRET(!session || !path, session, err_info);
-
-    /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
-        return sr_api_ret(session, err_info);
-    }
-
-    /* create the container */
-    if ((err_info = sr_val_sr2ly(sr_yang_ctx.ly_ctx, path, NULL, 0, 0, &notif_tree))) {
-        goto cleanup;
-    }
-
-    /* transform values into a data tree */
-    for (i = 0; i < values_cnt; ++i) {
-        val_str = sr_val_sr2ly_str(sr_yang_ctx.ly_ctx, &values[i], values[i].xpath, buf, 0);
-        if ((err_info = sr_val_sr2ly(sr_yang_ctx.ly_ctx, values[i].xpath, val_str, values[i].dflt, 0, &notif_tree))) {
-            goto cleanup;
-        }
-    }
-
-    /* API function */
-    if ((ret = sr_notif_send_tree(session, notif_tree, timeout_ms, wait)) != SR_ERR_OK) {
-        goto cleanup;
-    }
-
-cleanup:
-    lyd_free_all(notif_tree);
-
-    /* CONTEXT UNLOCK */
-    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
-    return ret ? ret : sr_api_ret(session, err_info);
-}
-
-API int
-sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t timeout_ms, int wait)
+static sr_error_info_t *
+sr_notif_send_tree_internal(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t timeout_ms, int wait)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_s mod_info;
@@ -8077,18 +8064,20 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
     uint16_t shm_dep_count;
     char *parent_path = NULL;
 
-    SR_CHECK_ARG_APIRET(!session || !notif, session, err_info);
-
     for (notif_top = notif; notif_top->parent; notif_top = lyd_parent(notif_top)) {}
     if (sr_yang_ctx.ly_ctx != LYD_CTX(notif_top)) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Data trees must be created using the session connection libyang context.");
-        return sr_api_ret(session, err_info);
+        return err_info;
     }
 
     if (!timeout_ms) {
         timeout_ms = SR_NOTIF_CB_TIMEOUT;
     }
-    SR_MODINFO_INIT(mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, 0);
+
+    /* init modinfo and parse schema mount data, requires ctx read lock */
+    if ((err_info = sr_modinfo_init_sm(&mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, 0))) {
+        goto cleanup;
+    }
 
     /* check notif data tree */
     notif_op = NULL;
@@ -8201,6 +8190,72 @@ cleanup:
 
     free(parent_path);
     sr_modinfo_erase(&mod_info);
+    return err_info;
+}
+
+API int
+sr_notif_send(sr_session_ctx_t *session, const char *path, const sr_val_t *values, const size_t values_cnt,
+        uint32_t timeout_ms, int wait)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *notif_tree = NULL;
+    char *val_str, buf[22];
+    size_t i;
+    int ret = SR_ERR_OK;
+
+    SR_CHECK_ARG_APIRET(!session || !path, session, err_info);
+
+    /* CONTEXT LOCK */
+    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
+        return sr_api_ret(session, err_info);
+    }
+
+    /* create the container */
+    if ((err_info = sr_val_sr2ly(sr_yang_ctx.ly_ctx, path, NULL, 0, 0, &notif_tree))) {
+        goto cleanup;
+    }
+
+    /* transform values into a data tree */
+    for (i = 0; i < values_cnt; ++i) {
+        val_str = sr_val_sr2ly_str(sr_yang_ctx.ly_ctx, &values[i], values[i].xpath, buf, 0);
+        if ((err_info = sr_val_sr2ly(sr_yang_ctx.ly_ctx, values[i].xpath, val_str, values[i].dflt, 0, &notif_tree))) {
+            goto cleanup;
+        }
+    }
+
+    /* API function */
+    if ((ret = sr_notif_send_tree(session, notif_tree, timeout_ms, wait)) != SR_ERR_OK) {
+        goto cleanup;
+    }
+
+cleanup:
+    lyd_free_all(notif_tree);
+
+    /* CONTEXT UNLOCK */
+    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
+    return ret ? ret : sr_api_ret(session, err_info);
+}
+
+API int
+sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t timeout_ms, int wait)
+{
+    sr_error_info_t *err_info = NULL;
+
+    SR_CHECK_ARG_APIRET(!session || !notif, session, err_info);
+
+    /* CONTEXT LOCK */
+    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
+        return sr_api_ret(session, err_info);
+    }
+
+    /* send the notification tree */
+    if ((err_info = sr_notif_send_tree_internal(session, notif, timeout_ms, wait))) {
+        goto cleanup;
+    }
+
+cleanup:
+    /* CONTEXT UNLOCK */
+    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
     return sr_api_ret(session, err_info);
 }
 
