@@ -55,7 +55,7 @@ sr_shmctx_print_context(sr_shm_t *shm, const struct ly_ctx *ctx)
 
     fd = sr_open(shm_name, O_RDWR | O_CREAT | O_TRUNC, SR_SHM_PERM);
     if (fd == -1) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to open mod shared memory (%s).", strerror(errno));
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to open ctx shared memory (%s).", strerror(errno));
         goto cleanup;
     }
 
