@@ -187,9 +187,10 @@ session is created by an application that delegates requests from other sources 
 # Schema Mount
 @anchor schema_mount
 
-Schema-mount extension ([RFC 8528](https://www.rfc-editor.org/rfc/rfc8528.html)) is supported but requires
-operational data of `ietf-yang-schema-mount:schema-mounts` to be provided. If you do, using any of the [methods](@ref oper_data),
-it will automatically work. Note that these data are cached in the connection and are updated on __new session creation__.
+Schema-mount extension ([RFC 8528](https://www.rfc-editor.org/rfc/rfc8528.html)) is supported. To use it,
+`ietf-yang-schema-mount:schema-mounts` operational data must be provided. Once set, this data is cached
+for future use. Using any of the [methods](@ref oper_data) will automatically work.
+Note: If you set new operational data, ensure the context is not acquired when performing the first operation afterward.
 
 # Path and XPath
 @anchor paths
