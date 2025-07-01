@@ -727,4 +727,23 @@ sr_error_info_t *sr_lyd_parse_opaq_error(const struct lyd_node *node);
  */
 sr_error_info_t *sr_ly_time_ts2str(const struct timespec *ts, char **str);
 
+/**
+ * @brief Print a libyang context to memory.
+ *
+ * @param[in] ctx Context to print.
+ * @param[in] mem Memory to print to.
+ * @param[out] mem_end Set to the end of the printed memory.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_ly_ctx_compiled_print(const struct ly_ctx *ctx, void *mem, void **mem_end);
+
+/**
+ * @brief Create a new libyang context from printed data.
+ *
+ * @param[in] mem Memory with printed context.
+ * @param[out] ctx Created libyang context.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_ly_ctx_new_printed(const void *mem, struct ly_ctx **ctx);
+
 #endif /* _LY_WRAP_H */
