@@ -200,4 +200,33 @@ void sr_lycc_update_data_clear(struct sr_data_update_s *data_info);
  */
 void sr_lycc_update_cleanup(struct sr_data_update_s *data_info, struct lyd_node *sr_mods, struct lyd_node *sr_del_mods);
 
+/**
+ * @brief Store a libyang context to shared memory.
+ *
+ * This function serializes a libyang context and prints it into shared memory.
+ * This context can then be loaded later using ::sr_lycc_load_context() by
+ * other connections or processes.
+ *
+ * @param[in,out] shm Shared memory to use. Any existing mapping is removed.
+ * @param[in] ctx Libyang context to store.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lycc_store_context(sr_shm_t *shm, const struct ly_ctx *ctx);
+
+/**
+ * @brief Load a libyang context from shared memory.
+ *
+ * This function loads a libyang context from shared memory that was previously
+ * stored using ::sr_lycc_store_context(). The context is mapped to an address
+ * that is compile-time defined. This means that the address may already
+ * be in use, which may lead to a failure.
+ *
+ * The context is mapped as read-only, so it cannot be modified.
+ *
+ * @param[in,out] shm Shared memory to use. Updated with the new mapping.
+ * @param[out] ctx Pointer to the loaded libyang context. Should be freed by the caller.
+ * @return err_info, NULL on success (including when no context is stored in the shared memory).
+ */
+sr_error_info_t *sr_lycc_load_context(sr_shm_t *shm, struct ly_ctx **ctx);
+
 #endif
