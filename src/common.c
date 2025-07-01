@@ -56,7 +56,6 @@
 #include "plugins_datastore.h"
 #include "plugins_notification.h"
 #include "replay.h"
-#include "shm_ctx.h"
 #include "shm_ext.h"
 #include "shm_main.h"
 #include "shm_mod.h"
