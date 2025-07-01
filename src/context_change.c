@@ -1277,8 +1277,7 @@ sr_lycc_store_context(sr_shm_t *shm, const struct ly_ctx *ctx)
     }
 
     /* print the context into the allocated memory */
-    if (ly_ctx_compiled_print(ctx, mem, &mem_end)) {
-        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Failed to print the context.");
+    if ((err_info = sr_ly_ctx_compiled_print(ctx, mem, &mem_end))) {
         goto cleanup;
     }
     assert(((char *)mem_end - (char *)mem) == ctx_size);
@@ -1347,8 +1346,7 @@ sr_lycc_load_context(sr_shm_t *shm, struct ly_ctx **ctx)
     }
 
     /* get the printed context */
-    if (ly_ctx_new_printed(shm->addr, ctx)) {
-        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Failed to parse the printed context.");
+    if ((err_info = sr_ly_ctx_new_printed(shm->addr, ctx))) {
         goto cleanup;
     }
 

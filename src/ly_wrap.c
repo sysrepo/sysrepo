@@ -1548,3 +1548,39 @@ cleanup:
     ly_temp_log_options(NULL);
     return err_info;
 }
+
+sr_error_info_t *
+sr_ly_ctx_compiled_print(const struct ly_ctx *ctx, void *mem, void **mem_end)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
+
+    ly_temp_log_options(&temp_lo);
+
+    if (ly_ctx_compiled_print(ctx, mem, mem_end)) {
+        sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_logmsg());
+        goto cleanup;
+    }
+
+cleanup:
+    ly_temp_log_options(NULL);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_ly_ctx_new_printed(const void *mem, struct ly_ctx **ctx)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
+
+    ly_temp_log_options(&temp_lo);
+
+    if (ly_ctx_new_printed(mem, ctx)) {
+        sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_logmsg());
+        goto cleanup;
+    }
+
+cleanup:
+    ly_temp_log_options(NULL);
+    return err_info;
+}
