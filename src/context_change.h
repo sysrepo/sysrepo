@@ -192,13 +192,22 @@ sr_error_info_t *sr_lycc_store_data_if_differ(sr_conn_ctx_t *conn, const struct 
 void sr_lycc_update_data_clear(struct sr_data_update_s *data_info);
 
 /**
- * @brief Cleanup after a LY context update.
+ * @brief Cleanup during a libyang context update.
  *
- * @param[in] data_info Data info to clear.
- * @param[in] sr_mods Updated SR internal module data.
- * @param[in] sr_del_mods Deleted SR internal module data.
+ * In case sysrepo is using a printed libyang context, then YANG data
+ * tied to the previous context must be cleared before the new context
+ * overwrites it.
+ *
+ * The intended use is to only free data that has ties to the previous context.
+ *
+ * @param[in,out] data_info     Data update info to clear. Freed and memset to 0.
+ * @param[in,out] sr_mods       Pointer to the SR internal module data. *sr_mods is set freed to NULL.
+ * @param[in,out] sr_del_mods   Pointer to the SR internal module data of deleted modules. *sr_del_mods is set freed to NULL.
+ * @param[in,out] sr_mods_old   Pointer to the old SR internal module data. *sr_mods_old is set freed to NULL.
+ * @param[in,out] run_cache     Running cache to flush.
  */
-void sr_lycc_update_cleanup(struct sr_data_update_s *data_info, struct lyd_node *sr_mods, struct lyd_node *sr_del_mods);
+void sr_lycc_update_cleanup(struct sr_data_update_s *data_info, struct lyd_node **sr_mods,
+        struct lyd_node **sr_mods_old, struct lyd_node **sr_del_mods, sr_run_cache_t *run_cache);
 
 /**
  * @brief Store a libyang context to shared memory.
