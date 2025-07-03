@@ -245,7 +245,7 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     }
 
     if (sr_yang_ctx.refcount == 1) {
-        /* first connection, open mod_shm and create ly_ctx */
+        /* currently the only connection, open mod_shm and create ly_ctx */
         if ((err_info = sr_shmmod_open(&sr_yang_ctx.mod_shm, created))) {
             goto cleanup_unlock;
         }
@@ -280,7 +280,7 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
             goto cleanup_unlock;
         }
 
-        /* free sr_mods, conn ly_ctx may be recompiled later */
+        /* free sr_mods, ly_ctx may be recompiled later */
         lyd_free_all(sr_mods);
         sr_mods = NULL;
 
@@ -306,14 +306,14 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
         }
     }
 
-    /* CONTEXT LOCK */
+    /* CONTEXT LOCK - to update the context if needed */
     if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
         goto cleanup_unlock;
     }
 
-    /* context was updated */
     if (created) {
-        /* this is the first connection on the system, print the context */
+        /* This is the first connection on the system, so no need to hold a write lock.
+         * Print the context for other connections to reuse. */
         if ((err_info = sr_lycc_store_context(&sr_yang_ctx.ly_ctx_shm, sr_yang_ctx.ly_ctx))) {
             goto cleanup_unlock;
         }
@@ -1450,7 +1450,7 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
     struct sr_data_update_s data_info = {0};
     sr_lock_mode_t ctx_mode = SR_LOCK_NONE;
     uint32_t i, j, search_dir_count = 0;
-    int no_changes, mod_shm_changed = 0;
+    int no_changes, mod_shm_changed = 0, lycc_cleanup_done = 0;
     struct ly_set mod_set = {0}, feat_set = {0};
     char *mod_name = NULL;
 
@@ -1537,16 +1537,16 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
         goto cleanup;
     }
 
+    /* parse current (old) module information, needed for schema mount data update */
+    if ((err_info = sr_lydmods_parse(sr_yang_ctx.ly_ctx, conn, NULL, &sr_mods_old))) {
+        goto cleanup;
+    }
+
     /* CONTEXT UPGRADE */
     if ((err_info = sr_lycc_relock(conn, SR_LOCK_WRITE, __func__))) {
         goto cleanup;
     }
     ctx_mode = SR_LOCK_WRITE;
-
-    /* parse current (old) module information */
-    if ((err_info = sr_lydmods_parse(sr_yang_ctx.ly_ctx, conn, NULL, &sr_mods_old))) {
-        goto cleanup;
-    }
 
     /* update lydmods data */
     if ((err_info = sr_lydmods_change_add_modules(new_ctx, conn, new_mods, new_mod_count, &sr_mods))) {
@@ -1581,15 +1581,10 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
         goto error;
     }
 
-    /* clean this up now, because printing the context will make the pointers inside invalid */
-    sr_lycc_update_cleanup(&data_info, sr_mods, sr_del_mods);
-    memset(&data_info, 0, sizeof data_info);
-    lyd_free_siblings(sr_mods_old);
-    sr_mods_old = NULL;
-    sr_mods = sr_del_mods = NULL;
-
-    /* flush the running cache, since it contains pointers to the old context and needs to be updated */
-    sr_run_cache_flush(&sr_run_cache);
+    /* cleanup leftover data that contain references to the old context,
+     * this needs to be done before a new context is printed */
+    sr_lycc_update_cleanup(&data_info, NULL, &sr_mods_old, NULL, &sr_run_cache);
+    lycc_cleanup_done = 1;
 
     /* update content ID */
     SR_CONN_MAIN_SHM(conn)->content_id = ly_ctx_get_modules_hash(new_ctx);
@@ -1640,8 +1635,11 @@ cleanup:
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
-    sr_lycc_update_cleanup(&data_info, sr_mods, sr_del_mods);
-    lyd_free_siblings(sr_mods_old);
+    if (!lycc_cleanup_done) {
+        sr_lycc_update_cleanup(&data_info, NULL, &sr_mods_old, NULL, &sr_run_cache);
+    }
+
+    lyd_free_siblings(sr_mods);
     ly_ctx_destroy(new_ctx);
     free(mod_name);
 
@@ -1824,6 +1822,7 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
     const struct lys_module *ly_mod;
     sr_lock_mode_t ctx_mode = SR_LOCK_NONE;
     uint32_t i, mod_state = 0;
+    int lycc_cleanup_done = 0;
 
     SR_CHECK_ARG_APIRET(!conn || !module_names, NULL, err_info);
 
@@ -1886,6 +1885,11 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
         }
     }
 
+    /* parse current (old) module information, needed for schema mount data update */
+    if ((err_info = sr_lydmods_parse(sr_yang_ctx.ly_ctx, conn, NULL, &sr_mods_old))) {
+        goto cleanup;
+    }
+
     /* CONTEXT UPGRADE */
     if ((err_info = sr_lycc_relock(conn, SR_LOCK_WRITE, __func__))) {
         goto cleanup;
@@ -1894,11 +1898,6 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
 
     /* load all data and prepare their update */
     if ((err_info = sr_lycc_update_data(conn, new_ctx, NULL, NULL, 0, &data_info))) {
-        goto cleanup;
-    }
-
-    /* parse current (old) module information */
-    if ((err_info = sr_lydmods_parse(sr_yang_ctx.ly_ctx, conn, NULL, &sr_mods_old))) {
         goto cleanup;
     }
 
@@ -1927,14 +1926,10 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
         goto cleanup;
     }
 
-    /* clean this up now, because printing the context will make the pointers inside invalid */
-    sr_lycc_update_cleanup(&data_info, sr_mods, sr_del_mods);
-    memset(&data_info, 0, sizeof data_info);
-    lyd_free_siblings(sr_mods_old);
-    sr_mods = sr_del_mods = sr_mods_old = NULL;
-
-    /* flush the running cache, since it contains pointers to the old context and needs to be updated */
-    sr_run_cache_flush(&sr_run_cache);
+    /* cleanup leftover data that contain references to the old context,
+     * this needs to be done before a new context is printed */
+    sr_lycc_update_cleanup(&data_info, &sr_mods, &sr_mods_old, &sr_del_mods, &sr_run_cache);
+    lycc_cleanup_done = 1;
 
     /* update content ID */
     SR_CONN_MAIN_SHM(conn)->content_id = ly_ctx_get_modules_hash(new_ctx);
@@ -1948,8 +1943,9 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
     sr_generate_notif_module_change_uninstalled(conn, &mod_set);
 
 cleanup:
-    sr_lycc_update_cleanup(&data_info, sr_mods, sr_del_mods);
-    lyd_free_siblings(sr_mods_old);
+    if (!lycc_cleanup_done) {
+        sr_lycc_update_cleanup(&data_info, &sr_mods, &sr_mods_old, &sr_del_mods, &sr_run_cache);
+    }
     ly_ctx_destroy(new_ctx);
 
     /* CONTEXT UNLOCK */
@@ -2118,6 +2114,7 @@ sr_update_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *se
     struct sr_data_update_s data_info = {0};
     sr_lock_mode_t ctx_mode = SR_LOCK_NONE;
     uint32_t search_dir_count = 0;
+    int lycc_cleanup_done = 0;
 
     SR_CHECK_ARG_APIRET(!conn || !schema_paths, NULL, err_info);
 
@@ -2155,6 +2152,11 @@ sr_update_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *se
         goto cleanup;
     }
 
+    /* parse current (old) module information, needed for schema mount data update */
+    if ((err_info = sr_lydmods_parse(sr_yang_ctx.ly_ctx, conn, NULL, &sr_mods_old))) {
+        goto cleanup;
+    }
+
     /* CONTEXT UPGRADE */
     if ((err_info = sr_lycc_relock(conn, SR_LOCK_WRITE, __func__))) {
         goto cleanup;
@@ -2163,11 +2165,6 @@ sr_update_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *se
 
     /* load all data and prepare their update */
     if ((err_info = sr_lycc_update_data(conn, new_ctx, NULL, NULL, 0, &data_info))) {
-        goto cleanup;
-    }
-
-    /* parse current (old) module information */
-    if ((err_info = sr_lydmods_parse(sr_yang_ctx.ly_ctx, conn, NULL, &sr_mods_old))) {
         goto cleanup;
     }
 
@@ -2196,14 +2193,10 @@ sr_update_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *se
         goto cleanup;
     }
 
-    /* clean this up now, because printing the context will make the pointers inside invalid */
-    sr_lycc_update_cleanup(&data_info, sr_mods, NULL);
-    memset(&data_info, 0, sizeof data_info);
-    lyd_free_siblings(sr_mods_old);
-    sr_mods = sr_mods_old = NULL;
-
-    /* flush the running cache, since it contains pointers to the old context and needs to be updated */
-    sr_run_cache_flush(&sr_run_cache);
+    /* cleanup leftover data that contain references to the old context,
+     * this needs to be done before a new context is printed */
+    sr_lycc_update_cleanup(&data_info, &sr_mods, &sr_mods_old, NULL, &sr_run_cache);
+    lycc_cleanup_done = 1;
 
     /* update content ID */
     SR_CONN_MAIN_SHM(conn)->content_id = ly_ctx_get_modules_hash(new_ctx);
@@ -2217,8 +2210,9 @@ sr_update_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *se
     sr_generate_notif_module_change_updated(conn, &old_mod_set, &upd_mod_set);
 
 cleanup:
-    sr_lycc_update_cleanup(&data_info, sr_mods, NULL);
-    lyd_free_siblings(sr_mods_old);
+    if (!lycc_cleanup_done) {
+        sr_lycc_update_cleanup(&data_info, &sr_mods, &sr_mods_old, NULL, &sr_run_cache);
+    }
     ly_ctx_destroy(new_ctx);
 
     /* CONTEXT UNLOCK */
@@ -2639,6 +2633,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     const struct lys_module *ly_mod, *upd_ly_mod;
     LY_ERR lyrc;
     sr_lock_mode_t ctx_mode = SR_LOCK_NONE;
+    int lycc_cleanup_done = 0;
 
     /* create two temporary contexts
      * new_ctx - for the new module with changed features, this context will be printed
@@ -2712,6 +2707,11 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
         goto cleanup;
     }
 
+    /* parse current (old) module information, needed for schema mount data update */
+    if ((err_info = sr_lydmods_parse(sr_yang_ctx.ly_ctx, conn, NULL, &sr_mods_old))) {
+        goto cleanup;
+    }
+
     /* CONTEXT UPGRADE */
     if ((err_info = sr_lycc_relock(conn, SR_LOCK_WRITE, __func__))) {
         goto cleanup;
@@ -2720,11 +2720,6 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
 
     /* load all data and prepare their update */
     if ((err_info = sr_lycc_update_data(conn, new_ctx, NULL, NULL, 0, &data_info))) {
-        goto cleanup;
-    }
-
-    /* parse current (old) module information */
-    if ((err_info = sr_lydmods_parse(sr_yang_ctx.ly_ctx, conn, NULL, &sr_mods_old))) {
         goto cleanup;
     }
 
@@ -2748,17 +2743,13 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
         goto cleanup;
     }
 
-    /* clean this up now, because printing the context will make the pointers inside invalid */
-    sr_lycc_update_cleanup(&data_info, sr_mods, NULL);
-    memset(&data_info, 0, sizeof data_info);
-    lyd_free_siblings(sr_mods_old);
-    sr_mods = sr_mods_old = NULL;
+    /* cleanup leftover data that contain references to the old context,
+     * this needs to be done before a new context is printed */
+    sr_lycc_update_cleanup(&data_info, &sr_mods, &sr_mods_old, NULL, &sr_run_cache);
+    lycc_cleanup_done = 1;
 
     /* update content ID and safely switch the context */
     SR_CONN_MAIN_SHM(conn)->content_id = ly_ctx_get_modules_hash(new_ctx);
-
-    /* flush the running cache */
-    sr_run_cache_flush(&sr_run_cache);
 
     /* print the new context */
     if ((err_info = sr_lycc_store_context(&sr_yang_ctx.ly_ctx_shm, new_ctx))) {
@@ -2769,8 +2760,9 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     sr_generate_notif_module_change_feature(conn, ly_mod, &feat_set, enable);
 
 cleanup:
-    sr_lycc_update_cleanup(&data_info, sr_mods, NULL);
-    lyd_free_siblings(sr_mods_old);
+    if (!lycc_cleanup_done) {
+        sr_lycc_update_cleanup(&data_info, &sr_mods, &sr_mods_old, NULL, &sr_run_cache);
+    }
     ly_ctx_destroy(new_ctx);
     ly_ctx_destroy(new_ctx2);
 
