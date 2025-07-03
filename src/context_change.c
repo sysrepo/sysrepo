@@ -1227,11 +1227,33 @@ sr_lycc_update_data_clear(struct sr_data_update_s *data_info)
 }
 
 void
-sr_lycc_update_cleanup(struct sr_data_update_s *data_info, struct lyd_node *sr_mods, struct lyd_node *sr_del_mods)
+sr_lycc_update_cleanup(struct sr_data_update_s *data_info, struct lyd_node **sr_mods,
+        struct lyd_node **sr_mods_old, struct lyd_node **sr_del_mods, sr_run_cache_t *run_cache)
 {
-    lyd_free_siblings(sr_mods);
-    lyd_free_siblings(sr_del_mods);
+    /* clear the update data that references the old context */
     sr_lycc_update_data_clear(data_info);
+    memset(data_info, 0, sizeof *data_info);
+
+    /* free sr_mods data used for module update */
+    if (sr_mods && *sr_mods) {
+        lyd_free_siblings(*sr_mods);
+        *sr_mods = NULL;
+    }
+
+    /* free sr_del_mods data used for module deletion */
+    if (sr_del_mods && *sr_del_mods) {
+        lyd_free_siblings(*sr_del_mods);
+        *sr_del_mods = NULL;
+    }
+
+    /* free the old sr_mods data used for schema mount update */
+    if (sr_mods_old && *sr_mods_old) {
+        lyd_free_siblings(*sr_mods_old);
+        *sr_mods_old = NULL;
+    }
+
+    /* flush the running cache, it too contains pointers to the old context */
+    sr_run_cache_flush(run_cache);
 }
 
 sr_error_info_t *
