@@ -312,7 +312,8 @@ For more information about plugins, see [plugin documentation](doc/sr_plugins.do
 To use `MONGO DS` datastore plugin, **libmongoc** and **libbson** libraries have to be present
 on the system. Additionally a running MongoDB server has to be available to the system. By default
 sysrepo assumes that the server is available at the loopback address `127.0.0.1` and port `27017` with
-no authentication needed. For different IP address and port, set `MONGO_HOST` and `MONGO_PORT` CMake
+no authentication needed. To enable the plugin, set `ENABLE_DS_MONGO` CMake variable to `ON`.
+For different IP address and port, set `MONGO_HOST` and `MONGO_PORT` CMake
 variables. For the authentication via username and password, set `MONGO_USERNAME` and `MONGO_PASSWORD`
 CMake variables. Please note that for sysrepo to correctly authenticate, an existing user with sufficient rights
 and with the configured username and password has to be available
@@ -324,7 +325,8 @@ For more information on how the plugin works, please refer to the [plugin docume
 
 Similarly to `MONGO DS`, to use `REDIS DS` datastore plugin, **libhiredis** client library and Redis Stack server have to be available to the system.
 The default server address `127.0.0.1` and port `6379` are assumed with
-no authentication needed. For different IP address and port, set `REDIS_HOST` and `REDIS_PORT` CMake variables. 
+no authentication needed. To enable the plugin, set `ENABLE_DS_REDIS` CMake variable to `ON`.
+For different IP address and port, set `REDIS_HOST` and `REDIS_PORT` CMake variables.
 To enable authentication via a username and password, set `REDIS_USERNAME` and `REDIS_PASSWORD` CMake variables,
 create a corresponding user with sufficient rights, and do not forget to enforce the authentication on the server (see [official Redis documentation](https://redis.io/docs/latest/commands/auth/)).
 For more information on how the plugin works, please refer to the [plugin documentation](doc/sr_plugins.dox).
