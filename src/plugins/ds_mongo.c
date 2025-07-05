@@ -726,8 +726,9 @@ srpds_load_oper(mongoc_collection_t *module, const struct lys_module *mod, bson_
         }
 
         /* add new node to the data tree */
-        if ((err_info = srpds_add_oper_mod_data(plugin_name, mod->ctx, path, name, type, module_name, value,
-                valtype, &dflt_flag, (const char **)keys, lengths, &parent_nodes, &pnodes_size, mod_data))) {
+        if ((err_info = srpds_add_mod_data(plugin_name, mod->ctx, SR_DS_OPERATIONAL, path, name, type, module_name, value, valtype,
+                &dflt_flag, (const char **)keys, lengths, 0, NULL, NULL, &parent_nodes, &pnodes_size,
+                mod_data))) {
             goto cleanup;
         }
         free(keys);
@@ -988,7 +989,7 @@ srpds_load_conv(mongoc_collection_t *module, const struct lys_module *mod, sr_da
         }
 
         /* add a new node to mod_data */
-        if ((err_info = srpds_add_conv_mod_data(plugin_name, mod->ctx, ds, path, name, type, module_name, value, valtype,
+        if ((err_info = srpds_add_mod_data(plugin_name, mod->ctx, ds, path, name, type, module_name, value, valtype,
                 &dflt_flag, (const char **)keys, lengths, order, path_no_pred, &uo_lists, &parent_nodes, &pnodes_size,
                 mod_data))) {
             goto cleanup;

@@ -219,7 +219,7 @@ sr_error_info_t *srpds_order_uo_lists(const char *plg_name, const srpds_db_usero
 void srpds_cleanup_uo_lists(srpds_db_userordered_lists_t *uo_lists);
 
 /**
- * @brief Add a new node to the data tree in conventional datastore.
+ * @brief Add a new node to the data tree in the datastore.
  *
  * @param[in] plg_name Plugin name.
  * @param[in] ly_ctx Context to use.
@@ -242,36 +242,11 @@ void srpds_cleanup_uo_lists(srpds_db_userordered_lists_t *uo_lists);
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
-sr_error_info_t *srpds_add_conv_mod_data(const char *plg_name, const struct ly_ctx *ly_ctx, sr_datastore_t ds,
+sr_error_info_t *srpds_add_mod_data(const char *plg_name, const struct ly_ctx *ly_ctx, sr_datastore_t ds,
         const char *path, const char *name, enum srpds_db_ly_types type, const char *module_name, const char *value,
         int32_t valtype, int *dflt_flag, const char **keys, uint32_t *lengths, int64_t order, const char *path_no_pred,
         srpds_db_userordered_lists_t *uo_lists, struct lyd_node ***parent_nodes, size_t *pnodes_size,
         struct lyd_node **mod_data);
-
-/**
- * @brief Add a new node to the data tree in operational datastore.
- *
- * @param[in] plg_name Plugin name.
- * @param[in] ly_ctx Context to use.
- * @param[in] path Path to node.
- * @param[in] name Name of the node.
- * @param[in] type Type of the node.
- * @param[in] module_name Module name of the node.
- * @param[in] value Value of the node.
- * @param[in] valtype Type of the value (XML=0 or JSON=1).
- * @param[in,out] dflt_flag Whether the node has default value.
- * @param[in] keys Array of the keys of the node (list instance).
- * @param[in] lengths Array of the lengths of the @p keys .
- * @param[in,out] parent_nodes Potential parent nodes of the new node.
- * @param[in,out] pnodes_size Size of the @p parent_nodes .
- * @param[in,out] mod_data Data tree to insert the new node into.
- * @return NULL on success;
- * @return Sysrepo error info on error.
- */
-sr_error_info_t *srpds_add_oper_mod_data(const char *plg_name, const struct ly_ctx *ly_ctx, const char *path,
-        const char *name, enum srpds_db_ly_types type, const char *module_name, const char *value,
-        int32_t valtype, int *dflt_flag, const char **keys, uint32_t *lengths, struct lyd_node ***parent_nodes,
-        size_t *pnodes_size, struct lyd_node **mod_data);
 
 /**
  * @brief Get all the values associated with the node.
