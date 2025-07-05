@@ -520,126 +520,10 @@ srpds_cleanup_uo_lists(srpds_db_userordered_lists_t *uo_lists)
 }
 
 sr_error_info_t *
-srpds_add_conv_mod_data(const char *plg_name, const struct ly_ctx *ly_ctx, sr_datastore_t ds, const char *path,
+srpds_add_mod_data(const char *plg_name, const struct ly_ctx *ly_ctx, sr_datastore_t ds, const char *path,
         const char *name, enum srpds_db_ly_types type, const char *module_name, const char *value, int32_t valtype,
         int *dflt_flag, const char **keys, uint32_t *lengths, int64_t order, const char *path_no_pred,
         srpds_db_userordered_lists_t *uo_lists, struct lyd_node ***parent_nodes, size_t *pnodes_size, struct lyd_node **mod_data)
-{
-    sr_error_info_t *err_info = NULL;
-    const struct lys_module *node_module;
-    struct lyd_node *new_node = NULL, *parent_node = NULL;
-    struct lyd_node **tmp_pnodes = NULL;
-    uint32_t node_idx = 0;
-
-    /* get index of the node in the parent_nodes array based on its height */
-    node_idx = srpds_get_node_depth(path) - 1;
-    parent_node = node_idx ? (*parent_nodes)[node_idx - 1] : NULL;
-
-    /* get the node module */
-    if (!module_name) {
-        node_module = NULL;
-    } else if (parent_node) {
-        /* use the parent context for ext data */
-        node_module = ly_ctx_get_module_implemented(LYD_CTX(parent_node), module_name);
-    } else {
-        node_module = ly_ctx_get_module_implemented(ly_ctx, module_name);
-    }
-
-    /* create a node based on type */
-    switch (type) {
-    case SRPDS_DB_LY_CONTAINER:    /* containers */
-        if (lyd_new_inner(parent_node, node_module, name, 0, &new_node) != LY_SUCCESS) {
-            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_inner()", ly_last_logmsg());
-            goto cleanup;
-        }
-        break;
-    case SRPDS_DB_LY_LIST:     /* lists */
-    case SRPDS_DB_LY_LIST_UO:  /* user-ordered lists */
-        if (lyd_new_list3(parent_node, node_module, name, (const char **)keys, lengths, LYD_NEW_VAL_STORE_ONLY,
-                &new_node) != LY_SUCCESS) {
-            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_list3()", ly_last_logmsg());
-            goto cleanup;
-        }
-        break;
-    case SRPDS_DB_LY_TERM:         /* leafs and leaf-lists */
-    case SRPDS_DB_LY_LEAFLIST_UO:  /* user-ordered leaf-lists */
-        if (lyd_new_term(parent_node, node_module, name, value, LYD_NEW_VAL_STORE_ONLY,
-                &new_node) != LY_SUCCESS) {
-            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_term()", ly_last_logmsg());
-            goto cleanup;
-        }
-        break;
-    case SRPDS_DB_LY_ANY:   /* anydata and anyxml */
-        if (lyd_new_any(parent_node, node_module, name, value, valtype ? LYD_ANYDATA_JSON : LYD_ANYDATA_XML,
-                LYD_NEW_VAL_STORE_ONLY, &new_node) != LY_SUCCESS) {
-            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_any()", ly_last_logmsg());
-            goto cleanup;
-        }
-        break;
-    default:
-        break;
-    }
-
-    /* store new node in the parent nodes array for children */
-    if (node_idx >= *pnodes_size) {
-        tmp_pnodes = realloc(*parent_nodes, (++*pnodes_size) * sizeof **parent_nodes);
-        if (!tmp_pnodes) {
-            ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "realloc()", "");
-            goto cleanup;
-        }
-        *parent_nodes = tmp_pnodes;
-    }
-    (*parent_nodes)[node_idx] = new_node;
-    if (!node_idx) {
-        if (lyd_insert_sibling(*mod_data, new_node, mod_data) != LY_SUCCESS) {
-            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_insert_sibling()", ly_last_logmsg());
-            goto cleanup;
-        }
-    }
-
-    /* store nodes and their orders of userordered lists and leaflists for final ordering */
-    if ((type == SRPDS_DB_LY_LIST_UO) || (type == SRPDS_DB_LY_LEAFLIST_UO)) {
-        if ((err_info = srpds_add_uo_lists(plg_name, new_node, order, path_no_pred, uo_lists))) {
-            goto cleanup;
-        }
-    }
-
-    /* for default nodes add a flag */
-    if (*dflt_flag) {
-        new_node->flags = new_node->flags | LYD_DEFAULT;
-        *dflt_flag = 0;
-        srpds_cont_set_dflt(lyd_parent(new_node));
-    }
-
-    /* for 'when' nodes add a flag */
-    switch (ds) {
-    case SR_DS_STARTUP:
-    case SR_DS_RUNNING:
-    case SR_DS_FACTORY_DEFAULT:
-        while ((*parent_nodes)[0] != new_node) {
-            if (lysc_has_when(new_node->schema)) {
-                new_node->flags |= LYD_WHEN_TRUE;
-            }
-            new_node->flags &= ~LYD_NEW;
-            new_node = lyd_parent(new_node);
-        }
-        if (lysc_has_when((*parent_nodes)[0]->schema)) {
-            (*parent_nodes)[0]->flags |= LYD_WHEN_TRUE;
-        }
-        (*parent_nodes)[0]->flags &= ~LYD_NEW;
-        break;
-    default:
-        break;
-    }
-
-cleanup:
-    return err_info;
-}
-
-sr_error_info_t *
-srpds_add_oper_mod_data(const char *plg_name, const struct ly_ctx *ly_ctx, const char *path, const char *name,
-        enum srpds_db_ly_types type, const char *module_name, const char *value, int32_t valtype, int *dflt_flag,
-        const char **keys, uint32_t *lengths, struct lyd_node ***parent_nodes, size_t *pnodes_size, struct lyd_node **mod_data)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *node_module;
@@ -692,28 +576,30 @@ srpds_add_oper_mod_data(const char *plg_name, const struct ly_ctx *ly_ctx, const
         break;
     case SRPDS_DB_LY_CONTAINER:    /* containers */
         if (lyd_new_inner(parent_node, node_module, name, 0, &new_node) != LY_SUCCESS) {
-            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_inner()", "");
+            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_inner()", ly_last_logmsg());
             goto cleanup;
         }
         break;
-    case SRPDS_DB_LY_LIST:         /* lists */
-        if (lyd_new_list3(parent_node, node_module, name, keys, lengths, LYD_NEW_VAL_STORE_ONLY,
+    case SRPDS_DB_LY_LIST:     /* lists */
+    case SRPDS_DB_LY_LIST_UO:  /* user-ordered lists */
+        if (lyd_new_list3(parent_node, node_module, name, (const char **)keys, lengths, LYD_NEW_VAL_STORE_ONLY,
                 &new_node) != LY_SUCCESS) {
-            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_list3()", "");
+            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_list3()", ly_last_logmsg());
             goto cleanup;
         }
         break;
     case SRPDS_DB_LY_TERM:         /* leafs and leaf-lists */
+    case SRPDS_DB_LY_LEAFLIST_UO:  /* user-ordered leaf-lists */
         if (lyd_new_term(parent_node, node_module, name, value, LYD_NEW_VAL_STORE_ONLY,
                 &new_node) != LY_SUCCESS) {
-            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_term()", "");
+            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_term()", ly_last_logmsg());
             goto cleanup;
         }
         break;
-    case SRPDS_DB_LY_ANY:          /* anydata and anyxml */
+    case SRPDS_DB_LY_ANY:   /* anydata and anyxml */
         if (lyd_new_any(parent_node, node_module, name, value, valtype ? LYD_ANYDATA_JSON : LYD_ANYDATA_XML,
                 LYD_NEW_VAL_STORE_ONLY, &new_node) != LY_SUCCESS) {
-            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_any()", "");
+            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_any()", ly_last_logmsg());
             goto cleanup;
         }
         break;
@@ -730,7 +616,7 @@ srpds_add_oper_mod_data(const char *plg_name, const struct ly_ctx *ly_ctx, const
     if ((type != SRPDS_DB_LY_META) && (type != SRPDS_DB_LY_ATTR)) {
         /* store new node in the parent nodes array for children */
         if (node_idx >= *pnodes_size) {
-            tmp_pnodes = realloc((*parent_nodes), (++*pnodes_size) * sizeof **parent_nodes);
+            tmp_pnodes = realloc(*parent_nodes, (++*pnodes_size) * sizeof **parent_nodes);
             if (!tmp_pnodes) {
                 ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "realloc()", "");
                 goto cleanup;
@@ -740,7 +626,14 @@ srpds_add_oper_mod_data(const char *plg_name, const struct ly_ctx *ly_ctx, const
         (*parent_nodes)[node_idx] = new_node;
         if (!node_idx) {
             if (lyd_insert_sibling(*mod_data, new_node, mod_data) != LY_SUCCESS) {
-                ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_insert_sibling()", "");
+                ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_insert_sibling()", ly_last_logmsg());
+                goto cleanup;
+            }
+        }
+
+        /* store nodes and their orders of userordered lists and leaflists for final ordering */
+        if ((type == SRPDS_DB_LY_LIST_UO) || (type == SRPDS_DB_LY_LEAFLIST_UO)) {
+            if ((err_info = srpds_add_uo_lists(plg_name, new_node, order, path_no_pred, uo_lists))) {
                 goto cleanup;
             }
         }
@@ -750,6 +643,27 @@ srpds_add_oper_mod_data(const char *plg_name, const struct ly_ctx *ly_ctx, const
             new_node->flags = new_node->flags | LYD_DEFAULT;
             *dflt_flag = 0;
             srpds_cont_set_dflt(lyd_parent(new_node));
+        }
+
+        /* for 'when' nodes add a flag */
+        switch (ds) {
+        case SR_DS_STARTUP:
+        case SR_DS_RUNNING:
+        case SR_DS_FACTORY_DEFAULT:
+            while ((*parent_nodes)[0] != new_node) {
+                if (lysc_has_when(new_node->schema)) {
+                    new_node->flags |= LYD_WHEN_TRUE;
+                }
+                new_node->flags &= ~LYD_NEW;
+                new_node = lyd_parent(new_node);
+            }
+            if (lysc_has_when((*parent_nodes)[0]->schema)) {
+                (*parent_nodes)[0]->flags |= LYD_WHEN_TRUE;
+            }
+            (*parent_nodes)[0]->flags &= ~LYD_NEW;
+            break;
+        default:
+            break;
         }
     }
 
