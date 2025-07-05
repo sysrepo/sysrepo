@@ -465,8 +465,8 @@ else()
 endif()
 
 # common database utility functions - optional
-if((TARGET mongo::mongoc_shared AND MONGOSH) OR (LIBHIREDIS_FOUND AND REDIS_CLI))
-    # common utilities added if at least one library exists
+if(SR_ENABLED_DS_PLG_MONGO OR SR_ENABLED_DS_PLG_REDIS)
+    # common utilities added if at least one library exists and the plugin is enabled
     list(APPEND LIB_SRC src/plugins/common_db.c)
 endif()
 
