@@ -1583,7 +1583,7 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
 
     /* cleanup leftover data that contain references to the old context,
      * this needs to be done before a new context is printed */
-    sr_lycc_update_cleanup(&data_info, NULL, &sr_mods_old, NULL, &sr_run_cache);
+    sr_lycc_update_cleanup(conn, &data_info, NULL, &sr_mods_old, NULL, &sr_run_cache, &sr_oper_cache);
     lycc_cleanup_done = 1;
 
     /* update content ID */
@@ -1636,7 +1636,7 @@ cleanup:
     }
 
     if (!lycc_cleanup_done) {
-        sr_lycc_update_cleanup(&data_info, NULL, &sr_mods_old, NULL, &sr_run_cache);
+        sr_lycc_update_cleanup(conn, &data_info, NULL, &sr_mods_old, NULL, &sr_run_cache, &sr_oper_cache);
     }
 
     lyd_free_siblings(sr_mods);
@@ -1928,7 +1928,7 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
 
     /* cleanup leftover data that contain references to the old context,
      * this needs to be done before a new context is printed */
-    sr_lycc_update_cleanup(&data_info, &sr_mods, &sr_mods_old, &sr_del_mods, &sr_run_cache);
+    sr_lycc_update_cleanup(conn, &data_info, &sr_mods, &sr_mods_old, &sr_del_mods, &sr_run_cache, &sr_oper_cache);
     lycc_cleanup_done = 1;
 
     /* update content ID */
@@ -1944,7 +1944,7 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
 
 cleanup:
     if (!lycc_cleanup_done) {
-        sr_lycc_update_cleanup(&data_info, &sr_mods, &sr_mods_old, &sr_del_mods, &sr_run_cache);
+        sr_lycc_update_cleanup(conn, &data_info, &sr_mods, &sr_mods_old, &sr_del_mods, &sr_run_cache, &sr_oper_cache);
     }
     ly_ctx_destroy(new_ctx);
 
@@ -2195,7 +2195,7 @@ sr_update_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *se
 
     /* cleanup leftover data that contain references to the old context,
      * this needs to be done before a new context is printed */
-    sr_lycc_update_cleanup(&data_info, &sr_mods, &sr_mods_old, NULL, &sr_run_cache);
+    sr_lycc_update_cleanup(conn, &data_info, &sr_mods, &sr_mods_old, NULL, &sr_run_cache, &sr_oper_cache);
     lycc_cleanup_done = 1;
 
     /* update content ID */
@@ -2211,7 +2211,7 @@ sr_update_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *se
 
 cleanup:
     if (!lycc_cleanup_done) {
-        sr_lycc_update_cleanup(&data_info, &sr_mods, &sr_mods_old, NULL, &sr_run_cache);
+        sr_lycc_update_cleanup(conn, &data_info, &sr_mods, &sr_mods_old, NULL, &sr_run_cache, &sr_oper_cache);
     }
     ly_ctx_destroy(new_ctx);
 
@@ -2745,7 +2745,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
 
     /* cleanup leftover data that contain references to the old context,
      * this needs to be done before a new context is printed */
-    sr_lycc_update_cleanup(&data_info, &sr_mods, &sr_mods_old, NULL, &sr_run_cache);
+    sr_lycc_update_cleanup(conn, &data_info, &sr_mods, &sr_mods_old, NULL, &sr_run_cache, &sr_oper_cache);
     lycc_cleanup_done = 1;
 
     /* update content ID and safely switch the context */
@@ -2761,7 +2761,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
 
 cleanup:
     if (!lycc_cleanup_done) {
-        sr_lycc_update_cleanup(&data_info, &sr_mods, &sr_mods_old, NULL, &sr_run_cache);
+        sr_lycc_update_cleanup(conn, &data_info, &sr_mods, &sr_mods_old, NULL, &sr_run_cache, &sr_oper_cache);
     }
     ly_ctx_destroy(new_ctx);
     ly_ctx_destroy(new_ctx2);
@@ -4463,6 +4463,7 @@ sr_schema_mount_data_update(sr_session_ctx_t *session)
     struct lyd_node *sr_mods = NULL;
     sr_lock_mode_t ctx_mode = SR_LOCK_NONE;
     struct lyd_node *schema_mount_data = NULL;
+    int lycc_cleanup_done = 0;
 
     /* create a new temporary context */
     if ((err_info = sr_ly_ctx_new(session->conn, &new_ctx))) {
@@ -4501,12 +4502,10 @@ sr_schema_mount_data_update(sr_session_ctx_t *session)
         goto cleanup;
     }
 
-    /* cleanup old data before old context is overwritten */
-    lyd_free_siblings(sr_mods);
-    sr_mods = NULL;
-
-    /* flush the running cache */
-    sr_run_cache_flush(&sr_run_cache);
+    /* cleanup leftover data that contain references to the old context,
+     * this needs to be done before a new context is printed */
+    sr_lycc_update_cleanup(session->conn, NULL, &sr_mods, NULL, NULL, &sr_run_cache, &sr_oper_cache);
+    lycc_cleanup_done = 1;
 
     /* update the schema mount data ID */
     SR_CONN_MAIN_SHM(session->conn)->schema_mount_data_id++;
@@ -4520,7 +4519,9 @@ sr_schema_mount_data_update(sr_session_ctx_t *session)
     }
 
 cleanup:
-    lyd_free_siblings(sr_mods);
+    if (!lycc_cleanup_done) {
+        sr_lycc_update_cleanup(session->conn, NULL, &sr_mods, NULL, NULL, &sr_run_cache, &sr_oper_cache);
+    }
     lyd_free_siblings(schema_mount_data);
     ly_ctx_destroy(new_ctx);
 
