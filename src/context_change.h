@@ -200,14 +200,17 @@ void sr_lycc_update_data_clear(struct sr_data_update_s *data_info);
  *
  * The intended use is to only free data that has ties to the previous context.
  *
+ * @param[in] conn              Connection to use.
  * @param[in,out] data_info     Data update info to clear. Freed and memset to 0.
  * @param[in,out] sr_mods       Pointer to the SR internal module data. *sr_mods is set freed to NULL.
  * @param[in,out] sr_del_mods   Pointer to the SR internal module data of deleted modules. *sr_del_mods is set freed to NULL.
  * @param[in,out] sr_mods_old   Pointer to the old SR internal module data. *sr_mods_old is set freed to NULL.
  * @param[in,out] run_cache     Running cache to flush.
+ * @param[in,out] oper_cache    Operational cache to flush.
  */
-void sr_lycc_update_cleanup(struct sr_data_update_s *data_info, struct lyd_node **sr_mods,
-        struct lyd_node **sr_mods_old, struct lyd_node **sr_del_mods, sr_run_cache_t *run_cache);
+void sr_lycc_update_cleanup(sr_conn_ctx_t *conn, struct sr_data_update_s *data_info, struct lyd_node **sr_mods,
+        struct lyd_node **sr_mods_old, struct lyd_node **sr_del_mods,
+        sr_run_cache_t *run_cache, sr_oper_cache_t *oper_cache);
 
 /**
  * @brief Store a libyang context to shared memory.

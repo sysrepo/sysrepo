@@ -46,10 +46,11 @@
  *
  * Must be called only with WRITE mode context lock or mod_remap_lock.
  *
+ * @param[in] conn Connection to use.
  * @param[in] oper_cache Oper cache to flush.
  */
 static void
-sr_oper_cache_flush(sr_oper_cache_t *oper_cache)
+sr_oper_cache_flush(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, j;
@@ -104,10 +105,6 @@ static void
 sr_ly_ctx_switch(sr_conn_ctx_t *conn, struct ly_ctx *new_ctx)
 {
     assert(!sr_schema_mount_cache.data);
-
-    /* replace/flush caches before context destroy */
-    sr_run_cache_flush(&sr_run_cache);
-    sr_oper_cache_flush(&sr_oper_cache);
 
     /* update content ID */
     sr_yang_ctx.content_id = SR_CONN_MAIN_SHM(conn)->content_id;
@@ -1227,12 +1224,15 @@ sr_lycc_update_data_clear(struct sr_data_update_s *data_info)
 }
 
 void
-sr_lycc_update_cleanup(struct sr_data_update_s *data_info, struct lyd_node **sr_mods,
-        struct lyd_node **sr_mods_old, struct lyd_node **sr_del_mods, sr_run_cache_t *run_cache)
+sr_lycc_update_cleanup(sr_conn_ctx_t *conn, struct sr_data_update_s *data_info, struct lyd_node **sr_mods,
+        struct lyd_node **sr_mods_old, struct lyd_node **sr_del_mods,
+        sr_run_cache_t *run_cache, sr_oper_cache_t *oper_cache)
 {
     /* clear the update data that references the old context */
-    sr_lycc_update_data_clear(data_info);
-    memset(data_info, 0, sizeof *data_info);
+    if (data_info) {
+        sr_lycc_update_data_clear(data_info);
+        memset(data_info, 0, sizeof *data_info);
+    }
 
     /* free sr_mods data used for module update */
     if (sr_mods && *sr_mods) {
@@ -1254,6 +1254,9 @@ sr_lycc_update_cleanup(struct sr_data_update_s *data_info, struct lyd_node **sr_
 
     /* flush the running cache, it too contains pointers to the old context */
     sr_run_cache_flush(run_cache);
+
+    /* flush the operational cache, it too contains pointers to the old context */
+    sr_oper_cache_flush(conn, oper_cache);
 }
 
 sr_error_info_t *
