@@ -808,7 +808,10 @@ test_purge(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *subtree;
+    struct lyd_node *edit;
     int ret;
+    char *str;
+    const char *json;
 
     /* create some list instances */
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
@@ -889,6 +892,52 @@ test_purge(void **state)
     assert_null(subtree);
 
     sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+
+    /* create some list instances */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth2']/type",
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* delete all instances and create new ones */
+    json = "{"
+            "  \"ietf-interfaces:interfaces\": {"
+            "    \"interface\": ["
+            "      {\"@\": {\"sysrepo:operation\": \"purge\"}, \"name\": \"eth\"},"
+            "      {\"name\": \"eth3\", \"type\": \"iana-if-type:ethernetCsmacd\"},"
+            "      {\"name\": \"eth4\", \"type\": \"iana-if-type:ethernetCsmacd\"}"
+            "    ]"
+            "  }"
+            "}";
+    lyd_parse_data_mem(sr_session_acquire_context(st->sess), json, LYD_JSON, LYD_PARSE_ONLY, 0, &edit);
+    sr_session_release_context(st->sess);
+    ret = sr_edit_batch(st->sess, edit, "merge");
+    assert_int_equal(ret, SR_ERR_OK);
+    lyd_free_tree(edit);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check datastore contents */
+    ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(LY_SUCCESS, lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_SHRINK));
+    sr_release_data(subtree);
+    assert_string_equal(str,
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+            "<interface>"
+            "<name>eth3</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "</interface>"
+            "<interface>"
+            "<name>eth4</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "</interface>"
+            "</interfaces>");
+    free(str);
 }
 
 static void
