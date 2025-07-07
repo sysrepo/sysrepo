@@ -116,7 +116,7 @@ srpds_ds2database(sr_datastore_t ds)
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_get_oper_collection_name(const char *mod_name, sr_cid_t cid, uint32_t sid, int is_oper, char **collection_name)
+srpds_get_collection_name(const char *mod_name, sr_cid_t cid, uint32_t sid, int is_oper, char **collection_name)
 {
     sr_error_info_t *err_info = NULL;
     int r;
@@ -256,7 +256,7 @@ srpds_data_init(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, u
 
     /* get the module name (collection name) */
     is_oper = ((ds == SR_DS_OPERATIONAL) && cid && sid) ? 1 : 0;
-    if ((err_info = srpds_get_oper_collection_name(mod->name, cid, sid, is_oper, &mdata->module_name))) {
+    if ((err_info = srpds_get_collection_name(mod->name, cid, sid, is_oper, &mdata->module_name))) {
         goto cleanup;
     }
 
@@ -2060,7 +2060,7 @@ srpds_load_diff_recursively(mongoc_collection_t *module, const struct lyd_node *
             goto cleanup;
         }
 
-        /* get modified version of path and path_no_pred */
+        /* get modified version of path */
         if ((err_info = srpds_get_modif_path(plugin_name, path, &path_modif))) {
             goto cleanup;
         }
