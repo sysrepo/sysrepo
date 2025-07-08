@@ -2919,8 +2919,8 @@ sr_get_item(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
     }
 
     /* init modinfo and parse schema mount data, requires ctx read lock */
-    if ((err_info = sr_modinfo_init_sm(&mod_info, session->conn, session->ds,
-            (session->ds == SR_DS_OPERATIONAL) ? SR_DS_RUNNING : session->ds, 0))) {
+    if ((err_info = sr_modinfo_init(&mod_info, session->conn, session->ds,
+            (session->ds == SR_DS_OPERATIONAL) ? SR_DS_RUNNING : session->ds, 1, 0))) {
         goto cleanup;
     }
 
@@ -3027,8 +3027,8 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, 
     }
 
     /* init modinfo and parse schema mount data, requires ctx read lock */
-    if ((err_info = sr_modinfo_init_sm(&mod_info, session->conn, session->ds,
-            (session->ds == SR_DS_OPERATIONAL) ? SR_DS_RUNNING : session->ds, 0))) {
+    if ((err_info = sr_modinfo_init(&mod_info, session->conn, session->ds,
+            (session->ds == SR_DS_OPERATIONAL) ? SR_DS_RUNNING : session->ds, 1, 0))) {
         goto cleanup;
     }
 
@@ -3191,8 +3191,8 @@ sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms,
     }
 
     /* init modinfo and parse schema mount data, requires ctx read lock */
-    if ((err_info = sr_modinfo_init_sm(&mod_info, session->conn, session->ds,
-            (session->ds == SR_DS_OPERATIONAL) ? SR_DS_RUNNING : session->ds, 0))) {
+    if ((err_info = sr_modinfo_init(&mod_info, session->conn, session->ds,
+            (session->ds == SR_DS_OPERATIONAL) ? SR_DS_RUNNING : session->ds, 1, 0))) {
         goto cleanup;
     }
 
@@ -3464,7 +3464,7 @@ sr_get_data_prune(sr_session_ctx_t *session, struct lyd_node **first, const stru
     if (opts & SR_OPER_WITH_ORIGIN) {
         or_mod = NULL;
     } else {
-        or_mod = ly_ctx_get_module_implemented(session->conn->ly_ctx, "ietf-origin");
+        or_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, "ietf-origin");
         assert(or_mod);
     }
 
@@ -3566,7 +3566,7 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
     }
 
     /* for operational, use operational and running datastore */
-    SR_MODINFO_INIT(mod_info, session->conn, session->ds, session->ds == SR_DS_OPERATIONAL ? SR_DS_RUNNING : session->ds, 0);
+    sr_modinfo_init(&mod_info, session->conn, session->ds, session->ds == SR_DS_OPERATIONAL ? SR_DS_RUNNING : session->ds, 1, 0);
 
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
@@ -3579,7 +3579,7 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
     }
 
     /* collect all required modules */
-    if ((err_info = sr_modinfo_collect_xpath(session->conn->ly_ctx, xpath, session->ds, session,
+    if ((err_info = sr_modinfo_collect_xpath(sr_yang_ctx.ly_ctx, xpath, session->ds, session,
             MOD_INFO_XPATH_STORE_SESSION_CHANGES, &mod_info))) {
         goto cleanup;
     }
@@ -3656,8 +3656,8 @@ sr_get_node(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
     }
 
     /* init modinfo and parse schema mount data, requires ctx read lock */
-    if ((err_info = sr_modinfo_init_sm(&mod_info, session->conn, session->ds,
-            (session->ds == SR_DS_OPERATIONAL) ? SR_DS_RUNNING : session->ds, 0))) {
+    if ((err_info = sr_modinfo_init(&mod_info, session->conn, session->ds,
+            (session->ds == SR_DS_OPERATIONAL) ? SR_DS_RUNNING : session->ds, 1, 0))) {
         goto cleanup;
     }
 
@@ -4322,8 +4322,8 @@ sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t timeout
     }
 
     /* init modinfo and parse schema mount data, requires ctx read lock */
-    if ((err_info = sr_modinfo_init_sm(&mod_info, session->conn, session->ds,
-            (session->ds == SR_DS_OPERATIONAL) ? SR_DS_RUNNING : session->ds, 0))) {
+    if ((err_info = sr_modinfo_init(&mod_info, session->conn, session->ds,
+            (session->ds == SR_DS_OPERATIONAL) ? SR_DS_RUNNING : session->ds, 1, 0))) {
         goto cleanup;
     }
 
@@ -4475,16 +4475,16 @@ sr_schema_mount_data_update(sr_session_ctx_t *session)
         goto cleanup;
     }
 
+    /* parse module information */
+    if ((err_info = sr_lydmods_parse(sr_yang_ctx.ly_ctx, session->conn, NULL, &sr_mods))) {
+        goto cleanup;
+    }
+
     /* CONTEXT UPGRADE */
     if ((err_info = sr_lycc_relock(session->conn, SR_LOCK_WRITE, __func__))) {
         goto cleanup;
     }
     ctx_mode = SR_LOCK_WRITE;
-
-    /* parse module information */
-    if ((err_info = sr_lydmods_parse(sr_yang_ctx.ly_ctx, session->conn, NULL, &sr_mods))) {
-        goto cleanup;
-    }
 
     /* replace old schema mount contexts with new ones in the new libyang context.
      * Since the modules weren't changed (only oper data was), the same sr_mod data can be used
@@ -4834,7 +4834,7 @@ sr_apply_operational_changes(sr_session_ctx_t *session, uint32_t timeout_ms)
     int update_sm_data = 0;
 
     /* init modinfo and parse schema mount data, requires ctx read lock (have edit => holding lock) */
-    if ((err_info = sr_modinfo_init_sm(&mod_info, session->conn, session->ds, session->ds, 0))) {
+    if ((err_info = sr_modinfo_init(&mod_info, session->conn, session->ds, session->ds, 1, 0))) {
         goto cleanup;
     }
 
@@ -4916,7 +4916,7 @@ sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms)
     }
 
     /* init modinfo and parse schema mount data, requires ctx read lock (have edit => holding lock) */
-    if ((err_info = sr_modinfo_init_sm(&mod_info, session->conn, session->ds, session->ds, 0))) {
+    if ((err_info = sr_modinfo_init(&mod_info, session->conn, session->ds, session->ds, 1, 0))) {
         goto cleanup;
     }
 
@@ -5075,7 +5075,7 @@ _sr_replace_config(sr_session_ctx_t *session, const struct lys_module *ly_mod, u
     assert(session->ds != SR_DS_OPERATIONAL);
 
     /* init modinfo and parse schema mount data, requires ctx read lock */
-    if ((err_info = sr_modinfo_init_sm(&mod_info, session->conn, session->ds, session->ds, operation_id))) {
+    if ((err_info = sr_modinfo_init(&mod_info, session->conn, session->ds, session->ds, 1, operation_id))) {
         goto cleanup;
     }
 
@@ -5206,7 +5206,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
     }
 
     /* init modinfo and parse schema mount data, requires ctx read lock */
-    if ((err_info = sr_modinfo_init_sm(&mod_info, session->conn, ds1, ds2, 0))) {
+    if ((err_info = sr_modinfo_init(&mod_info, session->conn, ds1, ds2, 1, 0))) {
         goto cleanup;
     }
 
@@ -5304,7 +5304,7 @@ sr_discard_oper_changes_internal(sr_session_ctx_t *session, const struct lys_mod
     int update_sm_data = 0;
 
     /* init modinfo and parse schema mount data, requires ctx read lock */
-    if ((err_info = sr_modinfo_init_sm(&mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_OPERATIONAL, 0))) {
+    if ((err_info = sr_modinfo_init(&mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_OPERATIONAL, 1, 0))) {
         goto cleanup;
     }
 
@@ -5434,7 +5434,7 @@ sr_get_oper_changes(sr_session_ctx_t *session, const char *module_name, sr_data_
     }
 
     /* init modinfo and parse schema mount data, requires ctx read lock */
-    if ((err_info = sr_modinfo_init_sm(&mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_OPERATIONAL, 0))) {
+    if ((err_info = sr_modinfo_init(&mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_OPERATIONAL, 1, 0))) {
         goto cleanup;
     }
 
@@ -5686,7 +5686,7 @@ _sr_un_lock(sr_session_ctx_t *session, const char *module_name, int lock, uint32
     }
 
     /* init modinfo and parse schema mount data, requires ctx read lock */
-    if ((err_info = sr_modinfo_init_sm(&mod_info, session->conn, session->ds, session->ds, 1))) {
+    if ((err_info = sr_modinfo_init(&mod_info, session->conn, session->ds, session->ds, 1, 1))) {
         goto cleanup;
     }
 
@@ -5779,7 +5779,7 @@ sr_get_lock(sr_conn_ctx_t *conn, sr_datastore_t datastore, const char *module_na
     }
 
     /* init modinfo and parse schema mount data, requires ctx read lock */
-    if ((err_info = sr_modinfo_init_sm(&mod_info, conn, datastore, datastore, 1))) {
+    if ((err_info = sr_modinfo_init(&mod_info, conn, datastore, datastore, 1, 1))) {
         goto cleanup;
     }
 
@@ -6637,8 +6637,8 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     }
 
     /* init modinfo and parse schema mount data, requires ctx read lock */
-    if ((err_info = sr_modinfo_init_sm(&mod_info, session->conn, session->ds,
-            (session->ds == SR_DS_OPERATIONAL) ? SR_DS_RUNNING : session->ds, 0))) {
+    if ((err_info = sr_modinfo_init(&mod_info, session->conn, session->ds,
+            (session->ds == SR_DS_OPERATIONAL) ? SR_DS_RUNNING : session->ds, 1, 0))) {
         goto cleanup;
     }
 
@@ -7578,7 +7578,7 @@ _sr_rpc_send_tree(sr_session_ctx_t *session, struct sr_mod_info_s *mod_info, con
     sr_modinfo_erase(mod_info);
 
     /* init modinfo and parse schema mount data, requires ctx read lock */
-    if ((err_info = sr_modinfo_init_sm(mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, 0))) {
+    if ((err_info = sr_modinfo_init(mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, 1, 0))) {
         goto cleanup;
     }
 
@@ -7791,7 +7791,7 @@ sr_rpc_send_tree_internal(sr_session_ctx_t *session, struct lyd_node *input, uin
     }
 
     /* init modinfo and parse schema mount data, requires ctx read lock */
-    if ((err_info = sr_modinfo_init_sm(&mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, 0))) {
+    if ((err_info = sr_modinfo_init(&mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, 1, 0))) {
         goto cleanup;
     }
 
@@ -8109,7 +8109,7 @@ sr_notif_send_tree_internal(sr_session_ctx_t *session, struct lyd_node *notif, u
     }
 
     /* init modinfo and parse schema mount data, requires ctx read lock */
-    if ((err_info = sr_modinfo_init_sm(&mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, 0))) {
+    if ((err_info = sr_modinfo_init(&mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, 1, 0))) {
         goto cleanup;
     }
 
