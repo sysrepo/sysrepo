@@ -2514,10 +2514,7 @@ srpds_load_and_del(redisContext *ctx, const char *mod_ns, const char *index_type
             "return 0; ",
             mod_ns, index_type);
 
-    if ((reply->type == REDIS_REPLY_STRING) && strstr(mod_ns, "operational") && strstr(reply->str, "no such index")) {
-        /* empty data, the index has not been created yet, do so now BUG is never deleted */
-        err_info = srpds_create_indices(ctx, mod_ns, 1);
-    } else if ((reply->type == REDIS_REPLY_ERROR) || (reply->type == REDIS_REPLY_STRING)) {
+    if ((reply->type == REDIS_REPLY_ERROR) || (reply->type == REDIS_REPLY_STRING)) {
         ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "EVAL", reply->str);
         goto cleanup;
     }
@@ -3494,6 +3491,7 @@ srpds_redis_store_commit(const struct lys_module *mod, sr_datastore_t ds, sr_cid
 {
     redis_plg_conn_data_t *pdata = (redis_plg_conn_data_t *)plg_data;
     redisContext *ctx = NULL;
+    redisReply *reply = NULL;
     char *mod_ns = NULL;
     sr_error_info_t *err_info = NULL;
     int modified = 1;
@@ -3530,11 +3528,28 @@ srpds_redis_store_commit(const struct lys_module *mod, sr_datastore_t ds, sr_cid
     }
 
     if (ds == SR_DS_OPERATIONAL) {
+        /* new connection id and session id can create a new separate collection of data,
+         * new index should be created */
+        reply = redisCommand(ctx, "FT.INFO %s:data", mod_ns);
+
+        /* if index does not exist and data is not empty, we need to create an index */
+        if ((reply->type == REDIS_REPLY_ERROR) && (mod_data != NULL)) {
+            if ((err_info = srpds_create_indices(ctx, mod_ns, 1))) {
+                goto cleanup;
+            }
+        }
         if ((err_info = srpds_load_and_del_data(ctx, ds, mod_ns))) {
             goto cleanup;
         }
         if ((err_info = srpds_store_oper_recursively(ctx, mod_data, mod_ns, &order, &bulk))) {
             goto cleanup;
+        }
+
+        /* if index exists and empty data is passed, destroy index (probably ending session) */
+        if ((reply->type != REDIS_REPLY_ERROR) && (mod_data == NULL)) {
+            if ((err_info = srpds_destroy_indices(ctx, mod_ns, 1))) {
+                goto cleanup;
+            }
         }
     } else if (mod_diff) {
         if ((err_info = srpds_store_diff_recursively(ctx, mod_diff, mod_ns, 0, &bulk))) {
@@ -3553,6 +3568,7 @@ srpds_redis_store_commit(const struct lys_module *mod, sr_datastore_t ds, sr_cid
     }
 
 cleanup:
+    freeReplyObject(reply);
     free(mod_ns);
     srpds_bulk_destroy(&bulk);
     return err_info;
@@ -3897,6 +3913,7 @@ srpds_redis_load(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, 
 {
     redis_plg_conn_data_t *pdata = (redis_plg_conn_data_t *)plg_data;
     redisContext *ctx = NULL;
+    redisReply *reply = NULL;
     char *mod_ns = NULL, *xpath_filter = NULL;
     sr_error_info_t *err_info = NULL;
 
@@ -3910,6 +3927,17 @@ srpds_redis_load(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, 
 
     if ((err_info = srpds_get_mod_ns(ds, mod->name, cid, sid, &mod_ns))) {
         goto cleanup;
+    }
+
+    /* new connection id and session id can create a new separate collection of data,
+     * new index should be created */
+    if (ds == SR_DS_OPERATIONAL) {
+        reply = redisCommand(ctx, "FT.INFO %s:data", mod_ns);
+        if (reply->type == REDIS_REPLY_ERROR) {
+            if ((err_info = srpds_create_indices(ctx, mod_ns, 1))) {
+                goto cleanup;
+            }
+        }
     }
 
     if ((err_info = srpds_process_load_paths(mod->ctx, xpaths, xpath_count, (ds == SR_DS_OPERATIONAL), &xpath_filter))) {
@@ -3929,6 +3957,7 @@ srpds_redis_load(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, 
 cleanup:
     free(xpath_filter);
     free(mod_ns);
+    freeReplyObject(reply);
     return err_info;
 }
 
