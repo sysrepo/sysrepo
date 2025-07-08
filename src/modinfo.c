@@ -52,7 +52,8 @@ static sr_error_info_t *sr_modinfo_smdata_parse(void);
 static void sr_modinfo_smdata_free(void);
 
 sr_error_info_t *
-sr_modinfo_init_sm(struct sr_mod_info_s *mod_info, sr_conn_ctx_t *conn, sr_datastore_t ds, sr_datastore_t ds2, uint32_t op_id)
+sr_modinfo_init(struct sr_mod_info_s *mod_info, sr_conn_ctx_t *conn,
+        sr_datastore_t ds, sr_datastore_t ds2, int init_sm, uint32_t op_id)
 {
     sr_error_info_t *err_info = NULL;
 
@@ -63,8 +64,11 @@ sr_modinfo_init_sm(struct sr_mod_info_s *mod_info, sr_conn_ctx_t *conn, sr_datas
     mod_info->conn = conn;
     mod_info->operation_id = op_id ? op_id : ATOMIC_INC_RELAXED(SR_CONN_MAIN_SHM(conn)->new_operation_id);
 
-    /* parse schema mount data, the data is usable until the end of the operation */
-    err_info = sr_modinfo_smdata_parse();
+    if (init_sm) {
+        /* parse schema mount data, the data is usable until the end of the operation */
+        err_info = sr_modinfo_smdata_parse();
+    }
+
     return err_info;
 }
 
@@ -2933,8 +2937,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
 
     if (run_cached_data_cur) {
         /* CACHE READ LOCK */
-        if ((err_info = sr_rwlock(&conn->run_cache_lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
-                __func__, NULL, NULL))) {
+        if ((err_info = sr_prwlock(&sr_run_cache.lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ))) {
             return err_info;
         }
 
@@ -2967,7 +2970,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
         }
 
         /* CACHE READ UNLOCK */
-        sr_rwunlock(&conn->run_cache_lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+        sr_prwunlock(&sr_run_cache.lock);
 
         if (err_info) {
             return err_info;
@@ -3256,7 +3259,7 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int read_only, sr_session_c
         }
 
         /* CACHE READ UNLOCK */
-        sr_rwunlock(&conn->run_cache_lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+        sr_prwunlock(&sr_run_cache.lock);
         cache_lock_mode = SR_LOCK_NONE;
     }
 

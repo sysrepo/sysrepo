@@ -2674,7 +2674,7 @@ sr_shmext_oper_push_update(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *m
     }
 
     SR_LOG_DBG("#SHM before (updating oper push session)");
-    sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
+    sr_shmext_print(SR_CTX_MOD_SHM(sr_yang_ctx), &conn->ext_shm);
 
     /* learn the index if entry exists. If order was not specified, learn/generate the order to use */
     if ((err_info = sr_shmext_oper_push_update_get_idx(conn, shm_mod, mod_name, sid, &order, &found_i))) {
@@ -2710,7 +2710,7 @@ sr_shmext_oper_push_update(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *m
     qsort(conn->ext_shm.addr + shm_mod->oper_push_data, shm_mod->oper_push_data_count, sizeof *item, sr_shmext_oper_push_cmp);
 
     SR_LOG_DBG("#SHM after (updating oper push session)");
-    sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
+    sr_shmext_print(SR_CTX_MOD_SHM(sr_yang_ctx), &conn->ext_shm);
 
 cleanup_ext_shmmod_unlock:
     /* EXT WRITE UNLOCK */
