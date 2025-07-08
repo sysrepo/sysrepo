@@ -2462,7 +2462,7 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
     }
 
     /* init modinfo and parse schema mount data, requires ctx read lock */
-    if ((err_info = sr_modinfo_init_sm(&mod_info, conn, SR_DS_FACTORY_DEFAULT, SR_DS_FACTORY_DEFAULT, operation_id))) {
+    if ((err_info = sr_modinfo_init(&mod_info, conn, SR_DS_FACTORY_DEFAULT, SR_DS_FACTORY_DEFAULT, 1, operation_id))) {
         goto cleanup;
     }
 
@@ -2610,7 +2610,7 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
     if (reset_notif) {
         for (i = 0; i < mod_info.mod_count; ++i) {
             /* find the ntf plugin handle */
-            if ((err_info = sr_ntf_handle_find(conn->mod_shm.addr + mod_info.mods[i].shm_mod->plugins[SR_MOD_DS_NOTIF],
+            if ((err_info = sr_ntf_handle_find(sr_yang_ctx.mod_shm.addr + mod_info.mods[i].shm_mod->plugins[SR_MOD_DS_NOTIF],
                     conn, &ntf_handle))) {
                 goto cleanup;
             }
@@ -4036,12 +4036,10 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
 
     /* find LY module */
     ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, oper_poll_subs->module_name);
-    SR_CHECK_INT_GOTO(!ly_mod, err_info, cleanup);
+    SR_CHECK_INT_RET(!ly_mod, err_info);
 
-    /* init modinfo and parse schema mount data, requires ctx read lock */
-    if ((err_info = sr_modinfo_init_sm(&mod_info, conn, SR_DS_OPERATIONAL, SR_DS_OPERATIONAL, 0))) {
-        goto cleanup;
-    }
+    /* init modinfo */
+    sr_modinfo_init(&mod_info, conn, SR_DS_OPERATIONAL, SR_DS_OPERATIONAL, 0, 0);
 
     if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, 0, &mod_info))) {
         goto cleanup;
