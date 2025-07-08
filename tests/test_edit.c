@@ -907,13 +907,13 @@ test_purge(void **state)
     json = "{"
             "  \"ietf-interfaces:interfaces\": {"
             "    \"interface\": ["
-            "      {\"@\": {\"sysrepo:operation\": \"purge\"}, \"name\": \"eth\"},"
+            "      {\"@\": {\"sysrepo:operation\": \"purge\"}, \"name\": \"z\"},"
             "      {\"name\": \"eth3\", \"type\": \"iana-if-type:ethernetCsmacd\"},"
             "      {\"name\": \"eth4\", \"type\": \"iana-if-type:ethernetCsmacd\"}"
             "    ]"
             "  }"
             "}";
-    lyd_parse_data_mem(sr_session_acquire_context(st->sess), json, LYD_JSON, LYD_PARSE_ONLY, 0, &edit);
+    lyd_parse_data_mem(sr_session_acquire_context(st->sess), json, LYD_JSON, LYD_PARSE_ONLY | LYD_PARSE_ORDERED, 0, &edit);
     sr_session_release_context(st->sess);
     ret = sr_edit_batch(st->sess, edit, "merge");
     assert_int_equal(ret, SR_ERR_OK);
