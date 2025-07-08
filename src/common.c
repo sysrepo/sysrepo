@@ -3097,7 +3097,7 @@ sr_schema_mount_data_get(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struc
     *schema_mount_data = NULL;
 
     /* init modinfo and parse schema mount data, requires ctx read lock */
-    if ((err_info = sr_modinfo_init_sm(&mod_info, conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, 0))) {
+    if ((err_info = sr_modinfo_init(&mod_info, conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, 1, 0))) {
         goto cleanup;
     }
 
