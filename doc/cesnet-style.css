@@ -52,8 +52,8 @@ div.contents {
     color: white;
 }
 
-img.footer {
-    height: 20px;
+.footer img {
+    height: 16px;
 }
 
 .navpath li.navelem a {
