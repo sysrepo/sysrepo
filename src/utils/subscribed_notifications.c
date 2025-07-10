@@ -29,6 +29,7 @@
 
 #include "compat.h"
 #include "config.h"
+#include "context_change.h"
 #include "log.h"
 #include "ly_wrap.h"
 #include "shm_mod.h"
@@ -197,27 +198,28 @@ srsn_subscribe(sr_session_ctx_t *session, const char *stream, const char *xpath_
     const struct lys_module *ly_mod;
     struct srsn_sub *s = NULL;
     struct timespec cur_ts, replay_start;
-    struct ly_ctx *tmp_ctx;
+    int valid;
 
-    /* create new temporary context */
-    if ((err_info = sr_ly_ctx_new(session->conn, &tmp_ctx))) {
-        goto cleanup;
+    /* CONTEXT LOCK */
+    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
+        return sr_api_ret(session, err_info);
     }
 
-    /* use temporary context to load current modules */
-    if ((err_info = sr_shmmod_ctx_load_modules(SR_CTX_MOD_SHM(sr_yang_ctx), tmp_ctx, NULL))) {
-        goto cleanup;
-    }
-
-    /* find the subscribed-notifications module in the temporary context */
-    ly_mod = ly_ctx_get_module_implemented(tmp_ctx, "ietf-subscribed-notifications");
+    /* find the subscribed-notifications module */
+    ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, "ietf-subscribed-notifications");
     if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Module \"ietf-subscribed-notifications\" is not implemented.");
         goto cleanup;
-    } else if (start_time && lys_feature_value(ly_mod, "replay")) {
-        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Module \"ietf-subscribed-notifications\" feature \"replay\" "
-                "is not enabled.");
-        goto cleanup;
+    }
+
+    if (start_time) {
+        /* check whether the replay feature is enabled by checking if a node that depends on this feature is present */
+        sr_lys_find_path(sr_yang_ctx.ly_ctx, "/ietf-subscribed-notifications:replay-completed", &valid, NULL);
+        if (!valid) {
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Module \"ietf-subscribed-notifications\" feature \"replay\" "
+                    "is not enabled.");
+            goto cleanup;
+        }
     }
 
     /* check parameters */
@@ -277,7 +279,9 @@ cleanup:
         }
         srsn_sub_free(s);
     }
-    ly_ctx_destroy(tmp_ctx);
+
+    /* CONTEXT UNLOCK */
+    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
 
     return sr_api_ret(session, err_info);
 }
@@ -346,24 +350,23 @@ srsn_yang_push_on_change(sr_session_ctx_t *session, sr_datastore_t ds, const cha
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
     struct srsn_sub *s = NULL;
-    struct ly_ctx *tmp_ctx;
+    int valid;
 
-    /* create new temporary context */
-    if ((err_info = sr_ly_ctx_new(session->conn, &tmp_ctx))) {
-        goto cleanup;
+    /* CONTEXT LOCK */
+    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
+        return sr_api_ret(session, err_info);
     }
 
-    /* use temporary context to load current modules */
-    if ((err_info = sr_shmmod_ctx_load_modules(SR_CTX_MOD_SHM(sr_yang_ctx), tmp_ctx, NULL))) {
-        goto cleanup;
-    }
-
-    /* find the yang-push module in the temporary context */
-    ly_mod = ly_ctx_get_module_implemented(tmp_ctx, "ietf-yang-push");
+    /* find the yang-push module */
+    ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, "ietf-yang-push");
     if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Module \"ietf-yang-push\" is not implemented.");
         goto cleanup;
-    } else if (lys_feature_value(ly_mod, "on-change")) {
+    }
+
+    /* check whether the on-change feature is enabled by checking if a node that depends on this feature is present */
+    sr_lys_find_path(sr_yang_ctx.ly_ctx, "/ietf-yang-push:resync-subscription", &valid, NULL);
+    if (!valid) {
         sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Module \"ietf-yang-push\" feature \"on-change\" is not enabled.");
         goto cleanup;
     }
@@ -418,7 +421,9 @@ cleanup:
         }
         srsn_sub_free(s);
     }
-    ly_ctx_destroy(tmp_ctx);
+
+    /* CONTEXT UNLOCK */
+    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
 
     return sr_api_ret(session, err_info);
 }
