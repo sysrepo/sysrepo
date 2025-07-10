@@ -1221,42 +1221,71 @@ sr_lycc_update_data_clear(struct sr_data_update_s *data_info)
     lyd_free_siblings(data_info->new.start);
     lyd_free_siblings(data_info->new.run);
     lyd_free_siblings(data_info->new.fdflt);
+
+    memset(data_info, 0, sizeof *data_info);
 }
 
 void
-sr_lycc_update_cleanup(sr_conn_ctx_t *conn, struct sr_data_update_s *data_info, struct lyd_node **sr_mods,
-        struct lyd_node **sr_mods_old, struct lyd_node **sr_del_mods,
-        sr_run_cache_t *run_cache, sr_oper_cache_t *oper_cache)
+sr_lycc_context_upgrade_cleanup(struct sr_lycc_upgrade_data_s *upgrade_data)
 {
-    /* clear the update data that references the old context */
-    if (data_info) {
-        sr_lycc_update_data_clear(data_info);
-        memset(data_info, 0, sizeof *data_info);
+    /* cleanup data_info */
+    if (upgrade_data->data_info) {
+        sr_lycc_update_data_clear(upgrade_data->data_info);
+        upgrade_data->data_info = NULL;
     }
 
-    /* free sr_mods data used for module update */
-    if (sr_mods && *sr_mods) {
-        lyd_free_siblings(*sr_mods);
-        *sr_mods = NULL;
+    /* free old sysrepo module data */
+    if ((upgrade_data->sr_mods_old) && (*upgrade_data->sr_mods_old)) {
+        lyd_free_siblings(*upgrade_data->sr_mods_old);
+        *upgrade_data->sr_mods_old = NULL;
     }
 
-    /* free sr_del_mods data used for module deletion */
-    if (sr_del_mods && *sr_del_mods) {
-        lyd_free_siblings(*sr_del_mods);
-        *sr_del_mods = NULL;
+    /* free deleted sysrepo module data */
+    if ((upgrade_data->sr_del_mods) && (*upgrade_data->sr_del_mods)) {
+        lyd_free_siblings(*upgrade_data->sr_del_mods);
+        *upgrade_data->sr_del_mods = NULL;
     }
 
-    /* free the old sr_mods data used for schema mount update */
-    if (sr_mods_old && *sr_mods_old) {
-        lyd_free_siblings(*sr_mods_old);
-        *sr_mods_old = NULL;
+    /* free new sysrepo module data */
+    if ((upgrade_data->sr_mods) && (*upgrade_data->sr_mods)) {
+        lyd_free_siblings(*upgrade_data->sr_mods);
+        *upgrade_data->sr_mods = NULL;
+    }
+}
+
+sr_error_info_t *
+sr_lycc_context_upgrade_prep_finish(sr_conn_ctx_t *conn, struct ly_ctx *new_ctx,
+        struct sr_lycc_upgrade_data_s *upgrade_data, sr_run_cache_t *run_cache, sr_oper_cache_t *oper_cache)
+{
+    sr_error_info_t *err_info = NULL;
+
+    /* cleanup data_info */
+    if (upgrade_data->data_info) {
+        sr_lycc_update_data_clear(upgrade_data->data_info);
+        upgrade_data->data_info = NULL;
     }
 
-    /* flush the running cache, it too contains pointers to the old context */
-    sr_run_cache_flush(run_cache);
+    /* flush the running and operational caches */
+    if (run_cache) {
+        sr_run_cache_flush(run_cache);
+    }
+    if (oper_cache) {
+        sr_oper_cache_flush(conn, oper_cache);
+    }
 
-    /* flush the operational cache, it too contains pointers to the old context */
-    sr_oper_cache_flush(conn, oper_cache);
+    /* replace old schema mount contexts with new ones in the new libyang context */
+    if (conn && new_ctx && upgrade_data->sr_mods_old && (*upgrade_data->sr_mods_old) &&
+            upgrade_data->sr_mods && (*upgrade_data->sr_mods)) {
+        if ((err_info = sr_schema_mount_contexts_replace(conn, sr_yang_ctx.ly_ctx, new_ctx,
+                *upgrade_data->sr_mods_old, *upgrade_data->sr_mods))) {
+            return err_info;
+        }
+    }
+
+    /* cleanup sysrepo mods data */
+    sr_lycc_context_upgrade_cleanup(upgrade_data);
+
+    return NULL;
 }
 
 sr_error_info_t *
