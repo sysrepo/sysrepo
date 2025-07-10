@@ -3102,8 +3102,8 @@ sr_schema_mount_data_get(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struc
     }
 
     /* get yang library and schema mount modules */
-    ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, "ietf-yang-library");
-    ly_mod2 = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, "ietf-yang-schema-mount");
+    ly_mod = ly_ctx_get_module_implemented(ly_ctx, "ietf-yang-library");
+    ly_mod2 = ly_ctx_get_module_implemented(ly_ctx, "ietf-yang-schema-mount");
     if (!ly_mod || !ly_mod2) {
         /* modules not found, they were not loaded yet */
         goto cleanup;
@@ -3296,7 +3296,7 @@ sr_create_schema_mount_contexts(struct ly_ctx *ly_ctx, struct lyd_node *sr_data,
 
 sr_error_info_t *
 sr_schema_mount_contexts_replace(sr_conn_ctx_t *conn, struct ly_ctx *old_ly_ctx, struct ly_ctx *new_ly_ctx,
-        struct lyd_node *old_sr_data, struct lyd_node *new_sr_data, struct lyd_node **schema_mount_data)
+        struct lyd_node *old_sr_data, struct lyd_node *new_sr_data)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sm_data = NULL;
@@ -3317,16 +3317,15 @@ sr_schema_mount_contexts_replace(sr_conn_ctx_t *conn, struct ly_ctx *old_ly_ctx,
         goto cleanup;
     }
 
+    /* write the schema mount data to a file, so it can later be cached and used */
+    if ((err_info = sr_schema_mount_data_file_write(sm_data))) {
+        goto cleanup;
+    }
+
     /* create the new schema mount contexts */
     err_info = sr_create_schema_mount_contexts(new_ly_ctx, new_sr_data, sm_data);
     if (err_info) {
         goto cleanup;
-    }
-
-    if (schema_mount_data) {
-        /* return the schema mount data */
-        *schema_mount_data = sm_data;
-        sm_data = NULL;
     }
 
 cleanup:

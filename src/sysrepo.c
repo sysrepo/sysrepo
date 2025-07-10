@@ -1448,11 +1448,15 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
     struct lyd_node *mod_data = NULL, *sr_mods = NULL, *sr_del_mods = NULL, *sr_mods_old = NULL;
     sr_int_install_mod_t *nmod;
     struct sr_data_update_s data_info = {0};
+    struct sr_lycc_upgrade_data_s lycc_upgrade_data = {0};
     sr_lock_mode_t ctx_mode = SR_LOCK_NONE;
     uint32_t i, j, search_dir_count = 0;
-    int no_changes, mod_shm_changed = 0, lycc_cleanup_done = 0;
+    int no_changes, mod_shm_changed = 0;
     struct ly_set mod_set = {0}, feat_set = {0};
     char *mod_name = NULL;
+
+    /* initialized context upgrade data for cleanup */
+    SR_LYCC_UPGRADE_DATA_INIT(&lycc_upgrade_data, &data_info, &sr_mods, &sr_mods_old, &sr_del_mods);
 
     /* create new temporary context */
     if ((err_info = sr_ly_ctx_new(conn, &new_ctx))) {
@@ -1576,15 +1580,11 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
         goto error;
     }
 
-    /* replace old schema mount contexts with new ones in the new libyang context */
-    if ((err_info = sr_schema_mount_contexts_replace(conn, sr_yang_ctx.ly_ctx, new_ctx, sr_mods_old, sr_mods, NULL))) {
-        goto error;
+    /* finish preparation before a new context is printed, cleanup references to the old context */
+    if ((err_info = sr_lycc_context_upgrade_prep_finish(conn, new_ctx,
+            &lycc_upgrade_data, &sr_run_cache, &sr_oper_cache))) {
+        goto cleanup;
     }
-
-    /* cleanup leftover data that contain references to the old context,
-     * this needs to be done before a new context is printed */
-    sr_lycc_update_cleanup(conn, &data_info, NULL, &sr_mods_old, NULL, &sr_run_cache, &sr_oper_cache);
-    lycc_cleanup_done = 1;
 
     /* update content ID */
     SR_CONN_MAIN_SHM(conn)->content_id = ly_ctx_get_modules_hash(new_ctx);
@@ -1635,11 +1635,7 @@ cleanup:
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
-    if (!lycc_cleanup_done) {
-        sr_lycc_update_cleanup(conn, &data_info, NULL, &sr_mods_old, NULL, &sr_run_cache, &sr_oper_cache);
-    }
-
-    lyd_free_siblings(sr_mods);
+    sr_lycc_context_upgrade_cleanup(&lycc_upgrade_data);
     ly_ctx_destroy(new_ctx);
     free(mod_name);
 
@@ -1819,12 +1815,15 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
     struct ly_set mod_set = {0};
     struct lyd_node *sr_mods = NULL, *sr_del_mods = NULL, *sr_mods_old = NULL;
     struct sr_data_update_s data_info = {0};
+    struct sr_lycc_upgrade_data_s lycc_upgrade_data = {0};
     const struct lys_module *ly_mod;
     sr_lock_mode_t ctx_mode = SR_LOCK_NONE;
     uint32_t i, mod_state = 0;
-    int lycc_cleanup_done = 0;
 
     SR_CHECK_ARG_APIRET(!conn || !module_names, NULL, err_info);
+
+    /* initialized context upgrade data for cleanup */
+    SR_LYCC_UPGRADE_DATA_INIT(&lycc_upgrade_data, &data_info, &sr_mods, &sr_mods_old, &sr_del_mods);
 
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ_UPGR, 1, __func__))) {
@@ -1921,15 +1920,11 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
         goto cleanup;
     }
 
-    /* replace old schema mount contexts with new ones in the new libyang context */
-    if ((err_info = sr_schema_mount_contexts_replace(conn, sr_yang_ctx.ly_ctx, new_ctx, sr_mods_old, sr_mods, NULL))) {
+    /* finish preparation before a new context is printed, cleanup references to the old context */
+    if ((err_info = sr_lycc_context_upgrade_prep_finish(conn, new_ctx,
+            &lycc_upgrade_data, &sr_run_cache, &sr_oper_cache))) {
         goto cleanup;
     }
-
-    /* cleanup leftover data that contain references to the old context,
-     * this needs to be done before a new context is printed */
-    sr_lycc_update_cleanup(conn, &data_info, &sr_mods, &sr_mods_old, &sr_del_mods, &sr_run_cache, &sr_oper_cache);
-    lycc_cleanup_done = 1;
 
     /* update content ID */
     SR_CONN_MAIN_SHM(conn)->content_id = ly_ctx_get_modules_hash(new_ctx);
@@ -1943,9 +1938,7 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
     sr_generate_notif_module_change_uninstalled(conn, &mod_set);
 
 cleanup:
-    if (!lycc_cleanup_done) {
-        sr_lycc_update_cleanup(conn, &data_info, &sr_mods, &sr_mods_old, &sr_del_mods, &sr_run_cache, &sr_oper_cache);
-    }
+    sr_lycc_context_upgrade_cleanup(&lycc_upgrade_data);
     ly_ctx_destroy(new_ctx);
 
     /* CONTEXT UNLOCK */
@@ -2112,11 +2105,14 @@ sr_update_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *se
     struct ly_set old_mod_set = {0}, upd_mod_set = {0};
     struct lyd_node *sr_mods = NULL, *sr_mods_old = NULL;
     struct sr_data_update_s data_info = {0};
+    struct sr_lycc_upgrade_data_s lycc_upgrade_data = {0};
     sr_lock_mode_t ctx_mode = SR_LOCK_NONE;
     uint32_t search_dir_count = 0;
-    int lycc_cleanup_done = 0;
 
     SR_CHECK_ARG_APIRET(!conn || !schema_paths, NULL, err_info);
+
+    /* initialized context upgrade data for cleanup */
+    SR_LYCC_UPGRADE_DATA_INIT(&lycc_upgrade_data, &data_info, &sr_mods, &sr_mods_old, NULL);
 
     /* create new temporary context */
     if ((err_info = sr_ly_ctx_new(conn, &new_ctx))) {
@@ -2188,15 +2184,11 @@ sr_update_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *se
         goto cleanup;
     }
 
-    /* replace old schema mount contexts with new ones in the new libyang context */
-    if ((err_info = sr_schema_mount_contexts_replace(conn, sr_yang_ctx.ly_ctx, new_ctx, sr_mods_old, sr_mods, NULL))) {
+    /* finish preparation before a new context is printed, cleanup references to the old context */
+    if ((err_info = sr_lycc_context_upgrade_prep_finish(conn, new_ctx,
+            &lycc_upgrade_data, &sr_run_cache, &sr_oper_cache))) {
         goto cleanup;
     }
-
-    /* cleanup leftover data that contain references to the old context,
-     * this needs to be done before a new context is printed */
-    sr_lycc_update_cleanup(conn, &data_info, &sr_mods, &sr_mods_old, NULL, &sr_run_cache, &sr_oper_cache);
-    lycc_cleanup_done = 1;
 
     /* update content ID */
     SR_CONN_MAIN_SHM(conn)->content_id = ly_ctx_get_modules_hash(new_ctx);
@@ -2210,9 +2202,7 @@ sr_update_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *se
     sr_generate_notif_module_change_updated(conn, &old_mod_set, &upd_mod_set);
 
 cleanup:
-    if (!lycc_cleanup_done) {
-        sr_lycc_update_cleanup(conn, &data_info, &sr_mods, &sr_mods_old, NULL, &sr_run_cache, &sr_oper_cache);
-    }
+    sr_lycc_context_upgrade_cleanup(&lycc_upgrade_data);
     ly_ctx_destroy(new_ctx);
 
     /* CONTEXT UNLOCK */
@@ -2630,10 +2620,13 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     struct ly_set mod_set = {0}, feat_set = {0};
     struct lyd_node *sr_mods = NULL, *sr_mods_old = NULL;
     struct sr_data_update_s data_info = {0};
+    struct sr_lycc_upgrade_data_s lycc_upgrade_data = {0};
     const struct lys_module *ly_mod, *upd_ly_mod;
     LY_ERR lyrc;
     sr_lock_mode_t ctx_mode = SR_LOCK_NONE;
-    int lycc_cleanup_done = 0;
+
+    /* initialized context upgrade data for cleanup */
+    SR_LYCC_UPGRADE_DATA_INIT(&lycc_upgrade_data, &data_info, &sr_mods, &sr_mods_old, NULL);
 
     /* create two temporary contexts
      * new_ctx - for the new module with changed features, this context will be printed
@@ -2738,15 +2731,11 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
         goto cleanup;
     }
 
-    /* replace old schema mount contexts with new ones in the new libyang context */
-    if ((err_info = sr_schema_mount_contexts_replace(conn, sr_yang_ctx.ly_ctx, new_ctx, sr_mods_old, sr_mods, NULL))) {
+    /* finish preparation before a new context is printed, cleanup references to the old context */
+    if ((err_info = sr_lycc_context_upgrade_prep_finish(conn, new_ctx,
+            &lycc_upgrade_data, &sr_run_cache, &sr_oper_cache))) {
         goto cleanup;
     }
-
-    /* cleanup leftover data that contain references to the old context,
-     * this needs to be done before a new context is printed */
-    sr_lycc_update_cleanup(conn, &data_info, &sr_mods, &sr_mods_old, NULL, &sr_run_cache, &sr_oper_cache);
-    lycc_cleanup_done = 1;
 
     /* update content ID and safely switch the context */
     SR_CONN_MAIN_SHM(conn)->content_id = ly_ctx_get_modules_hash(new_ctx);
@@ -2760,9 +2749,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     sr_generate_notif_module_change_feature(conn, ly_mod, &feat_set, enable);
 
 cleanup:
-    if (!lycc_cleanup_done) {
-        sr_lycc_update_cleanup(conn, &data_info, &sr_mods, &sr_mods_old, NULL, &sr_run_cache, &sr_oper_cache);
-    }
+    sr_lycc_context_upgrade_cleanup(&lycc_upgrade_data);
     ly_ctx_destroy(new_ctx);
     ly_ctx_destroy(new_ctx2);
 
@@ -3565,13 +3552,13 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
         timeout_ms = SR_OPER_CB_TIMEOUT;
     }
 
-    /* for operational, use operational and running datastore */
-    sr_modinfo_init(&mod_info, session->conn, session->ds, session->ds == SR_DS_OPERATIONAL ? SR_DS_RUNNING : session->ds, 1, 0);
-
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
         return sr_api_ret(session, err_info);
     }
+
+    /* for operational, use operational and running datastore */
+    sr_modinfo_init(&mod_info, session->conn, session->ds, session->ds == SR_DS_OPERATIONAL ? SR_DS_RUNNING : session->ds, 1, 0);
 
     /* prepare data wrapper */
     if ((err_info = _sr_acquire_data(session->conn, NULL, data))) {
@@ -4461,9 +4448,13 @@ sr_schema_mount_data_update(sr_session_ctx_t *session)
     sr_error_info_t *err_info = NULL;
     struct ly_ctx *new_ctx = NULL;
     struct lyd_node *sr_mods = NULL;
+    struct sr_data_update_s data_info = {0};
+    struct sr_lycc_upgrade_data_s lycc_upgrade_data = {0};
     sr_lock_mode_t ctx_mode = SR_LOCK_NONE;
-    struct lyd_node *schema_mount_data = NULL;
-    int lycc_cleanup_done = 0;
+
+    /* initialized context upgrade data for cleanup,
+     * exception: use both old and new modules as they are the same, since only oper data is being updated */
+    SR_LYCC_UPGRADE_DATA_INIT(&lycc_upgrade_data, &data_info, &sr_mods, &sr_mods, NULL);
 
     /* create a new temporary context */
     if ((err_info = sr_ly_ctx_new(session->conn, &new_ctx))) {
@@ -4486,26 +4477,21 @@ sr_schema_mount_data_update(sr_session_ctx_t *session)
     }
     ctx_mode = SR_LOCK_WRITE;
 
-    /* replace old schema mount contexts with new ones in the new libyang context.
-     * Since the modules weren't changed (only oper data was), the same sr_mod data can be used
-     * both as new and old, meaning only the addreses of the orig sm contexts will be changed.
-     */
-    if ((err_info = sr_schema_mount_contexts_replace(session->conn, sr_yang_ctx.ly_ctx, new_ctx,
-            sr_mods, sr_mods, &schema_mount_data))) {
+    /* load all data and prepare their update */
+    if ((err_info = sr_lycc_update_data(session->conn, new_ctx, NULL, NULL, 0, &data_info))) {
         goto cleanup;
     }
 
-    assert(!sr_schema_mount_cache.data);
-
-    /* write the schema mount data to a file, so it can later be cached and used */
-    if ((err_info = sr_schema_mount_data_file_write(schema_mount_data))) {
+    /* store new data if they differ */
+    if ((err_info = sr_lycc_store_data_if_differ(session->conn, new_ctx, sr_mods, &data_info))) {
         goto cleanup;
     }
 
-    /* cleanup leftover data that contain references to the old context,
-     * this needs to be done before a new context is printed */
-    sr_lycc_update_cleanup(session->conn, NULL, &sr_mods, NULL, NULL, &sr_run_cache, &sr_oper_cache);
-    lycc_cleanup_done = 1;
+    /* finish preparation before a new context is printed, cleanup references to the old context */
+    if ((err_info = sr_lycc_context_upgrade_prep_finish(session->conn, new_ctx,
+            &lycc_upgrade_data, &sr_run_cache, &sr_oper_cache))) {
+        goto cleanup;
+    }
 
     /* update the schema mount data ID */
     SR_CONN_MAIN_SHM(session->conn)->schema_mount_data_id++;
@@ -4519,10 +4505,7 @@ sr_schema_mount_data_update(sr_session_ctx_t *session)
     }
 
 cleanup:
-    if (!lycc_cleanup_done) {
-        sr_lycc_update_cleanup(session->conn, NULL, &sr_mods, NULL, NULL, &sr_run_cache, &sr_oper_cache);
-    }
-    lyd_free_siblings(schema_mount_data);
+    sr_lycc_context_upgrade_cleanup(&lycc_upgrade_data);
     ly_ctx_destroy(new_ctx);
 
     if (ctx_mode) {
@@ -4826,72 +4809,13 @@ cleanup:
     return err_info;
 }
 
-static sr_error_info_t *
-sr_apply_operational_changes(sr_session_ctx_t *session, uint32_t timeout_ms)
-{
-    sr_error_info_t *err_info = NULL, *err_info2 = NULL;
-    struct sr_mod_info_s mod_info;
-    int update_sm_data = 0;
-
-    /* init modinfo and parse schema mount data, requires ctx read lock (have edit => holding lock) */
-    if ((err_info = sr_modinfo_init(&mod_info, session->conn, session->ds, session->ds, 1, 0))) {
-        goto cleanup;
-    }
-
-    /* apply operational changes */
-    if ((err_info = sr_apply_oper_changes(&mod_info, session, NULL, 0, timeout_ms, &err_info2, &update_sm_data))) {
-        goto cleanup;
-    }
-    if (err_info2) {
-        goto cleanup;
-    }
-
-    if (update_sm_data) {
-        /* schema mount data changed, new context needs to be created,
-         * the following needs to be freed before the current context is overwritten */
-        sr_shmmod_modinfo_unlock(&mod_info);
-        sr_modinfo_erase(&mod_info);
-        sr_release_data(session->dt[session->ds].edit);
-        session->dt[session->ds].edit = NULL;
-
-        /* CONTEXT READ UPGR LOCK - context may be overwritten */
-        if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ_UPGR, 0, __func__))) {
-            return err_info;
-        }
-
-        /* operational schema-mount data were changed, prepare a new context to be able to use them */
-        err_info = sr_schema_mount_data_update(session);
-
-        /* CONTEXT READ UPGR UNLOCK */
-        sr_lycc_unlock(session->conn, SR_LOCK_READ_UPGR, 0, __func__);
-        return err_info;
-    }
-
-cleanup:
-    /* MODULES UNLOCK */
-    sr_shmmod_modinfo_unlock(&mod_info);
-    sr_modinfo_erase(&mod_info);
-
-    if (!err_info && !err_info2) {
-        /* free applied edit */
-        sr_release_data(session->dt[session->ds].edit);
-        session->dt[session->ds].edit = NULL;
-    }
-
-    if (err_info2) {
-        /* return callback error if some was generated */
-        sr_errinfo_merge(&err_info, err_info2);
-    }
-
-    return err_info;
-}
-
 API int
 sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms)
 {
     sr_error_info_t *err_info = NULL, *err_info2 = NULL;
-    struct sr_mod_info_s mod_info;
+    struct sr_mod_info_s mod_info = {0};
     uint32_t mi_opts;
+    int update_sm_data = 0;
 
     SR_CHECK_ARG_APIRET(!session || !SR_IS_STANDARD_DS(session->ds), session, err_info);
 
@@ -4908,15 +4832,39 @@ sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms)
         timeout_ms = SR_CHANGE_CB_TIMEOUT;
     }
 
-    /* handle operational ds as a special case */
-    if (session->ds == SR_DS_OPERATIONAL) {
-        err_info = sr_apply_operational_changes(session, timeout_ms);
-        SR_LOG_DBG("Applying operational datastore changes %s.", err_info ? "failed" : "success");
-        return sr_api_ret(session, err_info);
-    }
-
     /* init modinfo and parse schema mount data, requires ctx read lock (have edit => holding lock) */
     if ((err_info = sr_modinfo_init(&mod_info, session->conn, session->ds, session->ds, 1, 0))) {
+        goto cleanup;
+    }
+
+    /* handle operational ds as a special case */
+    if (session->ds == SR_DS_OPERATIONAL) {
+        err_info = sr_apply_oper_changes(&mod_info, session, NULL, 0, timeout_ms, &err_info2, &update_sm_data);
+        if (err_info || err_info2) {
+            goto cleanup;
+        }
+
+        if (update_sm_data) {
+            /* CONTEXT READ UPGR LOCK - sm data changed, new context will be created */
+            if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ_UPGR, 0, __func__))) {
+                goto cleanup;
+            }
+
+            /* the following needs to be freed before the current context is overwritten */
+            sr_shmmod_modinfo_unlock(&mod_info);
+            sr_modinfo_erase(&mod_info);
+            memset(&mod_info, 0, sizeof mod_info);
+            sr_release_data(session->dt[session->ds].edit);
+            session->dt[session->ds].edit = NULL;
+
+            /* operational schema-mount data were changed, prepare a new context to be able to use them */
+            err_info = sr_schema_mount_data_update(session);
+
+            /* CONTEXT READ UPGR UNLOCK */
+            sr_lycc_unlock(session->conn, SR_LOCK_READ_UPGR, 0, __func__);
+        }
+
+        /* end */
         goto cleanup;
     }
 
@@ -5326,12 +5274,15 @@ sr_discard_oper_changes_internal(sr_session_ctx_t *session, const struct lys_mod
     }
 
     if (update_sm_data) {
-        /* MODULES UNLOCK */
+        /* MODULES UNLOCK, free modinfo before a new context is printed */
         sr_shmmod_modinfo_unlock(&mod_info);
         sr_modinfo_erase(&mod_info);
+        memset(&mod_info, 0, sizeof mod_info);
 
         /* operational schema-mount data were changed, prepare a new context to be able to use them */
-        return sr_schema_mount_data_update(session);
+        if ((err_info = sr_schema_mount_data_update(session))) {
+            goto cleanup;
+        }
     }
 
 cleanup:
@@ -6622,6 +6573,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     sr_subscr_options_t sub_opts;
     sr_mod_t *shm_mod;
     uint16_t config_flag;
+    sr_lock_mode_t change_sub_mode = SR_LOCK_NONE, subs_mode = SR_LOCK_NONE;
 
     SR_CHECK_ARG_APIRET(!session || !SR_IS_STANDARD_DS(session->ds) || SR_IS_EVENT_SESS(session) || !module_name ||
             !callback || !subscription, session, err_info);
@@ -6689,25 +6641,27 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
             conn->cid, __func__, NULL, NULL))) {
         goto cleanup;
     }
+    change_sub_mode = SR_LOCK_WRITE;
 
     if (opts & SR_SUBSCR_ENABLED) {
         /* call the callback with the current configuration, keep any used modules locked in mod_info */
         if ((err_info = sr_module_change_subscribe_enable(session, &mod_info, ly_mod, xpath, callback, private_data,
                 sub_id, opts))) {
-            goto cleanup_unlock1;
+            goto cleanup;
         }
     }
 
     /* SUBS WRITE LOCK */
     if ((err_info = sr_rwlock(&(*subscription)->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
             __func__, NULL, NULL))) {
-        goto cleanup_unlock1;
+        goto cleanup;
     }
+    subs_mode = SR_LOCK_WRITE;
 
     /* add module subscription into ext SHM and create separate specific SHM segment */
     if ((err_info = sr_shmext_change_sub_add(conn, shm_mod, session->ds, sub_id, xpath, priority, sub_opts,
             (*subscription)->evpipe_num))) {
-        goto cleanup_unlock2;
+        goto cleanup;
     }
 
     /* add subscription into structure */
@@ -6722,7 +6676,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
         goto error2;
     }
 
-    goto cleanup_unlock2;
+    goto cleanup;
 
 error2:
     sr_subscr_change_sub_del(*subscription, sub_id);
@@ -6732,13 +6686,16 @@ error1:
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
-cleanup_unlock2:
-    /* SUBS WRITE UNLOCK */
-    sr_rwunlock(&(*subscription)->subs_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
+cleanup:
+    if (subs_mode) {
+        /* SUBS WRITE UNLOCK */
+        sr_rwunlock(&(*subscription)->subs_lock, 0, subs_mode, conn->cid, __func__);
+    }
 
-cleanup_unlock1:
-    /* CHANGE SUB UNLOCK */
-    sr_rwunlock(&shm_mod->change_sub[session->ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    if (change_sub_mode) {
+        /* CHANGE SUB UNLOCK */
+        sr_rwunlock(&shm_mod->change_sub[session->ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, change_sub_mode, conn->cid, __func__);
+    }
 
     /* if there are any modules, unlock them after the enabled event was handled and the subscription was added
      * to avoid losing any changes */
@@ -6748,7 +6705,6 @@ cleanup_unlock1:
 
     sr_modinfo_erase(&mod_info);
 
-cleanup:
     /* CONTEXT UNLOCK */
     sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
     return sr_api_ret(session, err_info);
