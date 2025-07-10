@@ -1018,16 +1018,17 @@ int sr_conn_is_alive(sr_cid_t cid);
 /**
  * @brief Destroy schema mount contexts in the old context and create new ones in the new context based on @p new_sr_data.
  *
+ * Also write the new schema mount data to a file (cache).
+ *
  * @param[in] conn Connection to use.
  * @param[in] old_ly_ctx Old libyang context to destroy schema mount contexts in.
  * @param[in] new_ly_ctx New libyang context to create schema mount contexts in.
  * @param[in] old_sr_data Old sysrepo data to find the old schema mount contexts with.
  * @param[in] new_sr_data New sysrepo data to find the new schema mount contexts with.
- * @param[out] schema_mount_data Optional new schema mount data, should be freed by the caller.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_schema_mount_contexts_replace(sr_conn_ctx_t *conn, struct ly_ctx *old_ly_ctx, struct ly_ctx *new_ly_ctx,
-        struct lyd_node *old_sr_data, struct lyd_node *new_sr_data, struct lyd_node **schema_mount_data);
+        struct lyd_node *old_sr_data, struct lyd_node *new_sr_data);
 
 /**
  * @brief Write schema mount data to a file.

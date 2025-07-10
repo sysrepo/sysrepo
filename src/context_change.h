@@ -24,6 +24,21 @@
 #include "sysrepo_types.h"
 
 /**
+ * @brief Initialize structure for holding data needed for context upgrade and cleanup.
+ *
+ * @param[in] upgrade_data Upgrade data structure to initialize.
+ * @param[in] _data_info Data update information.
+ * @param[in] _sr_mods Mandatory SR internal module data AFTER a context change.
+ * @param[in] _sr_mods_old Mandatory SR internal module data BEFORE a context change. Can be the same as @p _sr_mods.
+ * @param[in] _sr_del_mods Optional SR internal module data of deleted modules.
+ */
+#define SR_LYCC_UPGRADE_DATA_INIT(upgrade_data, _data_info, _sr_mods, _sr_mods_old, _sr_del_mods) \
+    (upgrade_data)->data_info = (_data_info); \
+    (upgrade_data)->sr_mods = (_sr_mods); \
+    (upgrade_data)->sr_mods_old = (_sr_mods_old); \
+    (upgrade_data)->sr_del_mods = (_sr_del_mods)
+
+/**
  * @brief Structure for holding old and new data when being updated.
  */
 struct sr_data_update_s {
@@ -33,6 +48,16 @@ struct sr_data_update_s {
         struct lyd_node *fdflt;
     } old;
     struct sr_data_update_set_s new;
+};
+
+/**
+ * @brief Structure for holding data needed for context upgrade and cleanup.
+ */
+struct sr_lycc_upgrade_data_s {
+    struct sr_data_update_s *data_info;     /**< Data update information. */
+    struct lyd_node **sr_mods;              /**< SR internal module data AFTER a context change. */
+    struct lyd_node **sr_mods_old;          /**< SR internal module data BEFORE a context change. */
+    struct lyd_node **sr_del_mods;          /**< SR internal module data of deleted modules. */
 };
 
 /**
@@ -211,6 +236,32 @@ void sr_lycc_update_data_clear(struct sr_data_update_s *data_info);
 void sr_lycc_update_cleanup(sr_conn_ctx_t *conn, struct sr_data_update_s *data_info, struct lyd_node **sr_mods,
         struct lyd_node **sr_mods_old, struct lyd_node **sr_del_mods,
         sr_run_cache_t *run_cache, sr_oper_cache_t *oper_cache);
+
+/**
+ * @brief Cleanup during a libyang context upgrade.
+ *
+ * During a context upgrade it is necessary to cleanup all the data that
+ * contain references to the old context, because its memory will be overwritten.
+ *
+ * @param[in,out] upgrade_data Upgrade data to cleanup. Freed members are set to NULL.
+ */
+void sr_lycc_context_upgrade_cleanup(struct sr_lycc_upgrade_data_s *upgrade_data);
+
+/**
+ * @brief Finish preparations for a libyang context upgrade.
+ *
+ * Once this functions finishes, the new context can safely be printed.
+ * Freed @p upgrade_data members are set to NULL, so it is safe to call this function again.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] new_ctx New libyang context that will later be printed.
+ * @param[in,out] upgrade_data Upgrade data to use, must be initialized with ::SR_LYCC_UPGRADE_DATA_INIT().
+ * @param[in,out] run_cache Running cache to flush.
+ * @param[in,out] oper_cache Operational cache to flush.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t * sr_lycc_context_upgrade_prep_finish(sr_conn_ctx_t *conn, struct ly_ctx *new_ctx,
+        struct sr_lycc_upgrade_data_s *upgrade_data, sr_run_cache_t *run_cache, sr_oper_cache_t *oper_cache);
 
 /**
  * @brief Store a libyang context to shared memory.
