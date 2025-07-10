@@ -2108,8 +2108,6 @@ test_factory_reset(void **state)
     assert_string_equal(str, xml);
     free(str);
 
-    sr_release_context(st->conn);
-
     /* cleanup */
     sr_unsubscribe(subscr);
 
@@ -2124,7 +2122,7 @@ test_factory_reset(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* execute #2, reset only candidate */
-    ret = lyd_new_path(NULL, st->ly_ctx, "/ietf-factory-default:factory-reset/sysrepo-factory-default:datastores/datastore",
+    ret = lyd_new_path(NULL, ly_ctx, "/ietf-factory-default:factory-reset/sysrepo-factory-default:datastores/datastore",
             "ietf-datastores:candidate", 0, &input);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_rpc_send_tree(st->sess, input, 0, &output);
@@ -2167,6 +2165,8 @@ test_factory_reset(void **state)
     assert_int_equal(ret, LY_SUCCESS);
     assert_string_equal(str, xml);
     free(str);
+
+    sr_release_context(st->conn);
 }
 
 /* MAIN */
