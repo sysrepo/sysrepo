@@ -118,7 +118,7 @@ struct sr_yang_ctx_s sr_yang_ctx = {
     .ly_ctx_shm = SR_SHM_INITIALIZER,
     .ly_ctx = NULL,
     .mod_shm = SR_SHM_INITIALIZER,
-    .remap_lock = PTHREAD_RWLOCK_INITIALIZER,
+    .remap_lock = SR_RWLOCK_INITIALIZER,
     .refcount = 0,
     .create_lock = PTHREAD_MUTEX_INITIALIZER,
 };

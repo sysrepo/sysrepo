@@ -203,7 +203,7 @@ struct sr_yang_ctx_s {
     struct ly_ctx *ly_ctx;          /**< Process-local libyang context. */
 
     sr_shm_t mod_shm;               /**< YANG modules SHM. */
-    pthread_rwlock_t remap_lock;    /**< Lock for remapping libyang modules SHM. */
+    sr_rwlock_t remap_lock;         /**< Lock for remapping libyang modules SHM. */
 
     uint32_t refcount;              /**< Number of connections in this process using this context. */
     pthread_mutex_t create_lock;    /**< Lock for refcount and managing the context on connection creation and deletion. */
