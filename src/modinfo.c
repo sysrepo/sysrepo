@@ -1979,10 +1979,10 @@ sr_modinfo_module_data_load_yanglib(struct sr_mod_info_s *mod_info, struct sr_mo
     struct ly_set *set = NULL;
 
     /* get content-id */
-    content_id = SR_CONN_MAIN_SHM(mod_info->conn)->content_id;
+    content_id = ly_ctx_get_modules_hash(mod->ly_mod->ctx);
 
     /* get the data from libyang */
-    if ((err_info = sr_ly_ctx_get_yanglib_data(sr_yang_ctx.ly_ctx, &mod_data, content_id))) {
+    if ((err_info = sr_ly_ctx_get_yanglib_data(mod->ly_mod->ctx, &mod_data, content_id))) {
         goto cleanup;
     }
 
