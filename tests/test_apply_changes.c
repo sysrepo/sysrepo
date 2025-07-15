@@ -34,6 +34,9 @@
 #include "sysrepo.h"
 #include "tests/tcommon.h"
 
+/**< loop count for tests where applicable */
+#define TEST_ITERATIONS 50
+
 struct state {
     sr_conn_ctx_t *conn;
     sr_session_ctx_t *sm_sess;
@@ -7091,8 +7094,6 @@ test_write_starve(void **state)
 }
 
 /* TEST */
-#define APPLY_ITERATIONS 50
-
 static void *
 apply_when1_thread(void *arg)
 {
@@ -7106,7 +7107,7 @@ apply_when1_thread(void *arg)
     ret = sr_session_start(conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
-    for (int i = 0; i < APPLY_ITERATIONS; i++) {
+    for (int i = 0; i < TEST_ITERATIONS; i++) {
         /* let other thread also run */
         pthread_barrier_wait(&st->barrier);
 
@@ -7154,7 +7155,7 @@ apply_when2_thread(void *arg)
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    for (int i = 0; i < APPLY_ITERATIONS; i++) {
+    for (int i = 0; i < TEST_ITERATIONS; i++) {
         /* let other thread also run */
         pthread_barrier_wait(&st->barrier);
 
@@ -8100,6 +8101,93 @@ test_diff_reuse(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 }
 
+/* TEST */
+static void *
+locked_write_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    uint32_t i;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set some data */
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth0']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']"
+            "/prefix-length", "24", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* keep changing data in locked DS */
+    for (i = 0; i < TEST_ITERATIONS / 2; ++i) {
+        ret = sr_lock(sess, NULL, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth52']/ietf-ip:ipv4/address[ip='192.168.2.100']"
+                "/prefix-length", (i % 2) ? "16" : "24", NULL, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+        ret = sr_apply_changes(sess, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        ret = sr_unlock(sess, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+    }
+
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void *
+unlocked_write_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    uint32_t i;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set some data */
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth1']/ietf-ip:ipv4/address[ip='192.168.2.100']"
+            "/prefix-length", "24", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* keep changing data in unlocked DS */
+    for (i = 0; i < TEST_ITERATIONS; ++i) {
+        ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth1']/ietf-ip:ipv4/address[ip='192.168.2.100']"
+                "/prefix-length", (i % 2) ? "16" : "24", NULL, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+        do {
+            ret = sr_apply_changes(sess, 0);
+        } while (ret == SR_ERR_LOCKED);
+        assert_int_equal(ret, SR_ERR_OK);
+    }
+
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void
+test_lock_write(void **state)
+{
+    pthread_t tid[2];
+
+    pthread_create(&tid[0], NULL, locked_write_thread, *state);
+    pthread_create(&tid[1], NULL, unlocked_write_thread, *state);
+
+    pthread_join(tid[0], NULL);
+    pthread_join(tid[1], NULL);
+}
+
 /* MAIN */
 int
 main(void)
@@ -8134,6 +8222,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_mult_update, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_done_timeout_priority, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_list_replace, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_lock_write, setup_f, teardown_f),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

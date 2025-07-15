@@ -2505,8 +2505,9 @@ sr_sub_rwlock(sr_rwlock_t *rwlock, struct timespec *timeout_abs, sr_lock_mode_t 
         ret = 0;
         wr_urged = 0;
         while (!ret && (rwlock->readers[0] || (rwlock->writer && !wr_urged))) {
-            if (!rwlock->writer) {
-                /* urge waiting for write lock */
+            if (!rwlock->writer && !rwlock->upgr) {
+                /* urge waiting for write lock, but let upgradeable read lock go first (to avoid dead-lock, it will not
+                 * release its write lock) */
                 rwlock->writer = cid;
                 wr_urged = 1;
             }
@@ -2744,9 +2745,6 @@ sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
         /* consistency checks */
         assert(rwlock->upgr == cid);
 
-        /* clear the flag, wanting write now */
-        rwlock->upgr = 0;
-
         if (rwlock->readers[1] || (rwlock->read_count[0] > 1) || rwlock->writer) {
             /* instead of waiting, try to recover the lock immediately */
             sr_rwlock_recover(rwlock, func, cb, cb_data);
@@ -2778,7 +2776,6 @@ sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
             if (wr_urged) {
                 rwlock->writer = 0;
             }
-            rwlock->upgr = cid;
 
             sr_errinfo_new_lock(&err_info, func, ret, rwlock);
             goto cleanup_unlock;
@@ -2793,9 +2790,9 @@ sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
             if (wr_urged) {
                 rwlock->writer = 0;
             }
-            rwlock->upgr = cid;
             goto cleanup_unlock;
         }
+        rwlock->upgr = 0;
         if (!wr_urged) {
             rwlock->writer = cid;
         }
