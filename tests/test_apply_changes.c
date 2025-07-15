@@ -8158,7 +8158,9 @@ unlocked_write_thread(void *arg)
     ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth1']/ietf-ip:ipv4/address[ip='192.168.2.100']"
             "/prefix-length", "24", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess, 0);
+    do {
+        ret = sr_apply_changes(sess, 0);
+    } while (ret == SR_ERR_LOCKED);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* keep changing data in unlocked DS */
