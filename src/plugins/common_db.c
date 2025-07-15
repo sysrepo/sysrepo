@@ -422,6 +422,44 @@ srpds_escape_string(const char *plg_name, const char *string, char **escaped_str
     return err_info;
 }
 
+sr_error_info_t *
+srpds_find_node(const char *plg_name, const struct lyd_node *node, const struct lyd_node *tree, struct lyd_node **match)
+{
+    sr_error_info_t *err_info = NULL;
+    char *path = NULL;
+
+    if (node->parent) {
+        /* path to the parent node */
+        path = lyd_path((const struct lyd_node *)node->parent, LYD_PATH_STD, NULL, 0);
+        if (!path) {
+            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_path()", "");
+            goto cleanup;
+        }
+
+        /* find the parent node in mod_data */
+        if (lyd_find_path(tree, path, 0, match) != LY_SUCCESS) {
+            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_find_path()", "");
+            goto cleanup;
+        }
+
+        /* find the node in mod_data that matches the sibling in mod_diff */
+        if (lyd_find_sibling_val(lyd_child(*match), node->schema, NULL, 0, match) != LY_SUCCESS) {
+            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_find_sibling_val()", "");
+            goto cleanup;
+        }
+    } else {
+        /* find the node in mod_data that matches the sibling in mod_diff */
+        if (lyd_find_sibling_val(tree, node->schema, NULL, 0, match) != LY_SUCCESS) {
+            ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_find_sibling_val()", "");
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    free(path);
+    return err_info;
+}
+
 int
 srpds_uo_elem_comp(const void *a, const void *b)
 {
@@ -632,10 +670,15 @@ srpds_add_mod_data(const char *plg_name, const struct ly_ctx *ly_ctx, sr_datasto
         }
 
         /* store nodes and their orders of userordered lists and leaflists for final ordering */
-        if ((type == SRPDS_DB_LY_LIST_UO) || (type == SRPDS_DB_LY_LEAFLIST_UO)) {
+        switch (type) {
+        case SRPDS_DB_LY_LIST_UO:
+        case SRPDS_DB_LY_LEAFLIST_UO:
             if ((err_info = srpds_add_uo_lists(plg_name, new_node, order, path_no_pred, uo_lists))) {
                 goto cleanup;
             }
+            break;
+        default:
+            break;
         }
 
         /* for default nodes add a flag */
@@ -673,7 +716,7 @@ cleanup:
 }
 
 sr_error_info_t *
-srpds_get_values(const char *plg_name, struct lyd_node *node, const char **value, const char **prev, const char **orig_prev,
+srpds_get_values(const char *plg_name, const struct lyd_node *node, const char **value, const char **prev, const char **orig_prev,
         char **prev_pred, char **orig_prev_pred, char **any_value, int32_t *valtype)
 {
     sr_error_info_t *err_info = NULL;
@@ -694,7 +737,11 @@ srpds_get_values(const char *plg_name, struct lyd_node *node, const char **value
             goto cleanup;
         }
         *value = *any_value;
+    } else if (!(node->schema->flags & LYS_CONFIG_W)) {
+        /* state data */
+        *value = lyd_get_value(node);
     } else if (lysc_is_userordered(node->schema)) {
+        /* configuration userordered lists and leaf-lists */
         /* get value of the previous node */
         if (node->schema->nodetype == LYS_LEAFLIST) {
             *prev = lyd_get_meta_value(lyd_find_meta(node->meta, NULL, "yang:value"));
@@ -719,6 +766,7 @@ srpds_get_values(const char *plg_name, struct lyd_node *node, const char **value
             *orig_prev_pred = (char *)*orig_prev;
         }
     } else {
+        /* the rest */
         *value = lyd_get_value(node);
     }
 
@@ -727,7 +775,7 @@ cleanup:
 }
 
 void
-srpds_cleanup_values(struct lyd_node *node, const char *prev, const char *orig_prev, char **prev_pred, char **orig_prev_pred,
+srpds_cleanup_values(const struct lyd_node *node, const char *prev, const char *orig_prev, char **prev_pred, char **orig_prev_pred,
         char **any_value)
 {
     free(*any_value);
