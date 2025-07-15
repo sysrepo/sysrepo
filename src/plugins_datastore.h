@@ -179,7 +179,7 @@ typedef sr_error_info_t *(*srds_store_commit)(const struct lys_module *mod, sr_d
  * @param[in] xpaths Array of XPaths selecting the required data, NULL if all the module data are needed.
  * @param[in] xpath_count Number of @p xpaths.
  * @param[in] plg_data Plugin data.
- * @param[out] mod_data Loaded module data.
+ * @param[out] mod_data Loaded module data using the context of @p mod.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
