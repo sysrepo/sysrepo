@@ -179,6 +179,18 @@ sr_error_info_t *srpds_gid2grp(const char *plg_name, gid_t gid, char **group);
 sr_error_info_t *srpds_escape_string(const char *plg_name, const char *string, char **escaped_string);
 
 /**
+ * @brief Find the node @p node from one tree in another tree @p tree and store it in @p match .
+ *
+ * @param[in] plg_name Plugin name.
+ * @param[in] node Node to find.
+ * @param[in] tree Data tree to search.
+ * @param[out] match Found node. NULL in case it was not found.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+sr_error_info_t *srpds_find_node(const char *plg_name, const struct lyd_node *node, const struct lyd_node *tree, struct lyd_node **match);
+
+/**
  * @brief Compare function for qsort comparing elements of userordered lists and leaflists.
  *
  * @param[in] a First element of userordered list or leaflist.
@@ -263,7 +275,7 @@ sr_error_info_t *srpds_add_mod_data(const char *plg_name, const struct ly_ctx *l
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
-sr_error_info_t *srpds_get_values(const char *plg_name, struct lyd_node *node, const char **value, const char **prev,
+sr_error_info_t *srpds_get_values(const char *plg_name, const struct lyd_node *node, const char **value, const char **prev,
         const char **orig_prev, char **prev_pred, char **orig_prev_pred, char **any_value, int32_t *valtype);
 
 /**
@@ -276,7 +288,7 @@ sr_error_info_t *srpds_get_values(const char *plg_name, struct lyd_node *node, c
  * @param[in,out] orig_prev_pred Original value of the node before this node in predicate.
  * @param[in,out] any_value Value of the type 'any value'.
  */
-void srpds_cleanup_values(struct lyd_node *node, const char *prev, const char *orig_prev, char **prev_pred,
+void srpds_cleanup_values(const struct lyd_node *node, const char *prev, const char *orig_prev, char **prev_pred,
         char **orig_prev_pred, char **any_value);
 
 #endif /* _COMMON_DB_H */
