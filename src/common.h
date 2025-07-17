@@ -466,6 +466,12 @@ sr_error_info_t *sr_remove_module_yang_r(const struct lys_module *ly_mod, const 
  */
 int sr_ly_module_is_internal(const struct lys_module *ly_mod);
 
+/**
+ * @brief Check whether a file exists.
+ *
+ * @param[in] path Path to the file.
+ * @return 0 if file does not exist, non-zero if it exists.
+ */
 int sr_file_exists(const char *path);
 
 /**
@@ -537,6 +543,12 @@ sr_error_info_t *sr_path_main_shm(char **path);
  */
 sr_error_info_t *sr_path_mod_shm(char **path);
 
+/**
+ * @brief Get the path of the ctx SHM.
+ *
+ * @param[out] path Created path. Should be freed by the caller.
+ * @return err_info, NULL on success.
+ */
 sr_error_info_t *sr_path_ctx_shm(char **path);
 
 /**
@@ -895,26 +907,11 @@ void sr_munlock(pthread_mutex_t *lock);
 sr_error_info_t *sr_rwlock_init(sr_rwlock_t *rwlock, int shared);
 
 /**
- * @brief Initialize a classic pthread RW lock.
- *
- * @param[in,out] rwlock RW lock to initialize.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_prwlock_init(pthread_rwlock_t *rwlock);
-
-/**
  * @brief Destroy a sysrepo RW lock.
  *
  * @param[in] rwlock RW lock to destroy.
  */
 void sr_rwlock_destroy(sr_rwlock_t *rwlock);
-
-/**
- * @brief Destroy a classic pthread RW lock.
- *
- * @param[in] rwlock RW lock to destroy.
- */
-void sr_prwlock_destroy(pthread_rwlock_t *rwlock);
 
 /**
  * @brief Lock a sysrepo RW lock with additional options for sub SHM. On failure, the lock is not changed in any way.
@@ -1029,14 +1026,6 @@ int sr_conn_is_alive(sr_cid_t cid);
  */
 sr_error_info_t *sr_schema_mount_contexts_replace(sr_conn_ctx_t *conn, struct ly_ctx *old_ly_ctx, struct ly_ctx *new_ly_ctx,
         struct lyd_node *old_sr_data, struct lyd_node *new_sr_data);
-
-/**
- * @brief Write schema mount data to a file.
- *
- * @param[in] schema_mount_data Schema mount data to write.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_schema_mount_data_file_write(struct lyd_node *schema_mount_data);
 
 /**
  * @brief Parse schema mount data from a file.
