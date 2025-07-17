@@ -950,9 +950,10 @@ sr_error_info_t *sr_rwlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mod
  * @param[in] rwlock RW lock to lock.
  * @param[in] timeout_ms Timeout in ms for locking.
  * @param[in] mode Lock mode to set, either ::SR_LOCK_READ or ::SR_LOCK_WRITE.
+ * @param[in] func Name of the calling function for logging.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_prwlock(pthread_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode);
+sr_error_info_t *sr_prwlock(pthread_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, const char *func);
 
 /**
  * @brief Relock a sysrepo RW lock (upgrade or downgrade). On failure, the lock is not changed in any way.
@@ -982,9 +983,10 @@ sr_error_info_t *sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_m
  * @param[in] rwlock RW lock to relock.
  * @param[in] timeout_ms Timeout in ms for locking.
  * @param[in] mode Lock mode to set, either ::SR_LOCK_READ or ::SR_LOCK_WRITE.
+ * @param[in] func Name of the calling function for logging.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_prwrelock(pthread_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode);
+sr_error_info_t *sr_prwrelock(pthread_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, const char *func);
 
 /**
  * @brief Unlock a sysrepo RW lock. On failure, whatever steps are possible are still performed.
@@ -1001,8 +1003,9 @@ void sr_rwunlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, 
  * @brief Unlock a classic pthread RW lock.
  *
  * @param[in] rwlock RW lock to unlock.
+ * @param[in] func Name of the calling function for logging.
  */
-void sr_prwunlock(pthread_rwlock_t *rwlock);
+void sr_prwunlock(pthread_rwlock_t *rwlock, const char *func);
 
 /**
  * @brief Check whether a connection is alive.
