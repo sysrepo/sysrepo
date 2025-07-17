@@ -58,6 +58,7 @@ setup(void **state)
         TESTS_SRC_DIR "/files/when2.yang",
         TESTS_SRC_DIR "/files/defaults.yang",
         TESTS_SRC_DIR "/files/sm.yang",
+        TESTS_SRC_DIR "/files/ops.yang",
         NULL
     };
 
@@ -101,6 +102,7 @@ teardown(void **state)
         "ietf-ip",
         "ietf-interfaces",
         "test",
+        "ops",
         NULL
     };
 
@@ -6937,6 +6939,61 @@ test_change_schema_mount(void **state)
     pthread_join(tid[1], NULL);
 }
 
+static void
+test_change_schema_mount_point(void **arg)
+{
+    struct state *st = (struct state *)*arg;
+    sr_session_ctx_t *sess;
+    int ret;
+    struct lyd_node *notif = NULL;
+    sr_data_t *data = NULL;
+    const struct ly_ctx *ly_ctx;
+    char *str1 = NULL;
+
+    /* create a schema mount point */
+    ret = sr_session_start(st->conn, SR_DS_OPERATIONAL, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess,
+            "/ietf-yang-schema-mount:schema-mounts/mount-point[module='sm'][label='root']/shared-schema", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* try to parse some data */
+    ly_ctx = sr_acquire_context(st->conn);
+    assert_non_null(ly_ctx);
+    assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, ly_ctx, "/sm:root/ops:notif4/l", "val", 0, &notif));
+    lyd_free_all(notif);
+    sr_release_context(st->conn);
+
+    /* create some mount point data */
+    sr_session_switch_ds(sess, SR_DS_RUNNING);
+    ret = sr_set_item_str(sess,
+            "/sm:root/ops:cont/list1[k='key']/cont2/nl", "value", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* delete the mount point */
+    sr_session_switch_ds(sess, SR_DS_OPERATIONAL);
+    ret = sr_delete_item(sess, "/ietf-yang-schema-mount:schema-mounts/mount-point[module='sm'][label='root']", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check if the mount point data is still there */
+    ret = sr_get_data(sess, "/sm:root", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(data);
+    assert_int_equal(ret, LY_SUCCESS);
+    assert_null(str1);
+
+    /* cleanup */
+    sr_session_stop(sess);
+}
+
 /* TEST */
 static int
 oper_write_starve_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
@@ -8220,6 +8277,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_change_userord, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_enabled, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_schema_mount, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_change_schema_mount_point, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_write_starve, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_mult_update, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_done_timeout_priority, setup_f, teardown_f),
