@@ -464,7 +464,9 @@ typedef enum {
     /**
      * @brief If you call getters (::sr_get_data()) in the module change callback for data from **other** modules
      * than the one the callback subscribed for, use this flag. Normally, only the changes of the subscribed module
-     * are sent to the callback so it retrieves the old data of other modules.
+     * are sent to the callback so it retrieves the old data of other modules. This flag does not affect ::SR_EV_DONE
+     * event because by then the changes of all the modules are written into the datastore (so it makes no sense to
+     * combine this flag with ::SR_SUBSCR_DONE_ONLY).
      */
     SR_SUBSCR_CHANGE_ALL_MODULES = 0x0200
 
