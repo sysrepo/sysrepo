@@ -462,7 +462,7 @@ slow_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name
     (void)private_data;
 
     /* Wait longer than run cache lock timeout */
-    usleep(1000 * (1 + SR_CONN_RUN_CACHE_LOCK_TIMEOUT));
+    usleep(1000 * (1 + SR_RUN_CACHE_LOCK_TIMEOUT));
 
     return SR_ERR_OK;
 }
