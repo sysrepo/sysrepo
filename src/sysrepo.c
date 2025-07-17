@@ -4674,7 +4674,6 @@ sr_apply_oper_changes(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
         int shmmod_session_del, uint32_t timeout_ms, sr_error_info_t **err_info2, int *update_sm_data)
 {
     sr_error_info_t *err_info = NULL;
-    sr_data_t *old_oper_data = NULL;
     struct lyd_node *data_diff = NULL, *old_oper_ds = NULL, *new_oper_data = NULL;
     const struct lyd_node *oper_edit;
     uint32_t mi_opts, i;
@@ -4760,7 +4759,6 @@ cleanup:
         sr_modinfo_changesub_rdunlock(mod_info);
     }
 
-    sr_release_data(old_oper_data);
     lyd_free_siblings(data_diff);
     lyd_free_siblings(old_oper_ds);
     lyd_free_siblings(new_oper_data);
