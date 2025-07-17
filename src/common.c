@@ -3272,7 +3272,7 @@ sr_destroy_schema_mount_contexts(struct ly_ctx *ly_ctx, struct lyd_node *sr_data
 
         /* try to find the first schema mount extension instance */
         if ((err_info = sr_lyd_find_path(sr_mod, "schema-mount-ext-instance[1]", 0, &ext_instance_node))) {
-            return err_info;
+            goto cleanup;
         }
         if (!ext_instance_node) {
             /* no schema mount extension instance in this module */
@@ -3280,11 +3280,8 @@ sr_destroy_schema_mount_contexts(struct ly_ctx *ly_ctx, struct lyd_node *sr_data
         }
 
         /* find the schema node based on the value of the extension instance */
-        sm_ext_node = lys_find_path(ly_ctx, NULL, lyd_get_value(ext_instance_node), 0);
-        if (!sm_ext_node) {
-            /* should never happen */
-            assert(0);
-            continue;
+        if ((err_info = sr_lys_find_path(ly_ctx, lyd_get_value(ext_instance_node), NULL, &sm_ext_node))) {
+            goto cleanup;
         }
 
         /* find a schema mount extension of this node */
@@ -3299,28 +3296,28 @@ sr_destroy_schema_mount_contexts(struct ly_ctx *ly_ctx, struct lyd_node *sr_data
             lyplg_ext_schema_mount_destroy_shared_contexts(ext);
 
             /* all schema mount contexts for this ly_ctx were destroyed */
-            return NULL;
+            goto cleanup;
         }
     }
 
-    return NULL;
+cleanup:
+    return err_info;
 }
 
 /**
  * @brief Create schema mount contexts in a libyang context based on the sysrepo data.
  *
- * @param[in] ly_ctx libyang context
- * @param[in] sr_data sysrepo data
- * @param[in] schema_mount_data ietf-schema-mount and ietf-yang-library YANG data
- * @return Error info on failure, NULL on success
+ * @param[in] ly_ctx libyang context.
+ * @param[in] sr_data sysrepo module data.
+ * @param[in] schema_mount_data ietf-schema-mount and ietf-yang-library YANG data.
+ * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_create_schema_mount_contexts(struct ly_ctx *ly_ctx, struct lyd_node *sr_data, struct lyd_node *schema_mount_data)
 {
     sr_error_info_t *err_info = NULL;
-    LY_ERR r;
     const struct lys_module *ly_mod;
-    struct lyd_node *sr_mod, *ext_instance_node;
+    struct lyd_node *sr_mod, *ext_instance_node, *iter;
     const struct lysc_node *sm_ext_node;
     struct lysc_ext_instance *ext;
     LY_ARRAY_COUNT_TYPE u;
@@ -3337,7 +3334,7 @@ sr_create_schema_mount_contexts(struct ly_ctx *ly_ctx, struct lyd_node *sr_data,
 
         /* find the first schema mount extension instance */
         if ((err_info = sr_lyd_find_path(sr_mod, "schema-mount-ext-instance[1]", 0, &ext_instance_node))) {
-            return err_info;
+            goto cleanup;
         }
         if (!ext_instance_node) {
             /* no schema mount extension instance in this module */
@@ -3345,14 +3342,15 @@ sr_create_schema_mount_contexts(struct ly_ctx *ly_ctx, struct lyd_node *sr_data,
         }
 
         /* iterate over all the schema mount ext instances of this module */
-        while (ext_instance_node && (!strcmp(LYD_NAME(ext_instance_node), "schema-mount-ext-instance"))) {
-            /* find the schema node based on the extension instance value */
-            sm_ext_node = lys_find_path(ly_ctx, NULL, lyd_get_value(ext_instance_node), 0);
-            if (!sm_ext_node) {
-                /* should never happen */
-                assert(0);
-                ext_instance_node = ext_instance_node->next;
+        LY_LIST_FOR(ext_instance_node, iter) {
+            if (strcmp(LYD_NAME(iter), "schema-mount-ext-instance")) {
+                /* not a schema mount extension instance */
                 continue;
+            }
+
+            /* find the schema node based on the extension instance value */
+            if ((err_info = sr_lys_find_path(ly_ctx, lyd_get_value(iter), NULL, &sm_ext_node))) {
+                goto cleanup;
             }
 
             /* process all extensions of this node */
@@ -3365,22 +3363,15 @@ sr_create_schema_mount_contexts(struct ly_ctx *ly_ctx, struct lyd_node *sr_data,
                 }
 
                 /* create shared context for this mount point */
-                r = lyplg_ext_schema_mount_create_shared_context(ext, schema_mount_data);
-                if (r && (r != LY_ENOT)) {
-                    /* do not treat missing mount point data in schema_mount_data as an error,
-                     * the mount point will be created once the mount point oper data is set */
-                    sr_errinfo_new(&err_info, SR_ERR_LY, "Failed to create shared context for schema mount extension instance \"%s\".",
-                            lyd_get_value(ext_instance_node));
-                    return err_info;
+                if ((err_info = sr_lyplg_ext_schema_mount_create_shared_context(ext, schema_mount_data))) {
+                    goto cleanup;
                 }
             }
-
-            /* move to the next schema mount extension instance */
-            ext_instance_node = ext_instance_node->next;
         }
     }
 
-    return NULL;
+cleanup:
+    return err_info;
 }
 
 sr_error_info_t *

@@ -746,4 +746,14 @@ sr_error_info_t *sr_ly_ctx_compiled_print(const struct ly_ctx *ctx, void *mem, v
  */
 sr_error_info_t *sr_ly_ctx_new_printed(const void *mem, struct ly_ctx **ctx);
 
+/**
+ * @brief Create a shared schema mount context for a schema mount point.
+ *
+ * @param[in] ext Compiled extension instance of a schema mount point.
+ * @param[in] ext_data ietf-yang-schema-mount and ietf-yang-library data of the mount point.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lyplg_ext_schema_mount_create_shared_context(struct lysc_ext_instance *ext,
+        const struct lyd_node *ext_data);
+
 #endif /* _LY_WRAP_H */
