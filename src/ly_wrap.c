@@ -1584,3 +1584,25 @@ cleanup:
     ly_temp_log_options(NULL);
     return err_info;
 }
+
+sr_error_info_t *
+sr_lyplg_ext_schema_mount_create_shared_context(struct lysc_ext_instance *ext,
+        const struct lyd_node *ext_data)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
+    LY_ERR r;
+
+    ly_temp_log_options(&temp_lo);
+
+    r = lyplg_ext_schema_mount_create_shared_context(ext, ext_data);
+    if (r && (r != LY_ENOT)) {
+        /* do not treat missing mount point data as an error */
+        sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_logmsg());
+        goto cleanup;
+    }
+
+cleanup:
+    ly_temp_log_options(NULL);
+    return err_info;
+}
