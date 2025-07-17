@@ -12,21 +12,30 @@
 #
 # If the address calculation fails and PRINTED_CONTEXT_ADDRESS is not provided, then a printed context will not be used.
 #
+# Author Roman Janota <janota@cesnet.cz>
+# Copyright (c) 2025 CESNET, z.s.p.o.
+#
+# This source code is licensed under BSD 3-Clause License (the "License").
+# You may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://opensource.org/licenses/BSD-3-Clause
+#
 
-# Check if a value was provided directly
+# check if a value (address) was provided directly
 if(DEFINED PRINTED_CONTEXT_ADDRESS)
     message(STATUS "Using provided PRINTED_CONTEXT_ADDRESS: ${PRINTED_CONTEXT_ADDRESS}")
     add_compile_definitions(SR_PCTX_ADDR=${PRINTED_CONTEXT_ADDRESS})
     set(PRINTED_CONTEXT_ADDRESS ${PRINTED_CONTEXT_ADDRESS} CACHE INTERNAL "Printed context address")
 else()
-    # No value provided, need to calculate it
+    # no value provided, need to calculate it
     message(STATUS "Calculating printed context address...")
 
-    # Verify the calculator source exists
+    # verify the calculator source exists
     if(NOT EXISTS "${CMAKE_CURRENT_LIST_DIR}/pctx_addr_calculator.c")
         message(WARNING "Printed context address calculator source not found at ${CMAKE_CURRENT_LIST_DIR}/pctx_addr_calculator.c")
     else()
-        # Compile the address calculator program
+        # compile the address calculator program
         try_compile(CALC_SUCCESS
             ${CMAKE_BINARY_DIR}
             SOURCES ${CMAKE_CURRENT_LIST_DIR}/pctx_addr_calculator.c
@@ -35,9 +44,10 @@ else()
         )
 
         if(NOT CALC_SUCCESS)
-            message(WARNING "Failed to compile printed context address calculator: ${CALC_COMPILATION_OUTPUT}")
+            message(WARNING "Failed to compile printed context address calculator: ${CALC_COMPILATION_OUTPUT}\n"
+                            "Either provide PRINTED_CONTEXT_ADDRESS or disable printed context usage.")
         else()
-            # Execute the address calculation
+            # execute the address calculation
             execute_process(
                 COMMAND ${CMAKE_BINARY_DIR}/pctx_addr_calculator
                 OUTPUT_VARIABLE CALCULATED_VALUE
