@@ -34,7 +34,7 @@ struct sr_mod_info_xpath_s;
 struct srplg_ds_s;
 struct srplg_ntf_s;
 
-/* max length for env variables specifying paths **/
+/** max length for env variables specifying paths **/
 #define SR_PATH_MAX 256
 
 /** macro for mutex align check */
@@ -52,16 +52,16 @@ struct srplg_ntf_s;
 /** macro for checking session type */
 #define SR_IS_EVENT_SESS(session) (session->ev != SR_SUB_EV_NONE)
 
-/* macro for getting aligned SHM size */
+/** macro for getting aligned SHM size */
 #define SR_SHM_SIZE(size) ((size) + ((~(size) + 1) & (SR_SHM_MEM_ALIGN - 1)))
 
-/* macro for getting main SHM from a connection */
+/** macro for getting main SHM from a connection */
 #define SR_CONN_MAIN_SHM(conn) ((sr_main_shm_t *)(conn)->main_shm.addr)
 
-/* macro for getting mod SHM from sysrepo's global context */
+/** macro for getting mod SHM from sysrepo's global context */
 #define SR_CTX_MOD_SHM(ctx) ((sr_mod_shm_t *)(ctx).mod_shm.addr)
 
-/* macro for getting ext SHM from a connection */
+/** macro for getting ext SHM from a connection */
 #define SR_CONN_EXT_SHM(conn) ((sr_ext_shm_t *)(conn)->ext_shm.addr)
 
 /** all ext SHM item sizes will be aligned to this number; also represents the allocation unit (B) */
@@ -88,25 +88,22 @@ struct srplg_ntf_s;
 /** timeout for locking the local connection list; maximum time the list can be accessed (ms) */
 #define SR_CONN_LIST_LOCK_TIMEOUT 100
 
-/** timeout for locking connection remap lock; maximum time it can be continuously read/written to (ms) */
-#define SR_CONN_REMAP_LOCK_TIMEOUT 10000
+/** timeout for locking remap lock; maximum time it can be continuously read/written to (ms) */
+#define SR_REMAP_LOCK_TIMEOUT 10000
 
 /** timeout for write-locking module running plugin cache (ms) */
-#define SR_CONN_RUN_CACHE_LOCK_TIMEOUT 1000
+#define SR_RUN_CACHE_LOCK_TIMEOUT 1000
 
-/** timeout for write-locking connection oper cache (ms) */
-#define SR_CONN_OPER_CACHE_LOCK_TIMEOUT 50
+/** timeout for write-locking oper cache (ms) */
+#define SR_OPER_CACHE_LOCK_TIMEOUT 50
 
-/** timeout for write-locking connection subscription oper cache data (ms) */
-#define SR_CONN_OPER_CACHE_DATA_LOCK_TIMEOUT 1000
-
-/** timeout for accessing stored connection ext data (duplication) (ms) */
-#define SR_CONN_EXT_DATA_LOCK_TIMEOUT 100
+/** timeout for write-locking subscription oper cache data (ms) */
+#define SR_OPER_CACHE_DATA_LOCK_TIMEOUT 1000
 
 /** timeout for locking the global schema mount context; opening, truncating, writing (parsing) and closing the file (ms) */
 #define SR_SM_CTX_LOCK_TIMEOUT 2000
 
-/** timeout for locking global YANG context mutex; held only on connection creation and deletion (ms) */
+/** timeout for locking global YANG context create mutex; held only on connection creation and deletion (ms) */
 #define SR_YANG_CTX_LOCK_TIMEOUT 1000
 
 /** timeout for locking (data of) a module; maximum time a module write lock is expected to be held (ms) */
@@ -175,6 +172,21 @@ struct srplg_ntf_s;
 /** check for edit functions of allowed datastore/options */
 #define SR_EDIT_DS_API_CHECK(ds, opts) (!SR_IS_STANDARD_DS(ds) || \
         (!SR_IS_CONVENTIONAL_DS(ds) && (opts & (SR_EDIT_STRICT | SR_EDIT_NON_RECURSIVE | SR_EDIT_ISOLATE))))
+
+/**
+ * @brief sysrepo rwlock static initializer.
+ */
+#define SR_RWLOCK_INITIALIZER { \
+    .mutex = PTHREAD_MUTEX_INITIALIZER, \
+    .cond = SR_COND_INITIALIZER, \
+    .readers = {0}, \
+    .read_count = {0}, \
+    .upgr = 0, \
+    .writer = 0 \
+}
+
+/** static initializer of the shared memory structure */
+#define SR_SHM_INITIALIZER {.fd = -1, .size = 0, .addr = NULL}
 
 /*
  * Internal declarations + definitions
@@ -261,12 +273,12 @@ struct sr_oper_cache_s {
         char *module_name;          /**< Operational poll subscription module name. */
         char *path;                 /**< Operational poll/get subscription path. */
 
-        pthread_rwlock_t data_lock;      /**< Lock for accessing the data and timestamp. */
+        pthread_rwlock_t data_lock; /**< Lock for accessing the data and timestamp. */
         struct lyd_node *data;      /**< Cached data of a single operational get subscription. */
         struct timespec timestamp;  /**< Timestamp of the cached operational data. */
     } *subs;                        /**< Operational subscription data caches. */
     uint32_t sub_count;             /**< Operational subscription data cache count. */
-    pthread_rwlock_t lock;               /**< Operational subscription data cache lock. */
+    pthread_rwlock_t lock;          /**< Operational subscription data cache lock. */
 };
 
 typedef struct sr_oper_cache_s sr_oper_cache_t;
@@ -275,18 +287,6 @@ typedef struct sr_oper_cache_s sr_oper_cache_t;
  * @brief Operational data cache.
  */
 extern struct sr_oper_cache_s sr_oper_cache;
-
-#define SR_RWLOCK_INITIALIZER { \
-    .mutex = PTHREAD_MUTEX_INITIALIZER, \
-    .cond = SR_COND_INITIALIZER, \
-    .readers = {0}, \
-    .read_count = {0}, \
-    .upgr = 0, \
-    .writer = 0 \
-}
-
-/** static initializer of the shared memory structure */
-#define SR_SHM_INITIALIZER {.fd = -1, .size = 0, .addr = NULL}
 
 /**
  * @brief Internal information about a module to be installed.
