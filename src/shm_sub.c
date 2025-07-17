@@ -4055,7 +4055,7 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
     change_sub_lock = SR_LOCK_READ;
 
     /* CONN OPER CACHE READ LOCK */
-    if ((err_info = sr_prwlock(&sr_oper_cache.lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ))) {
+    if ((err_info = sr_prwlock(&sr_oper_cache.lock, SR_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ))) {
         goto cleanup;
     }
 
@@ -4078,7 +4078,7 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
         assert(cache);
 
         /* CACHE DATA WRITE LOCK */
-        if ((err_info = sr_prwlock(&cache->data_lock, SR_CONN_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE))) {
+        if ((err_info = sr_prwlock(&cache->data_lock, SR_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE))) {
             goto cleanup_unlock;
         }
 

@@ -42,12 +42,12 @@
 #include "sysrepo_types.h"
 
 /**
- * @brief Flush all cached oper data of a connection.
+ * @brief Flush all cached operational data.
  *
  * Must be called only with WRITE mode context lock or mod_remap_lock.
  *
  * @param[in] conn Connection to use.
- * @param[in] oper_cache Oper cache to flush.
+ * @param[in,out] oper_cache Oper cache to flush.
  */
 static void
 sr_oper_cache_flush(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache)
@@ -57,7 +57,7 @@ sr_oper_cache_flush(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache)
     struct sr_oper_cache_sub_s *cache;
 
     /* OPER CACHE READ LOCK */
-    if ((err_info = sr_prwlock(&oper_cache->lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ))) {
+    if ((err_info = sr_prwlock(&oper_cache->lock, SR_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ))) {
         /* should never happen */
         sr_errinfo_free(&err_info);
     }
@@ -66,7 +66,7 @@ sr_oper_cache_flush(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache)
         cache = &oper_cache->subs[i];
 
         /* CACHE DATA WRITE LOCK */
-        if ((err_info = sr_prwlock(&cache->data_lock, SR_CONN_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE))) {
+        if ((err_info = sr_prwlock(&cache->data_lock, SR_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE))) {
             /* should never happen */
             sr_errinfo_free(&err_info);
         }
@@ -228,7 +228,7 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
     }
 
     /* MOD REMAP LOCK */
-    if ((err_info = sr_rwlock(&sr_yang_ctx.remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ_UPGR, conn->cid, func, NULL, NULL))) {
+    if ((err_info = sr_rwlock(&sr_yang_ctx.remap_lock, SR_REMAP_LOCK_TIMEOUT, SR_LOCK_READ_UPGR, conn->cid, func, NULL, NULL))) {
         goto cleanup_unlock;
     }
     remap_mode = SR_LOCK_READ_UPGR;
@@ -236,7 +236,7 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
     /* check whether the context is current and does not need to be updated */
     if (!context_is_up_to_date(main_shm, sr_yang_ctx.content_id, sr_yang_ctx.sm_data_id)) {
         /* MOD REMAP UPGRADE */
-        if ((err_info = sr_rwrelock(&sr_yang_ctx.remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, func, NULL, NULL))) {
+        if ((err_info = sr_rwrelock(&sr_yang_ctx.remap_lock, SR_REMAP_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, func, NULL, NULL))) {
             goto cleanup_unlock;
         }
         remap_mode = SR_LOCK_WRITE;
@@ -246,7 +246,7 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
             /* context is current, abort the switch */
 
             /* MOD REMAP DOWNGRADE */
-            if ((err_info = sr_rwrelock(&sr_yang_ctx.remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, func, NULL, NULL))) {
+            if ((err_info = sr_rwrelock(&sr_yang_ctx.remap_lock, SR_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, func, NULL, NULL))) {
                 goto cleanup_unlock;
             }
             remap_mode = SR_LOCK_READ;
@@ -290,7 +290,7 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
     }
 
     /* MOD REMAP DOWNGRADE */
-    if ((err_info = sr_rwrelock(&sr_yang_ctx.remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, func, NULL, NULL))) {
+    if ((err_info = sr_rwrelock(&sr_yang_ctx.remap_lock, SR_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, func, NULL, NULL))) {
         goto cleanup_unlock;
     }
     remap_mode = SR_LOCK_READ;
@@ -305,7 +305,7 @@ cleanup_unlock:
     if (err_info) {
         if (remap_mode) {
             /* MOD REMAP UNLOCK */
-            sr_rwunlock(&sr_yang_ctx.remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, remap_mode, conn->cid, func);
+            sr_rwunlock(&sr_yang_ctx.remap_lock, SR_REMAP_LOCK_TIMEOUT, remap_mode, conn->cid, func);
         }
         /* CONTEXT UNLOCK */
         sr_rwunlock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, mode, conn->cid, func);
@@ -343,7 +343,7 @@ sr_lycc_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const
     }
 
     /* MOD REMAP UNLOCK */
-    sr_rwunlock(&sr_yang_ctx.remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, func);
+    sr_rwunlock(&sr_yang_ctx.remap_lock, SR_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, func);
 
     /* CONTEXT UNLOCK */
     sr_rwunlock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, mode, conn->cid, func);

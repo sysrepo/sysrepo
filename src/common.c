@@ -3422,7 +3422,7 @@ sr_oper_cache_add(sr_oper_cache_t *oper_cache, uint32_t sub_id, const char *modu
     struct sr_oper_cache_sub_s *cache;
 
     /* CONN OPER CACHE WRITE LOCK */
-    if ((err_info = sr_prwlock(&oper_cache->lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE))) {
+    if ((err_info = sr_prwlock(&oper_cache->lock, SR_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE))) {
         return err_info;
     }
 
@@ -3468,7 +3468,7 @@ sr_oper_cache_del(sr_oper_cache_t *oper_cache, uint32_t sub_id)
     struct sr_oper_cache_sub_s *cache = NULL;
 
     /* CONN OPER CACHE WRITE LOCK */
-    if ((err_info = sr_prwlock(&oper_cache->lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE))) {
+    if ((err_info = sr_prwlock(&oper_cache->lock, SR_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE))) {
         /* should never happen */
         sr_errinfo_free(&err_info);
     }
@@ -3543,7 +3543,7 @@ sr_run_cache_update(sr_run_cache_t *run_cache, const struct sr_mod_info_s *mod_i
                 has_lock = SR_LOCK_NONE;
 
                 /* CACHE WRITE LOCK */
-                if ((err_info = sr_prwlock(&run_cache->lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE))) {
+                if ((err_info = sr_prwlock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE))) {
                     goto cleanup;
                 }
                 has_lock = SR_LOCK_WRITE;
@@ -3580,7 +3580,7 @@ sr_run_cache_update(sr_run_cache_t *run_cache, const struct sr_mod_info_s *mod_i
             has_lock = SR_LOCK_NONE;
 
             /* CACHE WRITE LOCK */
-            if ((err_info = sr_prwlock(&run_cache->lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE))) {
+            if ((err_info = sr_prwlock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE))) {
                 goto cleanup;
             }
             has_lock = SR_LOCK_WRITE;
@@ -3609,12 +3609,12 @@ sr_run_cache_update(sr_run_cache_t *run_cache, const struct sr_mod_info_s *mod_i
 cleanup:
     if (has_lock == SR_LOCK_WRITE) {
         /* CACHE READ RELOCK */
-        if ((tmp_err = sr_prwrelock(&run_cache->lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ))) {
+        if ((tmp_err = sr_prwrelock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ))) {
             sr_errinfo_merge(&err_info, tmp_err);
         }
     } else if (has_lock == SR_LOCK_NONE) {
         /* CACHE READ LOCK */
-        if ((tmp_err = sr_prwlock(&run_cache->lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ))) {
+        if ((tmp_err = sr_prwlock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ))) {
             sr_errinfo_merge(&err_info, tmp_err);
         }
     }
@@ -3631,7 +3631,7 @@ sr_run_cache_update_mod(sr_run_cache_t *run_cache, const struct lys_module *ly_m
     uint32_t i;
 
     /* CACHE WRITE LOCK */
-    if ((err_info = sr_prwlock(&run_cache->lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE))) {
+    if ((err_info = sr_prwlock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE))) {
         return err_info;
     }
 
@@ -3671,7 +3671,7 @@ sr_run_cache_flush(sr_run_cache_t *run_cache)
     sr_error_info_t *err_info = NULL;
 
     /* CACHE WRITE LOCK */
-    err_info = sr_prwlock(&run_cache->lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE);
+    err_info = sr_prwlock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE);
 
     /* nothing else to do but continue on error */
 

@@ -1333,7 +1333,7 @@ sr_module_oper_data_update_cached(struct sr_mod_info_mod_s *mod, const char *sub
     *merged = 0;
 
     /* CONN OPER CACHE READ LOCK */
-    if ((err_info = sr_prwlock(&sr_oper_cache.lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ))) {
+    if ((err_info = sr_prwlock(&sr_oper_cache.lock, SR_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ))) {
         goto cleanup;
     }
 
@@ -1362,7 +1362,7 @@ sr_module_oper_data_update_cached(struct sr_mod_info_mod_s *mod, const char *sub
     }
 
     /* CACHE DATA READ LOCK */
-    if ((err_info = sr_prwlock(&cache->data_lock, SR_CONN_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_READ))) {
+    if ((err_info = sr_prwlock(&cache->data_lock, SR_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_READ))) {
         goto cleanup_cache_unlock;
     }
 
@@ -2937,7 +2937,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
 
     if (run_cached_data_cur) {
         /* CACHE READ LOCK */
-        if ((err_info = sr_prwlock(&sr_run_cache.lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ))) {
+        if ((err_info = sr_prwlock(&sr_run_cache.lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ))) {
             return err_info;
         }
 
@@ -3217,7 +3217,7 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int read_only, sr_session_c
             ((mod_info->ds == SR_DS_RUNNING) || (mod_info->ds == SR_DS_CANDIDATE) || (mod_info->ds2 == SR_DS_RUNNING))) {
 
         /* CACHE READ LOCK */
-        if ((err_info = sr_prwlock(&sr_run_cache.lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ))) {
+        if ((err_info = sr_prwlock(&sr_run_cache.lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ))) {
             return err_info;
         }
         cache_lock_mode = SR_LOCK_READ;
