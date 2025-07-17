@@ -148,7 +148,7 @@ sr_ly_ext_data_clb(const struct lysc_ext_instance *ext,  const struct lyd_node *
         }
 
         if (!ext_data_dup) {
-            /* no sm data */
+            /* no sm data found */
             sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND,
                     "No \"ietf-yang-schema-mount\" operational data set needed for parsing mounted data.");
             sr_errinfo_free(&err_info);
@@ -159,7 +159,7 @@ sr_ly_ext_data_clb(const struct lysc_ext_instance *ext,  const struct lyd_node *
         *ext_data = ext_data_dup;
         *ext_data_free = 1;
     } else {
-        /* data cached, some internal sysrepo data are being parsed, so just return the cached data */
+        /* data cached, some data are being parsed internally, so just return the cached data */
         *ext_data = sr_schema_mount_cache.data;
         *ext_data_free = 0;
     }
@@ -173,7 +173,7 @@ cleanup:
 /**
  * @brief Load all modules from mod SHM into a context.
  *
- * @param[in] ly_ctx Context to use.
+ * @param[in,out] ly_ctx Context to use.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *

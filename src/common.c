@@ -670,12 +670,6 @@ sr_ly_module_is_internal(const struct lys_module *ly_mod)
     return 0;
 }
 
-/**
- * @brief Check whether a file exists.
- *
- * @param[in] path Path to the file.
- * @return 0 if file does not exist, non-zero if it exists.
- */
 int
 sr_file_exists(const char *path)
 {
@@ -1131,6 +1125,12 @@ sr_path_ctx_shm(char **path)
     return err_info;
 }
 
+/**
+ * @brief Get the path of the schema mount data SHM.
+ *
+ * @param[out] path Created path. Should be freed by the caller.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_path_smdata_shm(char **path)
 {
@@ -2270,7 +2270,13 @@ sr_rwlock_init(sr_rwlock_t *rwlock, int shared)
     return NULL;
 }
 
-sr_error_info_t *
+/**
+ * @brief Initialize a classic pthread RW lock.
+ *
+ * @param[in,out] rwlock RW lock to initialize.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
 sr_prwlock_init(pthread_rwlock_t *rwlock)
 {
     sr_error_info_t *err_info = NULL;
@@ -2292,7 +2298,12 @@ sr_rwlock_destroy(sr_rwlock_t *rwlock)
     sr_cond_destroy(&rwlock->cond);
 }
 
-void
+/**
+ * @brief Destroy a classic pthread RW lock.
+ *
+ * @param[in] rwlock RW lock to destroy.
+ */
+static void
 sr_prwlock_destroy(pthread_rwlock_t *rwlock)
 {
     pthread_rwlock_destroy(rwlock);
@@ -3077,6 +3088,84 @@ sr_conn_is_alive(sr_cid_t cid)
 }
 
 /**
+ * @brief Write schema mount data to a file.
+ *
+ * The file is used to cache the schema mount data so that it can be quickly accessed.
+ *
+ * @param[in] schema_mount_data Schema mount data to write.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_schema_mount_data_file_write(struct lyd_node *schema_mount_data)
+{
+    sr_error_info_t *err_info = NULL;
+    int fd = -1;
+    char *file_path = NULL;
+    uint32_t data_len;
+
+    if ((err_info = sr_path_smdata_shm(&file_path))) {
+        goto cleanup;
+    }
+
+    /* open the file */
+    fd = sr_open(file_path, O_RDWR | O_CREAT | O_TRUNC, SR_SHM_PERM);
+    if (fd == -1) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to open schema mount data shared memory (%s).", strerror(errno));
+        goto cleanup;
+    }
+
+    /* print the data to the file */
+    if ((err_info = sr_lyd_print_data(schema_mount_data, LYD_LYB, LY_PRINT_SHRINK, fd, NULL, &data_len))) {
+        goto cleanup;
+    }
+
+    /* truncate the file to the actual data length */
+    if (ftruncate(fd, data_len)) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to truncate schema mount data shared memory (%s).", strerror(errno));
+        goto cleanup;
+    }
+
+cleanup:
+    if (fd > -1) {
+        close(fd);
+    }
+    free(file_path);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_schema_mount_data_file_parse(struct lyd_node **schema_mount_data)
+{
+    sr_error_info_t *err_info = NULL;
+    char *file_path = NULL;
+    struct lyd_node *sm_data = NULL;
+
+    *schema_mount_data = NULL;
+
+    if ((err_info = sr_path_smdata_shm(&file_path))) {
+        return err_info;
+    }
+
+    /* check if the file exists */
+    if (!sr_file_exists(file_path)) {
+        /* no schema mount data, nothing to parse */
+        goto cleanup;
+    }
+
+    /* parse the lyb schema mount data and validate them to resolve the parent reference prefixes */
+    if ((err_info = sr_lyd_parse_data(sr_yang_ctx.ly_ctx, NULL, file_path,
+            LYD_LYB, LYD_PARSE_STRICT, LYD_VALIDATE_OPERATIONAL, &sm_data))) {
+        goto cleanup;
+    }
+
+    *schema_mount_data = sm_data;
+
+cleanup:
+    free(file_path);
+    return err_info;
+}
+
+/**
  * @brief Get the current schema mount data and make them compatible with @p ly_ctx.
  *
  * @note The caller must hold the global libyang context READ lock.
@@ -3157,9 +3246,9 @@ cleanup:
 /**
  * @brief Destroy schema mount contexts in a libyang context based on the sysrepo data.
  *
- * @param[in] ly_ctx libyang context
- * @param[in] sr_data sysrepo data
- * @return Error info on failure, NULL on success
+ * @param[in] ly_ctx libyang context.
+ * @param[in] sr_data sysrepo module data.
+ * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_destroy_schema_mount_contexts(struct ly_ctx *ly_ctx, struct lyd_node *sr_data)
@@ -3330,76 +3419,6 @@ sr_schema_mount_contexts_replace(sr_conn_ctx_t *conn, struct ly_ctx *old_ly_ctx,
 
 cleanup:
     lyd_free_siblings(sm_data);
-    return err_info;
-}
-
-sr_error_info_t *
-sr_schema_mount_data_file_write(struct lyd_node *schema_mount_data)
-{
-    sr_error_info_t *err_info = NULL;
-    int fd;
-    char *file_path = NULL;
-    uint32_t data_len;
-
-    if ((err_info = sr_path_smdata_shm(&file_path))) {
-        goto cleanup;
-    }
-
-    /* open the file */
-    fd = sr_open(file_path, O_RDWR | O_CREAT | O_TRUNC, SR_SHM_PERM);
-    if (fd == -1) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to open schema mount data shared memory (%s).", strerror(errno));
-        goto cleanup;
-    }
-
-    /* print the data to the file */
-    if ((err_info = sr_lyd_print_data(schema_mount_data, LYD_LYB, LY_PRINT_SHRINK, fd, NULL, &data_len))) {
-        goto cleanup;
-    }
-
-    /* truncate the file to the actual data length */
-    if (ftruncate(fd, data_len)) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to truncate schema mount data shared memory (%s).", strerror(errno));
-        goto cleanup;
-    }
-
-cleanup:
-    if (fd > -1) {
-        close(fd);
-    }
-    free(file_path);
-    return err_info;
-}
-
-sr_error_info_t *
-sr_schema_mount_data_file_parse(struct lyd_node **schema_mount_data)
-{
-    sr_error_info_t *err_info = NULL;
-    char *file_path = NULL;
-    struct lyd_node *sm_data = NULL;
-
-    *schema_mount_data = NULL;
-
-    if ((err_info = sr_path_smdata_shm(&file_path))) {
-        return err_info;
-    }
-
-    /* check if the file exists */
-    if (!sr_file_exists(file_path)) {
-        /* no schema mount data, nothing to parse */
-        goto cleanup;
-    }
-
-    /* parse the lyb schema mount data and validate them to resolve the parent reference prefixes */
-    if ((err_info = sr_lyd_parse_data(sr_yang_ctx.ly_ctx, NULL, file_path,
-            LYD_LYB, LYD_PARSE_STRICT, LYD_VALIDATE_OPERATIONAL, &sm_data))) {
-        goto cleanup;
-    }
-
-    *schema_mount_data = sm_data;
-
-cleanup:
-    free(file_path);
     return err_info;
 }
 
