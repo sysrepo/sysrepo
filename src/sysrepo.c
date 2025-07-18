@@ -158,8 +158,9 @@ sr_conn_free(sr_conn_ctx_t *conn)
     /* check if we are the last connection, if so then destroy global contexts */
     if (!sr_yang_ctx.refcount) {
         /* YANG CTX LOCK - just to get the most recent lyctx */
-        if (sr_lycc_lock(conn, SR_LOCK_WRITE, 0, __func__)) {
+        if ((err_info = sr_lycc_lock(conn, SR_LOCK_WRITE, 0, __func__))) {
             /* should not happen when there are no other connections */
+            sr_errinfo_free(&err_info);
             assert(0);
         }
 

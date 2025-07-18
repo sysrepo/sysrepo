@@ -637,7 +637,7 @@ cleanup:
  * @brief Add a schema mount extension instance path into sysrepo module data.
  *
  * @param[in] mount_point_path Path to the node with the schema mount extension instance.
- * @param[in] sr_mod Module to add the path to.
+ * @param[in,out] sr_mod Module to add the path to.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
@@ -734,6 +734,11 @@ sr_lydmods_add_all_deps_dfs_cb(struct lysc_node *node, void *data, ly_bool *dfs_
                 !strcmp(node->exts[u].def->name, "mount-point")) {
             /* add the schema mount point to sysrepo internal data */
             sm_ext_path = lysc_path(node, LYSC_PATH_DATA, NULL, 0);
+            if (!sm_ext_path) {
+                SR_ERRINFO_MEM(&err_info);
+                goto cleanup;
+            }
+
             err_info = sr_lydmods_add_sm_ext_path(sm_ext_path, arg->sr_mod);
             free(sm_ext_path);
             if (err_info) {
