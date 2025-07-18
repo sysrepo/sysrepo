@@ -122,6 +122,7 @@ sr_ly_ctx_new(sr_conn_ctx_t *conn, struct ly_ctx **ly_ctx)
     free(yang_dir);
     if (lyrc) {
         sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_logmsg());
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Failed to create a new libyang context.");
         goto cleanup;
     }
 
