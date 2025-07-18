@@ -1463,6 +1463,12 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
         goto cleanup;
     }
 
+    /* CONTEXT LOCK */
+    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ_UPGR, 1, __func__))) {
+        goto cleanup;
+    }
+    ctx_mode = SR_LOCK_READ_UPGR;
+
     /* use temporary context to load current modules */
     if ((err_info = sr_shmmod_ctx_load_modules(SR_CTX_MOD_SHM(sr_yang_ctx), new_ctx, NULL))) {
         goto cleanup;
@@ -1472,12 +1478,6 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
     if ((err_info = sr_install_module_set_searchdirs(new_ctx, search_dirs, &search_dir_count))) {
         goto cleanup;
     }
-
-    /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ_UPGR, 1, __func__))) {
-        goto cleanup;
-    }
-    ctx_mode = SR_LOCK_READ_UPGR;
 
     /* set import callback */
     imp_clb = ly_ctx_get_module_imp_clb(sr_yang_ctx.ly_ctx, &imp_clb_data);
