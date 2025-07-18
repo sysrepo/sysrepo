@@ -777,7 +777,7 @@ sr_shmmod_add_notifs(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_nod
 /**
  * @brief Add schema mount extension instance paths into mod SHM.
  *
- * @param[in] shm_mod Mod SHM structure to remap and append the data to.
+ * @param[in,out] shm_mod Mod SHM structure to remap and append the data to.
  * @param[in] shm_mod_idx Mod SHM mod index of @p sr_mod.
  * @param[in] sr_mod Module to read the information from.
  * @return err_info, NULL on success.

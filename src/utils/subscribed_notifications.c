@@ -214,7 +214,9 @@ srsn_subscribe(sr_session_ctx_t *session, const char *stream, const char *xpath_
 
     if (start_time) {
         /* check whether the replay feature is enabled by checking if a node that depends on this feature is present */
-        sr_lys_find_path(sr_yang_ctx.ly_ctx, "/ietf-subscribed-notifications:replay-completed", &valid, NULL);
+        if ((err_info = sr_lys_find_path(sr_yang_ctx.ly_ctx, "/ietf-subscribed-notifications:replay-completed", &valid, NULL))) {
+            goto cleanup;
+        }
         if (!valid) {
             sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Module \"ietf-subscribed-notifications\" feature \"replay\" "
                     "is not enabled.");
@@ -365,7 +367,9 @@ srsn_yang_push_on_change(sr_session_ctx_t *session, sr_datastore_t ds, const cha
     }
 
     /* check whether the on-change feature is enabled by checking if a node that depends on this feature is present */
-    sr_lys_find_path(sr_yang_ctx.ly_ctx, "/ietf-yang-push:resync-subscription", &valid, NULL);
+    if ((err_info = sr_lys_find_path(sr_yang_ctx.ly_ctx, "/ietf-yang-push:resync-subscription", &valid, NULL))) {
+        goto cleanup;
+    }
     if (!valid) {
         sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Module \"ietf-yang-push\" feature \"on-change\" is not enabled.");
         goto cleanup;
