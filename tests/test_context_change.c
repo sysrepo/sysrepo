@@ -466,6 +466,87 @@ test_feature_change(void **state)
     pthread_join(tid[1], NULL);
 }
 
+/* TEST */
+static void
+test_push_oper(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_session_ctx_t *sess;
+    sr_data_t *data;
+    struct lyd_node *edit;
+    char *str;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_OPERATIONAL, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* create l1 and l2 leaf in push oper data */
+    ret = sr_set_item_str(sess, "/mod1:cont/l1", "val", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/mod1:cont/l2", "val2", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the data back */
+    ret = sr_get_data(sess, "/mod1:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(data);
+
+    assert_string_equal(str,
+            "<cont xmlns=\"urn:mod1\">"
+            "<l1>val</l1>"
+            "<l2>val2</l2>"
+            "</cont>");
+    free(str);
+
+    /* disable f1 */
+    ret = sr_disable_module_feature(st->conn, "mod1", "f1");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check push oper data now, l2 leaf was disabled */
+    ret = sr_get_data(sess, "/mod1:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(data);
+
+    assert_string_equal(str,
+            "<cont xmlns=\"urn:mod1\">"
+            "<l1>val</l1>"
+            "<l2>val2</l2>"
+            "</cont>");
+    free(str);
+
+    /* remove the node manually */
+    str = "<cont xmlns=\"urn:mod1\">"
+            "<l1>val</l1>"
+            "</cont>";
+    ret = lyd_parse_data_mem(sr_acquire_context(st->conn), str, LYD_XML, LYD_PARSE_ONLY, 0, &edit);
+    sr_release_context(st->conn);
+    assert_int_equal(ret, LY_SUCCESS);
+    ret = sr_edit_batch(sess, edit, "replace");
+    lyd_free_siblings(edit);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_get_data(sess, "/mod1:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(data);
+
+    assert_string_equal(str,
+            "<cont xmlns=\"urn:mod1\">"
+            "<l1>val</l1>"
+            "</cont>");
+    free(str);
+
+    /* enable f1 back */
+    ret = sr_enable_module_feature(st->conn, "mod1", "f1");
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
 /* MAIN */
 int
 main(void)
@@ -473,6 +554,7 @@ main(void)
     const struct CMUnitTest tests[] = {
         cmocka_unit_test_setup_teardown(test_deviation, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_feature_change, setup_f, teardown_f),
+        cmocka_unit_test(test_push_oper),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

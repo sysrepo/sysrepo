@@ -3264,6 +3264,52 @@ sr_lyht_get_data_prune_equal_cb(void *val1_p, void *val2_p, ly_bool UNUSED(mod),
 }
 
 /**
+ * @brief Remove 'origin' metadata/attribute from a node.
+ *
+ * @param[in] node Node to modify.
+ * @param[in] or_mod ietf-origin module.
+ */
+static void
+sr_get_data_prune_origin(struct lyd_node *node, const struct lys_module *or_mod)
+{
+    struct lyd_meta *m;
+    struct lyd_attr *a;
+
+    if (node->schema) {
+        m = lyd_find_meta(node->meta, or_mod, "origin");
+        lyd_free_meta_single(m);
+    } else {
+        LY_LIST_FOR(((struct lyd_node_opaq *)node)->attr, a) {
+            /* check name */
+            if (strcmp(a->name.name, "origin")) {
+                continue;
+            }
+
+            /* check module */
+            switch (a->format) {
+            case LY_VALUE_XML:
+                if (strcmp(a->name.module_ns, "urn:ietf:params:xml:ns:yang:ietf-origin")) {
+                    continue;
+                }
+                break;
+            case LY_VALUE_JSON:
+                if (strcmp(a->name.module_name, "ietf-origin")) {
+                    continue;
+                }
+                break;
+            default:
+                /* should never happen */
+                break;
+            }
+
+            /* only one origin attr expected */
+            break;
+        }
+        lyd_free_attr_single(LYD_CTX(node), a);
+    }
+}
+
+/**
  * @brief Remove all the non-selected subtrees.
  *
  * @param[in] session Session to use.
@@ -3284,7 +3330,6 @@ sr_get_data_prune(sr_session_ctx_t *session, struct lyd_node **first, const stru
     struct ly_ht *parent_ht = NULL, *set_ht = NULL;
     struct lyd_node *parent, *root, *node, *iter, *to_free;
     const struct lys_module *or_mod;
-    struct lyd_meta *m;
     LY_ERR lyrc;
 
     /* find 'ietf-origin' module if we need to remove all 'origin' metadata */
@@ -3353,9 +3398,7 @@ sr_get_data_prune(sr_session_ctx_t *session, struct lyd_node **first, const stru
                     } else if (or_mod) {
                         /* remove origin from the whole result subtree */
                         LYD_TREE_DFS_BEGIN(node, iter) {
-                            m = lyd_find_meta(iter->meta, or_mod, "origin");
-                            lyd_free_meta_single(m);
-
+                            sr_get_data_prune_origin(iter, or_mod);
                             LYD_TREE_DFS_END(node, iter);
                         }
                     }
@@ -3364,8 +3407,7 @@ sr_get_data_prune(sr_session_ctx_t *session, struct lyd_node **first, const stru
                     LYD_TREE_DFS_continue = 1;
                 } else if (or_mod) {
                     /* remove origin from the parent */
-                    m = lyd_find_meta(node->meta, or_mod, "origin");
-                    lyd_free_meta_single(m);
+                    sr_get_data_prune_origin(node, or_mod);
                 }
             }
 
