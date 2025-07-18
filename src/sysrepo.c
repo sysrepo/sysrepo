@@ -4556,11 +4556,8 @@ sr_schema_mount_data_update(sr_session_ctx_t *session)
         goto cleanup;
     }
 
-    /* update the schema mount data ID */
+    /* update the schema mount data ID, no need to update content_id because it didnt change */
     SR_CONN_MAIN_SHM(session->conn)->schema_mount_data_id++;
-
-    /* update content ID */
-    SR_CONN_MAIN_SHM(session->conn)->content_id = ly_ctx_get_modules_hash(new_ctx);
 
     /* print the new context - new schema mount data will be obtained next time context is locked */
     if ((err_info = sr_lycc_store_context(&sr_yang_ctx.ly_ctx_shm, new_ctx))) {
