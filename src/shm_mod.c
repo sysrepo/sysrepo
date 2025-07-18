@@ -1311,7 +1311,7 @@ sr_shmmod_lock(struct sr_mod_lock_s *shm_lock, uint32_t timeout_ms, sr_lock_mode
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     int ds_locked;
-    uint32_t sleep_ms;
+    uint32_t sleep_ms, ds_lock_sid;
     sr_cid_t dead_cid;
 
     if (!timeout_ms) {
@@ -1353,6 +1353,8 @@ ds_lock_retry:
 
             ds_locked = 0;
         }
+
+        ds_lock_sid = shm_lock->ds_lock_sid;
 
         /* DS UNLOCK */
         sr_munlock(&shm_lock->ds_lock);
@@ -1397,7 +1399,7 @@ revert_lock:
     } else {
         /* timeout elapsed */
         sr_errinfo_new(&err_info, SR_ERR_LOCKED, "Module \"%s\" is DS-locked by session %" PRIu32 ".",
-                mod_name, shm_lock->ds_lock_sid);
+                mod_name, ds_lock_sid);
     }
 
 cleanup:
