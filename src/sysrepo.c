@@ -2581,7 +2581,8 @@ sr_load_module(struct ly_ctx *ly_ctx, const struct lys_module *old_mod, const ch
         }
     }
 
-    if (features) {
+    /* either some features are enabled or we are disabling the only enabled feature */
+    if (features || (!enable && !features)) {
         /* add terminating NULL */
         features = sr_realloc(features, (feat_count + 1) * sizeof *features);
         SR_CHECK_MEM_GOTO(!features, err_info, cleanup);
@@ -2604,6 +2605,66 @@ cleanup:
 }
 
 /**
+ * @brief Get enabled features of a module.
+ *
+ * @param[in] mod_name Name of the module to get features for.
+ * @param[in] sr_mods sysrepo modules data.
+ * @param[out] features Array of enabled feature names, NULL if no features are enabled.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_get_module_enabled_features(const char *mod_name, const struct lyd_node *sr_mods, const char ***features)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *mod_node, *iter;
+    const char **feat_names = NULL;
+    uint32_t feat_count = 0;
+    char *path = NULL;
+
+    *features = NULL;
+
+    if (asprintf(&path, "/sysrepo:sysrepo-modules/module[name='%s']", mod_name) == -1) {
+        SR_ERRINFO_MEM(&err_info);
+        return err_info;
+    }
+
+    /* find the module */
+    if ((err_info = sr_lyd_find_path(sr_mods, path, 0, &mod_node))) {
+        goto cleanup;
+    }
+    if (!mod_node) {
+        assert(0);
+        goto cleanup;
+    }
+
+    /* iterate through all the enabled features */
+    LY_LIST_FOR(lyd_child(mod_node), iter) {
+        if (strcmp(iter->schema->name, "enabled-feature")) {
+            /* ignore other nodes */
+            continue;
+        }
+
+        feat_names = sr_realloc(feat_names, (feat_count + 1) * sizeof *feat_names);
+        SR_CHECK_MEM_GOTO(!feat_names, err_info, cleanup);
+        feat_names[feat_count] = lyd_get_value(iter);
+        ++feat_count;
+    }
+
+    if (feat_count) {
+        /* add terminating NULL */
+        feat_names = sr_realloc(feat_names, (feat_count + 1) * sizeof *feat_names);
+        SR_CHECK_MEM_GOTO(!feat_names, err_info, cleanup);
+        feat_names[feat_count] = NULL;
+
+        *features = feat_names;
+    }
+
+cleanup:
+    free(path);
+    return err_info;
+}
+
+/**
  * @brief Enable/disable module feature.
  *
  * @param[in] conn Connection to use.
@@ -2616,27 +2677,21 @@ static sr_error_info_t *
 sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name, int enable)
 {
     sr_error_info_t *err_info = NULL;
-    struct ly_ctx *new_ctx = NULL, *new_ctx2 = NULL;
+    struct ly_ctx *new_ctx = NULL;
     struct ly_set mod_set = {0}, feat_set = {0};
     struct lyd_node *sr_mods = NULL, *sr_mods_old = NULL;
     struct sr_data_update_s data_info = {0};
     struct sr_lycc_upgrade_data_s lycc_upgrade_data = {0};
-    const struct lys_module *ly_mod, *upd_ly_mod;
+    const struct lys_module *ly_mod, *ly_mod2, *upd_ly_mod;
     LY_ERR lyrc;
     sr_lock_mode_t ctx_mode = SR_LOCK_NONE;
+    const char **mod_features = NULL;
 
     /* initialized context upgrade data for cleanup */
     SR_LYCC_UPGRADE_DATA_INIT(&lycc_upgrade_data, &data_info, &sr_mods, &sr_mods_old, NULL);
 
-    /* create two temporary contexts
-     * new_ctx - for the new module with changed features, this context will be printed
-     * new_ctx2 - to get the feature information from the curr module, this is
-     * needed since the current context may not have the parsed data if the context is printed
-     */
+    /* create a temporary context */
     if ((err_info = sr_ly_ctx_new(conn, &new_ctx))) {
-        goto cleanup;
-    }
-    if ((err_info = sr_ly_ctx_new(conn, &new_ctx2))) {
         goto cleanup;
     }
 
@@ -2646,26 +2701,49 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     }
     ctx_mode = SR_LOCK_READ_UPGR;
 
-    /* load all the current modules into the temp context 2 */
-    if ((err_info = sr_shmmod_ctx_load_modules(SR_CTX_MOD_SHM(sr_yang_ctx), new_ctx2, NULL))) {
+    /* parse current (old) module information, needed for schema mount data update and to get enabled features */
+    if ((err_info = sr_lydmods_parse(sr_yang_ctx.ly_ctx, conn, NULL, &sr_mods_old))) {
         goto cleanup;
     }
 
-    /* find the module in temp context 2 */
-    ly_mod = ly_ctx_get_module_implemented(new_ctx2, module_name);
+    /* find the module in the current context */
+    ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, module_name);
     if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
         goto cleanup;
     }
 
+    /* use temporary context to load current modules skipping the one whose feature is being changed */
+    if (ly_set_add(&mod_set, (void *)ly_mod, 1, NULL)) {
+        SR_ERRINFO_MEM(&err_info);
+        goto cleanup;
+    }
+    if ((err_info = sr_shmmod_ctx_load_modules(SR_CTX_MOD_SHM(sr_yang_ctx), new_ctx, &mod_set))) {
+        goto cleanup;
+    }
+
+    /* get the enabled features of the module */
+    if ((err_info = sr_get_module_enabled_features(ly_mod->name, sr_mods_old, &mod_features))) {
+        goto cleanup;
+    }
+
+    /* load the module with all its currently enabled features,
+     * this way we can obtain the parsed data of the module,
+     * it will then be loaded again with the changed features */
+    sr_ly_ctx_load_module(new_ctx, ly_mod->name, ly_mod->revision, mod_features, &ly_mod2);
+    free(mod_features);
+    if (err_info) {
+        goto cleanup;
+    }
+
     /* check write perm */
-    if ((err_info = sr_perm_check(conn, ly_mod, SR_DS_STARTUP, 1, NULL))) {
+    if ((err_info = sr_perm_check(conn, ly_mod2, SR_DS_STARTUP, 1, NULL))) {
         goto cleanup;
     }
 
     if (strcmp(feature_name, "*")) {
-        /* check feature in temp context 2, since it has the parsed data */
-        lyrc = lys_feature_value(ly_mod, feature_name);
+        /* check feature in the temporary context, since it has the parsed data */
+        lyrc = lys_feature_value(ly_mod2, feature_name);
         if (lyrc == LY_ENOTFOUND) {
             sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Feature \"%s\" was not found in module \"%s\".",
                     feature_name, module_name);
@@ -2681,27 +2759,13 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
         }
     }
 
-    /* use temp context 1 to load modules skipping the modified one */
-    if (ly_set_add(&mod_set, (void *)ly_mod, 1, NULL)) {
-        SR_ERRINFO_MEM(&err_info);
-        goto cleanup;
-    }
-    if ((err_info = sr_shmmod_ctx_load_modules(SR_CTX_MOD_SHM(sr_yang_ctx), new_ctx, &mod_set))) {
-        goto cleanup;
-    }
-
-    /* load the module with changed features */
-    if ((err_info = sr_load_module(new_ctx, ly_mod, feature_name, enable, &upd_ly_mod, &feat_set))) {
+    /* load the module again, but with changed features */
+    if ((err_info = sr_load_module(new_ctx, ly_mod2, feature_name, enable, &upd_ly_mod, &feat_set))) {
         goto cleanup;
     }
 
     /* check the subscriptions with the new context */
     if ((err_info = sr_lycc_check_chng_feature(conn, new_ctx))) {
-        goto cleanup;
-    }
-
-    /* parse current (old) module information, needed for schema mount data update */
-    if ((err_info = sr_lydmods_parse(sr_yang_ctx.ly_ctx, conn, NULL, &sr_mods_old))) {
         goto cleanup;
     }
 
@@ -2717,7 +2781,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     }
 
     /* update lydmods data */
-    if ((err_info = sr_lydmods_change_chng_feature(sr_yang_ctx.ly_ctx, ly_mod, new_ctx, &feat_set, enable, conn, &sr_mods))) {
+    if ((err_info = sr_lydmods_change_chng_feature(sr_yang_ctx.ly_ctx, ly_mod2, new_ctx, &feat_set, enable, conn, &sr_mods))) {
         goto cleanup;
     }
 
@@ -2751,7 +2815,6 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
 cleanup:
     sr_lycc_context_upgrade_cleanup(&lycc_upgrade_data);
     ly_ctx_destroy(new_ctx);
-    ly_ctx_destroy(new_ctx2);
 
     /* CONTEXT UNLOCK */
     sr_lycc_unlock(conn, ctx_mode, 1, __func__);
