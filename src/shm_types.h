@@ -146,7 +146,7 @@ typedef struct {
     off_t inv_deps;             /**< Array of inverse module data dependencies (off_t *) (offset in mod SHM). */
     uint16_t inv_dep_count;     /**< Number of inverse module data dependencies. */
 
-    off_t sm_ext_paths;         /**< Array of schema mount extension paths (offset in mod SHM). */
+    off_t sm_ext_paths;         /**< Array of paths to schema nodes with schema mount extension (offset in mod SHM). */
     uint16_t sm_ext_path_count; /**< Number of schema mount extension paths. */
 
     off_t oper_push_data;       /**< Array of oper push data entries (offset in ext SHM), protected by operational DS
