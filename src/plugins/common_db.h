@@ -4,8 +4,8 @@
  * @brief common routines for database plugins header
  *
  * @copyright
- * Copyright (c) 2021 - 2024 Deutsche Telekom AG.
- * Copyright (c) 2021 - 2024 CESNET, z.s.p.o.
+ * Copyright (c) 2021 - 2025 Deutsche Telekom AG.
+ * Copyright (c) 2021 - 2025 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -133,17 +133,13 @@ sr_error_info_t *srpds_get_modif_path(const char *plg_name, const char *path, ch
 void srpds_cont_set_dflt(struct lyd_node *node);
 
 /**
- * @brief Get path, predicate and path without the predicate of a data node.
+ * @brief Get predicate of a data node.
  *
- * @param[in] plg_name Plugin name.
- * @param[in] node Given data node.
- * @param[out] predicate Predicate of the data node.
- * @param[out] standard Path of the data node. Should be freed.
- * @param[out] no_predicate Path without the predicate of the data node. Should be freed.
- * @return NULL on success;
- * @return Sysrepo error info on error.
+ * @param[in] path Path of the data node.
+ * @param[in] path_no_pred Path without the predicate of the data node.
+ * @return Predicate.
  */
-sr_error_info_t *srpds_get_predicate(const char *plg_name, const struct lyd_node *node, const char **predicate, char **standard, char **no_predicate);
+const char *srpds_get_predicate(const char *path, const char *path_no_pred);
 
 /**
  * @brief Get the name of the current process user.

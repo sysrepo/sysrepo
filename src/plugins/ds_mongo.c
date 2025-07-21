@@ -4,8 +4,8 @@
  * @brief internal MongoDB datastore plugin
  *
  * @copyright
- * Copyright (c) 2021 - 2024 Deutsche Telekom AG.
- * Copyright (c) 2021 - 2024 CESNET, z.s.p.o.
+ * Copyright (c) 2021 - 2025 Deutsche Telekom AG.
+ * Copyright (c) 2021 - 2025 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -2342,20 +2342,30 @@ srpds_load_state_recursively(const struct ly_set *set, const struct lyd_node *no
     const struct lyd_node *sibling = node;
     struct lyd_node *child = NULL;
     char *path = NULL, *path_no_pred = NULL, *path_modif = NULL;
-    const char *predicate = NULL, *module_name = NULL, *value = NULL;
+    const char *module_name = NULL, *value = NULL;
     char *any_value = NULL;
     int32_t valtype;
     bson_t *bson_query = NULL;
-
     char *keys = NULL;
     uint32_t keys_length = 0;
     uint64_t order = 1;
     uint32_t set_idx = 1;
 
     while (sibling) {
-        /* get node's path, path without last predicate and predicate */
-        if ((err_info = srpds_get_predicate(plugin_name, sibling, &predicate, &path, &path_no_pred))) {
-            goto cleanup;
+        /* get path */
+        path = lyd_path(sibling, LYD_PATH_STD, NULL, 0);
+        if (!path) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_path()", "");
+            return err_info;
+        }
+
+        /* get path_no_pred */
+        if (lysc_is_userordered(sibling->schema)) {
+            path_no_pred = lyd_path(sibling, LYD_PATH_STD_NO_LAST_PRED, NULL, 0);
+            if (!path_no_pred) {
+                ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_path()", "");
+                return err_info;
+            }
         }
 
         /* get modified version of path */
@@ -2586,16 +2596,27 @@ srpds_use_diff2store(mongoc_collection_t *module, const struct lyd_node *mod_dat
     sr_error_info_t *err_info = NULL;
     struct lyd_node *child = NULL, *match = NULL;
     char *path = NULL, *path_no_pred = NULL, *path_modif = NULL;
-    const char *predicate = NULL, *module_name = NULL;
+    const char *module_name = NULL;
     const char *value = NULL, *prev = NULL, *orig_prev = NULL;
     char *prev_pred = NULL, *orig_prev_pred = NULL, *any_value = NULL;
     int32_t valtype;
     bson_t *del_query = NULL;
     char *tmp = NULL, *regex = NULL;
 
-    /* get node's path, path without last predicate and predicate */
-    if ((err_info = srpds_get_predicate(plugin_name, sibling, &predicate, &path, &path_no_pred))) {
-        goto cleanup;
+    /* get path */
+    path = lyd_path(sibling, LYD_PATH_STD, NULL, 0);
+    if (!path) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_path()", "");
+        return err_info;
+    }
+
+    /* get path_no_pred */
+    if (lysc_is_userordered(sibling->schema)) {
+        path_no_pred = lyd_path(sibling, LYD_PATH_STD_NO_LAST_PRED, NULL, 0);
+        if (!path_no_pred) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_path()", "");
+            return err_info;
+        }
     }
 
     /* get modified version of path */
@@ -2625,19 +2646,22 @@ srpds_use_diff2store(mongoc_collection_t *module, const struct lyd_node *mod_dat
         }
         break;
     case 'c':
-        if ((err_info = srpds_create_op(module, sibling, module_name, path, path_no_pred, predicate, path_modif,
-                value, prev, prev_pred, valtype, max_order, diff_data))) {
+        if ((err_info = srpds_create_op(module, sibling, module_name, path, path_no_pred,
+                srpds_get_predicate(path, path_no_pred), path_modif, value, prev, prev_pred, valtype, max_order,
+                diff_data))) {
             goto cleanup;
         }
         break;
     case 'd':
-        if ((err_info = srpds_delete_op(module, sibling, path, path_no_pred, predicate, orig_prev_pred, diff_data))) {
+        if ((err_info = srpds_delete_op(module, sibling, path, path_no_pred, srpds_get_predicate(path, path_no_pred),
+                orig_prev_pred, diff_data))) {
             goto cleanup;
         }
         break;
     case 'r':
-        if ((err_info = srpds_replace_op(module, sibling, module_name, path, path_no_pred, path_modif, predicate,
-                value, prev, prev_pred, orig_prev_pred, max_order, diff_data))) {
+        if ((err_info = srpds_replace_op(module, sibling, module_name, path, path_no_pred, path_modif,
+                srpds_get_predicate(path, path_no_pred), value, prev, prev_pred, orig_prev_pred, max_order,
+                diff_data))) {
             goto cleanup;
         }
         break;
@@ -2969,7 +2993,7 @@ srpds_load_data_recursively(const struct lyd_node *mod_data, struct mongo_diff_d
     const struct lyd_node *sibling = mod_data;
     struct lyd_node *child = NULL;
     char *path = NULL, *path_no_pred = NULL, *path_modif = NULL;
-    const char *predicate, *value, *module_name, *prev = NULL, *orig_prev = NULL;
+    const char *value, *module_name, *prev = NULL, *orig_prev = NULL;
     char *prev_pred = NULL, *orig_prev_pred = NULL, *any_value = NULL;
     bson_t *bson_query = NULL;
     int32_t valtype = 0;
@@ -2987,9 +3011,20 @@ srpds_load_data_recursively(const struct lyd_node *mod_data, struct mongo_diff_d
             continue;
         }
 
-        /* get path and path_no_pred */
-        if ((err_info = srpds_get_predicate(plugin_name, sibling, &predicate, &path, &path_no_pred))) {
-            goto cleanup;
+        /* get path */
+        path = lyd_path(sibling, LYD_PATH_STD, NULL, 0);
+        if (!path) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_path()", "");
+            return err_info;
+        }
+
+        /* get path_no_pred */
+        if (lysc_is_userordered(sibling->schema)) {
+            path_no_pred = lyd_path(sibling, LYD_PATH_STD_NO_LAST_PRED, NULL, 0);
+            if (!path_no_pred) {
+                ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_path()", "");
+                return err_info;
+            }
         }
 
         /* get modified version of path */
