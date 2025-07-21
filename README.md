@@ -323,7 +323,9 @@ For more information on how the plugin works, please refer to the [plugin docume
 
 ### REDIS DS
 
-Similarly to `MONGO DS`, to use `REDIS DS` datastore plugin, **libhiredis** client library and Redis Stack server have to be available to the system.
+Similarly to `MONGO DS`, to use `REDIS DS` datastore plugin, **libhiredis** client library and Redis Stack server have
+to be available to the system. **WARNING** Redis Stack Server listens on **all** network interfaces **by default**
+(without authentication **anyone** can use the database server if the server is exposed to a public network).
 The default server address `127.0.0.1` and port `6379` are assumed with
 no authentication needed. To enable the plugin, set `ENABLE_DS_REDIS` CMake variable to `ON`.
 For different IP address and port, set `REDIS_HOST` and `REDIS_PORT` CMake variables.
@@ -332,7 +334,6 @@ create a corresponding user with sufficient rights, and do not forget to enforce
 For more information on how the plugin works, please refer to the [plugin documentation](doc/sr_plugins.dox).
 
 ## Examples
-
 See [examples](examples) directory, which contains an example for basic API functions.
 
 ## Bindings
