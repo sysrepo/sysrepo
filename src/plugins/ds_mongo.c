@@ -2808,16 +2808,9 @@ srpds_handle_opaque_node(const struct lyd_node *node, char op, struct mongo_diff
 
     switch (op) {
     case 'd':
-        /* delete a whole subtree (you have to do this even if you have no children since you can have attributes) */
-        if ((err_info = srpds_escape_string(plugin_name, discard_items_path, &escaped))) {
-            goto cleanup;
-        }
-        if (asprintf(&regex, "^%s", escaped) == -1) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
-            goto cleanup;
-        }
-        if ((err_info = srpds_add_operation(BCON_NEW("_id", "{", "$regex", BCON_UTF8(regex), "$options", "s", "}"),
-                &(diff_data->del_many)))) {
+        /* delete only one instance (attributes are not stored and opaque nodes are only top-level discard-items) */
+        if ((err_info = srpds_add_operation(BCON_NEW("_id", BCON_UTF8(discard_items_path)),
+                &(diff_data->del)))) {
             goto cleanup;
         }
         break;
