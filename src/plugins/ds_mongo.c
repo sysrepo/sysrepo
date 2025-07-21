@@ -3054,53 +3054,20 @@ srpds_load_data_recursively(const struct lyd_node *mod_data, struct mongo_diff_d
             module_name = NULL;
         }
 
-        /* create all data,
-        * there is no need to store order for user-ordered lists and leaf-lists
-        * since MongoDB does load all data in the same order in which they were stored */
-        if (sibling->schema) {
-            switch (sibling->schema->nodetype) {
-            case LYS_CONTAINER:
-                bson_query = srpds_container(path, sibling->schema->name, module_name, path_modif);
-                break;
-            case LYS_LIST:
-                if ((err_info = srpds_concat_key_values(plugin_name, sibling, &keys, &keys_length))) {
-                    goto cleanup;
-                }
+        /* create all data */
+        switch (sibling->schema->nodetype) {
+        case LYS_CONTAINER:
+            bson_query = srpds_container(path, sibling->schema->name, module_name, path_modif);
+            break;
+        case LYS_LIST:
+            if ((err_info = srpds_concat_key_values(plugin_name, sibling, &keys, &keys_length))) {
+                goto cleanup;
+            }
 
-                if (!(sibling->schema->flags & LYS_CONFIG_W)) {
-                    /* only change the predicate for keyless lists since state key lists are guaranteed to be unique */
-                    if (sibling->schema->flags & LYS_KEYLESS) {
-                        /* state lists */
-                        free(path);
-                        path = NULL;
-
-                        /* create unique path (duplicates can be present in state data) */
-                        if (asprintf(&path, "%s[%" PRIu64 "]", path_no_pred, state_order) == -1) {
-                            ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
-                            goto cleanup;
-                        }
-                    }
-
-                    bson_query = srpds_list_uo(path, sibling->schema->name, module_name, keys, keys_length, state_order,
-                            path_no_pred, NULL, 0, path_modif);
-                    ++state_order;
-                } else if (lysc_is_userordered(sibling->schema)) {
-                    /* userordered lists */
-                    bson_query = srpds_list_uo(path, sibling->schema->name, module_name, keys, keys_length, uo_order,
-                            path_no_pred, prev_pred, 1, path_modif);
-                    uo_order += 1024;
-                } else {
-                    /* lists */
-                    bson_query = srpds_list(path, sibling->schema->name, module_name, keys, keys_length, path_modif);
-                }
-                free(keys);
-                keys = NULL;
-                keys_length = 0;
-                break;
-            case LYS_LEAF:
-            case LYS_LEAFLIST:
-                if (!(sibling->schema->flags & LYS_CONFIG_W)) {
-                    /* state leaf-lists */
+            if (!(sibling->schema->flags & LYS_CONFIG_W)) {
+                /* only change the predicate for keyless lists since state key lists are guaranteed to be unique */
+                if (sibling->schema->flags & LYS_KEYLESS) {
+                    /* state lists */
                     free(path);
                     path = NULL;
 
@@ -3109,37 +3076,69 @@ srpds_load_data_recursively(const struct lyd_node *mod_data, struct mongo_diff_d
                         ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
                         goto cleanup;
                     }
-
-                    bson_query = srpds_leaflist_uo(path, sibling->schema->name, module_name, sibling->flags & LYD_DEFAULT,
-                            value, state_order, path_no_pred, NULL, 0, path_modif);
-                    ++state_order;
-                } else if (lysc_is_userordered(sibling->schema)) {
-                    /* userordered leaf-lists */
-                    bson_query = srpds_leaflist_uo(path, sibling->schema->name, module_name, sibling->flags & LYD_DEFAULT,
-                            value, uo_order, path_no_pred, prev_pred, 1, path_modif);
-                    uo_order += 1024;
-                } else {
-                    /* leaf-lists */
-                    bson_query = srpds_term(path, sibling->schema->name, module_name, sibling->flags & LYD_DEFAULT, value,
-                            path_modif);
                 }
-                break;
-            case LYS_ANYDATA:
-            case LYS_ANYXML:
-                bson_query = srpds_any(path, sibling->schema->name, module_name, sibling->flags & LYD_DEFAULT, value,
-                        valtype, path_modif);
-                break;
-            }
 
-            /* create new node */
-            if ((err_info = srpds_add_operation(bson_query, &(diff_data->cre)))) {
-                goto cleanup;
+                bson_query = srpds_list_uo(path, sibling->schema->name, module_name, keys, keys_length, state_order,
+                        path_no_pred, NULL, 0, path_modif);
+                ++state_order;
+            } else if (lysc_is_userordered(sibling->schema)) {
+                /* userordered lists */
+                bson_query = srpds_list_uo(path, sibling->schema->name, module_name, keys, keys_length, uo_order,
+                        path_no_pred, prev_pred, 1, path_modif);
+                uo_order += 1024;
+            } else {
+                /* lists */
+                bson_query = srpds_list(path, sibling->schema->name, module_name, keys, keys_length, path_modif);
             }
+            free(keys);
+            keys = NULL;
+            keys_length = 0;
+            break;
+        case LYS_LEAF:
+            bson_query = srpds_term(path, sibling->schema->name, module_name, sibling->flags & LYD_DEFAULT, value,
+                    path_modif);
+            break;
+        case LYS_LEAFLIST:
+            if (!(sibling->schema->flags & LYS_CONFIG_W)) {
+                /* state leaf-lists */
+                free(path);
+                path = NULL;
 
-            /* create new metadata */
-            if ((err_info = srpds_add_meta(sibling->meta, path, path_modif, diff_data))) {
-                goto cleanup;
+                /* create unique path (duplicates can be present in state data) */
+                if (asprintf(&path, "%s[%" PRIu64 "]", path_no_pred, state_order) == -1) {
+                    ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
+                    goto cleanup;
+                }
+
+                bson_query = srpds_leaflist_uo(path, sibling->schema->name, module_name, sibling->flags & LYD_DEFAULT,
+                        value, state_order, path_no_pred, NULL, 0, path_modif);
+                ++state_order;
+            } else if (lysc_is_userordered(sibling->schema)) {
+                /* userordered leaf-lists */
+                bson_query = srpds_leaflist_uo(path, sibling->schema->name, module_name, sibling->flags & LYD_DEFAULT,
+                        value, uo_order, path_no_pred, prev_pred, 1, path_modif);
+                uo_order += 1024;
+            } else {
+                /* leaf-lists */
+                bson_query = srpds_term(path, sibling->schema->name, module_name, sibling->flags & LYD_DEFAULT, value,
+                        path_modif);
             }
+            break;
+        case LYS_ANYDATA:
+        case LYS_ANYXML:
+            bson_query = srpds_any(path, sibling->schema->name, module_name, sibling->flags & LYD_DEFAULT, value,
+                    valtype, path_modif);
+            break;
+        }
+
+        /* create new node */
+        if ((err_info = srpds_add_operation(bson_query, &(diff_data->cre)))) {
+            goto cleanup;
+        }
+
+        /* create new metadata */
+        if ((err_info = srpds_add_meta(sibling->meta, path, path_modif, diff_data))) {
+            goto cleanup;
         }
 
         /* reset the orders if the next sibling
