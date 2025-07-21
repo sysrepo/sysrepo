@@ -387,7 +387,7 @@ cleanup:
 }
 
 sr_error_info_t *
-srpds_escape_string(const char *plg_name, const char *string, char **escaped_string)
+srpds_escape_string(const char *plg_name, const char *string, char escape_character, char **escaped_string)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, count, len = strlen(string);
@@ -402,7 +402,7 @@ srpds_escape_string(const char *plg_name, const char *string, char **escaped_str
                 ((string[i] >= ':') && (string[i] <= '@')) ||
                 ((string[i] >= '[') && (string[i] <= '`')) ||
                 ((string[i] >= '{') && (string[i] <= '~'))) {
-            (*escaped_string)[count] = '\\';
+            (*escaped_string)[count] = escape_character;
             ++count;
         }
         (*escaped_string)[count] = string[i];

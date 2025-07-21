@@ -168,11 +168,12 @@ sr_error_info_t *srpds_gid2grp(const char *plg_name, gid_t gid, char **group);
  *
  * @param[in] plg_name Plugin name.
  * @param[in] string String to escape.
+ * @param[in] escape_character Character to escape with ('\' or '%'). '%' is used to escape in Lua.
  * @param[out] escaped_string Escaped string.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
-sr_error_info_t *srpds_escape_string(const char *plg_name, const char *string, char **escaped_string);
+sr_error_info_t *srpds_escape_string(const char *plg_name, const char *string, char escape_character, char **escaped_string);
 
 /**
  * @brief Find the node @p node from one tree in another tree @p tree and store it in @p match .

@@ -468,7 +468,7 @@ srpds_process_load_paths(struct ly_ctx *ctx, const char **xpaths, uint32_t xpath
             srpds_get_parent_path(path);
         }
 
-        if ((err_info = srpds_escape_string(plugin_name, path, &escaped_path))) {
+        if ((err_info = srpds_escape_string(plugin_name, path, '\\', &escaped_path))) {
             goto cleanup;
         }
 
@@ -1920,7 +1920,7 @@ srpds_delete_uo_op(mongoc_collection_t *module, const char *path, const char *pa
 
     if (is_del_many) {
         /* delete many command for userordered lists and leaf-lists to delete a whole subtree */
-        if ((err_info = srpds_escape_string(plugin_name, path, &escaped))) {
+        if ((err_info = srpds_escape_string(plugin_name, path, '\\', &escaped))) {
             goto cleanup;
         }
         if (asprintf(&regex, "^%s", escaped) == -1) {
@@ -2176,7 +2176,7 @@ srpds_delete_op(mongoc_collection_t *module, const struct lyd_node *node, const 
         }
     } else {
         /* delete a whole subtree (you have to do this even if you have no children since you can have metadata) */
-        if ((err_info = srpds_escape_string(plugin_name, path, &escaped))) {
+        if ((err_info = srpds_escape_string(plugin_name, path, '\\', &escaped))) {
             goto cleanup;
         }
         if (asprintf(&regex, "^%s", escaped) == -1) {
@@ -2518,7 +2518,7 @@ srpds_use_tree2store(const struct lyd_node *mod_data, const struct lyd_node *nod
         goto cleanup;
     }
 
-    if ((err_info = srpds_escape_string(plugin_name, path_no_pred, &escaped))) {
+    if ((err_info = srpds_escape_string(plugin_name, path_no_pred, '\\', &escaped))) {
         goto cleanup;
     }
 
@@ -2691,7 +2691,7 @@ srpds_use_diff2store(mongoc_collection_t *module, sr_datastore_t ds, const struc
     if ((ds == SR_DS_OPERATIONAL) && (this_op != 'd')) {
         /* If the node has to be created, then there is nothing to delete in the database */
         if (this_op != 'c') {
-            if ((err_info = srpds_escape_string(plugin_name, path, &tmp))) {
+            if ((err_info = srpds_escape_string(plugin_name, path, '\\', &tmp))) {
                 goto cleanup;
             }
 
