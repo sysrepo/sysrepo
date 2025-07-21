@@ -3519,6 +3519,14 @@ srpds_mongo_store_commit(const struct lys_module *mod, sr_datastore_t ds, sr_cid
         }
     }
 
+    /* for last-modif flag, use data collection without cid and sid */
+    if (ds == SR_DS_OPERATIONAL) {
+        srpds_data_destroy(pdata, &mdata);
+        if ((err_info = srpds_data_init(mod, ds, 0, 0, 1, pdata, &mdata))) {
+            goto cleanup;
+        }
+    }
+
     if ((err_info = srpds_set_last_modif_flag(mdata.module))) {
         goto cleanup;
     }
