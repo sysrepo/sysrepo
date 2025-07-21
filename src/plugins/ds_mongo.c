@@ -3202,7 +3202,7 @@ srpds_store_data(mongoc_collection_t *module, const struct lyd_node *mod_data)
     }
 
     /* delete all data */
-    if ((err_info = srpds_delete_regex(module, "^[^2]"))) {
+    if ((err_info = srpds_delete_regex(module, "^[^012]"))) {
         goto cleanup;
     }
 
@@ -3505,7 +3505,7 @@ srpds_mongo_store_commit(const struct lys_module *mod, sr_datastore_t ds, sr_cid
     /* in case of empty mod_data, just delete everything (do not bother storing) */
     if (!mod_data) {
         /* delete all data */
-        if ((err_info = srpds_delete_regex(mdata.module, "^[^2]"))) {
+        if ((err_info = srpds_delete_regex(mdata.module, "^[^012]"))) {
             goto cleanup;
         }
     } else if (mod_diff) {
