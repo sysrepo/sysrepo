@@ -776,14 +776,14 @@ srpds_get_values(const char *plg_name, const struct lyd_node *node, const char *
 {
     sr_error_info_t *err_info = NULL;
 
-    /* LYD_ANYDATA_XML */
-    *valtype = 0;
-
     if (node->schema->nodetype & LYD_NODE_ANY) {
         /* these are JSON data, set valtype */
         if (((struct lyd_node_any *)node)->value_type == LYD_ANYDATA_JSON) {
             /* LYD_ANYDATA_JSON */
             *valtype = 1;
+        } else {
+            /* LYD_ANYDATA_XML */
+            *valtype = 0;
         }
 
         /* lyd_node_any */
