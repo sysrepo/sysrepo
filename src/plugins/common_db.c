@@ -4,8 +4,8 @@
  * @brief common routines for database plugins
  *
  * @copyright
- * Copyright (c) 2021 - 2024 Deutsche Telekom AG.
- * Copyright (c) 2021 - 2024 CESNET, z.s.p.o.
+ * Copyright (c) 2021 - 2025 Deutsche Telekom AG.
+ * Copyright (c) 2021 - 2025 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -268,23 +268,13 @@ srpds_cont_set_dflt(struct lyd_node *node)
     }
 }
 
-sr_error_info_t *
-srpds_get_predicate(const char *plg_name, const struct lyd_node *node, const char **predicate, char **standard, char **no_predicate)
+const char *
+srpds_get_predicate(const char *path, const char *path_no_pred)
 {
-    sr_error_info_t *err_info = NULL;
-
-    *standard = lyd_path(node, LYD_PATH_STD, NULL, 0);
-    if (!*standard) {
-        ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_path()", "");
-        return err_info;
+    if (path_no_pred) {
+        return path + strlen(path_no_pred);
     }
-    *no_predicate = lyd_path(node, LYD_PATH_STD_NO_LAST_PRED, NULL, 0);
-    if (!*no_predicate) {
-        ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_path()", "");
-        return err_info;
-    }
-    *predicate = *standard + strlen(*no_predicate);
-    return err_info;
+    return NULL;
 }
 
 sr_error_info_t *
