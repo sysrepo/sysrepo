@@ -56,7 +56,7 @@ via commands (more specifically the options MAXAGGREGATERESULTS and MAXEXPANSION
 
 In order for the authentication (see README) to work the user has to have the right to operate on all keys and indexes with the prefix `sr:` and 
 at least the right to use these following commands: `AUTH`, `FT.CONFIG SET`, `FT.AGGREGATE`, `FT.CURSOR READ`, `FT.CREATE`,
-`FT.DROPINDEX`, `HSET`, `HGET`, `SET`, `GET`, `DEL`, `COPY`. Redis supports categories of commands, so to enable all of these commands
+`FT.DROPINDEX`, `FT.INFO`, `HSET`, `HGET`, `SET`, `GET`, `DEL`, `COPY`. Redis supports categories of commands, so to enable all of these commands
 at once you only have to enable a category containing all of them, e.g. `@all`.
 
 */
