@@ -4,8 +4,8 @@
  * @brief internal RedisDB datastore plugin
  *
  * @copyright
- * Copyright (c) 2021 - 2024 Deutsche Telekom AG.
- * Copyright (c) 2021 - 2024 CESNET, z.s.p.o.
+ * Copyright (c) 2021 - 2025 Deutsche Telekom AG.
+ * Copyright (c) 2021 - 2025 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -85,6 +85,663 @@ struct redis_bulk {
     uint32_t size; /* size of the bulk */
     uint32_t idx; /* indicates how many commands have already been added */
 };
+
+/**
+ * @brief Get the prefix for the given datastore.
+ *
+ * @param[in] ds Given datastore.
+ * @return Prefix or NULL if datastore is not supported.
+ */
+static const char *
+srpds_ds2dsprefix(sr_datastore_t ds)
+{
+    switch (ds) {
+    case SR_DS_STARTUP:
+        return "sr:startup";
+    case SR_DS_RUNNING:
+        return "sr:running";
+    case SR_DS_CANDIDATE:
+        return "sr:candidate";
+    case SR_DS_OPERATIONAL:
+        return "sr:operational";
+    case SR_DS_FACTORY_DEFAULT:
+        return "sr:factory-default";
+    default:
+        return NULL;
+    }
+}
+
+/**
+ * @brief Initialize plugin connection data.
+ *
+ * @param[in,out] pdata Plugin connection data.
+ * @param[out] ctx Retrieved Redis context.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_data_init(redis_plg_conn_data_t *pdata, redisContext **ctx)
+{
+    sr_error_info_t *err_info = NULL;
+    redisContext *rds_ctx = NULL;
+    redisReply *reply = NULL;
+    redis_thread_data_t *new_pool = NULL;
+    int found = 0;
+
+    *ctx = NULL;
+
+    /* PLUGIN DATA RDLOCK */
+    pthread_rwlock_rdlock(&pdata->lock);
+
+    /* find redis context in the existing connection */
+    for (uint32_t i = 0; i < pdata->size; ++i) {
+        if (pdata->conn_pool[i].id == pthread_self()) {
+            *ctx = pdata->conn_pool[i].ctx;
+            found = 1;
+            break;
+        }
+    }
+
+    /* PLUGIN DATA UNLOCK */
+    pthread_rwlock_unlock(&pdata->lock);
+
+    if (!found) {
+        /* context not found, so create one */
+        rds_ctx = redisConnect(SR_DS_PLG_REDIS_HOST, SR_DS_PLG_REDIS_PORT);
+        if ((rds_ctx == NULL) || rds_ctx->err) {
+            if (rds_ctx) {
+                ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "redisConnect()", rds_ctx->errstr);
+                goto cleanup;
+            } else {
+                ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "redisConnect()", "Could not allocate Redis context");
+                goto cleanup;
+            }
+        }
+
+        /* authenticate if needed */
+        if (strlen(SR_DS_PLG_REDIS_USERNAME)) {
+            reply = redisCommand(rds_ctx, "AUTH " SR_DS_PLG_REDIS_USERNAME " " SR_DS_PLG_REDIS_PASSWORD);
+            if (reply->type == REDIS_REPLY_ERROR) {
+                ERRINFO(&err_info, plugin_name, SR_ERR_UNAUTHORIZED, "Authentication", reply->str);
+                goto cleanup;
+            }
+            freeReplyObject(reply);
+        }
+
+        /* PLUGIN DATA WRLOCK */
+        pthread_rwlock_wrlock(&pdata->lock);
+
+        new_pool = realloc(pdata->conn_pool, (sizeof *new_pool) * (pdata->size + 1));
+        if (!new_pool) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "realloc()", "");
+
+            /* PLUGIN DATA UNLOCK */
+            pthread_rwlock_unlock(&pdata->lock);
+
+            goto cleanup;
+        }
+
+        pdata->conn_pool = new_pool;
+        pdata->conn_pool[pdata->size].ctx = rds_ctx;
+        pdata->conn_pool[pdata->size].id = pthread_self();
+        pdata->size = pdata->size + 1;
+        *ctx = rds_ctx;
+
+        /* PLUGIN DATA UNLOCK */
+        pthread_rwlock_unlock(&pdata->lock);
+
+        /* set necessary configuration */
+        reply = redisCommand(*ctx, "FT.CONFIG SET MAXAGGREGATERESULTS -1");
+        if (reply->type == REDIS_REPLY_ERROR) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Setting MAXAGGREGATERESULTS option", reply->str);
+            goto cleanup;
+        }
+        freeReplyObject(reply);
+
+        reply = redisCommand(*ctx, "FT.CONFIG SET MAXEXPANSIONS " REDIS_MAX_AGGREGATE_LIMIT);
+        if (reply->type == REDIS_REPLY_ERROR) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Setting MAXEXPANSIONS option", reply->str);
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    if (err_info && rds_ctx) {
+        redisFree(rds_ctx);
+    }
+    freeReplyObject(reply);
+    return err_info;
+}
+
+/**
+ * @brief Get data prefix.
+ *
+ * @param[in] ds Given datastore.
+ * @param[in] module_name Given module name.
+ * @param[in] cid Connection ID, for @p ds ::SR_DS_OPERATIONAL.
+ * @param[in] sid Session ID, for @p ds ::SR_DS_OPERATIONAL.
+ * @param[out] mod_ns Database prefix for the module.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_get_mod_ns(sr_datastore_t ds, const char *module_name, sr_cid_t cid, uint32_t sid, char **mod_ns)
+{
+    sr_error_info_t *err_info = NULL;
+    int r;
+
+    if ((ds == SR_DS_OPERATIONAL) && cid && sid) {
+        r = asprintf(mod_ns, "%s:%s:%s-%" PRIu32 "-%" PRIu32, srpds_ds2dsprefix(ds), sr_get_shm_prefix(), module_name, cid, sid);
+    } else {
+        r = asprintf(mod_ns, "%s:%s:%s", srpds_ds2dsprefix(ds), sr_get_shm_prefix(), module_name);
+    }
+
+    if (r == -1) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
+    }
+    return err_info;
+}
+
+/**
+ * @brief Get module owner, group and permissions from the database.
+ *
+ * @param[in] ctx Redis context.
+ * @param[in] mod_ns Database prefix for the module.
+ * @param[out] owner Module owner.
+ * @param[out] group Module group.
+ * @param[out] perm Module permissions.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_get_access(redisContext *ctx, const char *mod_ns, char **owner, char **group, mode_t *perm)
+{
+    sr_error_info_t *err_info = NULL;
+    redisReply *reply = NULL;
+
+    if (owner) {
+        *owner = NULL;
+    }
+    if (group) {
+        *group = NULL;
+    }
+    if (perm) {
+        *perm = 0;
+    }
+
+    /* get the owner */
+    if (owner) {
+        reply = redisCommand(ctx, "GET %s:perm:owner", mod_ns);
+        if (reply->type == REDIS_REPLY_ERROR) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Getting owner", reply->str);
+            goto cleanup;
+        }
+        *owner = strdup(reply->str);
+        if (!*owner) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "strdup()", strerror(errno));
+            goto cleanup;
+        }
+        freeReplyObject(reply);
+        reply = NULL;
+    }
+
+    /* get the group */
+    if (group) {
+        reply = redisCommand(ctx, "GET %s:perm:group", mod_ns);
+        if (reply->type == REDIS_REPLY_ERROR) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Getting group", reply->str);
+            goto cleanup;
+        }
+        *group = strdup(reply->str);
+        if (!*group) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "strdup()", strerror(errno));
+            goto cleanup;
+        }
+        freeReplyObject(reply);
+        reply = NULL;
+    }
+
+    /* get the permissions */
+    if (perm) {
+        reply = redisCommand(ctx, "GET %s:perm:perm", mod_ns);
+        if (reply->type == REDIS_REPLY_ERROR) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Getting permissions", reply->str);
+            goto cleanup;
+        }
+        *perm = (unsigned int)strtoll(reply->str, NULL, 0);
+    }
+
+cleanup:
+    if (err_info) {
+        if (owner) {
+            free(*owner);
+            *owner = NULL;
+        }
+        if (group) {
+            free(*group);
+            *group = NULL;
+        }
+        if (perm) {
+            *perm = 0;
+        }
+    }
+    freeReplyObject(reply);
+    return err_info;
+}
+
+/**
+ * @brief Put all load XPaths into a query filter.
+ *
+ * @param[in] ctx Libyang context.
+ * @param[in] xpaths Array of XPaths.
+ * @param[in] xpath_cnt XPath count.
+ * @param[in] oper_ds Flag if the filter is for loading operational data and special handling is needed.
+ * @param[out] xpath_filter Final query filter.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_process_load_paths(struct ly_ctx *ctx, const char **xpaths, uint32_t xpath_cnt, int oper_ds, char **xpath_filter)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t i;
+    char *tmp = NULL, *path = NULL, *escaped_path = NULL;
+    struct lyd_node *ctx_node = NULL, *match = NULL;
+    uint32_t log_options = 0, *old_options;
+    LY_ERR lyrc;
+
+    *xpath_filter = NULL;
+
+    /* create new data node for lyd_find_path to work correctly */
+    if (lyd_new_path(NULL, ctx, "/ietf-yang-library:yang-library", NULL, 0, &ctx_node) != LY_SUCCESS) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_new_path()", "");
+        goto cleanup;
+    }
+
+    /* build a regex */
+    for (i = 0; i < xpath_cnt; ++i) {
+        old_options = ly_temp_log_options(&log_options);
+        /* check whether the xpaths are paths */
+        lyrc = lyd_find_path(ctx_node, xpaths[i], 0, &match);
+        ly_temp_log_options(old_options);
+        if (lyrc != LY_ENOTFOUND) {
+            /* not a path, load all data */
+            goto cleanup;
+        }
+
+        /* copy the path for further manipulation */
+        path = strdup(xpaths[i]);
+        if (!path) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "strdup()", strerror(errno));
+            goto cleanup;
+        }
+
+        /* all relative paths should be transformed into absolute */
+        if (path[0] != '/') {
+            if (asprintf(&tmp, "/%s", path) == -1) {
+                ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
+                goto cleanup;
+            }
+            free(path);
+            path = tmp;
+        }
+
+        /* path is key */
+        if (lysc_is_key(lys_find_path(ctx, NULL, path, 0))) {
+            srpds_get_parent_path(path);
+        }
+
+        if ((err_info = srpds_escape_string(plugin_name, path, '\\', &escaped_path))) {
+            goto cleanup;
+        }
+
+        /* start prefix match */
+        if (i == 0) {
+            if (asprintf(&tmp, "%s*", escaped_path) == -1) {
+                ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
+                goto cleanup;
+            }
+            /* continue prefix match */
+        } else {
+            if (asprintf(&tmp, "%s | %s*", *xpath_filter, escaped_path) == -1) {
+                ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
+                goto cleanup;
+            }
+        }
+        free(*xpath_filter);
+        *xpath_filter = tmp;
+        free(escaped_path);
+        escaped_path = NULL;
+
+        /* add all parent paths also */
+        srpds_get_parent_path(path);
+        while (path[0] != '\0') {
+            /* continue with exact match (for parent nodes) */
+            if ((err_info = srpds_escape_string(plugin_name, path, '\\', &escaped_path))) {
+                goto cleanup;
+            }
+            if (asprintf(&tmp, "%s | %s", *xpath_filter, escaped_path) == -1) {
+                ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
+                goto cleanup;
+            }
+            free(*xpath_filter);
+            *xpath_filter = tmp;
+            free(escaped_path);
+            escaped_path = NULL;
+
+            srpds_get_parent_path(path);
+        }
+        free(path);
+        path = NULL;
+    }
+
+    if (xpath_cnt && oper_ds) {
+        /* explicitly add discard-items to the query for operational datastore */
+        if ((err_info = srpds_escape_string(plugin_name, "/sysrepo:discard-items", '\\', &escaped_path))) {
+            goto cleanup;
+        }
+        if (asprintf(&tmp, "%s | %s*", *xpath_filter, escaped_path) == -1) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
+            goto cleanup;
+        }
+        free(*xpath_filter);
+        *xpath_filter = tmp;
+    }
+
+cleanup:
+    if (err_info) {
+        free(*xpath_filter);
+    }
+    free(path);
+    free(escaped_path);
+    lyd_free_all(ctx_node);
+    return err_info;
+}
+
+/**
+ * @brief Load all data (only :data) and store them inside the lyd_node structure (for all datastores).
+ *
+ * @param[in] ctx Redis context.
+ * @param[in] mod Given module.
+ * @param[in] ds Given datastore.
+ * @param[in] mod_ns Database prefix for the module.
+ * @param[in] xpath_filter Query filter composed of load XPaths to speed up the loading process.
+ * @param[out] mod_data Retrieved module data from the database.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_load_all(redisContext *ctx, const struct lys_module *mod, sr_datastore_t ds, const char *mod_ns, const char *xpath_filter,
+        struct lyd_node **mod_data)
+{
+    sr_error_info_t *err_info = NULL;
+    uint64_t valtype = 0, order = 0;
+    const char *path, *name, *module_name = NULL, *value = NULL, *path_no_pred = NULL;
+    enum srpds_db_ly_types type;
+    int dflt_flag = 0;
+    char **keys = NULL;
+    uint32_t *lengths = NULL;
+    srpds_db_userordered_lists_t uo_lists = {0};
+    struct lyd_node **parent_nodes = NULL;
+    size_t pnodes_size = 0;
+
+    uint32_t i, j;
+    redisReply *reply = NULL, *partial = NULL;
+    long long cursor;
+    int argnum = 25;
+    char *args_array[argnum], *arg = NULL;
+
+    /*
+    *   Loading multiple different sets of data
+    *
+    *   Load All Datastores
+    *   | 1) containers (LYS_CONTAINER)
+    *   |    Dataset [ path | name | type | module_name | path_modif ]
+    *   |
+    *   | 2) lists (LYS_LIST)
+    *   |    Dataset [ path | name | type | module_name | keys | path_modif ]
+    *   |
+    *   | 3) leafs and leaf-lists (LYS_LEAF and LYS_LEAFLIST)
+    *   |    Dataset [ path | name | type | module_name | dflt_flag | value | path_modif ]
+    *   |
+    *   | 4) anydata and anyxml (LYS_ANYDATA and LYS_ANYXML)
+    *   |    Dataset [ path | name | type | module_name | dflt_flag | value | valtype | path_modif ]
+    *   |
+    *   | 5) user-ordered lists
+    *   |    Dataset [ path | name | type | module_name | keys | order | path_no_pred | prev | is_prev_empty | path_modif ]
+    *   |
+    *   | 6) user-ordered leaf-lists
+    *   |    Dataset [ path | name | type | module_name | dflt_flag | value | order | path_no_pred | prev | is_prev_empty | path_modif ]
+    *   |
+    *   | 7) opaque nodes
+    *   |    Dataset [ path | name | type | module_name | value | path_modif ]
+    *   |
+    *   | 8) metadata
+    *   |    Dataset [ path | name | type | value | path_modif ]
+    *   |
+    *   | 9) other metadata (glob: and meta:)
+    *   |
+    *   | module_name = "" - use parent's module | name - use the module specified by this name
+    *   | valtype     = 0 - XML | 1 - JSON
+    *   | start number defines the type (1 - container, 2 - list...)
+    *
+    *   Metadata and MaxOrder
+    *   | 1) global metadata
+    *   |     1.1) glob:last-modified-sec | glob:last-modified-nsec = timestamp (last-modif) [ !!! NOT LOADED ]
+    *   |     1.2) glob:candidate-modified = is different from running? (for candidate datastore) [ !!! NOT LOADED ]
+    *   |     1.3) glob:perm = owner, group and permissions [ !!! NOT LOADED ]
+    *   |    Dataset [ value ]
+    *   |
+    *   | 2) maximum order for a userordered list or leaflist
+    *   |     2.1) meta:[path] = maximum order [ !!! NOT LOADED ]
+    *   |    Dataset [ value ]
+    *
+    *   [ !!! NOT LOADED ] data are only for internal use
+    */
+
+    /* results are limited to REDIS_MAX_AGGREGATE_LIMIT */
+    args_array[0] = "FT.AGGREGATE";
+    if (asprintf(&arg, "%s:data", mod_ns) == -1) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
+        goto cleanup;
+    }
+    args_array[1] = arg;
+    if (xpath_filter) {
+        if (asprintf(&arg, "@path:{%s}", xpath_filter) == -1) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
+            goto cleanup;
+        }
+        args_array[2] = arg;
+    } else {
+        args_array[2] = "*";
+    }
+    args_array[3] = "SORTBY";
+    args_array[4] = "2";
+    args_array[5] = "@path_modif";
+    args_array[6] = "ASC";
+    args_array[7] = "LOAD";
+    args_array[8] = "10";
+    args_array[9] = "@path";
+    args_array[10] = "@name";
+    args_array[11] = "@type";
+    args_array[12] = "@module_name";
+    args_array[13] = "@dflt_flag";
+    args_array[14] = "@keys";
+    args_array[15] = "@value";
+    args_array[16] = "@order";
+    args_array[17] = "@valtype";
+    args_array[18] = "@path_no_pred";
+    args_array[19] = "LIMIT";
+    args_array[20] = "0";
+    args_array[21] = REDIS_MAX_AGGREGATE_LIMIT;
+    args_array[22] = "WITHCURSOR";
+    args_array[23] = "COUNT";
+    args_array[24] = REDIS_MAX_AGGREGATE_COUNT;
+
+    reply = redisCommandArgv(ctx, argnum, (const char **)args_array, NULL);
+    if (reply->type == REDIS_REPLY_ERROR) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "FT.AGGREGATE", reply->str);
+        goto cleanup;
+    }
+    if (reply->type != REDIS_REPLY_ARRAY) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "FT.AGGREGATE", "No reply array");
+        goto cleanup;
+    }
+
+    while (1) {
+        for (i = 1; i < reply->element[0]->elements; ++i) {
+            partial = reply->element[0]->element[i];
+
+            /* skip path_modif (part of query) */
+            j = 1;
+
+            /* get path */
+            j += 2;
+            path = partial->element[j]->str;
+
+            /* get name */
+            j += 2;
+            name = partial->element[j]->str;
+
+            /* get type */
+            j += 2;
+            type = (uint64_t)strtoull(partial->element[j]->str, NULL, 0);
+
+            /* get module_name or value based on type */
+            switch (type) {
+            case SRPDS_DB_LY_CONTAINER:
+            case SRPDS_DB_LY_LIST:
+            case SRPDS_DB_LY_TERM:
+            case SRPDS_DB_LY_ANY:
+            case SRPDS_DB_LY_LIST_UO:
+            case SRPDS_DB_LY_LEAFLIST_UO:
+            case SRPDS_DB_LY_OPAQUE:
+                j += 2;
+                module_name = partial->element[j]->str;
+                break;
+            case SRPDS_DB_LY_META:
+                j += 2;
+                value = partial->element[j]->str;
+                break;
+            default:
+                break;
+            }
+
+            /* get dflt_flag or keys or value based on type */
+            switch (type) {
+            case SRPDS_DB_LY_TERM:          /* leaf or leaf-list */
+            case SRPDS_DB_LY_ANY:           /* anyxml or anydata */
+            case SRPDS_DB_LY_LEAFLIST_UO:   /* user-ordered leaf-list */
+                j += 2;
+                dflt_flag = (uint64_t)strtoull(partial->element[j]->str, NULL, 0);
+                break;
+            case SRPDS_DB_LY_LIST:          /* list */
+            case SRPDS_DB_LY_LIST_UO:       /* user-ordered list */
+                j += 2;
+                value = partial->element[j]->str;
+                if ((err_info = srpds_parse_keys(plugin_name, value, &keys, &lengths))) {
+                    goto cleanup;
+                }
+                break;
+            case SRPDS_DB_LY_OPAQUE:
+                j += 2;
+                value = partial->element[j]->str;
+                break;
+            default:
+                break;
+            }
+
+            /* get value or order based on type */
+            switch (type) {
+            case SRPDS_DB_LY_TERM:         /* leafs and leaf-lists */
+            case SRPDS_DB_LY_ANY:          /* anydata and anyxml */
+            case SRPDS_DB_LY_LEAFLIST_UO:  /* user-ordered leaf-lists */
+                j += 2;
+                value = partial->element[j]->str;
+                break;
+            case SRPDS_DB_LY_LIST_UO:  /* user-ordered lists */
+                j += 2;
+                order = (uint64_t)strtoull(partial->element[j]->str, NULL, 0);
+                break;
+            default:
+                break;
+            }
+
+            /* get valtype or path_no_pred or order based on type */
+            switch (type) {
+            case SRPDS_DB_LY_ANY:  /* anydata and anyxml */
+                j += 2;
+                valtype = (uint64_t)strtoull(partial->element[j]->str, NULL, 0);
+                break;
+            case SRPDS_DB_LY_LIST_UO:  /* user-ordered lists */
+                j += 2;
+                path_no_pred = partial->element[j]->str;
+                break;
+            case SRPDS_DB_LY_LEAFLIST_UO:  /* user-ordered leaf-lists */
+                j += 2;
+                order = (uint64_t)strtoull(partial->element[j]->str, NULL, 0);
+                break;
+            default:
+                break;
+            }
+
+            switch (type) {
+            case SRPDS_DB_LY_LEAFLIST_UO:  /* user-ordered leaf-lists */
+                j += 2;
+                path_no_pred = partial->element[j]->str;
+                break;
+            default:
+                break;
+            }
+
+            /* add a new node to mod_data */
+            if ((err_info = srpds_add_mod_data(plugin_name, mod->ctx, ds, path, name, type, module_name, value,
+                    valtype, &dflt_flag, (const char **)keys, lengths, order, path_no_pred, &uo_lists, &parent_nodes,
+                    &pnodes_size, mod_data))) {
+                goto cleanup;
+            }
+            free(keys);
+            free(lengths);
+            keys = NULL;
+            lengths = NULL;
+        }
+
+        cursor = reply->element[1]->integer;
+        if (cursor == 0) {
+            break;
+        }
+        freeReplyObject(reply);
+
+        reply = redisCommand(ctx, "FT.CURSOR READ %s:data %" PRIu64 " COUNT " REDIS_MAX_AGGREGATE_COUNT, mod_ns, cursor);
+        if (reply->type == REDIS_REPLY_ERROR) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "FT.AGGREGATE", reply->str);
+            goto cleanup;
+        }
+        if (reply->type != REDIS_REPLY_ARRAY) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "FT.AGGREGATE", "No reply array");
+            goto cleanup;
+        }
+    }
+
+    /* go through all userordered lists and leaflists and order them */
+    if ((err_info = srpds_order_uo_lists(plugin_name, &uo_lists))) {
+        goto cleanup;
+    }
+
+    *mod_data = lyd_first_sibling(*mod_data);
+
+cleanup:
+    free(keys);
+    free(lengths);
+    free(parent_nodes);
+    srpds_cleanup_uo_lists(&uo_lists);
+    free(args_array[1]);
+    if (xpath_filter) {
+        free(args_array[2]);
+    }
+    freeReplyObject(reply);
+    return err_info;
+}
 
 /**
  * @brief Allocate and initialize resources for command's arguments.
@@ -186,7 +843,7 @@ srpds_docs_add_format(const char *format, va_list args, struct redis_bulk_inner 
     char *newstr = NULL;
 
     if (vasprintf(&newstr, format, args) == -1) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
+        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "vasprintf()", strerror(errno));
         goto cleanup;
     }
 
@@ -392,159 +1049,409 @@ cleanup:
     return err_info;
 }
 
-/**
- * @brief Get the prefix for the given datastore.
- *
- * @param[in] ds Given datastore.
- * @return Prefix or NULL if datastore is not supported.
- */
-static const char *
-srpds_ds2dsprefix(sr_datastore_t ds)
-{
-    switch (ds) {
-    case SR_DS_STARTUP:
-        return "sr:startup";
-    case SR_DS_RUNNING:
-        return "sr:running";
-    case SR_DS_CANDIDATE:
-        return "sr:candidate";
-    case SR_DS_OPERATIONAL:
-        return "sr:operational";
-    case SR_DS_FACTORY_DEFAULT:
-        return "sr:factory-default";
-    default:
-        return NULL;
-    }
-}
-
-/**
- * @brief Initialize plugin connection data.
- *
- * @param[in,out] pdata Plugin connection data.
- * @param[out] ctx Retrieved Redis context.
- * @return NULL on success;
- * @return Sysrepo error info on error.
- */
 static sr_error_info_t *
-srpds_data_init(redis_plg_conn_data_t *pdata, redisContext **ctx)
+srpds_container(redisContext *ctx, const char *mod_ns, const char *path, const char *name, const char *module_name,
+        const char *path_modif, struct redis_bulk *bulk)
 {
     sr_error_info_t *err_info = NULL;
-    redisContext *rds_ctx = NULL;
-    redisReply *reply = NULL;
-    redis_thread_data_t *new_pool = NULL;
-    int found = 0;
 
-    *ctx = NULL;
-
-    /* PLUGIN DATA RDLOCK */
-    pthread_rwlock_rdlock(&pdata->lock);
-
-    /* find redis context in the existing connection */
-    for (uint32_t i = 0; i < pdata->size; ++i) {
-        if (pdata->conn_pool[i].id == pthread_self()) {
-            *ctx = pdata->conn_pool[i].ctx;
-            found = 1;
-            break;
-        }
+    if ((err_info = srpds_bulk_start(12, bulk))) {
+        goto cleanup;
     }
-
-    /* PLUGIN DATA UNLOCK */
-    pthread_rwlock_unlock(&pdata->lock);
-
-    if (!found) {
-        /* context not found, so create one */
-        rds_ctx = redisConnect(SR_DS_PLG_REDIS_HOST, SR_DS_PLG_REDIS_PORT);
-        if ((rds_ctx == NULL) || rds_ctx->err) {
-            if (rds_ctx) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "redisConnect()", rds_ctx->errstr);
-                goto cleanup;
-            } else {
-                ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "redisConnect()", "Could not allocate Redis context");
-                goto cleanup;
-            }
-        }
-
-        /* authenticate if needed */
-        if (strlen(SR_DS_PLG_REDIS_USERNAME)) {
-            reply = redisCommand(rds_ctx, "AUTH " SR_DS_PLG_REDIS_USERNAME " " SR_DS_PLG_REDIS_PASSWORD);
-            if (reply->type == REDIS_REPLY_ERROR) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_UNAUTHORIZED, "Authentication", reply->str);
-                goto cleanup;
-            }
-            freeReplyObject(reply);
-        }
-
-        /* PLUGIN DATA WRLOCK */
-        pthread_rwlock_wrlock(&pdata->lock);
-
-        new_pool = realloc(pdata->conn_pool, (sizeof *new_pool) * (pdata->size + 1));
-        if (!new_pool) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "realloc()", "");
-
-            /* PLUGIN DATA UNLOCK */
-            pthread_rwlock_unlock(&pdata->lock);
-
-            goto cleanup;
-        }
-
-        pdata->conn_pool = new_pool;
-        pdata->conn_pool[pdata->size].ctx = rds_ctx;
-        pdata->conn_pool[pdata->size].id = pthread_self();
-        pdata->size = pdata->size + 1;
-        *ctx = rds_ctx;
-
-        /* PLUGIN DATA UNLOCK */
-        pthread_rwlock_unlock(&pdata->lock);
-
-        /* set necessary configuration */
-        reply = redisCommand(*ctx, "FT.CONFIG SET MAXAGGREGATERESULTS -1");
-        if (reply->type == REDIS_REPLY_ERROR) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Setting MAXAGGREGATERESULTS option", reply->str);
-            goto cleanup;
-        }
-        freeReplyObject(reply);
-
-        reply = redisCommand(*ctx, "FT.CONFIG SET MAXEXPANSIONS " REDIS_MAX_AGGREGATE_LIMIT);
-        if (reply->type == REDIS_REPLY_ERROR) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Setting MAXEXPANSIONS option", reply->str);
-            goto cleanup;
-        }
+    srpds_bulk_add_const("HSET", 4, bulk);
+    if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s", mod_ns, path))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("path", 4, bulk);
+    if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("name", 4, bulk);
+    if ((err_info = srpds_bulk_add_alloc(name, strlen(name), bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("type", 4, bulk);
+    if ((err_info = srpds_bulk_add_format(bulk, "%d", SRPDS_DB_LY_CONTAINER))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("module_name", 11, bulk);
+    if ((err_info = srpds_bulk_add_alloc(module_name, module_name ? strlen(module_name) : 0, bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("path_modif", 10, bulk);
+    if ((err_info = srpds_bulk_add_alloc(path_modif, strlen(path_modif), bulk))) {
+        goto cleanup;
+    }
+    if ((err_info = srpds_bulk_end(ctx, bulk))) {
+        goto cleanup;
     }
 
 cleanup:
-    if (err_info && rds_ctx) {
-        redisFree(rds_ctx);
-    }
-    freeReplyObject(reply);
     return err_info;
 }
 
-/**
- * @brief Get data prefix.
- *
- * @param[in] ds Given datastore.
- * @param[in] module_name Given module name.
- * @param[in] cid Connection ID, for @p ds ::SR_DS_OPERATIONAL.
- * @param[in] sid Session ID, for @p ds ::SR_DS_OPERATIONAL.
- * @param[out] mod_ns Database prefix for the module.
- * @return NULL on success;
- * @return Sysrepo error info on error.
- */
 static sr_error_info_t *
-srpds_get_mod_ns(sr_datastore_t ds, const char *module_name, sr_cid_t cid, uint32_t sid, char **mod_ns)
+srpds_list(redisContext *ctx, const char *mod_ns, const char *path, const char *name, const char *module_name,
+        const char *keys, uint32_t keys_length, const char *path_modif, struct redis_bulk *bulk)
 {
     sr_error_info_t *err_info = NULL;
-    int r;
 
-    if ((ds == SR_DS_OPERATIONAL) && cid && sid) {
-        r = asprintf(mod_ns, "%s:%s:%s-%" PRIu32 "-%" PRIu32, srpds_ds2dsprefix(ds), sr_get_shm_prefix(), module_name, cid, sid);
-    } else {
-        r = asprintf(mod_ns, "%s:%s:%s", srpds_ds2dsprefix(ds), sr_get_shm_prefix(), module_name);
+    if ((err_info = srpds_bulk_start(14, bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("HSET", 4, bulk);
+    if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s", mod_ns, path))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("path", 4, bulk);
+    if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("name", 4, bulk);
+    if ((err_info = srpds_bulk_add_alloc(name, strlen(name), bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("type", 4, bulk);
+    if ((err_info = srpds_bulk_add_format(bulk, "%d", SRPDS_DB_LY_LIST))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("module_name", 11, bulk);
+    if ((err_info = srpds_bulk_add_alloc(module_name, module_name ? strlen(module_name) : 0, bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("keys", 4, bulk);
+    if ((err_info = srpds_bulk_add_alloc(keys, keys_length, bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("path_modif", 10, bulk);
+    if ((err_info = srpds_bulk_add_alloc(path_modif, strlen(path_modif), bulk))) {
+        goto cleanup;
+    }
+    if ((err_info = srpds_bulk_end(ctx, bulk))) {
+        goto cleanup;
     }
 
-    if (r == -1) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
+cleanup:
+    return err_info;
+}
+
+static sr_error_info_t *
+srpds_term(redisContext *ctx, const char *mod_ns, const char *path, const char *name, const char *module_name,
+        int dflt_flag, const char *value, const char *path_modif, struct redis_bulk *bulk)
+{
+    sr_error_info_t *err_info = NULL;
+
+    if ((err_info = srpds_bulk_start(16, bulk))) {
+        goto cleanup;
     }
+    srpds_bulk_add_const("HSET", 4, bulk);
+    if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s", mod_ns, path))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("path", 4, bulk);
+    if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("name", 4, bulk);
+    if ((err_info = srpds_bulk_add_alloc(name, strlen(name), bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("type", 4, bulk);
+    if ((err_info = srpds_bulk_add_format(bulk, "%d", SRPDS_DB_LY_TERM))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("module_name", 11, bulk);
+    if ((err_info = srpds_bulk_add_alloc(module_name, module_name ? strlen(module_name) : 0, bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("dflt_flag", 9, bulk);
+    if ((err_info = srpds_bulk_add_format(bulk, "%d", dflt_flag))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("value", 5, bulk);
+    if ((err_info = srpds_bulk_add_alloc(value, value ? strlen(value) : 0, bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("path_modif", 10, bulk);
+    if ((err_info = srpds_bulk_add_alloc(path_modif, strlen(path_modif), bulk))) {
+        goto cleanup;
+    }
+    if ((err_info = srpds_bulk_end(ctx, bulk))) {
+        goto cleanup;
+    }
+
+cleanup:
+    return err_info;
+}
+
+static sr_error_info_t *
+srpds_any(redisContext *ctx, const char *mod_ns, const char *path, const char *name, const char *module_name,
+        int dflt_flag, const char *value, int32_t valtype, const char *path_modif, struct redis_bulk *bulk)
+{
+    sr_error_info_t *err_info = NULL;
+
+    if ((err_info = srpds_bulk_start(18, bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("HSET", 4, bulk);
+    if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s", mod_ns, path))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("path", 4, bulk);
+    if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("name", 4, bulk);
+    if ((err_info = srpds_bulk_add_alloc(name, strlen(name), bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("type", 4, bulk);
+    if ((err_info = srpds_bulk_add_format(bulk, "%d", SRPDS_DB_LY_ANY))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("module_name", 11, bulk);
+    if ((err_info = srpds_bulk_add_alloc(module_name, module_name ? strlen(module_name) : 0, bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("dflt_flag", 9, bulk);
+    if ((err_info = srpds_bulk_add_format(bulk, "%d", dflt_flag))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("value", 5, bulk);
+    if ((err_info = srpds_bulk_add_alloc(value, value ? strlen(value) : 0, bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("valtype", 7, bulk);
+    if ((err_info = srpds_bulk_add_format(bulk, "%" PRId32, valtype))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("path_modif", 10, bulk);
+    if ((err_info = srpds_bulk_add_alloc(path_modif, strlen(path_modif), bulk))) {
+        goto cleanup;
+    }
+    if ((err_info = srpds_bulk_end(ctx, bulk))) {
+        goto cleanup;
+    }
+
+cleanup:
+    return err_info;
+}
+
+static sr_error_info_t *
+srpds_list_uo(redisContext *ctx, const char *mod_ns, const char *path, const char *name, const char *module_name,
+        const char *keys, uint32_t keys_length, uint64_t order, const char *path_no_pred, const char *prev_pred,
+        int is_prev_empty, int include_prev, const char *path_modif, struct redis_bulk *bulk)
+{
+    sr_error_info_t *err_info = NULL;
+
+    if ((err_info = srpds_bulk_start(include_prev ? 22 : 18, bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("HSET", 4, bulk);
+    if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s", mod_ns, path))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("path", 4, bulk);
+    if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("name", 4, bulk);
+    if ((err_info = srpds_bulk_add_alloc(name, strlen(name), bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("type", 4, bulk);
+    if ((err_info = srpds_bulk_add_format(bulk, "%d", SRPDS_DB_LY_LIST_UO))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("module_name", 11, bulk);
+    if ((err_info = srpds_bulk_add_alloc(module_name, module_name ? strlen(module_name) : 0, bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("keys", 4, bulk);
+    if ((err_info = srpds_bulk_add_alloc(keys, keys_length, bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("order", 5, bulk);
+    if ((err_info = srpds_bulk_add_format(bulk, "%" PRIu64, order))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("path_no_pred", 12, bulk);
+    if ((err_info = srpds_bulk_add_alloc(path_no_pred, strlen(path_no_pred), bulk))) {
+        goto cleanup;
+    }
+    if (include_prev) {
+        srpds_bulk_add_const("prev", 4, bulk);
+        if ((err_info = srpds_bulk_add_alloc(prev_pred, prev_pred ? strlen(prev_pred) : 0, bulk))) {
+            goto cleanup;
+        }
+        srpds_bulk_add_const("is_prev_empty", 13, bulk);
+        if ((err_info = srpds_bulk_add_format(bulk, "%d", is_prev_empty))) {
+            goto cleanup;
+        }
+    }
+    srpds_bulk_add_const("path_modif", 10, bulk);
+    if ((err_info = srpds_bulk_add_alloc(path_modif, strlen(path_modif), bulk))) {
+        goto cleanup;
+    }
+    if ((err_info = srpds_bulk_end(ctx, bulk))) {
+        goto cleanup;
+    }
+
+cleanup:
+    return err_info;
+}
+
+static sr_error_info_t *
+srpds_leaflist_uo(redisContext *ctx, const char *mod_ns, const char *path, const char *name, const char *module_name,
+        int dflt_flag, const char *value, uint64_t order, const char *path_no_pred, const char *prev_pred,
+        int is_prev_empty, int include_prev, const char *path_modif, struct redis_bulk *bulk)
+{
+    sr_error_info_t *err_info = NULL;
+
+    if ((err_info = srpds_bulk_start(include_prev ? 24 : 20, bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("HSET", 4, bulk);
+    if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s", mod_ns, path))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("path", 4, bulk);
+    if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("name", 4, bulk);
+    if ((err_info = srpds_bulk_add_alloc(name, strlen(name), bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("type", 4, bulk);
+    if ((err_info = srpds_bulk_add_format(bulk, "%d", SRPDS_DB_LY_LEAFLIST_UO))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("module_name", 11, bulk);
+    if ((err_info = srpds_bulk_add_alloc(module_name, module_name ? strlen(module_name) : 0, bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("dflt_flag", 9, bulk);
+    if ((err_info = srpds_bulk_add_format(bulk, "%d", dflt_flag))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("value", 5, bulk);
+    if ((err_info = srpds_bulk_add_alloc(value, value ? strlen(value) : 0, bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("order", 5, bulk);
+    if ((err_info = srpds_bulk_add_format(bulk, "%" PRIu64, order))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("path_no_pred", 12, bulk);
+    if ((err_info = srpds_bulk_add_alloc(path_no_pred, strlen(path_no_pred), bulk))) {
+        goto cleanup;
+    }
+    if (include_prev) {
+        srpds_bulk_add_const("prev", 4, bulk);
+        if ((err_info = srpds_bulk_add_alloc(prev_pred, prev_pred ? strlen(prev_pred) : 0, bulk))) {
+            goto cleanup;
+        }
+        srpds_bulk_add_const("is_prev_empty", 13, bulk);
+        if ((err_info = srpds_bulk_add_format(bulk, "%d", is_prev_empty))) {
+            goto cleanup;
+        }
+    }
+    srpds_bulk_add_const("path_modif", 10, bulk);
+    if ((err_info = srpds_bulk_add_alloc(path_modif, strlen(path_modif), bulk))) {
+        goto cleanup;
+    }
+    if ((err_info = srpds_bulk_end(ctx, bulk))) {
+        goto cleanup;
+    }
+
+cleanup:
+    return err_info;
+}
+
+static sr_error_info_t *
+srpds_opaque(redisContext *ctx, const char *mod_ns, const char *path, const char *name, const char *module_name,
+        const char *value, const char *path_modif, struct redis_bulk *bulk)
+{
+    sr_error_info_t *err_info = NULL;
+
+    if ((err_info = srpds_bulk_start(14, bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("HSET", 4, bulk);
+    if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s$%s", mod_ns, path, value))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("path", 4, bulk);
+    if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("name", 4, bulk);
+    if ((err_info = srpds_bulk_add_alloc(name, strlen(name), bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("type", 4, bulk);
+    if ((err_info = srpds_bulk_add_format(bulk, "%d", SRPDS_DB_LY_OPAQUE))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("module_name", 11, bulk);
+    if ((err_info = srpds_bulk_add_alloc(module_name, module_name ? strlen(module_name) : 0, bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("value", 5, bulk);
+    if ((err_info = srpds_bulk_add_alloc(value, value ? strlen(value) : 0, bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("path_modif", 10, bulk);
+    if ((err_info = srpds_bulk_add_format(bulk, "%s$%s", path_modif, value))) {
+        goto cleanup;
+    }
+    if ((err_info = srpds_bulk_end(ctx, bulk))) {
+        goto cleanup;
+    }
+
+cleanup:
+    return err_info;
+}
+
+static sr_error_info_t *
+srpds_meta(redisContext *ctx, const char *mod_ns, const char *path, const char *name, const char *module_name,
+        const char *value, const char *path_modif, struct redis_bulk *bulk)
+{
+    sr_error_info_t *err_info = NULL;
+
+    if ((err_info = srpds_bulk_start(12, bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("HSET", 4, bulk);
+    if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s#%s:%s", mod_ns, path, module_name, name))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("path", 4, bulk);
+    if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("name", 4, bulk);
+    if ((err_info = srpds_bulk_add_format(bulk, "%s:%s", module_name, name))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("type", 4, bulk);
+    if ((err_info = srpds_bulk_add_format(bulk, "%d", SRPDS_DB_LY_META))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("value", 5, bulk);
+    if ((err_info = srpds_bulk_add_alloc(value, value ? strlen(value) : 0, bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("path_modif", 10, bulk);
+    if ((err_info = srpds_bulk_add_format(bulk, "%s#%s:%s", path_modif, module_name, name))) {
+        goto cleanup;
+    }
+    if ((err_info = srpds_bulk_end(ctx, bulk))) {
+        goto cleanup;
+    }
+
+cleanup:
     return err_info;
 }
 
@@ -680,10 +1587,10 @@ srpds_load_next(redisContext *ctx, const char *mod_ns, const char *prev_pred, co
     *order = 0;
 
     /* escape all special characters so that query is valid */
-    if ((err_info = srpds_escape_string(plugin_name, prev_pred, &prev_escaped))) {
+    if ((err_info = srpds_escape_string(plugin_name, prev_pred, '\\', &prev_escaped))) {
         goto cleanup;
     }
-    if ((err_info = srpds_escape_string(plugin_name, path_no_pred, &path_no_pred_escaped))) {
+    if ((err_info = srpds_escape_string(plugin_name, path_no_pred, '\\', &path_no_pred_escaped))) {
         goto cleanup;
     }
 
@@ -774,7 +1681,7 @@ srpds_shift_uo_list_recursively(redisContext *ctx, const char *mod_ns, const cha
     }
 
     /* escape all special characters so that query is valid */
-    if ((err_info = srpds_escape_string(plugin_name, path_no_pred, &path_no_pred_escaped))) {
+    if ((err_info = srpds_escape_string(plugin_name, path_no_pred, '\\', &path_no_pred_escaped))) {
         goto cleanup;
     }
 
@@ -847,18 +1754,18 @@ cleanup:
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_insert_uo_element(redisContext *ctx, const char *mod_ns, struct lyd_node *node, const char *module_name,
+srpds_insert_uo_element(redisContext *ctx, const char *mod_ns, const struct lyd_node *node, const char *module_name,
         const char *path, const char *value, const char *prev, const char *prev_pred, uint64_t order,
         const char *path_no_pred, const char *path_modif)
 {
     sr_error_info_t *err_info = NULL;
-    redisReply *reply = NULL;
-    char *keys = NULL, *idx = NULL, *type = NULL, *order_str = NULL,
-            *is_prev_empty_str = NULL;
-    int argnum = 22;
-    const char *argv[argnum];
-    size_t argvlen[argnum];
+    char *keys = NULL;
     uint32_t keys_length = 0;
+    struct redis_bulk bulk = {0};
+
+    if ((err_info = srpds_bulk_init(1, &bulk))) {
+        goto cleanup;
+    }
 
     /* insert an element */
     /* we need is_prev_empty field since we cannot check if prev is empty or not */
@@ -867,90 +1774,26 @@ srpds_insert_uo_element(redisContext *ctx, const char *mod_ns, struct lyd_node *
         if ((err_info = srpds_concat_key_values(plugin_name, node, &keys, &keys_length))) {
             goto cleanup;
         }
-
-        argv[0] = "HSET";
-        argvlen[0] = 4;
-        if (asprintf(&idx, "%s:data:%s", mod_ns, path) == -1) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
+        if ((err_info = srpds_list_uo(ctx, mod_ns, path, node->schema->name, module_name, keys, keys_length, order,
+                path_no_pred, prev_pred, (prev[0] == '\0') ? 1 : 0, 1, path_modif, &bulk))) {
             goto cleanup;
         }
-        argv[1] = idx;
-        argvlen[1] = strlen(idx);
-        argv[2] = "path";
-        argvlen[2] = 4;
-        argv[3] = path;
-        argvlen[3] = strlen(path);
-        argv[4] = "name";
-        argvlen[4] = 4;
-        argv[5] = node->schema->name;
-        argvlen[5] = strlen(node->schema->name);
-        argv[6] = "type";
-        argvlen[6] = 4;
-        if (asprintf(&type, "%d", SRPDS_DB_LY_LIST_UO) == -1) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
-            goto cleanup;
-        }
-        argv[7] = type; // SRPDS_DB_LY_LIST_UO
-        argvlen[7] = strlen(type);
-        argv[8] = "module_name";
-        argvlen[8] = 11;
-        argv[9] = module_name;
-        argvlen[9] = strlen(module_name);
-        argv[10] = "keys";
-        argvlen[10] = 4;
-        argv[11] = keys;
-        argvlen[11] = keys_length;
-        argv[12] = "order";
-        argvlen[12] = 5;
-        if (asprintf(&order_str, "%" PRIu64, order) == -1) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
-            goto cleanup;
-        }
-        argv[13] = order_str;
-        argvlen[13] = strlen(order_str);
-        argv[14] = "path_no_pred";
-        argvlen[14] = 12;
-        argv[15] = path_no_pred;
-        argvlen[15] = strlen(path_no_pred);
-        argv[16] = "prev";
-        argvlen[16] = 4;
-        argv[17] = prev_pred;
-        argvlen[17] = strlen(prev_pred);
-        argv[18] = "is_prev_empty";
-        argvlen[18] = 13;
-        if (asprintf(&is_prev_empty_str, "%d", (prev[0] == '\0') ? 1 : 0) == -1) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
-            goto cleanup;
-        }
-        argv[19] = is_prev_empty_str;
-        argvlen[19] = strlen(is_prev_empty_str);
-        argv[20] = "path_modif";
-        argvlen[20] = 10;
-        argv[21] = path_modif;
-        argvlen[21] = strlen(path_modif);
-
-        reply = redisCommandArgv(ctx, argnum, argv, argvlen);
         break;
     case LYS_LEAFLIST:
-        reply = redisCommand(ctx, "HSET %s:data:%s path %s name %s type %d module_name %s dflt_flag %d"
-                " value %s order %" PRIu64 " path_no_pred %s prev %s is_prev_empty %d path_modif %s",
-                mod_ns, path, path, node->schema->name, SRPDS_DB_LY_LEAFLIST_UO, module_name, 0, value,
-                order, path_no_pred, prev_pred, (prev[0] == '\0') ? 1 : 0, path_modif);
+        if ((err_info = srpds_leaflist_uo(ctx, mod_ns, path, node->schema->name, module_name, 0, value, order,
+                path_no_pred, prev_pred, (prev[0] == '\0') ? 1 : 0, 1, path_modif, &bulk))) {
+            goto cleanup;
+        }
         break;
     }
 
-    if (reply->type == REDIS_REPLY_ERROR) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Inserting userordered element", reply->str);
+    if ((err_info = srpds_bulk_exec(ctx, &bulk))) {
         goto cleanup;
     }
 
 cleanup:
     free(keys);
-    free(idx);
-    free(type);
-    free(order_str);
-    free(is_prev_empty_str);
-    freeReplyObject(reply);
+    srpds_bulk_destroy(&bulk);
     return err_info;
 }
 
@@ -1000,10 +1843,10 @@ srpds_change_next_element(redisContext *ctx, const char *mod_ns, const char *pat
     redisReply *reply = NULL, *reply2 = NULL;
     char *arg = NULL, *args_array[argnum], *prev_escaped = NULL, *path_no_pred_escaped = NULL;
 
-    if ((err_info = srpds_escape_string(plugin_name, prev_pred, &prev_escaped))) {
+    if ((err_info = srpds_escape_string(plugin_name, prev_pred, '\\', &prev_escaped))) {
         goto cleanup;
     }
-    if ((err_info = srpds_escape_string(plugin_name, path_no_pred, &path_no_pred_escaped))) {
+    if ((err_info = srpds_escape_string(plugin_name, path_no_pred, '\\', &path_no_pred_escaped))) {
         goto cleanup;
     }
 
@@ -1080,7 +1923,7 @@ cleanup:
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_create_uo_op(redisContext *ctx, const char *mod_ns, struct lyd_node *node, const char *module_name,
+srpds_create_uo_op(redisContext *ctx, const char *mod_ns, const struct lyd_node *node, const char *module_name,
         const char *path, const char *path_no_pred, const char *predicate, const char *value, const char *prev,
         const char *prev_pred, const char *path_modif, uint64_t *max_order)
 {
@@ -1271,7 +2114,7 @@ cleanup:
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_update_default_flag(redisContext *ctx, struct lyd_node *node, const char *mod_ns, const char *path,
+srpds_update_default_flag(redisContext *ctx, const struct lyd_node *node, const char *mod_ns, const char *path,
         struct redis_bulk *bulk)
 {
     sr_error_info_t *err_info = NULL;
@@ -1303,7 +2146,7 @@ srpds_update_default_flag(redisContext *ctx, struct lyd_node *node, const char *
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_create_op_default_flag(redisContext *ctx, struct lyd_node *node, const char *mod_ns, const char *path,
+srpds_create_op_default_flag(redisContext *ctx, const struct lyd_node *node, const char *mod_ns, const char *path,
         struct redis_bulk *bulk)
 {
     sr_error_info_t *err_info = NULL;
@@ -1333,7 +2176,7 @@ cleanup:
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_none_op_default_flag(redisContext *ctx, struct lyd_node *node, const char *mod_ns, const char *path,
+srpds_none_op_default_flag(redisContext *ctx, const struct lyd_node *node, const char *mod_ns, const char *path,
         struct redis_bulk *bulk)
 {
     sr_error_info_t *err_info = NULL;
@@ -1360,7 +2203,7 @@ cleanup:
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_replace_op_default_flag(redisContext *ctx, struct lyd_node *node, const char *mod_ns, const char *path,
+srpds_replace_op_default_flag(redisContext *ctx, const struct lyd_node *node, const char *mod_ns, const char *path,
         struct redis_bulk *bulk)
 {
     sr_error_info_t *err_info = NULL;
@@ -1398,7 +2241,7 @@ cleanup:
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_create_op(redisContext *ctx, const char *mod_ns, struct lyd_node *node, const char *module_name,
+srpds_create_op(redisContext *ctx, const char *mod_ns, const struct lyd_node *node, const char *module_name,
         const char *path, const char *path_no_pred, const char *predicate, const char *path_modif,
         const char *value, const char *prev, const char *prev_pred, int32_t valtype, uint64_t *max_order,
         struct redis_bulk *bulk)
@@ -1416,34 +2259,7 @@ srpds_create_op(redisContext *ctx, const char *mod_ns, struct lyd_node *node, co
     } else {
         switch (node->schema->nodetype) {
         case LYS_CONTAINER:
-            if ((err_info = srpds_bulk_start(12, bulk))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("HSET", 4, bulk);
-            if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s", mod_ns, path))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("path", 4, bulk);
-            if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("name", 4, bulk);
-            if ((err_info = srpds_bulk_add_alloc(node->schema->name, strlen(node->schema->name), bulk))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("type", 4, bulk);
-            if ((err_info = srpds_bulk_add_format(bulk, "%d", SRPDS_DB_LY_CONTAINER))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("module_name", 11, bulk);
-            if ((err_info = srpds_bulk_add_alloc(module_name, strlen(module_name), bulk))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("path_modif", 10, bulk);
-            if ((err_info = srpds_bulk_add_alloc(path_modif, strlen(path_modif), bulk))) {
-                goto cleanup;
-            }
-            if ((err_info = srpds_bulk_end(ctx, bulk))) {
+            if ((err_info = srpds_container(ctx, mod_ns, path, node->schema->name, module_name, path_modif, bulk))) {
                 goto cleanup;
             }
             break;
@@ -1451,128 +2267,24 @@ srpds_create_op(redisContext *ctx, const char *mod_ns, struct lyd_node *node, co
             if ((err_info = srpds_concat_key_values(plugin_name, node, &keys, &keys_length))) {
                 goto cleanup;
             }
-
-            if ((err_info = srpds_bulk_start(14, bulk))) {
+            if ((err_info = srpds_list(ctx, mod_ns, path, node->schema->name, module_name, keys, keys_length,
+                    path_modif, bulk))) {
                 goto cleanup;
             }
-            srpds_bulk_add_const("HSET", 4, bulk);
-            if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s", mod_ns, path))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("path", 4, bulk);
-            if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("name", 4, bulk);
-            if ((err_info = srpds_bulk_add_alloc(node->schema->name, strlen(node->schema->name), bulk))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("type", 4, bulk);
-            if ((err_info = srpds_bulk_add_format(bulk, "%d", SRPDS_DB_LY_LIST))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("module_name", 11, bulk);
-            if ((err_info = srpds_bulk_add_alloc(module_name, strlen(module_name), bulk))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("keys", 4, bulk);
-            if ((err_info = srpds_bulk_add_alloc(keys, keys_length, bulk))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("path_modif", 10, bulk);
-            if ((err_info = srpds_bulk_add_alloc(path_modif, strlen(path_modif), bulk))) {
-                goto cleanup;
-            }
-            if ((err_info = srpds_bulk_end(ctx, bulk))) {
-                goto cleanup;
-            }
-
             free(keys);
             keys = NULL;
             break;
         case LYS_LEAF:
         case LYS_LEAFLIST:
-            if ((err_info = srpds_bulk_start(16, bulk))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("HSET", 4, bulk);
-            if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s", mod_ns, path))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("path", 4, bulk);
-            if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("name", 4, bulk);
-            if ((err_info = srpds_bulk_add_alloc(node->schema->name, strlen(node->schema->name), bulk))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("type", 4, bulk);
-            if ((err_info = srpds_bulk_add_format(bulk, "%d", SRPDS_DB_LY_TERM))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("module_name", 11, bulk);
-            if ((err_info = srpds_bulk_add_alloc(module_name, strlen(module_name), bulk))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("dflt_flag", 9, bulk);
-            if ((err_info = srpds_bulk_add_format(bulk, "%d", 0))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("value", 5, bulk);
-            if ((err_info = srpds_bulk_add_alloc(value, strlen(value), bulk))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("path_modif", 10, bulk);
-            if ((err_info = srpds_bulk_add_alloc(path_modif, strlen(path_modif), bulk))) {
-                goto cleanup;
-            }
-            if ((err_info = srpds_bulk_end(ctx, bulk))) {
+            if ((err_info = srpds_term(ctx, mod_ns, path, node->schema->name, module_name, 0, value, path_modif,
+                    bulk))) {
                 goto cleanup;
             }
             break;
         case LYS_ANYDATA:
         case LYS_ANYXML:
-            if ((err_info = srpds_bulk_start(18, bulk))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("HSET", 4, bulk);
-            if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s", mod_ns, path))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("path", 4, bulk);
-            if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("name", 4, bulk);
-            if ((err_info = srpds_bulk_add_alloc(node->schema->name, strlen(node->schema->name), bulk))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("type", 4, bulk);
-            if ((err_info = srpds_bulk_add_format(bulk, "%d", SRPDS_DB_LY_ANY))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("module_name", 11, bulk);
-            if ((err_info = srpds_bulk_add_alloc(module_name, strlen(module_name), bulk))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("dflt_flag", 9, bulk);
-            if ((err_info = srpds_bulk_add_format(bulk, "%d", 0))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("value", 5, bulk);
-            if ((err_info = srpds_bulk_add_alloc(value, strlen(value), bulk))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("valtype", 7, bulk);
-            if ((err_info = srpds_bulk_add_format(bulk, "%" PRId32, valtype))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("path_modif", 10, bulk);
-            if ((err_info = srpds_bulk_add_alloc(path_modif, strlen(path_modif), bulk))) {
-                goto cleanup;
-            }
-            if ((err_info = srpds_bulk_end(ctx, bulk))) {
+            if ((err_info = srpds_any(ctx, mod_ns, path, node->schema->name, module_name, 0, value, valtype,
+                    path_modif, bulk))) {
                 goto cleanup;
             }
             break;
@@ -1606,7 +2318,7 @@ cleanup:
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_delete_op(redisContext *ctx, const char *mod_ns, struct lyd_node *node, const char *path, const char *path_no_pred,
+srpds_delete_op(redisContext *ctx, const char *mod_ns, const struct lyd_node *node, const char *path, const char *path_no_pred,
         const char *predicate, const char *orig_prev_pred, struct redis_bulk *bulk)
 {
     sr_error_info_t *err_info = NULL;
@@ -1655,7 +2367,7 @@ cleanup:
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_replace_op(redisContext *ctx, const char *mod_ns, struct lyd_node *node, const char *module_name, const char *path,
+srpds_replace_op(redisContext *ctx, const char *mod_ns, const struct lyd_node *node, const char *module_name, const char *path,
         const char *path_no_pred, const char *predicate, const char *value, const char *prev, const char *prev_pred,
         const char *orig_prev_pred, const char *path_modif, uint64_t *max_order, struct redis_bulk *bulk)
 {
@@ -1699,184 +2411,31 @@ cleanup:
 }
 
 /**
- * @brief Load the whole diff and store the data in the database.
- *
- * @param[in] ctx Redis context.
- * @param[in] node Current data node in the diff.
- * @param[in] mod_ns Database prefix for the module.
- * @param[in] parent_op Operation on the node's parent.
- * @param[out] bulk Structure containing the commands for bulk operation.
- * @return NULL on success;
- * @return Sysrepo error info on error.
- */
-static sr_error_info_t *
-srpds_store_diff_recursively(redisContext *ctx, const struct lyd_node *node, const char *mod_ns, char parent_op,
-        struct redis_bulk *bulk)
-{
-    sr_error_info_t *err_info = NULL;
-    struct lyd_node *sibling = (struct lyd_node *)node, *child = NULL;
-    char *path = NULL, *path_no_pred = NULL, *path_modif = NULL;
-    const char *predicate = NULL, *module_name = NULL;
-    const char *value = NULL, *prev = NULL, *orig_prev = NULL;
-    char *prev_pred = NULL, *orig_prev_pred = NULL, *any_value = NULL;
-    int32_t valtype;
-    char this_op = 0;
-    struct lyd_meta *meta_op;
-    uint64_t max_order = 0;
-
-    while (sibling) {
-        /* n - none, c - create, d - delete, r - replace */
-        meta_op = lyd_find_meta(sibling->meta, NULL, "yang:operation");
-        if (meta_op) {
-            this_op = lyd_get_meta_value(meta_op)[0];
-        } else {
-            this_op = parent_op;
-        }
-
-        /* get node's path, path without last predicate and predicate */
-        if ((err_info = srpds_get_predicate(plugin_name, sibling, &predicate, &path, &path_no_pred))) {
-            goto cleanup;
-        }
-
-        /* get modified version of path and path_no_pred */
-        if ((err_info = srpds_get_modif_path(plugin_name, path, &path_modif))) {
-            goto cleanup;
-        }
-
-        /* node's values */
-        if ((err_info = srpds_get_values(plugin_name, sibling, &value, &prev, &orig_prev, &prev_pred, &orig_prev_pred,
-                &any_value, &valtype))) {
-            goto cleanup;
-        }
-
-        /* get module name */
-        if ((sibling->parent == NULL) || strcmp(sibling->schema->module->name, sibling->parent->schema->module->name)) {
-            module_name = sibling->schema->module->name;
-        } else {
-            module_name = "";
-        }
-
-        switch (this_op) {
-        case 'n':
-            /* default nodes */
-            if ((err_info = srpds_none_op_default_flag(ctx, sibling, mod_ns, path, bulk))) {
-                goto cleanup;
-            }
-            break;
-        case 'c':
-            if ((err_info = srpds_create_op(ctx, mod_ns, sibling, module_name, path, path_no_pred, predicate, path_modif,
-                    value, prev, prev_pred, valtype, &max_order, bulk))) {
-                goto cleanup;
-            }
-            break;
-        case 'd':
-            if ((err_info = srpds_delete_op(ctx, mod_ns, sibling, path, path_no_pred, predicate,
-                    orig_prev_pred ? orig_prev_pred : "", bulk))) {
-                goto cleanup;
-            }
-            break;
-        case 'r':
-            if ((err_info = srpds_replace_op(ctx, mod_ns, sibling, module_name, path, path_no_pred, predicate, value,
-                    prev, prev_pred, orig_prev_pred, path_modif, &max_order, bulk))) {
-                goto cleanup;
-            }
-            break;
-        case 0:
-            ERRINFO(&err_info, plugin_name, SR_ERR_UNSUPPORTED, "Operation for a node", "Unsupported operation");
-            goto cleanup;
-            break;
-        }
-
-        /* reset the max_order if the next sibling
-         * is from a different list or if the next sibling does not exist */
-        if (lysc_is_userordered(sibling->schema) && ((sibling->next &&
-                (sibling->schema->name != sibling->next->schema->name)) || !(sibling->next))) {
-            /* update max order for lists and leaf-lists */
-            if ((err_info = srpds_set_maxord(ctx, mod_ns, path_no_pred, max_order))) {
-                goto cleanup;
-            }
-            max_order = 0;
-        }
-
-        free(path);
-        path = NULL;
-        free(path_no_pred);
-        path_no_pred = NULL;
-        free(path_modif);
-        path_modif = NULL;
-        srpds_cleanup_values(sibling, prev, orig_prev, &prev_pred, &orig_prev_pred, &any_value);
-
-        if ((child = lyd_child_no_keys(sibling))) {
-            if ((err_info = srpds_store_diff_recursively(ctx, child, mod_ns, this_op, bulk))) {
-                goto cleanup;
-            }
-        }
-
-        sibling = sibling->next;
-    }
-
-cleanup:
-    free(path);
-    free(path_no_pred);
-    free(path_modif);
-    srpds_cleanup_values(sibling, prev, orig_prev, &prev_pred, &orig_prev_pred, &any_value);
-    return err_info;
-}
-
-/**
  * @brief Add new metadata to store in the database.
  *
  * @param[in] ctx Redis context.
  * @param[in] meta Metadata to store.
  * @param[in] mod_ns Database prefix for the module.
  * @param[in] path Path to the node with metadata.
- * @param[out] order Order of the nodes.
+ * @param[in] path_modif Modified path.
  * @param[out] bulk Structure containing the commands for bulk operation.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_add_meta(redisContext *ctx, struct lyd_meta *meta, const char *mod_ns, const char *path, uint64_t *order,
+srpds_add_meta(redisContext *ctx, struct lyd_meta *meta, const char *mod_ns, const char *path, const char *path_modif,
         struct redis_bulk *bulk)
 {
     sr_error_info_t *err_info = NULL;
     const char *meta_value;
 
     while (meta) {
-        ++*order;
         meta_value = lyd_get_meta_value(meta);
 
         /* skip yang:lyds_tree metadata, this is libyang specific data */
-        if (strcmp(meta->annotation->module->name, "yang") || strcmp(meta->name, "lyds_tree")) {
+        if (strcmp(meta->annotation->module->name, "yang") && strcmp(meta->annotation->module->name, "sysrepo")) {
             /* create new metadata */
-            if ((err_info = srpds_bulk_start(12, bulk))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("HSET", 4, bulk);
-            if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s:%s:%s", mod_ns, path, meta->annotation->module->name, meta->name))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("path", 4, bulk);
-            if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("name", 4, bulk);
-            if ((err_info = srpds_bulk_add_format(bulk, "%s:%s", meta->annotation->module->name, meta->name))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("type", 4, bulk);
-            if ((err_info = srpds_bulk_add_format(bulk, "%d", SRPDS_DB_LY_META))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("order", 5, bulk);
-            if ((err_info = srpds_bulk_add_format(bulk, "%" PRIu64, *order))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("value", 5, bulk);
-            if ((err_info = srpds_bulk_add_alloc(meta_value, strlen(meta_value), bulk))) {
-                goto cleanup;
-            }
-            if ((err_info = srpds_bulk_end(ctx, bulk))) {
+            if ((err_info = srpds_meta(ctx, mod_ns, path, meta->name, meta->annotation->module->name, meta_value, path_modif, bulk))) {
                 goto cleanup;
             }
         }
@@ -1888,97 +2447,660 @@ cleanup:
     return err_info;
 }
 
+static sr_error_info_t *
+srpds_load_state_recursively(redisContext *ctx, const struct ly_set *set, const struct lyd_node *node,
+        const char *mod_ns, struct redis_bulk *bulk)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lyd_node *sibling = node;
+    struct lyd_node *child = NULL;
+    char *path = NULL, *path_no_pred = NULL, *path_modif = NULL;
+    const char *module_name = NULL, *value = NULL;
+    char *any_value = NULL;
+    int32_t valtype;
+    char *keys = NULL;
+    uint32_t keys_length = 0;
+    uint64_t order = 1;
+    uint32_t set_idx = 1;
+
+    while (sibling) {
+        /* get path */
+        path = lyd_path(sibling, LYD_PATH_STD, NULL, 0);
+        if (!path) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_path()", "");
+            return err_info;
+        }
+
+        /* get path_no_pred */
+        if (lysc_is_userordered(sibling->schema)) {
+            path_no_pred = lyd_path(sibling, LYD_PATH_STD_NO_LAST_PRED, NULL, 0);
+            if (!path_no_pred) {
+                ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_path()", "");
+                return err_info;
+            }
+        }
+
+        /* get modified version of path */
+        if ((err_info = srpds_get_modif_path(plugin_name, path, &path_modif))) {
+            goto cleanup;
+        }
+
+        /* node's values */
+        if ((err_info = srpds_get_values(plugin_name, sibling, &value, NULL, NULL, NULL, NULL,
+                &any_value, &valtype))) {
+            goto cleanup;
+        }
+
+        /* create all data (state nodes) */
+        /* get module name */
+        if ((sibling->parent == NULL) || strcmp(sibling->schema->module->name, sibling->parent->schema->module->name)) {
+            module_name = sibling->schema->module->name;
+        } else {
+            module_name = NULL;
+        }
+
+        switch (sibling->schema->nodetype) {
+        case LYS_CONTAINER:
+            if ((err_info = srpds_container(ctx, mod_ns, path, sibling->schema->name, module_name, path_modif,
+                    bulk))) {
+                goto cleanup;
+            }
+            break;
+        case LYS_LIST:     /* state lists are always userordered (either key or keyless) */
+            if ((err_info = srpds_concat_key_values(plugin_name, sibling, &keys, &keys_length))) {
+                goto cleanup;
+            }
+
+            /* only change the predicate for keyless lists since state key lists are guaranteed to be unique */
+            if (sibling->schema->flags & LYS_KEYLESS) {
+                free(path);
+                path = NULL;
+
+                /* create unique path (duplicates can be present in state data) */
+                if (asprintf(&path, "%s[%" PRIu64 "]", path_no_pred, order) == -1) {
+                    ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
+                    goto cleanup;
+                }
+            }
+
+            if ((err_info = srpds_list_uo(ctx, mod_ns, path, sibling->schema->name, module_name, keys, keys_length,
+                    order, path_no_pred, NULL, 0, 0, path_modif, bulk))) {
+                goto cleanup;
+            }
+            free(keys);
+            keys = NULL;
+            keys_length = 0;
+            order++;
+            break;
+        case LYS_LEAF:
+            if ((srpds_term(ctx, mod_ns, path, sibling->schema->name, module_name, sibling->flags & LYD_DEFAULT,
+                    value, path_modif, bulk))) {
+                goto cleanup;
+            }
+            break;
+        case LYS_LEAFLIST:  /* state leaf-lists are always userordered */
+            free(path);
+            path = NULL;
+
+            /* create unique path (duplicates can be present in state data) */
+            if (asprintf(&path, "%s[%" PRIu64 "]", path_no_pred, order) == -1) {
+                ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
+                goto cleanup;
+            }
+            if ((err_info = srpds_leaflist_uo(ctx, mod_ns, path, sibling->schema->name, module_name,
+                    sibling->flags & LYD_DEFAULT, value, order, path_no_pred, NULL, 0, 0, path_modif,
+                    bulk))) {
+                goto cleanup;
+            }
+            order++;
+            break;
+        case LYS_ANYDATA:
+        case LYS_ANYXML:
+            if ((err_info = srpds_any(ctx, mod_ns, path, sibling->schema->name, module_name,
+                    sibling->flags & LYD_DEFAULT, value, valtype, path_modif, bulk))) {
+                goto cleanup;
+            }
+            break;
+        default:
+            break;
+        }
+
+        /* create new metadata */
+        if ((err_info = srpds_add_meta(ctx, sibling->meta, mod_ns, path, path_modif, bulk))) {
+            goto cleanup;
+        }
+
+        /* reset the order if the next sibling
+         * is from a different list or if the next sibling does not exist */
+        if (lysc_is_userordered(sibling->schema) &&
+                ((sibling->next && (sibling->schema->name != sibling->next->schema->name)) || !sibling->next)) {
+            order = 1;
+        }
+
+        /* free memory early before further recursion */
+        free(path);
+        path = NULL;
+        free(path_no_pred);
+        path_no_pred = NULL;
+        free(path_modif);
+        path_modif = NULL;
+        free(any_value);
+        any_value = NULL;
+
+        if ((child = lyd_child_no_keys(sibling))) {
+            if ((err_info = srpds_load_state_recursively(ctx, NULL, child, mod_ns, bulk))) {
+                goto cleanup;
+            }
+        }
+
+        /* top level node should only consider its siblings in set since its siblings can be configuration nodes */
+        if (set) {
+            sibling = (set_idx < set->count) ? set->dnodes[set_idx++] : NULL;
+        } else {
+            sibling = sibling->next;
+        }
+    }
+
+cleanup:
+    free(path);
+    free(path_no_pred);
+    free(path_modif);
+    free(any_value);
+    free(keys);
+    return err_info;
+}
+
+static sr_error_info_t *
+srpds_load_and_del_regex(redisContext *ctx, const char *mod_ns, const char *regex)
+{
+    sr_error_info_t *err_info = NULL;
+    redisReply *reply = NULL;
+
+    reply = redisCommand(ctx, "EVAL %s 2 %s:data %s",
+            "local reply = redis.pcall('FT.AGGREGATE', KEYS[1], '*', 'LOAD', '1', '__key', 'LIMIT', '0', '"
+            REDIS_MAX_AGGREGATE_LIMIT "', 'WITHCURSOR', 'COUNT', '" REDIS_MAX_AGGREGATE_COUNT "'); "
+            "if reply['err'] ~= nil then "
+            "return reply['err']; "
+            "end "
+            "while 1 do "
+            "local n = table.getn(reply[1]); "
+            "for i=2,n do "
+            "local reply2; "
+            "if string.find(reply[1][i][2], KEYS[2]) then "
+            "reply2 = redis.pcall('DEL', reply[1][i][2]); "
+            "if reply2 ~= 1 then "
+            "return reply2['err']; "
+            "end "
+            "end "
+            "end "
+            "if reply[2] == 0 then break end "
+            "reply = redis.pcall('FT.CURSOR', 'READ', KEYS[1], reply[2], 'COUNT', '" REDIS_MAX_AGGREGATE_COUNT "'); "
+            "if reply['err'] ~= nil then "
+            "return reply['err']; "
+            "end "
+            "end "
+            "return 0; ",
+            mod_ns, regex);
+
+    if ((reply->type == REDIS_REPLY_ERROR) || (reply->type == REDIS_REPLY_STRING)) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "EVAL", reply->str);
+        goto cleanup;
+    }
+
+cleanup:
+    freeReplyObject(reply);
+    return err_info;
+}
+
+static sr_error_info_t *
+srpds_use_tree2store(redisContext *ctx, const struct lyd_node *mod_data, const struct lyd_node *node,
+        const char *mod_ns, struct redis_bulk *bulk)
+{
+    sr_error_info_t *err_info = NULL;
+    char *dbkey = NULL, *escaped = NULL, *regex = NULL, *path_no_pred = NULL;
+    struct ly_set *set = NULL;
+    LY_ERR lerr;
+
+    path_no_pred = lyd_path(node, LYD_PATH_STD_NO_LAST_PRED, NULL, 0);
+    if (!path_no_pred) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_path()", "");
+        goto cleanup;
+    }
+
+    /* get database key */
+    if (asprintf(&dbkey, "%s:data:%s", mod_ns, path_no_pred) == -1) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
+        goto cleanup;
+    }
+
+    if ((err_info = srpds_escape_string(plugin_name, dbkey, '%', &escaped))) {
+        goto cleanup;
+    }
+    free(dbkey);
+    dbkey = NULL;
+
+    if (asprintf(&regex, "^%s", escaped) == -1) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
+        goto cleanup;
+    }
+    free(escaped);
+    escaped = NULL;
+
+    /* delete the whole subtree */
+    if ((err_info = srpds_load_and_del_regex(ctx, mod_ns, regex))) {
+        goto cleanup;
+    }
+    free(regex);
+    regex = NULL;
+
+    /* we NEED to store a deleted subtree (could be a list or a leaf-list instance with siblings which we just deleted) */
+    /* state data have to be stored from mod_data */
+    /* metadata of state data are always stored */
+    /* find all data of state list/leaf-list or opaque nodes */
+    if (mod_data) {
+        lerr = lyd_find_xpath(mod_data, path_no_pred, &set);
+        if ((lerr != LY_SUCCESS) && (lerr != LY_ENOTFOUND)) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_find_xpath()", "");
+            goto cleanup;
+        }
+        free(path_no_pred);
+        path_no_pred = NULL;
+
+        if (lerr != LY_ENOTFOUND) {
+            /* go through the whole subtree and create every node */
+            if (set->count) {
+                if ((err_info = srpds_load_state_recursively(ctx, set, set->dnodes[0], mod_ns, bulk))) {
+                    goto cleanup;
+                }
+            }
+
+            ly_set_free(set, NULL);
+            set = NULL;
+        }
+    }
+
+cleanup:
+    free(path_no_pred);
+    free(dbkey);
+    free(escaped);
+    free(regex);
+    ly_set_free(set, NULL);
+    return err_info;
+}
+
+static sr_error_info_t *srpds_load_diff_recursively(redisContext *ctx, sr_datastore_t ds,
+        const struct lyd_node *mod_data, const struct lyd_node *node, const char *mod_ns, char parent_op,
+        struct redis_bulk *bulk);
+
+static sr_error_info_t *
+srpds_use_diff2store(redisContext *ctx, sr_datastore_t ds, const struct lyd_node *mod_data,
+        const struct lyd_node *sibling, char this_op, uint64_t *max_order, const char *mod_ns, struct redis_bulk *bulk)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *child = NULL, *match = NULL;
+    char *path = NULL, *path_no_pred = NULL, *path_modif = NULL;
+    const char *module_name = NULL;
+    const char *value = NULL, *prev = NULL, *orig_prev = NULL;
+    char *prev_pred = NULL, *orig_prev_pred = NULL, *any_value = NULL;
+    int32_t valtype;
+    char *dbkey = NULL, *escaped = NULL, *regex = NULL;
+
+    /* get path */
+    path = lyd_path(sibling, LYD_PATH_STD, NULL, 0);
+    if (!path) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_path()", "");
+        return err_info;
+    }
+
+    /* get path_no_pred */
+    if (lysc_is_userordered(sibling->schema)) {
+        path_no_pred = lyd_path(sibling, LYD_PATH_STD_NO_LAST_PRED, NULL, 0);
+        if (!path_no_pred) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_path()", "");
+            return err_info;
+        }
+    }
+
+    /* get modified version of path */
+    if ((err_info = srpds_get_modif_path(plugin_name, path, &path_modif))) {
+        goto cleanup;
+    }
+
+    /* node's values */
+    if ((err_info = srpds_get_values(plugin_name, sibling, &value, &prev, &orig_prev, &prev_pred, &orig_prev_pred,
+            &any_value, &valtype))) {
+        goto cleanup;
+    }
+
+    /* get module name */
+    if ((sibling->parent == NULL) || strcmp(sibling->schema->module->name, sibling->parent->schema->module->name)) {
+        module_name = sibling->schema->module->name;
+    } else {
+        module_name = NULL;
+    }
+
+    /* operation */
+    switch (this_op) {
+    case 'n':
+        /* default nodes */
+        if ((err_info = srpds_none_op_default_flag(ctx, sibling, mod_ns, path, bulk))) {
+            goto cleanup;
+        }
+        break;
+    case 'c':
+        if ((err_info = srpds_create_op(ctx, mod_ns, sibling, module_name, path, path_no_pred,
+                srpds_get_predicate(path, path_no_pred), path_modif, value, prev, prev_pred, valtype, max_order,
+                bulk))) {
+            goto cleanup;
+        }
+        break;
+    case 'd':
+        if ((err_info = srpds_delete_op(ctx, mod_ns, sibling, path, path_no_pred,
+                srpds_get_predicate(path, path_no_pred), orig_prev_pred ? orig_prev_pred : "", bulk))) {
+            goto cleanup;
+        }
+        break;
+    case 'r':
+        if ((err_info = srpds_replace_op(ctx, mod_ns, sibling, module_name, path, path_no_pred,
+                srpds_get_predicate(path, path_no_pred), value, prev, prev_pred, orig_prev_pred, path_modif,
+                max_order, bulk))) {
+            goto cleanup;
+        }
+        break;
+    default:
+        ERRINFO(&err_info, plugin_name, SR_ERR_UNSUPPORTED, "Operation for a node", "Unsupported operation");
+        goto cleanup;
+    }
+
+    /* reset the max_order if the next sibling
+     * is from a different list or if the next sibling does not exist */
+    if (lysc_is_userordered(sibling->schema) && ((sibling->next &&
+            (sibling->schema->name != sibling->next->schema->name)) || !(sibling->next))) {
+        /* update max order for lists and leaf-lists */
+        if ((err_info = srpds_set_maxord(ctx, mod_ns, path_no_pred, *max_order))) {
+            goto cleanup;
+        }
+        *max_order = 0;
+    }
+
+    /* metadata are not always included in diff
+     * delete any related to this node in the database,
+     * find them in mod_data and store them (best-effort) */
+    /* for now store metadata using diff only in oper ds as it is an expensive operation */
+    if (ds == SR_DS_OPERATIONAL) {
+        /* If the node has to be created, then there is nothing to delete in the database */
+        if (this_op != 'c') {
+            /* get database key */
+            if (asprintf(&dbkey, "%s:data:%s#", mod_ns, path) == -1) {
+                ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
+                goto cleanup;
+            }
+
+            if ((err_info = srpds_escape_string(plugin_name, dbkey, '%', &escaped))) {
+                goto cleanup;
+            }
+
+            /* this regex only deletes node's metadata and not the whole subtree because of # (specific for metadata) */
+            if (asprintf(&regex, "^%s", escaped) == -1) {
+                ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
+                goto cleanup;
+            }
+
+            /* delete all metadata connected to the node */
+            if ((err_info = srpds_load_and_del_regex(ctx, mod_ns, regex))) {
+                goto cleanup;
+            }
+        }
+
+        if (this_op != 'd') {
+            /* find the node in the mod_data to read metadata from */
+            if ((err_info = srpds_find_node(plugin_name, sibling, mod_data, &match))) {
+                goto cleanup;
+            }
+
+            /* create new metadata */
+            if ((err_info = srpds_add_meta(ctx, match->meta, mod_ns, path, path_modif, bulk))) {
+                goto cleanup;
+            }
+        }
+    }
+
+    /* free memory early before further recursion */
+    free(path);
+    path = NULL;
+    free(path_no_pred);
+    path_no_pred = NULL;
+    free(path_modif);
+    path_modif = NULL;
+    free(dbkey);
+    dbkey = NULL;
+    free(escaped);
+    escaped = NULL;
+    free(regex);
+    regex = NULL;
+    srpds_cleanup_values(sibling, prev, orig_prev, &prev_pred, &orig_prev_pred, &any_value);
+
+    if ((child = lyd_child_no_keys(sibling))) {
+        if ((err_info = srpds_load_diff_recursively(ctx, ds, mod_data, child, mod_ns, this_op, bulk))) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    free(path);
+    free(path_no_pred);
+    free(path_modif);
+    free(dbkey);
+    free(escaped);
+    free(regex);
+    srpds_cleanup_values(sibling, prev, orig_prev, &prev_pred, &orig_prev_pred, &any_value);
+    return err_info;
+}
+
 /**
- * @brief Add new attributes to store in the database.
+ * @brief Handle an opaque node.
  *
  * @param[in] ctx Redis context.
- * @param[in] attr Attributes to store.
+ * @param[in] node Opaque node.
+ * @param[in] op Operation to perform.
  * @param[in] mod_ns Database prefix for the module.
- * @param[in] path Path to the node with attributes.
- * @param[out] order Order of the nodes.
  * @param[out] bulk Structure containing the commands for bulk operation.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_add_attr(redisContext *ctx, struct lyd_attr *attr, const char *mod_ns, const char *path, uint64_t *order,
-        struct redis_bulk *bulk)
+srpds_handle_opaque_node(redisContext *ctx, const struct lyd_node *node, char op, const char *mod_ns, struct redis_bulk *bulk)
 {
     sr_error_info_t *err_info = NULL;
+    struct lyd_node_opaq *opaque = NULL;
+    char *path = NULL, *path_modif = NULL;
+    const char *module_name = NULL, *value = NULL;
+    struct lyd_attr *attr = NULL;
 
-    while (attr) {
-        ++*order;
+    /* get node's path */
+    path = lyd_path(node, LYD_PATH_STD, NULL, 0);
+    if (!path) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_path()", "");
+        goto cleanup;
+    }
 
-        /* opaque node has to have a JSON format */
-        assert(attr->format == LY_VALUE_JSON);
+    /* get modified version of path */
+    if ((err_info = srpds_get_modif_path(plugin_name, path, &path_modif))) {
+        goto cleanup;
+    }
 
-        /* skip yang:lyds_tree attributes, this is libyang specific data */
-        if (strcmp(attr->name.module_name, "yang") || strcmp(attr->name.name, "lyds_tree")) {
-            /* create new attribute */
-            if ((err_info = srpds_bulk_start(12, bulk))) {
+    /* get value */
+    value = lyd_get_value(node);
+
+    opaque = ((struct lyd_node_opaq *)node);
+
+    /* opaque node has to have a JSON format */
+    assert(opaque->format == LY_VALUE_JSON);
+
+    /* operation is unknown */
+    if (!op) {
+        attr = opaque->attr;
+
+        /* find the operation (only attribute) */
+        if (attr) {
+            op = attr->value[0];
+        } else {
+            ERRINFO(&err_info, plugin_name, SR_ERR_NOT_FOUND, "", "Operation for opaque node was not found in attributes.");
+            goto cleanup;
+        }
+    }
+
+    switch (op) {
+    case 'd':
+        /* delete only one instance (attributes are not stored and opaque nodes are only top-level discard-items) */
+        if ((err_info = srpds_bulk_start(2, bulk))) {
+            goto cleanup;
+        }
+        srpds_bulk_add_const("DEL", 3, bulk);
+        if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s$%s", mod_ns, path, value))) {
+            goto cleanup;
+        }
+        if ((err_info = srpds_bulk_end(ctx, bulk))) {
+            goto cleanup;
+        }
+        break;
+    case 'c':
+        /* get module name */
+        module_name = opaque->name.module_name;
+
+        /* create new opaque node */
+        if ((err_info = srpds_opaque(ctx, mod_ns, path, opaque->name.name, module_name, value, path_modif, bulk))) {
+            goto cleanup;
+        }
+        break;
+    default:
+        ERRINFO(&err_info, plugin_name, SR_ERR_UNSUPPORTED, "Operation for a node", "Unsupported operation");
+        goto cleanup;
+    }
+
+cleanup:
+    free(path);
+    free(path_modif);
+    return err_info;
+}
+
+/**
+ * @brief Load the whole diff and store the data in the database.
+ *
+ * @param[in] ctx Redis context.
+ * @param[in] ds Datastore in use.
+ * @param[in] mod_data Module data tree to store.
+ * @param[in] node Current data node in the diff.
+ * @param[in] mod_ns Database prefix for the module.
+ * @param[in] parent_op Operation on the node's parent.
+ * @param[out] bulk Structure containing the commands for bulk operation.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_load_diff_recursively(redisContext *ctx, sr_datastore_t ds, const struct lyd_node *mod_data, const struct lyd_node *node,
+        const char *mod_ns, char parent_op, struct redis_bulk *bulk)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lyd_node *sibling = node;
+    struct lyd_meta *meta_op;
+    char this_op = 0;
+    uint64_t max_order = 0;
+    const struct lysc_node *previous_schema = NULL;
+
+    while (sibling) {
+        /* n - none, c - create, d - delete, r - replace */
+        meta_op = lyd_find_meta(sibling->meta, NULL, "yang:operation");
+        if (meta_op) {
+            this_op = lyd_get_meta_value(meta_op)[0];
+        } else {
+            this_op = parent_op;
+        }
+
+        /* check whether to rely on diff or delete and store the whole subtree from mod_data */
+        if (!sibling->schema) {
+            if ((err_info = srpds_handle_opaque_node(ctx, sibling, 0, mod_ns, bulk))) {
                 goto cleanup;
             }
-            srpds_bulk_add_const("HSET", 4, bulk);
-            if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s:%s:%s", mod_ns, path, attr->name.module_name, attr->name.name))) {
-                goto cleanup;
+        } else if (!(sibling->schema->flags & LYS_CONFIG_W)) {
+            /* only delete and store a state subtree if it was not stored before */
+            if (previous_schema != sibling->schema) {
+                if ((err_info = srpds_use_tree2store(ctx, mod_data, sibling, mod_ns, bulk))) {
+                    goto cleanup;
+                }
             }
-            srpds_bulk_add_const("path", 4, bulk);
-            if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("name", 4, bulk);
-            if ((err_info = srpds_bulk_add_format(bulk, "%s:%s", attr->name.module_name, attr->name.name))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("type", 4, bulk);
-            if ((err_info = srpds_bulk_add_format(bulk, "%d", SRPDS_DB_LY_ATTR))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("order", 5, bulk);
-            if ((err_info = srpds_bulk_add_format(bulk, "%" PRIu64, *order))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("value", 5, bulk);
-            if ((err_info = srpds_bulk_add_alloc(attr->value, strlen(attr->value), bulk))) {
-                goto cleanup;
-            }
-            if ((err_info = srpds_bulk_end(ctx, bulk))) {
+            previous_schema = sibling->schema;
+        } else {
+            if ((err_info = srpds_use_diff2store(ctx, ds, mod_data, sibling, this_op, &max_order, mod_ns, bulk))) {
                 goto cleanup;
             }
         }
 
-        attr = attr->next;
+        sibling = sibling->next;
     }
 
 cleanup:
     return err_info;
 }
 
+sr_error_info_t *
+srpds_store_diff(redisContext *ctx, sr_datastore_t ds, const struct lyd_node *mod_data, const struct lyd_node *mod_diff,
+        const char *mod_ns)
+{
+    sr_error_info_t *err_info = NULL;
+    struct redis_bulk bulk = {0};
+
+    if ((err_info = srpds_bulk_init(0, &bulk))) {
+        goto cleanup;
+    }
+
+    if ((err_info = srpds_load_diff_recursively(ctx, ds, mod_data, mod_diff, mod_ns, 0, &bulk))) {
+        goto cleanup;
+    }
+
+    if ((err_info = srpds_bulk_exec(ctx, &bulk))) {
+        goto cleanup;
+    }
+
+cleanup:
+    srpds_bulk_destroy(&bulk);
+    return err_info;
+}
+
 /**
- * @brief Load the whole data tree and store the data in the database (only for operational).
+ * @brief Load the whole data tree and store the data in the database.
  *
  * @param[in] ctx Redis context.
  * @param[in] mod_data Whole data tree.
  * @param[in] mod_ns Database prefix for the module.
- * @param[out] order Order of the nodes.
  * @param[out] bulk Structure containing the commands for bulk operation.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_store_oper_recursively(redisContext *ctx, const struct lyd_node *mod_data, const char *mod_ns, uint64_t *order,
+srpds_load_data_recursively(redisContext *ctx, const struct lyd_node *mod_data, const char *mod_ns,
         struct redis_bulk *bulk)
 {
     sr_error_info_t *err_info = NULL;
     const struct lyd_node *sibling = mod_data;
     struct lyd_node *child = NULL;
-    struct lyd_node_opaq *opaque = NULL; // for opaque nodes
-    char *path = NULL, *any_value = NULL, *keys = NULL, idx_str[24];
-    uint32_t keys_length = 0, discard_items_idx = 1;
-    const char *module_name = NULL, *value = NULL;
+    char *path = NULL, *path_no_pred = NULL, *path_modif = NULL;
+    const char *value, *module_name, *prev = NULL, *orig_prev = NULL;
+    char *prev_pred = NULL, *orig_prev_pred = NULL, *any_value = NULL;
+    int32_t valtype = 0;
+    char *keys = NULL;
+    uint32_t keys_length = 0;
+    uint64_t state_order = 1, uo_order = 1024;
 
     while (sibling) {
-        ++*order;
+        /* store opaque nodes separately */
+        if (!sibling->schema) {
+            if ((err_info = srpds_handle_opaque_node(ctx, sibling, 'c', mod_ns, bulk))) {
+                goto cleanup;
+            }
+            sibling = sibling->next;
+            continue;
+        }
 
         /* get path */
         path = lyd_path(sibling, LYD_PATH_STD, NULL, 0);
@@ -1987,265 +3109,348 @@ srpds_store_oper_recursively(redisContext *ctx, const struct lyd_node *mod_data,
             return err_info;
         }
 
-        /* get value */
-        if (sibling->schema && (sibling->schema->nodetype & LYD_NODE_ANY)) {
-            /* lyd_node_any */
-            if (lyd_any_value_str(sibling, &any_value) != LY_SUCCESS) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_any_value_str()", "");
-                goto cleanup;
+        /* get path_no_pred */
+        if (lysc_is_userordered(sibling->schema)) {
+            path_no_pred = lyd_path(sibling, LYD_PATH_STD_NO_LAST_PRED, NULL, 0);
+            if (!path_no_pred) {
+                ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_path()", "");
+                return err_info;
             }
-            value = any_value;
-        } else {
-            /* node values, opaque node values and the rest */
-            value = lyd_get_value(sibling);
+        }
+
+        /* get modified version of path */
+        if ((err_info = srpds_get_modif_path(plugin_name, path, &path_modif))) {
+            goto cleanup;
+        }
+
+        /* get values */
+        if ((err_info = srpds_get_values(plugin_name, sibling, &value, &prev, &orig_prev, &prev_pred,
+                &orig_prev_pred, &any_value, &valtype))) {
+            goto cleanup;
         }
 
         /* get module name */
-        if (!sibling->schema) {
-            /* opaque node has to have a JSON format */
-            opaque = ((struct lyd_node_opaq *)sibling);
-            assert(opaque->format == LY_VALUE_JSON);
-            module_name = opaque->name.module_name;
-        } else if ((sibling->parent == NULL) || strcmp(sibling->schema->module->name, sibling->parent->schema->module->name)) {
+        if ((sibling->parent == NULL) || strcmp(sibling->schema->module->name, sibling->parent->schema->module->name)) {
             module_name = sibling->schema->module->name;
         } else {
-            module_name = "";
+            module_name = NULL;
         }
 
         /* create all data */
-        if (sibling->schema) {
-            switch (sibling->schema->nodetype) {
-            case LYS_CONTAINER:
-                if ((err_info = srpds_bulk_start(12, bulk))) {
-                    goto cleanup;
-                }
-                srpds_bulk_add_const("HSET", 4, bulk);
-                if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s", mod_ns, path))) {
-                    goto cleanup;
-                }
-                srpds_bulk_add_const("path", 4, bulk);
-                if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
-                    goto cleanup;
-                }
-                srpds_bulk_add_const("name", 4, bulk);
-                if ((err_info = srpds_bulk_add_alloc(sibling->schema->name, strlen(sibling->schema->name), bulk))) {
-                    goto cleanup;
-                }
-                srpds_bulk_add_const("type", 4, bulk);
-                if ((err_info = srpds_bulk_add_format(bulk, "%d", SRPDS_DB_LY_CONTAINER))) {
-                    goto cleanup;
-                }
-                srpds_bulk_add_const("order", 5, bulk);
-                if ((err_info = srpds_bulk_add_format(bulk, "%" PRIu64, *order))) {
-                    goto cleanup;
-                }
-                srpds_bulk_add_const("module_name", 11, bulk);
-                if ((err_info = srpds_bulk_add_alloc(module_name, strlen(module_name), bulk))) {
-                    goto cleanup;
-                }
-                if ((err_info = srpds_bulk_end(ctx, bulk))) {
-                    goto cleanup;
-                }
-                break;
-            case LYS_LIST:     /* does not matter if this is user-ordered list or not */
-                if ((err_info = srpds_concat_key_values(plugin_name, sibling, &keys, &keys_length))) {
-                    goto cleanup;
-                }
-
-                if ((err_info = srpds_bulk_start(14, bulk))) {
-                    goto cleanup;
-                }
-                srpds_bulk_add_const("HSET", 4, bulk);
-                if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s", mod_ns, path))) {
-                    goto cleanup;
-                }
-                srpds_bulk_add_const("path", 4, bulk);
-                if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
-                    goto cleanup;
-                }
-                srpds_bulk_add_const("name", 4, bulk);
-                if ((err_info = srpds_bulk_add_alloc(sibling->schema->name, strlen(sibling->schema->name), bulk))) {
-                    goto cleanup;
-                }
-                srpds_bulk_add_const("type", 4, bulk);
-                if ((err_info = srpds_bulk_add_format(bulk, "%d", SRPDS_DB_LY_LIST))) {
-                    goto cleanup;
-                }
-                srpds_bulk_add_const("order", 5, bulk);
-                if ((err_info = srpds_bulk_add_format(bulk, "%" PRIu64, *order))) {
-                    goto cleanup;
-                }
-                srpds_bulk_add_const("module_name", 11, bulk);
-                if ((err_info = srpds_bulk_add_alloc(module_name, strlen(module_name), bulk))) {
-                    goto cleanup;
-                }
-                srpds_bulk_add_const("keys", 4, bulk);
-                if ((err_info = srpds_bulk_add_alloc(keys, keys_length, bulk))) {
-                    goto cleanup;
-                }
-                if ((err_info = srpds_bulk_end(ctx, bulk))) {
-                    goto cleanup;
-                }
-                break;
-            case LYS_LEAF:
-            case LYS_LEAFLIST:  /* does not matter if this is user-ordered leaf-list or not */
-                if ((err_info = srpds_bulk_start(16, bulk))) {
-                    goto cleanup;
-                }
-                srpds_bulk_add_const("HSET", 4, bulk);
-                if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s", mod_ns, path))) {
-                    goto cleanup;
-                }
-                srpds_bulk_add_const("path", 4, bulk);
-                if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
-                    goto cleanup;
-                }
-                srpds_bulk_add_const("name", 4, bulk);
-                if ((err_info = srpds_bulk_add_alloc(sibling->schema->name, strlen(sibling->schema->name), bulk))) {
-                    goto cleanup;
-                }
-                srpds_bulk_add_const("type", 4, bulk);
-                if ((err_info = srpds_bulk_add_format(bulk, "%d", SRPDS_DB_LY_TERM))) {
-                    goto cleanup;
-                }
-                srpds_bulk_add_const("order", 5, bulk);
-                if ((err_info = srpds_bulk_add_format(bulk, "%" PRIu64, *order))) {
-                    goto cleanup;
-                }
-                srpds_bulk_add_const("module_name", 11, bulk);
-                if ((err_info = srpds_bulk_add_alloc(module_name, strlen(module_name), bulk))) {
-                    goto cleanup;
-                }
-                srpds_bulk_add_const("value", 5, bulk);
-                if ((err_info = srpds_bulk_add_alloc(value, strlen(value), bulk))) {
-                    goto cleanup;
-                }
-                srpds_bulk_add_const("dflt_flag", 9, bulk);
-                if ((err_info = srpds_bulk_add_format(bulk, "%d", sibling->flags & LYD_DEFAULT))) {
-                    goto cleanup;
-                }
-                if ((err_info = srpds_bulk_end(ctx, bulk))) {
-                    goto cleanup;
-                }
-                break;
-            case LYS_ANYDATA:
-            case LYS_ANYXML:
-                if ((err_info = srpds_bulk_start(18, bulk))) {
-                    goto cleanup;
-                }
-                srpds_bulk_add_const("HSET", 4, bulk);
-                if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s", mod_ns, path))) {
-                    goto cleanup;
-                }
-                srpds_bulk_add_const("path", 4, bulk);
-                if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
-                    goto cleanup;
-                }
-                srpds_bulk_add_const("name", 4, bulk);
-                if ((err_info = srpds_bulk_add_alloc(sibling->schema->name, strlen(sibling->schema->name), bulk))) {
-                    goto cleanup;
-                }
-                srpds_bulk_add_const("type", 4, bulk);
-                if ((err_info = srpds_bulk_add_format(bulk, "%d", SRPDS_DB_LY_ANY))) {
-                    goto cleanup;
-                }
-                srpds_bulk_add_const("order", 5, bulk);
-                if ((err_info = srpds_bulk_add_format(bulk, "%" PRIu64, *order))) {
-                    goto cleanup;
-                }
-                srpds_bulk_add_const("module_name", 11, bulk);
-                if ((err_info = srpds_bulk_add_alloc(module_name, strlen(module_name), bulk))) {
-                    goto cleanup;
-                }
-                srpds_bulk_add_const("value", 5, bulk);
-                if ((err_info = srpds_bulk_add_alloc(value, strlen(value), bulk))) {
-                    goto cleanup;
-                }
-                srpds_bulk_add_const("dflt_flag", 9, bulk);
-                if ((err_info = srpds_bulk_add_format(bulk, "%d", sibling->flags & LYD_DEFAULT))) {
-                    goto cleanup;
-                }
-                srpds_bulk_add_const("valtype", 7, bulk);
-                if ((err_info = srpds_bulk_add_format(bulk, "%" PRIu32, (((struct lyd_node_any *)sibling)->value_type == LYD_ANYDATA_JSON)))) {
-                    goto cleanup;
-                }
-                if ((err_info = srpds_bulk_end(ctx, bulk))) {
-                    goto cleanup;
-                }
-                break;
-            }
-
-            /* add metadata */
-            if ((err_info = srpds_add_meta(ctx, sibling->meta, mod_ns, path, order, bulk))) {
+        switch (sibling->schema->nodetype) {
+        case LYS_CONTAINER:
+            if ((err_info = srpds_container(ctx, mod_ns, path, sibling->schema->name, module_name, path_modif,
+                    bulk))) {
                 goto cleanup;
             }
-        } else {
-            /* add index */
-            sprintf(idx_str, "[%" PRIu32 "]", discard_items_idx++);
-            path = realloc(path, strlen(path) + strlen(idx_str) + 1);
-            strcat(path, idx_str);
-
-            if ((err_info = srpds_bulk_start(14, bulk))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("HSET", 4, bulk);
-            if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s", mod_ns, path))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("path", 4, bulk);
-            if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("name", 4, bulk);
-            if ((err_info = srpds_bulk_add_alloc(opaque->name.name, strlen(opaque->name.name), bulk))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("type", 4, bulk);
-            if ((err_info = srpds_bulk_add_format(bulk, "%d", SRPDS_DB_LY_OPAQUE))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("order", 5, bulk);
-            if ((err_info = srpds_bulk_add_format(bulk, "%" PRIu64, *order))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("module_name", 11, bulk);
-            if ((err_info = srpds_bulk_add_alloc(module_name, strlen(module_name), bulk))) {
-                goto cleanup;
-            }
-            srpds_bulk_add_const("value", 5, bulk);
-            if ((err_info = srpds_bulk_add_alloc(value, strlen(value), bulk))) {
-                goto cleanup;
-            }
-            if ((err_info = srpds_bulk_end(ctx, bulk))) {
+            break;
+        case LYS_LIST:
+            if ((err_info = srpds_concat_key_values(plugin_name, sibling, &keys, &keys_length))) {
                 goto cleanup;
             }
 
-            /* add attributes */
-            if ((err_info = srpds_add_attr(ctx, opaque->attr, mod_ns, path, order, bulk))) {
+            if (!(sibling->schema->flags & LYS_CONFIG_W)) {
+                /* only change the predicate for keyless lists since state key lists are guaranteed to be unique */
+                if (sibling->schema->flags & LYS_KEYLESS) {
+                    /* state lists */
+                    free(path);
+                    path = NULL;
+
+                    /* create unique path (duplicates can be present in state data) */
+                    if (asprintf(&path, "%s[%" PRIu64 "]", path_no_pred, state_order) == -1) {
+                        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
+                        goto cleanup;
+                    }
+                }
+
+                if ((err_info = srpds_list_uo(ctx, mod_ns, path, sibling->schema->name, module_name, keys,
+                        keys_length, state_order, path_no_pred, NULL, 0, 0, path_modif, bulk))) {
+                    goto cleanup;
+                }
+                ++state_order;
+            } else if (lysc_is_userordered(sibling->schema)) {
+                /* userordered lists */
+                if ((err_info = srpds_list_uo(ctx, mod_ns, path, sibling->schema->name, module_name, keys,
+                        keys_length, uo_order, path_no_pred, prev_pred, (prev[0] == '\0') ? 1 : 0, 1, path_modif, bulk))) {
+                    goto cleanup;
+                }
+                uo_order += 1024;
+            } else {
+                /* lists */
+                if ((err_info = srpds_list(ctx, mod_ns, path, sibling->schema->name, module_name, keys, keys_length,
+                        path_modif, bulk))) {
+                    goto cleanup;
+                }
+            }
+            free(keys);
+            keys = NULL;
+            keys_length = 0;
+            break;
+        case LYS_LEAF:
+            if ((srpds_term(ctx, mod_ns, path, sibling->schema->name, module_name, sibling->flags & LYD_DEFAULT,
+                    value, path_modif, bulk))) {
                 goto cleanup;
             }
+            break;
+        case LYS_LEAFLIST:
+            if (!(sibling->schema->flags & LYS_CONFIG_W)) {
+                /* state leaf-lists */
+                free(path);
+                path = NULL;
+
+                /* create unique path (duplicates can be present in state data) */
+                if (asprintf(&path, "%s[%" PRIu64 "]", path_no_pred, state_order) == -1) {
+                    ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
+                    goto cleanup;
+                }
+
+                if ((err_info = srpds_leaflist_uo(ctx, mod_ns, path, sibling->schema->name, module_name,
+                        sibling->flags & LYD_DEFAULT, value, state_order, path_no_pred, NULL, 0, 0, path_modif,
+                        bulk))) {
+                    goto cleanup;
+                }
+                ++state_order;
+            } else if (lysc_is_userordered(sibling->schema)) {
+                /* userordered leaf-lists */
+                if ((err_info = srpds_leaflist_uo(ctx, mod_ns, path, sibling->schema->name, module_name,
+                        sibling->flags & LYD_DEFAULT, value, uo_order, path_no_pred, prev_pred,
+                        (prev[0] == '\0') ? 1 : 0, 1, path_modif, bulk))) {
+                    goto cleanup;
+                }
+                uo_order += 1024;
+            } else {
+                /* leaf-lists */
+                if ((srpds_term(ctx, mod_ns, path, sibling->schema->name, module_name, sibling->flags & LYD_DEFAULT,
+                        value, path_modif, bulk))) {
+                    goto cleanup;
+                }
+            }
+            break;
+        case LYS_ANYDATA:
+        case LYS_ANYXML:
+            if ((err_info = srpds_any(ctx, mod_ns, path, sibling->schema->name, module_name,
+                    sibling->flags & LYD_DEFAULT, value, valtype, path_modif, bulk))) {
+                goto cleanup;
+            }
+            break;
+        }
+
+        /* add metadata */
+        if ((err_info = srpds_add_meta(ctx, sibling->meta, mod_ns, path, path_modif, bulk))) {
+            goto cleanup;
+        }
+
+        /* reset the orders if the next sibling
+            * is from a different list or if the next sibling does not exist */
+        if (lysc_is_userordered(sibling->schema) && ((sibling->next &&
+                (sibling->schema->name != sibling->next->schema->name)) || !(sibling->next))) {
+            state_order = 1;
+            uo_order = 1024;
         }
 
         if ((child = lyd_child_no_keys(sibling))) {
-            if ((err_info = srpds_store_oper_recursively(ctx, child, mod_ns, order, bulk))) {
+            if ((err_info = srpds_load_data_recursively(ctx, child, mod_ns, bulk))) {
                 goto cleanup;
             }
         }
 
-        sibling = sibling->next;
-
         free(path);
-        free(any_value);
-        free(keys);
         path = NULL;
-        any_value = NULL;
-        keys = NULL;
+        free(path_no_pred);
+        path_no_pred = NULL;
+        free(path_modif);
+        path_modif = NULL;
+        srpds_cleanup_values(sibling, prev, orig_prev, &prev_pred, &orig_prev_pred, &any_value);
+
+        sibling = sibling->next;
     }
 
 cleanup:
     free(path);
-    free(any_value);
+    free(path_no_pred);
+    free(path_modif);
+    srpds_cleanup_values(sibling, prev, orig_prev, &prev_pred, &orig_prev_pred, &any_value);
     free(keys);
+    return err_info;
+}
+
+/**
+ * @brief Load data from the database and delete them.
+ *
+ * @param[in] ctx Redis context.
+ * @param[in] mod_ns Database prefix for the module.
+ * @param[in] index_type Type of the data to retrieve (meta or data).
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_load_and_del(redisContext *ctx, const char *mod_ns, const char *index_type)
+{
+    sr_error_info_t *err_info = NULL;
+    redisReply *reply = NULL;
+
+    reply = redisCommand(ctx, "EVAL %s 1 %s:%s",
+            "local reply = redis.pcall('FT.AGGREGATE', KEYS[1], '*', 'LOAD', '1', '__key', 'LIMIT', '0', '"
+            REDIS_MAX_AGGREGATE_LIMIT "', 'WITHCURSOR', 'COUNT', '" REDIS_MAX_AGGREGATE_COUNT "'); "
+            "if reply['err'] ~= nil then "
+            "return reply['err']; "
+            "end "
+            "while 1 do "
+            "local n = table.getn(reply[1]); "
+            "local reply2; "
+            "for i=2,n do "
+            "reply2 = redis.pcall('DEL', reply[1][i][2]); "
+            "if reply2 ~= 1 then "
+            "return reply2['err']; "
+            "end "
+            "end "
+            "if reply[2] == 0 then break end "
+            "reply = redis.pcall('FT.CURSOR', 'READ', KEYS[1], reply[2], 'COUNT', '" REDIS_MAX_AGGREGATE_COUNT "'); "
+            "if reply['err'] ~= nil then "
+            "return reply['err']; "
+            "end "
+            "end "
+            "return 0; ",
+            mod_ns, index_type);
+
+    if ((reply->type == REDIS_REPLY_ERROR) || (reply->type == REDIS_REPLY_STRING)) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "EVAL", reply->str);
+        goto cleanup;
+    }
+
+cleanup:
+    freeReplyObject(reply);
+    return err_info;
+}
+
+/**
+ * @brief Load data (only :data and :meta) from the database and delete them.
+ *
+ * @param[in] ctx Redis context.
+ * @param[in] mod_ns Database prefix for the module.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_load_and_del_data(redisContext *ctx, const char *mod_ns)
+{
+    sr_error_info_t *err_info = NULL;
+
+    if ((err_info = srpds_load_and_del(ctx, mod_ns, "meta"))) {
+        goto cleanup;
+    }
+
+    if ((err_info = srpds_load_and_del(ctx, mod_ns, "data"))) {
+        goto cleanup;
+    }
+
+cleanup:
+    return err_info;
+}
+
+/**
+ * @brief Load data from the database and copy them to another database.
+ *
+ * @param[in] ctx Redis context.
+ * @param[in] mod_ns Database prefix for the module.
+ * @param[in] index_type Type of the data to retrieve (meta or data).
+ * @param[in] trg_ds Target datastore.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_load_and_copy(redisContext *ctx, const char *mod_ns, const char *index_type, const char *trg_ds)
+{
+    sr_error_info_t *err_info = NULL;
+    redisReply *reply = NULL;
+
+    reply = redisCommand(ctx, "EVAL %s 1 %s:%s %s",
+            "local reply = redis.pcall('FT.AGGREGATE', KEYS[1], '*', 'LOAD', '1', '__key', 'LIMIT', '0', '"
+            REDIS_MAX_AGGREGATE_LIMIT "', 'WITHCURSOR', 'COUNT', '" REDIS_MAX_AGGREGATE_COUNT "'); "
+            "if reply['err'] ~= nil then "
+            "return reply['err']; "
+            "end "
+            "while 1 do "
+            "local n = table.getn(reply[1]); "
+            "local reply2; "
+            "for i=2,n do "
+            "local index; "
+            "index = string.find(reply[1][i][2],':',0); "
+            "index = string.find(reply[1][i][2],':',index+1); "
+            "reply2 = redis.pcall('COPY', reply[1][i][2], ARGV[1] .. string.sub(reply[1][i][2], index), 'REPLACE'); "
+            "if reply2 ~= 1 then "
+            "return reply2['err']; "
+            "end "
+            "end "
+            "if reply[2] == 0 then break end "
+            "reply = redis.pcall('FT.CURSOR', 'READ', KEYS[1], reply[2], 'COUNT', '" REDIS_MAX_AGGREGATE_COUNT "'); "
+            "if reply['err'] ~= nil then "
+            "return reply['err']; "
+            "end "
+            "end "
+            "return 0; ",
+            mod_ns, index_type, trg_ds);
+
+    if ((reply->type == REDIS_REPLY_ERROR) || (reply->type == REDIS_REPLY_STRING)) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "EVAL", reply->str);
+        goto cleanup;
+    }
+
+cleanup:
+    freeReplyObject(reply);
+    return err_info;
+}
+
+/**
+ * @brief Load data (only :data and :meta) from the database and copy them to the target datastore.
+ *
+ * @param[in] ctx Redis context.
+ * @param[in] mod_ns_src Database prefix for the module of the source datastore.
+ * @param[in] trg_ds Target datastore.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_load_and_copy_data(redisContext *ctx, const char *mod_ns_src, const char *trg_ds)
+{
+    sr_error_info_t *err_info = NULL;
+
+    if ((err_info = srpds_load_and_copy(ctx, mod_ns_src, "meta", trg_ds))) {
+        goto cleanup;
+    }
+
+    if ((err_info = srpds_load_and_copy(ctx, mod_ns_src, "data", trg_ds))) {
+        goto cleanup;
+    }
+
+cleanup:
+    return err_info;
+}
+
+sr_error_info_t *
+srpds_store_data(redisContext *ctx, const struct lyd_node *mod_data, const char *mod_ns)
+{
+    sr_error_info_t *err_info = NULL;
+    struct redis_bulk bulk = {0};
+
+    if ((err_info = srpds_load_and_del_data(ctx, mod_ns))) {
+        goto cleanup;
+    }
+
+    if ((err_info = srpds_bulk_init(0, &bulk))) {
+        goto cleanup;
+    }
+
+    if ((err_info = srpds_load_data_recursively(ctx, mod_data, mod_ns, &bulk))) {
+        goto cleanup;
+    }
+
+    if ((err_info = srpds_bulk_exec(ctx, &bulk))) {
+        goto cleanup;
+    }
+
+cleanup:
+    srpds_bulk_destroy(&bulk);
     return err_info;
 }
 
@@ -2410,846 +3615,49 @@ cleanup:
  *
  * @param[in] ctx Redis context.
  * @param[in] mod_ns Database prefix for the module.
- * @param[in] is_oper Whether the indices are created for Operational datastore.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_create_indices(redisContext *ctx, const char *mod_ns, int is_oper)
+srpds_create_indices(redisContext *ctx, const char *mod_ns)
 {
     sr_error_info_t *err_info = NULL;
     redisReply *reply = NULL;
 
     /* index for data */
-    if (is_oper) {
-        reply = redisCommand(ctx, "FT.CREATE %s:data "
-                "ON HASH PREFIX 1 %s:data: "
-                "STOPWORDS 0 "
-                "SCHEMA path TAG CASESENSITIVE "
-                "name TAG CASESENSITIVE "
-                "type NUMERIC "
-                "order NUMERIC SORTABLE "
-                "module_name TAG CASESENSITIVE "
-                "value TAG CASESENSITIVE "
-                "valtype NUMERIC "
-                "keys TAG CASESENSITIVE "
-                "dflt_flag NUMERIC ", mod_ns, mod_ns);
-    } else {
-        reply = redisCommand(ctx, "FT.CREATE %s:data "
-                "ON HASH PREFIX 1 %s:data: "
-                "STOPWORDS 0 "
-                "SCHEMA path TAG CASESENSITIVE "
-                "name TAG CASESENSITIVE "
-                "type NUMERIC "
-                "module_name TAG CASESENSITIVE "
-                "dflt_flag NUMERIC "
-                "keys TAG CASESENSITIVE "
-                "value TAG CASESENSITIVE "
-                "valtype NUMERIC "
-                "order NUMERIC "
-                "path_no_pred TAG CASESENSITIVE "
-                "prev TAG CASESENSITIVE "
-                "is_prev_empty NUMERIC "
-                "path_modif TAG CASESENSITIVE SORTABLE UNF ", mod_ns, mod_ns);
-    }
+    reply = redisCommand(ctx, "FT.CREATE %s:data "
+            "ON HASH PREFIX 1 %s:data: "
+            "STOPWORDS 0 "
+            "SCHEMA path TAG CASESENSITIVE "
+            "name TAG CASESENSITIVE "
+            "type NUMERIC "
+            "module_name TAG CASESENSITIVE "
+            "dflt_flag NUMERIC "
+            "keys TAG CASESENSITIVE "
+            "value TAG CASESENSITIVE "
+            "valtype NUMERIC "
+            "order NUMERIC "
+            "path_no_pred TAG CASESENSITIVE "
+            "prev TAG CASESENSITIVE "
+            "is_prev_empty NUMERIC "
+            "path_modif TAG CASESENSITIVE ", mod_ns, mod_ns);
     if (reply->type == REDIS_REPLY_ERROR) {
         ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Creating index", reply->str);
         goto cleanup;
     }
 
     /* index for maxorder */
-    if (!is_oper) {
-        freeReplyObject(reply);
-        reply = redisCommand(ctx, "FT.CREATE %s:meta "
-                "ON HASH PREFIX 1 %s:meta: "
-                "STOPWORDS 0 "
-                "SCHEMA value NUMERIC", mod_ns, mod_ns);
-        if (reply->type == REDIS_REPLY_ERROR) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Creating index", reply->str);
-            goto cleanup;
-        }
-    }
-
-cleanup:
     freeReplyObject(reply);
-    return err_info;
-}
-
-/**
- * @brief Load data from the database and execute a command on them.
- *
- * @param[in] ctx Redis context.
- * @param[in] mod_ns Database prefix for the module.
- * @param[in] index_type Type of the data to retrieve (meta or data).
- * @return NULL on success;
- * @return Sysrepo error info on error.
- */
-static sr_error_info_t *
-srpds_load_and_del(redisContext *ctx, const char *mod_ns, const char *index_type)
-{
-    sr_error_info_t *err_info = NULL;
-    redisReply *reply = NULL;
-
-    reply = redisCommand(ctx, "EVAL %s 1 %s:%s",
-            "local reply = redis.pcall('FT.AGGREGATE', KEYS[1], '*', 'LOAD', '1', '__key', 'LIMIT', '0', '"
-            REDIS_MAX_AGGREGATE_LIMIT "', 'WITHCURSOR', 'COUNT', '" REDIS_MAX_AGGREGATE_COUNT "'); "
-            "if reply['err'] ~= nil then "
-            "return reply['err']; "
-            "end "
-            "while 1 do "
-            "local n = table.getn(reply[1]); "
-            "local reply2; "
-            "for i=2,n do "
-            "reply2 = redis.pcall('DEL', reply[1][i][2]); "
-            "if reply2 ~= 1 then "
-            "return reply2['err']; "
-            "end "
-            "end "
-            "if reply[2] == 0 then break end "
-            "reply = redis.pcall('FT.CURSOR', 'READ', KEYS[1], reply[2], 'COUNT', '" REDIS_MAX_AGGREGATE_COUNT "'); "
-            "if reply['err'] ~= nil then "
-            "return reply['err']; "
-            "end "
-            "end "
-            "return 0; ",
-            mod_ns, index_type);
-
-    if ((reply->type == REDIS_REPLY_ERROR) || (reply->type == REDIS_REPLY_STRING)) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "EVAL", reply->str);
-        goto cleanup;
-    }
-
-cleanup:
-    freeReplyObject(reply);
-    return err_info;
-}
-
-/**
- * @brief Load data (only :data and :meta) from the database and delete them.
- *
- * @param[in] ctx Redis context.
- * @param[in] ds Datastore in which to delete data.
- * @param[in] mod_ns Database prefix for the module.
- * @return NULL on success;
- * @return Sysrepo error info on error.
- */
-static sr_error_info_t *
-srpds_load_and_del_data(redisContext *ctx, sr_datastore_t ds, const char *mod_ns)
-{
-    sr_error_info_t *err_info = NULL;
-
-    /* operational ds does not store max order */
-    if (ds != SR_DS_OPERATIONAL) {
-        if ((err_info = srpds_load_and_del(ctx, mod_ns, "meta"))) {
-            goto cleanup;
-        }
-    }
-
-    if ((err_info = srpds_load_and_del(ctx, mod_ns, "data"))) {
-        goto cleanup;
-    }
-
-cleanup:
-    return err_info;
-}
-
-/**
- * @brief Load data from the database and execute a command on them.
- *
- * @param[in] ctx Redis context.
- * @param[in] mod_ns Database prefix for the module.
- * @param[in] index_type Type of the data to retrieve (meta or data).
- * @param[in] trg_ds Target datastore.
- * @return NULL on success;
- * @return Sysrepo error info on error.
- */
-static sr_error_info_t *
-srpds_load_and_copy(redisContext *ctx, const char *mod_ns, const char *index_type, const char *trg_ds)
-{
-    sr_error_info_t *err_info = NULL;
-    redisReply *reply = NULL;
-
-    reply = redisCommand(ctx, "EVAL %s 1 %s:%s %s",
-            "local reply = redis.pcall('FT.AGGREGATE', KEYS[1], '*', 'LOAD', '1', '__key', 'LIMIT', '0', '"
-            REDIS_MAX_AGGREGATE_LIMIT "', 'WITHCURSOR', 'COUNT', '" REDIS_MAX_AGGREGATE_COUNT "'); "
-            "if reply['err'] ~= nil then "
-            "return reply['err']; "
-            "end "
-            "while 1 do "
-            "local n = table.getn(reply[1]); "
-            "local reply2; "
-            "for i=2,n do "
-            "local index; "
-            "index = string.find(reply[1][i][2],':',0); "
-            "index = string.find(reply[1][i][2],':',index+1); "
-            "reply2 = redis.pcall('COPY', reply[1][i][2], ARGV[1] .. string.sub(reply[1][i][2], index), 'REPLACE'); "
-            "if reply2 ~= 1 then "
-            "return reply2['err']; "
-            "end "
-            "end "
-            "if reply[2] == 0 then break end "
-            "reply = redis.pcall('FT.CURSOR', 'READ', KEYS[1], reply[2], 'COUNT', '" REDIS_MAX_AGGREGATE_COUNT "'); "
-            "if reply['err'] ~= nil then "
-            "return reply['err']; "
-            "end "
-            "end "
-            "return 0; ",
-            mod_ns, index_type, trg_ds);
-
-    if ((reply->type == REDIS_REPLY_ERROR) || (reply->type == REDIS_REPLY_STRING)) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "EVAL", reply->str);
-        goto cleanup;
-    }
-
-cleanup:
-    freeReplyObject(reply);
-    return err_info;
-}
-
-/**
- * @brief Load data (only :data and :meta) from the database and copy them to the target datastore.
- *
- * @param[in] ctx Redis context.
- * @param[in] mod_ns_src Database prefix for the module of the source datastore.
- * @param[in] trg_ds Target datastore.
- * @return NULL on success;
- * @return Sysrepo error info on error.
- */
-static sr_error_info_t *
-srpds_load_and_copy_data(redisContext *ctx, const char *mod_ns_src, const char *trg_ds)
-{
-    sr_error_info_t *err_info = NULL;
-
-    if ((err_info = srpds_load_and_copy(ctx, mod_ns_src, "meta", trg_ds))) {
-        goto cleanup;
-    }
-
-    if ((err_info = srpds_load_and_copy(ctx, mod_ns_src, "data", trg_ds))) {
-        goto cleanup;
-    }
-
-cleanup:
-    return err_info;
-}
-
-/**
- * @brief Put all load XPaths into a query filter.
- *
- * @param[in] ctx Libyang context.
- * @param[in] xpaths Array of XPaths.
- * @param[in] xpath_cnt XPath count.
- * @param[in] oper_ds Flag if the filter is for loading operational data and special handling is needed.
- * @param[out] xpath_filter Final query filter.
- * @return NULL on success;
- * @return Sysrepo error info on error.
- */
-static sr_error_info_t *
-srpds_process_load_paths(struct ly_ctx *ctx, const char **xpaths, uint32_t xpath_cnt, int oper_ds, char **xpath_filter)
-{
-    sr_error_info_t *err_info = NULL;
-    uint32_t i;
-    char *tmp = NULL, *path = NULL, *escaped_path = NULL;
-    struct lyd_node *ctx_node = NULL, *match = NULL;
-    uint32_t log_options = 0, *old_options;
-    LY_ERR lyrc;
-
-    *xpath_filter = NULL;
-
-    /* create new data node for lyd_find_path to work correctly */
-    if (lyd_new_path(NULL, ctx, "/ietf-yang-library:yang-library", NULL, 0, &ctx_node) != LY_SUCCESS) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_new_path()", "");
-        goto cleanup;
-    }
-
-    /* build a regex */
-    for (i = 0; i < xpath_cnt; ++i) {
-        old_options = ly_temp_log_options(&log_options);
-        /* check whether the xpaths are paths */
-        lyrc = lyd_find_path(ctx_node, xpaths[i], 0, &match);
-        ly_temp_log_options(old_options);
-        if (lyrc != LY_ENOTFOUND) {
-            /* not a path, load all data */
-            goto cleanup;
-        }
-
-        /* copy the path for further manipulation */
-        path = strdup(xpaths[i]);
-        if (!path) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "strdup()", strerror(errno));
-            goto cleanup;
-        }
-
-        /* all relative paths should be transformed into absolute */
-        if (path[0] != '/') {
-            if (asprintf(&tmp, "/%s", path) == -1) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
-                goto cleanup;
-            }
-            free(path);
-            path = tmp;
-        }
-
-        /* path is key */
-        if (lysc_is_key(lys_find_path(ctx, NULL, path, 0))) {
-            srpds_get_parent_path(path);
-        }
-
-        if ((err_info = srpds_escape_string(plugin_name, path, &escaped_path))) {
-            goto cleanup;
-        }
-
-        /* start prefix match */
-        if (i == 0) {
-            if (asprintf(&tmp, "%s*", escaped_path) == -1) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
-                goto cleanup;
-            }
-            /* continue prefix match */
-        } else {
-            if (asprintf(&tmp, "%s | %s*", *xpath_filter, escaped_path) == -1) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
-                goto cleanup;
-            }
-        }
-        free(*xpath_filter);
-        *xpath_filter = tmp;
-        free(escaped_path);
-        escaped_path = NULL;
-
-        /* add all parent paths also */
-        srpds_get_parent_path(path);
-        while (path[0] != '\0') {
-            /* continue with exact match (for parent nodes) */
-            if ((err_info = srpds_escape_string(plugin_name, path, &escaped_path))) {
-                goto cleanup;
-            }
-            if (asprintf(&tmp, "%s | %s", *xpath_filter, escaped_path) == -1) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
-                goto cleanup;
-            }
-            free(*xpath_filter);
-            *xpath_filter = tmp;
-            free(escaped_path);
-            escaped_path = NULL;
-
-            srpds_get_parent_path(path);
-        }
-        free(path);
-        path = NULL;
-    }
-
-    if (xpath_cnt && oper_ds) {
-        /* explicitly add discard-items to the query for operational datastore */
-        if ((err_info = srpds_escape_string(plugin_name, "/sysrepo:discard-items", &escaped_path))) {
-            goto cleanup;
-        }
-        if (asprintf(&tmp, "%s | %s*", *xpath_filter, escaped_path) == -1) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
-            goto cleanup;
-        }
-        free(*xpath_filter);
-        *xpath_filter = tmp;
-    }
-
-cleanup:
-    if (err_info) {
-        free(*xpath_filter);
-    }
-    free(path);
-    free(escaped_path);
-    lyd_free_all(ctx_node);
-    return err_info;
-}
-
-/**
- * @brief Load all data (only :data and :meta) from the database and store them inside the lyd_node structure (only for operational datastore).
- *
- * @param[in] ctx Redis context.
- * @param[in] mod Given module.
- * @param[in] mod_ns Database prefix for the module.
- * @param[in] xpath_filter Query filter composed of load XPaths to speed up the loading process.
- * @param[out] mod_data Retrieved module data from the database.
- * @return NULL on success;
- * @return Sysrepo error info on error.
- */
-static sr_error_info_t *
-srpds_load_oper(redisContext *ctx, const struct lys_module *mod, const char *mod_ns, const char *xpath_filter,
-        struct lyd_node **mod_data)
-{
-    sr_error_info_t *err_info = NULL;
-    const char *path, *name, *module_name = NULL, *value = NULL;
-    uint32_t i, j;
-    uint64_t type, valtype = 0;
-    int dflt_flag = 0;
-    char **keys = NULL;
-    uint32_t *lengths = NULL;
-
-    redisReply *reply = NULL, *partial = NULL;
-    long long cursor;
-    int argnum = 15;
-    char *args_array[argnum], *arg = NULL;
-
-    struct lyd_node **parent_nodes = NULL;
-    size_t pnodes_size = 0;
-
-    /*
-    *   Loading multiple different sets of data
-    *
-    *   Load Oper
-    *   | 1) containers (LYS_CONTAINER)
-    *   |    Dataset [ path | name | type | order | module_name ]
-    *   |
-    *   | 2) lists (LYS_LIST)
-    *   |    Dataset [ path | name | type | order | module_name | keys ]
-    *   |
-    *   | 3) leafs and leaf-lists (LYS_LEAF and LYS_LEAFLIST)
-    *   |    Dataset [ path | name | type | order | module_name | value | dflt_flag ]
-    *   |
-    *   | 4) anydata and anyxml (LYS_ANYDATA and LYS_ANYXML)
-    *   |    Dataset [ path | name | type | order | module_name | value | dflt_flag | valtype ]
-    *   |
-    *   | 7) opaque nodes
-    *   |    Dataset [ path | name | type | order | module_name | value ]
-    *   |
-    *   | 8/9) metadata and attributes
-    *   |
-    *   | module_name = "" - use parent's module | name - use the module specified by this name
-    *   | valtype     = 0 - XML | 1 - JSON
-    *   | start number defines the type (1 - container, 2 - list...)
-    *
-    *   Metadata and Attributes
-    *   | 1) global metadata
-    *   |     1.1) glob:last-modified-sec | glob:last-modified-nsec = timestamp (last-modif) [ !!! NOT LOADED ]
-    *   |     1.2) glob:candidate-modified = is different from running? (for candidate datastore) [ !!! NOT LOADED ]
-    *   |     1.3) glob:perm = owner, group and permissions [ !!! NOT LOADED ]
-    *   |    Dataset [ value ]
-    *   |
-    *   | 2) node metadata and attributes
-    *   |     2.1) data:[path]:[module]:[name] = metadata
-    *   |    Dataset [ path | name | type | order | value ]
-    *   |     2.2) data:[path]:[module]:[name] = attributes
-    *   |    Dataset [ path | name | type | order | value ]
-    *
-    *   [ !!! NOT LOADED ] data are only for internal use
-    */
-
-    /* results are limited to one trillion */
-    args_array[0] = "FT.AGGREGATE";
-    if (asprintf(&arg, "%s:data", mod_ns) == -1) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
-        goto cleanup;
-    }
-    args_array[1] = arg;
-    if (xpath_filter) {
-        if (asprintf(&arg, "@path:{%s}", xpath_filter) == -1) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
-            goto cleanup;
-        }
-        args_array[2] = arg;
-    } else {
-        args_array[2] = "*";
-    }
-    args_array[3] = "SORTBY";
-    args_array[4] = "2";
-    args_array[5] = "@order";
-    args_array[6] = "ASC";
-    args_array[7] = "LOAD";
-    args_array[8] = "*";
-    args_array[9] = "LIMIT";
-    args_array[10] = "0";
-    args_array[11] = REDIS_MAX_AGGREGATE_LIMIT;
-    args_array[12] = "WITHCURSOR";
-    args_array[13] = "COUNT";
-    args_array[14] = REDIS_MAX_AGGREGATE_COUNT;
-
-    reply = redisCommandArgv(ctx, argnum, (const char **)args_array, NULL);
+    reply = redisCommand(ctx, "FT.CREATE %s:meta "
+            "ON HASH PREFIX 1 %s:meta: "
+            "STOPWORDS 0 "
+            "SCHEMA value NUMERIC", mod_ns, mod_ns);
     if (reply->type == REDIS_REPLY_ERROR) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "FT.AGGREGATE", reply->str);
+        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Creating index", reply->str);
         goto cleanup;
     }
-    if (reply->type != REDIS_REPLY_ARRAY) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "FT.AGGREGATE", "No reply array");
-        goto cleanup;
-    }
-
-    while (1) {
-        for (i = 1; i < reply->element[0]->elements; ++i) {
-            partial = reply->element[0]->element[i];
-
-            /* get order */
-            /* we expect to start with order since it is part of the query */
-            j = 1;
-
-            /* get path */
-            j += 2;
-            path = partial->element[j]->str;
-
-            /* get name */
-            j += 2;
-            name = partial->element[j]->str;
-
-            /* get type */
-            j += 2;
-            type = (uint64_t)strtoull(partial->element[j]->str, NULL, 0);
-
-            /* get module_name or value based on type */
-            switch (type) {
-            case SRPDS_DB_LY_CONTAINER: /* container */
-            case SRPDS_DB_LY_LIST:      /* list */
-            case SRPDS_DB_LY_TERM:      /* leaf or leaf-list */
-            case SRPDS_DB_LY_ANY:       /* anydata or anyxml */
-            case SRPDS_DB_LY_OPAQUE:    /* opaque node */
-                j += 2;
-                module_name = partial->element[j]->str;
-                break;
-            case SRPDS_DB_LY_META:      /* metadata */
-            case SRPDS_DB_LY_ATTR:      /* attribute */
-                j += 2;
-                value = partial->element[j]->str;
-                break;
-            default:
-                break;
-            }
-
-            /* get value or keys based on type */
-            switch (type) {
-            case SRPDS_DB_LY_TERM:      /* leaf or leaf-list */
-            case SRPDS_DB_LY_ANY:       /* anydata or anyxml */
-            case SRPDS_DB_LY_OPAQUE:    /* opaque node */
-                j += 2;
-                value = partial->element[j]->str;
-                break;
-            case SRPDS_DB_LY_LIST:
-                j += 2;
-                value = partial->element[j]->str;
-                if ((err_info = srpds_parse_keys(plugin_name, value, &keys, &lengths))) {
-                    goto cleanup;
-                }
-                break;
-            default:
-                break;
-            }
-
-            /* get default flag based on type */
-            switch (type) {
-            case SRPDS_DB_LY_TERM:      /* leaf or leaf-list */
-            case SRPDS_DB_LY_ANY:       /* anydata or anyxml */
-                j += 2;
-                dflt_flag = (uint64_t)strtoull(partial->element[j]->str, NULL, 0);
-                break;
-            default:
-                break;
-            }
-
-            /* get valtype based on type */
-            switch (type) {
-            case SRPDS_DB_LY_ANY:       /* anydata or anyxml */
-                j += 2;
-                valtype = (uint64_t)strtoull(partial->element[j]->str, NULL, 0);
-                break;
-            default:
-                break;
-            }
-
-            /* add new node to the data tree */
-            if ((err_info = srpds_add_mod_data(plugin_name, mod->ctx, SR_DS_OPERATIONAL, path, name, type, module_name, value, valtype,
-                    &dflt_flag, (const char **)keys, lengths, 0, NULL, NULL, &parent_nodes, &pnodes_size,
-                    mod_data))) {
-                goto cleanup;
-            }
-            free(keys);
-            free(lengths);
-            keys = NULL;
-            lengths = NULL;
-        }
-
-        cursor = reply->element[1]->integer;
-        if (cursor == 0) {
-            break;
-        }
-        freeReplyObject(reply);
-
-        reply = redisCommand(ctx, "FT.CURSOR READ %s:data %" PRIu64 " COUNT " REDIS_MAX_AGGREGATE_COUNT, mod_ns, cursor);
-        if (reply->type == REDIS_REPLY_ERROR) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "FT.AGGREGATE", reply->str);
-            goto cleanup;
-        }
-        if (reply->type != REDIS_REPLY_ARRAY) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "FT.AGGREGATE", "No reply array");
-            goto cleanup;
-        }
-    }
-
-    *mod_data = lyd_first_sibling(*mod_data);
 
 cleanup:
-    free(keys);
-    free(lengths);
-    free(parent_nodes);
-    free(args_array[1]);
-    if (xpath_filter) {
-        free(args_array[2]);
-    }
-    freeReplyObject(reply);
-    return err_info;
-}
-
-/**
- * @brief Load all data (only :data) and store them inside the lyd_node structure (for all datastores except oper).
- *
- * @param[in] ctx Redis context.
- * @param[in] mod Given module.
- * @param[in] ds Given datastore.
- * @param[in] mod_ns Database prefix for the module.
- * @param[in] xpath_filter Query filter composed of load XPaths to speed up the loading process.
- * @param[out] mod_data Retrieved module data from the database.
- * @return NULL on success;
- * @return Sysrepo error info on error.
- */
-static sr_error_info_t *
-srpds_load_conv(redisContext *ctx, const struct lys_module *mod, sr_datastore_t ds, const char *mod_ns, const char *xpath_filter,
-        struct lyd_node **mod_data)
-{
-    sr_error_info_t *err_info = NULL;
-    uint64_t valtype = 0, order = 0;
-    const char *path, *name, *module_name = NULL, *value = NULL, *path_no_pred = NULL;
-    enum srpds_db_ly_types type;
-    int dflt_flag = 0;
-    char **keys = NULL;
-    uint32_t *lengths = NULL;
-    srpds_db_userordered_lists_t uo_lists = {0};
-    struct lyd_node **parent_nodes = NULL;
-    size_t pnodes_size = 0;
-
-    uint32_t i, j;
-    redisReply *reply = NULL, *partial = NULL;
-    long long cursor;
-    int argnum = 25;
-    char *args_array[argnum], *arg = NULL;
-
-    /*
-    *   Loading multiple different sets of data
-    *
-    *   Load Conventional Datastore
-    *   | 1) containers (LYS_CONTAINER)
-    *   |    Dataset [ path | name | type | module_name | path_modif ]
-    *   |
-    *   | 2) lists (LYS_LIST)
-    *   |    Dataset [ path | name | type | module_name | keys | path_modif ]
-    *   |
-    *   | 3) leafs and leaf-lists (LYS_LEAF and LYS_LEAFLIST)
-    *   |    Dataset [ path | name | type | module_name | dflt_flag | value | path_modif ]
-    *   |
-    *   | 4) anydata and anyxml (LYS_ANYDATA and LYS_ANYXML)
-    *   |    Dataset [ path | name | type | module_name | dflt_flag | value | valtype | path_modif ]
-    *   |
-    *   | 5) user-ordered lists
-    *   |    Dataset [ path | name | type | module_name | keys | order | path_no_pred | prev | is_prev_empty | path_modif ]
-    *   |
-    *   | 6) user-ordered leaf-lists
-    *   |    Dataset [ path | name | type | module_name | dflt_flag | value | order | path_no_pred | prev | is_prev_empty | path_modif ]
-    *   |
-    *   | 7) metadata and maxorder
-    *   |
-    *   | module_name = "" - use parent's module | name - use the module specified by this name
-    *   | valtype     = 0 - XML | 1 - JSON
-    *   | start number defines the type (1 - container, 2 - list...)
-    *
-    *   Metadata and MaxOrder
-    *   | 1) global metadata
-    *   |     1.1) glob:last-modified-sec | glob:last-modified-nsec = timestamp (last-modif) [ !!! NOT LOADED ]
-    *   |     1.2) glob:candidate-modified = is different from running? (for candidate datastore) [ !!! NOT LOADED ]
-    *   |     1.3) glob:perm = owner, group and permissions [ !!! NOT LOADED ]
-    *   |    Dataset [ value ]
-    *   |
-    *   | 2) maximum order for a userordered list or leaflist
-    *   |     2.1) meta:[path] = maximum order [ !!! NOT LOADED ]
-    *   |    Dataset [ value ]
-    *
-    *   [ !!! NOT LOADED ] data are only for internal use
-    */
-
-    /* results are limited to one trillion */
-    args_array[0] = "FT.AGGREGATE";
-    if (asprintf(&arg, "%s:data", mod_ns) == -1) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
-        goto cleanup;
-    }
-    args_array[1] = arg;
-    if (xpath_filter) {
-        if (asprintf(&arg, "@path:{%s}", xpath_filter) == -1) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
-            goto cleanup;
-        }
-        args_array[2] = arg;
-    } else {
-        args_array[2] = "*";
-    }
-    args_array[3] = "SORTBY";
-    args_array[4] = "2";
-    args_array[5] = "@path_modif";
-    args_array[6] = "ASC";
-    args_array[7] = "LOAD";
-    args_array[8] = "10";
-    args_array[9] = "@path";
-    args_array[10] = "@name";
-    args_array[11] = "@type";
-    args_array[12] = "@module_name";
-    args_array[13] = "@dflt_flag";
-    args_array[14] = "@keys";
-    args_array[15] = "@value";
-    args_array[16] = "@order";
-    args_array[17] = "@valtype";
-    args_array[18] = "@path_no_pred";
-    args_array[19] = "LIMIT";
-    args_array[20] = "0";
-    args_array[21] = REDIS_MAX_AGGREGATE_LIMIT;
-    args_array[22] = "WITHCURSOR";
-    args_array[23] = "COUNT";
-    args_array[24] = REDIS_MAX_AGGREGATE_COUNT;
-
-    reply = redisCommandArgv(ctx, argnum, (const char **)args_array, NULL);
-    if (reply->type == REDIS_REPLY_ERROR) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "FT.AGGREGATE", reply->str);
-        goto cleanup;
-    }
-    if (reply->type != REDIS_REPLY_ARRAY) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "FT.AGGREGATE", "No reply array");
-        goto cleanup;
-    }
-
-    while (1) {
-        for (i = 1; i < reply->element[0]->elements; ++i) {
-            partial = reply->element[0]->element[i];
-
-            /* get path_modif */
-            /* we expect to start with path_modif since it is part of the query */
-            j = 1;
-
-            /* get path */
-            j += 2;
-            path = partial->element[j]->str;
-
-            /* get name */
-            j += 2;
-            name = partial->element[j]->str;
-
-            /* get type */
-            j += 2;
-            type = (uint64_t)strtoull(partial->element[j]->str, NULL, 0);
-
-            /* get module_name */
-            j += 2;
-            module_name = partial->element[j]->str;
-
-            /* get dflt_flag or keys based on type */
-            switch (type) {
-            case SRPDS_DB_LY_TERM:          /* leaf or leaf-list */
-            case SRPDS_DB_LY_ANY:           /* anyxml or anydata */
-            case SRPDS_DB_LY_LEAFLIST_UO:   /* user-ordered leaf-list */
-                j += 2;
-                dflt_flag = (uint64_t)strtoull(partial->element[j]->str, NULL, 0);
-                break;
-            case SRPDS_DB_LY_LIST:          /* list */
-            case SRPDS_DB_LY_LIST_UO:       /* user-ordered list */
-                j += 2;
-                value = partial->element[j]->str;
-                if ((err_info = srpds_parse_keys(plugin_name, value, &keys, &lengths))) {
-                    goto cleanup;
-                }
-                break;
-            default:
-                break;
-            }
-
-            /* get value or order based on type */
-            switch (type) {
-            case SRPDS_DB_LY_TERM:         /* leafs and leaf-lists */
-            case SRPDS_DB_LY_ANY:          /* anydata and anyxml */
-            case SRPDS_DB_LY_LEAFLIST_UO:  /* user-ordered leaf-lists */
-                j += 2;
-                value = partial->element[j]->str;
-                break;
-            case SRPDS_DB_LY_LIST_UO:  /* user-ordered lists */
-                j += 2;
-                order = (uint64_t)strtoull(partial->element[j]->str, NULL, 0);
-                break;
-            default:
-                break;
-            }
-
-            /* get valtype or path_no_pred or order based on type */
-            switch (type) {
-            case SRPDS_DB_LY_ANY:  /* anydata and anyxml */
-                j += 2;
-                valtype = (uint64_t)strtoull(partial->element[j]->str, NULL, 0);
-                break;
-            case SRPDS_DB_LY_LIST_UO:  /* user-ordered lists */
-                j += 2;
-                path_no_pred = partial->element[j]->str;
-                break;
-            case SRPDS_DB_LY_LEAFLIST_UO:  /* user-ordered leaf-lists */
-                j += 2;
-                order = (uint64_t)strtoull(partial->element[j]->str, NULL, 0);
-                break;
-            default:
-                break;
-            }
-
-            switch (type) {
-            case SRPDS_DB_LY_LEAFLIST_UO:  /* user-ordered leaf-lists */
-                j += 2;
-                path_no_pred = partial->element[j]->str;
-                break;
-            default:
-                break;
-            }
-
-            /* add a new node to mod_data */
-            if ((err_info = srpds_add_mod_data(plugin_name, mod->ctx, ds, path, name, type, module_name, value,
-                    valtype, &dflt_flag, (const char **)keys, lengths, order, path_no_pred, &uo_lists, &parent_nodes,
-                    &pnodes_size, mod_data))) {
-                goto cleanup;
-            }
-            free(keys);
-            free(lengths);
-            keys = NULL;
-            lengths = NULL;
-        }
-
-        cursor = reply->element[1]->integer;
-        if (cursor == 0) {
-            break;
-        }
-        freeReplyObject(reply);
-
-        reply = redisCommand(ctx, "FT.CURSOR READ %s:data %" PRIu64 " COUNT " REDIS_MAX_AGGREGATE_COUNT, mod_ns, cursor);
-        if (reply->type == REDIS_REPLY_ERROR) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "FT.AGGREGATE", reply->str);
-            goto cleanup;
-        }
-        if (reply->type != REDIS_REPLY_ARRAY) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "FT.AGGREGATE", "No reply array");
-            goto cleanup;
-        }
-    }
-
-    /* go through all userordered lists and leaflists and order them */
-    if ((err_info = srpds_order_uo_lists(plugin_name, &uo_lists))) {
-        goto cleanup;
-    }
-
-    *mod_data = lyd_first_sibling(*mod_data);
-
-cleanup:
-    free(keys);
-    free(lengths);
-    free(parent_nodes);
-    srpds_cleanup_uo_lists(&uo_lists);
-    free(args_array[1]);
-    if (xpath_filter) {
-        free(args_array[2]);
-    }
     freeReplyObject(reply);
     return err_info;
 }
@@ -3259,12 +3667,11 @@ cleanup:
  *
  * @param[in] ctx Redis context.
  * @param[in] mod_ns Database prefix for the module.
- * @param[in] is_oper Whether the indices are destroyed in Operational datastore.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_destroy_indices(redisContext *ctx, char *mod_ns, int is_oper)
+srpds_destroy_indices(redisContext *ctx, char *mod_ns)
 {
     sr_error_info_t *err_info = NULL;
     redisReply *reply = NULL;
@@ -3277,102 +3684,13 @@ srpds_destroy_indices(redisContext *ctx, char *mod_ns, int is_oper)
     }
 
     /* index for maxorder */
-    if (!is_oper) {
-        freeReplyObject(reply);
-        reply = redisCommand(ctx, "FT.DROPINDEX %s:meta DD", mod_ns);
-        if (reply->type == REDIS_REPLY_ERROR) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Dropping index", reply->str);
-            goto cleanup;
-        }
-    }
-cleanup:
     freeReplyObject(reply);
-    return err_info;
-}
-
-/**
- * @brief Get module owner, group and permissions from the database.
- *
- * @param[in] ctx Redis context.
- * @param[in] mod_ns Database prefix for the module.
- * @param[out] owner Module owner.
- * @param[out] group Module group.
- * @param[out] perm Module permissions.
- * @return NULL on success;
- * @return Sysrepo error info on error.
- */
-static sr_error_info_t *
-srpds_get_access(redisContext *ctx, const char *mod_ns, char **owner, char **group, mode_t *perm)
-{
-    sr_error_info_t *err_info = NULL;
-    redisReply *reply = NULL;
-
-    if (owner) {
-        *owner = NULL;
+    reply = redisCommand(ctx, "FT.DROPINDEX %s:meta DD", mod_ns);
+    if (reply->type == REDIS_REPLY_ERROR) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Dropping index", reply->str);
+        goto cleanup;
     }
-    if (group) {
-        *group = NULL;
-    }
-    if (perm) {
-        *perm = 0;
-    }
-
-    /* get the owner */
-    if (owner) {
-        reply = redisCommand(ctx, "GET %s:perm:owner", mod_ns);
-        if (reply->type == REDIS_REPLY_ERROR) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Getting owner", reply->str);
-            goto cleanup;
-        }
-        *owner = strdup(reply->str);
-        if (!*owner) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "strdup()", strerror(errno));
-            goto cleanup;
-        }
-        freeReplyObject(reply);
-        reply = NULL;
-    }
-
-    /* get the group */
-    if (group) {
-        reply = redisCommand(ctx, "GET %s:perm:group", mod_ns);
-        if (reply->type == REDIS_REPLY_ERROR) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Getting group", reply->str);
-            goto cleanup;
-        }
-        *group = strdup(reply->str);
-        if (!*group) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "strdup()", strerror(errno));
-            goto cleanup;
-        }
-        freeReplyObject(reply);
-        reply = NULL;
-    }
-
-    /* get the permissions */
-    if (perm) {
-        reply = redisCommand(ctx, "GET %s:perm:perm", mod_ns);
-        if (reply->type == REDIS_REPLY_ERROR) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Getting permissions", reply->str);
-            goto cleanup;
-        }
-        *perm = (unsigned int)strtoll(reply->str, NULL, 0);
-    }
-
 cleanup:
-    if (err_info) {
-        if (owner) {
-            free(*owner);
-            *owner = NULL;
-        }
-        if (group) {
-            free(*group);
-            *group = NULL;
-        }
-        if (perm) {
-            *perm = 0;
-        }
-    }
     freeReplyObject(reply);
     return err_info;
 }
@@ -3444,7 +3762,7 @@ srpds_redis_copy(const struct lys_module *mod, sr_datastore_t trg_ds, sr_datasto
     }
 
     /* the contents of the target datastore should first be removed */
-    if ((err_info = srpds_load_and_del_data(ctx, trg_ds, mod_ns_trg))) {
+    if ((err_info = srpds_load_and_del_data(ctx, mod_ns_trg))) {
         goto cleanup;
     }
 
@@ -3466,6 +3784,10 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Comment for this function can be found in "plugins_datastore.h".
+ *
+ */
 sr_error_info_t *
 srpds_redis_store_prepare(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, uint32_t sid,
         const struct lyd_node *mod_diff, const struct lyd_node *mod_data, void *plg_data)
@@ -3492,12 +3814,10 @@ srpds_redis_store_commit(const struct lys_module *mod, sr_datastore_t ds, sr_cid
     redis_plg_conn_data_t *pdata = (redis_plg_conn_data_t *)plg_data;
     redisContext *ctx = NULL;
     redisReply *reply = NULL;
-    char *mod_ns = NULL;
     sr_error_info_t *err_info = NULL;
+    char *mod_ns = NULL;
     int modified = 1;
     struct timespec spec = {0};
-    uint64_t order = 0;
-    struct redis_bulk bulk = {0};
 
     assert(mod);
 
@@ -3519,10 +3839,6 @@ srpds_redis_store_commit(const struct lys_module *mod, sr_datastore_t ds, sr_cid
         goto cleanup;
     }
 
-    if ((err_info = srpds_bulk_init(0, &bulk))) {
-        goto cleanup;
-    }
-
     if ((err_info = srpds_get_mod_ns(ds, mod->name, cid, sid, &mod_ns))) {
         goto cleanup;
     }
@@ -3533,31 +3849,46 @@ srpds_redis_store_commit(const struct lys_module *mod, sr_datastore_t ds, sr_cid
         reply = redisCommand(ctx, "FT.INFO %s:data", mod_ns);
 
         /* if index does not exist and data is not empty, we need to create an index */
-        if ((reply->type == REDIS_REPLY_ERROR) && (mod_data != NULL)) {
-            if ((err_info = srpds_create_indices(ctx, mod_ns, 1))) {
+        if ((reply->type == REDIS_REPLY_ERROR) && mod_data) {
+            if ((err_info = srpds_create_indices(ctx, mod_ns))) {
                 goto cleanup;
             }
         }
-        if ((err_info = srpds_load_and_del_data(ctx, ds, mod_ns))) {
-            goto cleanup;
-        }
-        if ((err_info = srpds_store_oper_recursively(ctx, mod_data, mod_ns, &order, &bulk))) {
-            goto cleanup;
-        }
+    }
 
-        /* if index exists and empty data is passed, destroy index (probably ending session) */
-        if ((reply->type != REDIS_REPLY_ERROR) && (mod_data == NULL)) {
-            if ((err_info = srpds_destroy_indices(ctx, mod_ns, 1))) {
+    /* in case of empty mod_data, just delete everything (do not bother storing) */
+    if (!mod_data) {
+        if (ds == SR_DS_OPERATIONAL) {
+            /* if index exists and empty data is passed, destroy index and delete data (probably ending session) */
+            if (reply->type != REDIS_REPLY_ERROR) {
+                if ((err_info = srpds_destroy_indices(ctx, mod_ns))) {
+                    goto cleanup;
+                }
+            }
+        } else {
+            /* delete all data */
+            if ((err_info = srpds_load_and_del_data(ctx, mod_ns))) {
                 goto cleanup;
             }
         }
     } else if (mod_diff) {
-        if ((err_info = srpds_store_diff_recursively(ctx, mod_diff, mod_ns, 0, &bulk))) {
+        if ((err_info = srpds_store_diff(ctx, ds, mod_data, mod_diff, mod_ns))) {
+            goto cleanup;
+        }
+    } else {
+        /* diff is not always present, in that case store all data */
+        if ((err_info = srpds_store_data(ctx, mod_data, mod_ns))) {
             goto cleanup;
         }
     }
-    if ((err_info = srpds_bulk_exec(ctx, &bulk))) {
-        goto cleanup;
+
+    /* for last-modif flag, use data collection without cid and sid */
+    if (ds == SR_DS_OPERATIONAL) {
+        free(mod_ns);
+        mod_ns = NULL;
+        if ((err_info = srpds_get_mod_ns(ds, mod->name, 0, 0, &mod_ns))) {
+            goto cleanup;
+        }
     }
 
     clock_gettime(CLOCK_REALTIME, &spec);
@@ -3570,7 +3901,6 @@ srpds_redis_store_commit(const struct lys_module *mod, sr_datastore_t ds, sr_cid
 cleanup:
     freeReplyObject(reply);
     free(mod_ns);
-    srpds_bulk_destroy(&bulk);
     return err_info;
 }
 
@@ -3842,7 +4172,7 @@ srpds_redis_install(const struct lys_module *mod, sr_datastore_t ds, const char 
     }
 
     /* create indices for loading - sr_<datastore>:<shm_prefix>:<module>:data and sr_operational:<shm_prefix>:<module>:meta - see load */
-    if ((err_info = srpds_create_indices(ctx, mod_ns, (ds == SR_DS_OPERATIONAL)))) {
+    if ((err_info = srpds_create_indices(ctx, mod_ns))) {
         goto cleanup;
     }
 
@@ -3889,7 +4219,7 @@ srpds_redis_uninstall(const struct lys_module *mod, sr_datastore_t ds, void *plg
     }
 
     /* destroy indices and data */
-    if ((err_info = srpds_destroy_indices(ctx, mod_ns, (ds == SR_DS_OPERATIONAL)))) {
+    if ((err_info = srpds_destroy_indices(ctx, mod_ns))) {
         goto cleanup;
     }
 
@@ -3934,7 +4264,7 @@ srpds_redis_load(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, 
     if (ds == SR_DS_OPERATIONAL) {
         reply = redisCommand(ctx, "FT.INFO %s:data", mod_ns);
         if (reply->type == REDIS_REPLY_ERROR) {
-            if ((err_info = srpds_create_indices(ctx, mod_ns, 1))) {
+            if ((err_info = srpds_create_indices(ctx, mod_ns))) {
                 goto cleanup;
             }
         }
@@ -3944,14 +4274,8 @@ srpds_redis_load(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, 
         goto cleanup;
     }
 
-    if (ds == SR_DS_OPERATIONAL) {
-        if ((err_info = srpds_load_oper(ctx, mod, mod_ns, xpath_filter, mod_data))) {
-            goto cleanup;
-        }
-    } else {
-        if ((err_info = srpds_load_conv(ctx, mod, ds, mod_ns, xpath_filter, mod_data))) {
-            goto cleanup;
-        }
+    if ((err_info = srpds_load_all(ctx, mod, ds, mod_ns, xpath_filter, mod_data))) {
+        goto cleanup;
     }
 
 cleanup:
@@ -4032,7 +4356,7 @@ srpds_redis_candidate_reset(const struct lys_module *mod, void *plg_data)
     }
 
     /* reset the datastore */
-    if ((err_info = srpds_load_and_del_data(ctx, SR_DS_CANDIDATE, mod_ns))) {
+    if ((err_info = srpds_load_and_del_data(ctx, mod_ns))) {
         goto cleanup;
     }
 
