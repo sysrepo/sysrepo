@@ -2574,13 +2574,14 @@ cleanup:
     return err_info;
 }
 
-static sr_error_info_t *srpds_load_diff_recursively(mongoc_collection_t *module, const struct lyd_node *mod_data, const struct lyd_node *node,
-        char parent_op, struct mongo_diff_data *diff_data);
+static sr_error_info_t *srpds_load_diff_recursively(mongoc_collection_t *module, sr_datastore_t ds,
+        const struct lyd_node *mod_data, const struct lyd_node *node, char parent_op, struct mongo_diff_data *diff_data);
 
 /**
  * @brief Store the node @p sibling inside a helper structure with info from diff.
  *
  * @param[in] module Given MongoDB collection.
+ * @param[in] ds Datastore in use.
  * @param[in] mod_data Whole module data tree.
  * @param[in] sibling Current data node in the diff.
  * @param[in] this_op Operation on this node.
@@ -2590,8 +2591,8 @@ static sr_error_info_t *srpds_load_diff_recursively(mongoc_collection_t *module,
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_use_diff2store(mongoc_collection_t *module, const struct lyd_node *mod_data, const struct lyd_node *sibling, char this_op,
-        uint64_t *max_order, struct mongo_diff_data *diff_data)
+srpds_use_diff2store(mongoc_collection_t *module, sr_datastore_t ds, const struct lyd_node *mod_data,
+        const struct lyd_node *sibling, char this_op, uint64_t *max_order, struct mongo_diff_data *diff_data)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *child = NULL, *match = NULL;
@@ -2681,26 +2682,30 @@ srpds_use_diff2store(mongoc_collection_t *module, const struct lyd_node *mod_dat
         *max_order = 0;
     }
 
-    /* metadata and attributes are not always included in diff
+    /* metadata are not always included in diff
      * delete any related to this node in the database,
      * find them in mod_data and store them (best-effort) */
     /* if delete operation: do not delete metadata or store them,
      * all node's metadata and descendants are deleted in srpds_delete_op() */
-    if (this_op != 'd') {
-        if ((err_info = srpds_escape_string(plugin_name, path, &tmp))) {
-            goto cleanup;
-        }
+    /* for now store metadata using diff only in oper ds as it is an expensive operation */
+    if ((ds == SR_DS_OPERATIONAL) && (this_op != 'd')) {
+        /* If the node has to be created, then there is nothing to delete in the database */
+        if (this_op != 'c') {
+            if ((err_info = srpds_escape_string(plugin_name, path, &tmp))) {
+                goto cleanup;
+            }
 
-        /* this regex only deletes node's metadata and not the whole subtree because of # (specific for metadata) */
-        if (asprintf(&regex, "^%s\\#", tmp) == -1) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
-            goto cleanup;
-        }
+            /* this regex only deletes node's metadata and not the whole subtree because of # (specific for metadata) */
+            if (asprintf(&regex, "^%s\\#", tmp) == -1) {
+                ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
+                goto cleanup;
+            }
 
-        /* delete all metadata connected to the node */
-        del_query = BCON_NEW("_id", "{", "$regex", BCON_UTF8(regex), "$options", "s", "}");
-        if ((err_info = srpds_add_operation(del_query, &(diff_data->del_many)))) {
-            goto cleanup;
+            /* delete all metadata connected to the node */
+            del_query = BCON_NEW("_id", "{", "$regex", BCON_UTF8(regex), "$options", "s", "}");
+            if ((err_info = srpds_add_operation(del_query, &(diff_data->del_many)))) {
+                goto cleanup;
+            }
         }
 
         /* find the node in the mod_data to read metadata from */
@@ -2729,7 +2734,7 @@ srpds_use_diff2store(mongoc_collection_t *module, const struct lyd_node *mod_dat
 
     /* we do not care about children that were already deleted */
     if ((this_op != 'd') && (child = lyd_child_no_keys(sibling))) {
-        if ((err_info = srpds_load_diff_recursively(module, mod_data, child, this_op, diff_data))) {
+        if ((err_info = srpds_load_diff_recursively(module, ds, mod_data, child, this_op, diff_data))) {
             goto cleanup;
         }
     }
@@ -2852,6 +2857,7 @@ cleanup:
  * @brief Load the whole diff and store the operations inside a helper structure.
  *
  * @param[in] module Given MongoDB collection.
+ * @param[in] ds Datastore in use.
  * @param[in] mod_data Module data tree to store.
  * @param[in] node Current data node in the diff.
  * @param[in] parent_op Operation on the node's parent.
@@ -2860,8 +2866,8 @@ cleanup:
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_load_diff_recursively(mongoc_collection_t *module, const struct lyd_node *mod_data, const struct lyd_node *node,
-        char parent_op, struct mongo_diff_data *diff_data)
+srpds_load_diff_recursively(mongoc_collection_t *module, sr_datastore_t ds, const struct lyd_node *mod_data,
+        const struct lyd_node *node, char parent_op, struct mongo_diff_data *diff_data)
 {
     sr_error_info_t *err_info = NULL;
     const struct lyd_node *sibling = node;
@@ -2893,7 +2899,7 @@ srpds_load_diff_recursively(mongoc_collection_t *module, const struct lyd_node *
             }
             previous_schema = sibling->schema;
         } else {
-            if ((err_info = srpds_use_diff2store(module, mod_data, sibling, this_op, &max_order, diff_data))) {
+            if ((err_info = srpds_use_diff2store(module, ds, mod_data, sibling, this_op, &max_order, diff_data))) {
                 goto cleanup;
             }
         }
@@ -2909,13 +2915,14 @@ cleanup:
  * @brief Store the whole diff inside the database.
  *
  * @param[in] module Given MongoDB collection.
+ * @param[in] ds Datastore in use.
  * @param[in] mod_data Module data tree to store.
  * @param[in] mod_diff Module diff.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_store_diff(mongoc_collection_t *module, const struct lyd_node *mod_data, const struct lyd_node *mod_diff)
+srpds_store_diff(mongoc_collection_t *module, sr_datastore_t ds, const struct lyd_node *mod_data, const struct lyd_node *mod_diff)
 {
     sr_error_info_t *err_info = NULL;
     bson_error_t error;
@@ -2930,7 +2937,7 @@ srpds_store_diff(mongoc_collection_t *module, const struct lyd_node *mod_data, c
         goto cleanup;
     }
 
-    if ((err_info = srpds_load_diff_recursively(module, mod_data, mod_diff, 0, &diff_data))) {
+    if ((err_info = srpds_load_diff_recursively(module, ds, mod_data, mod_diff, 0, &diff_data))) {
         goto cleanup;
     }
 
@@ -3510,7 +3517,7 @@ srpds_mongo_store_commit(const struct lys_module *mod, sr_datastore_t ds, sr_cid
             goto cleanup;
         }
     } else if (mod_diff) {
-        if ((err_info = srpds_store_diff(mdata.module, mod_data, mod_diff))) {
+        if ((err_info = srpds_store_diff(mdata.module, ds, mod_data, mod_diff))) {
             goto cleanup;
         }
     } else {
