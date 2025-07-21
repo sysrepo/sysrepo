@@ -2538,8 +2538,8 @@ srpds_use_tree2store(const struct lyd_node *mod_data, const struct lyd_node *nod
     regex = NULL;
 
     /* we NEED to store a deleted subtree (could be a list or a leaf-list instance with siblings which we just deleted) */
-    /* opaque data and state data have to be stored from mod_data */
-    /* metadata and attributes of opaque and state data are always stored */
+    /* state data have to be stored from mod_data */
+    /* metadata of state data are always stored */
     /* find all data of state list/leaf-list or opaque nodes */
     if (mod_data) {
         lerr = lyd_find_xpath(mod_data, path_no_pred, &set);
@@ -2747,6 +2747,15 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Handle an opaque node.
+ *
+ * @param[in] node Opaque node.
+ * @param[in] op Operation to perform.
+ * @param[out] diff_data Helper structure for storing diff operations.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
 static sr_error_info_t *
 srpds_handle_opaque_node(const struct lyd_node *node, char op, struct mongo_diff_data *diff_data)
 {
@@ -3442,6 +3451,10 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Comment for this function can be found in "plugins_datastore.h".
+ *
+ */
 sr_error_info_t *
 srpds_mongo_store_prepare(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, uint32_t sid,
         const struct lyd_node *mod_diff, const struct lyd_node *mod_data, void *plg_data)
