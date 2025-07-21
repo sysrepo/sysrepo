@@ -4,8 +4,8 @@
  * @brief test for runtime context changes
  *
  * @copyright
- * Copyright (c) 2018 - 2021 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2025 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2025 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -46,11 +46,14 @@ setup(void **state)
     struct state *st;
     const char *schema_paths[] = {
         TESTS_SRC_DIR "/files/mod1.yang",
+        TESTS_SRC_DIR "/files/mod3.yang",
         NULL
     };
     const char *mod1_features[] = {"f1", NULL};
+    const char *mod3_features[] = {"f1", NULL};
     const char **features[] = {
-        mod1_features
+        mod1_features,
+        mod3_features,
     };
 
     st = calloc(1, sizeof *st);
@@ -527,6 +530,7 @@ test_push_oper(void **state)
     assert_int_equal(ret, LY_SUCCESS);
     ret = sr_edit_batch(sess, edit, "replace");
     lyd_free_siblings(edit);
+
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -545,6 +549,72 @@ test_push_oper(void **state)
     /* enable f1 back */
     ret = sr_enable_module_feature(st->conn, "mod1", "f1");
     assert_int_equal(ret, SR_ERR_OK);
+
+}
+
+/* TEST */
+static void
+test_context_change_no_diff(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_session_ctx_t *sess;
+    sr_data_t *data;
+    int ret;
+    char *str1 = NULL;
+    const char *str2 = "<cont xmlns=\"urn:mod3\">\n"
+            "  <l1>imback</l1>\n"
+            "</cont>\n";
+    const struct ly_ctx *ctx = NULL;
+    const struct lys_module *mod = NULL;
+    LY_ERR lerr;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ctx = sr_acquire_context(st->conn);
+
+    mod = ly_ctx_get_module_implemented(ctx, "mod3");
+    assert_int_not_equal(mod, NULL);
+
+    sr_release_context(st->conn);
+
+    lerr = lys_feature_value(mod, "f1");
+    if (lerr == LY_SUCCESS) {
+        /* disable feature */
+        ret = sr_disable_module_feature(st->conn, "mod3", "f1");
+        assert_int_equal(ret, SR_ERR_OK);
+    }
+
+    /* fails, feature is disabled */
+    ret = sr_set_item_str(sess, "/mod3:cont/l2", "val1", NULL, 0);
+    assert_int_equal(ret, SR_ERR_LY);
+
+    /* enable feature (change context on default data) */
+    ret = sr_enable_module_feature(st->conn, "mod3", "f1");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* store some data */
+    ret = sr_set_item_str(sess, "/mod3:cont/l2", "val1", NULL, 0);
+
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* disable feature (change context on some data) */
+    ret = sr_disable_module_feature(st->conn, "mod3", "f1");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check if data is correct */
+    ret = sr_get_data(sess, "/mod3:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WD_ALL);
+    assert_int_equal(ret, LY_SUCCESS);
+    sr_release_data(data);
+
+    /* compare */
+    assert_string_equal(str1, str2);
+    free(str1);
 }
 
 /* MAIN */
@@ -555,6 +625,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_deviation, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_feature_change, setup_f, teardown_f),
         cmocka_unit_test(test_push_oper),
+        cmocka_unit_test(test_context_change_no_diff),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
