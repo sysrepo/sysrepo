@@ -4727,10 +4727,9 @@ sr_xpath_trim_last_node(const char *xpath, char **trim_xpath)
     int skipping;
 
     *trim_xpath = NULL;
-    assert(xpath[0] == '/');
 
     skipping = 0;
-    for (ptr = xpath + strlen(xpath) - 1; skipping || (ptr[0] != '/'); --ptr) {
+    for (ptr = xpath + strlen(xpath) - 1; skipping || ((ptr[0] != '/') && (ptr != xpath)); --ptr) {
         if (skipping && (ptr[0] == skip_end)) {
             /* we found the character that started the subexpression */
             skipping = 0;
@@ -5104,8 +5103,9 @@ sr_xpath_text_atoms_expr(const char *xpath, const char *prev_atom, const char *e
             goto cleanup;
         }
     } else {
-        /* relative path */
-        if (!(cur_atom = strdup(prev_atom))) {
+        /* relative path, node expected at the end */
+        cur_atom = !strcmp(prev_atom, "/") ? strdup("") : strdup(prev_atom);
+        if (!cur_atom) {
             SR_ERRINFO_MEM(&err_info);
             goto cleanup;
         }
