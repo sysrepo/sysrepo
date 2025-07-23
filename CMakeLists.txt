@@ -407,19 +407,19 @@ list(REMOVE_ITEM CMAKE_REQUIRED_DEFINITIONS -D_DEFAULT_SOURCE)
 # libmongoc - optional
 if(ENABLE_DS_MONGO)
     find_package(mongoc-1.0 1.24.0 CONFIG)
-    find_program(MONGOSH mongosh)
-    if(TARGET mongo::mongoc_shared AND MONGOSH)
+    find_program(MONGO_CLI_CMD mongosh)
+    if(TARGET mongo::mongoc_shared AND MONGO_CLI_CMD)
         # datastore plugin added if libraries exist
         list(APPEND LIB_SRC src/plugins/ds_mongo.c)
         set(SR_ENABLED_DS_PLG_MONGO 1)
         message(STATUS "Datastore plugin ds_mongo supported.")
 
         # try running a command in MongoDB database (should not be possible) and check authentication
-        execute_process(COMMAND ${MONGOSH} "--host" "${MONGO_HOST}" "--port" "${MONGO_PORT}" "--eval" "use sr_running" "--eval" "db.runCommand({usersInfo: 1})"
+        execute_process(COMMAND ${MONGO_CLI_CMD} "--host" "${MONGO_HOST}" "--port" "${MONGO_PORT}" "--eval" "use sr_running" "--eval" "db.runCommand({usersInfo: 1})"
                 RESULT_VARIABLE MONGO_RETURN_CODE
                 ERROR_VARIABLE MONGO_STDERR
                 OUTPUT_QUIET)
-        if(${MONGO_RETURN_CODE} EQUAL "0")
+        if(${MONGO_RETURN_CODE} EQUAL 0)
             message(WARNING "MongoDB authentication is NOT supported! Data stored by sysrepo in MongoDB will be accessible by anyone.")
         else()
             if("${MONGO_STDERR}" MATCHES "^MongoServerError: .*auth.*")
@@ -438,24 +438,26 @@ endif()
 # libhiredis - optional
 if(ENABLE_DS_REDIS)
     find_package(LibHiredis 1.1.0)
-    find_program(REDIS_CLI redis-cli)
-    if(LIBHIREDIS_FOUND AND REDIS_CLI)
+    find_program(REDIS_CLI_CMD redis-cli)
+    if(LIBHIREDIS_FOUND AND REDIS_CLI_CMD)
         # datastore plugin added if libraries exist
         list(APPEND LIB_SRC src/plugins/ds_redis.c)
         set(SR_ENABLED_DS_PLG_REDIS 1)
         message(STATUS "Datastore plugin ds_redis supported.")
 
         # try running a command in Redis database and check authentication
-        execute_process(COMMAND "echo" "ACL WHOAMI"
-                COMMAND "${REDIS_CLI}" "-h" "${REDIS_HOST}" "-p" "${REDIS_PORT}"
+        execute_process(COMMAND ${REDIS_CLI_CMD} "-h" "${REDIS_HOST}" "-p" "${REDIS_PORT}" "ACL" "WHOAMI"
+                RESULT_VARIABLE REDIS_RETURN_CODE
                 OUTPUT_VARIABLE REDIS_STDOUT
                 ERROR_VARIABLE REDIS_STDERR)
-        if("${REDIS_STDOUT}" MATCHES "^NOAUTH.*")
-            message(STATUS "Redis authentication is supported!")
-        elseif("${REDIS_STDERR}" MATCHES "^Could not connect to Redis.*")
+        if (${REDIS_RETURN_CODE} GREATER 0)
             message(WARNING "Redis authentication cannot be checked - a request to Redis failed with: ${REDIS_STDERR}")
         else()
-            message(WARNING "Redis authentication is NOT supported! Data stored by sysrepo in Redis will be accessible by anyone.")
+            if("${REDIS_STDOUT}" MATCHES "^NOAUTH.*")
+                message(STATUS "Redis authentication is supported!")
+            else()
+                message(WARNING "Redis authentication is NOT supported! Data stored by sysrepo in Redis will be accessible by anyone.")
+            endif()
         endif()
     else()
         message(STATUS "Datastore plugin ds_redis not supported.")
@@ -667,7 +669,7 @@ add_custom_target(sr_clean
 # flush all sysrepo related data from mongo
 if(SR_ENABLED_DS_PLG_MONGO)
     add_custom_target(sr_mongo_clean
-        COMMAND "mongosh" "--host" "${MONGO_HOST}" "--port" "${MONGO_PORT}"
+        COMMAND ${MONGO_CLI_CMD} "--host" "${MONGO_HOST}" "--port" "${MONGO_PORT}"
                         "--eval" "use sr_startup" "--eval" "\"db.dropDatabase()\""
                         "--eval" "use sr_running" "--eval" "\"db.dropDatabase()\""
                         "--eval" "use sr_candidate" "--eval" "\"db.dropDatabase()\""
@@ -681,8 +683,9 @@ endif()
 # flush all sysrepo related data from redis
 if(SR_ENABLED_DS_PLG_REDIS)
     add_custom_target(sr_redis_clean
-        COMMAND "redis-cli" "-h" "${REDIS_HOST}" "-p" "${REDIS_PORT}" "-e"
-                "--eval" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/deleteAllSysrepoDataInRedis.lua" "1>/dev/null"
+        COMMAND ${REDIS_CLI_CMD} "-h" "${REDIS_HOST}" "-p" "${REDIS_PORT}" "EVAL"
+        "\"local reply = redis.pcall('FT._LIST'); if reply['err'] ~= nil then return reply['err']; end local n = table.getn(reply); local reply2; local index; for i=1,n do index = ''; for k,v in pairs(reply[i]) do index = index..v; end if string.sub(index,1,3) == 'sr:' then reply2 = redis.pcall('FT.DROPINDEX', index, 'DD'); if reply2['err'] ~= nil then return reply2['err']; end end end reply = redis.pcall('SCAN', '0', 'MATCH', 'sr:*', 'COUNT', '50000'); if reply['err'] ~= nil then return reply['err']; end while 1 do n = table.getn(reply[2]); for i=1,n do reply2 = redis.pcall('DEL', reply[2][i]); if reply2 ~= 1 then return reply2['err']; end end if reply[1] == '0' then break end reply = redis.pcall('SCAN', reply[1], 'MATCH', 'sr:*', 'COUNT', '50000'); if reply['err'] ~= nil then return reply['err']; end end return 0;\""
+        "0" "1>/dev/null"
     )
     add_dependencies(sr_clean sr_redis_clean)
 endif()
