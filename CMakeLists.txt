@@ -406,9 +406,12 @@ list(REMOVE_ITEM CMAKE_REQUIRED_DEFINITIONS -D_DEFAULT_SOURCE)
 
 # libmongoc - optional
 if(ENABLE_DS_MONGO)
-    find_package(mongoc-1.0 1.24.0 CONFIG)
+    find_package(mongoc 2.0.2 CONFIG)
+    if (NOT TARGET mongoc::shared)
+        find_package(mongoc-1.0 1.24.0 CONFIG)
+    endif()
     find_program(MONGO_CLI_CMD mongosh)
-    if(TARGET mongo::mongoc_shared AND MONGO_CLI_CMD)
+    if((TARGET mongoc::shared OR TARGET mongo::mongoc_shared) AND MONGO_CLI_CMD)
         # datastore plugin added if libraries exist
         list(APPEND LIB_SRC src/plugins/ds_mongo.c)
         set(SR_ENABLED_DS_PLG_MONGO 1)
@@ -481,10 +484,19 @@ set_target_properties(sysrepo PROPERTIES VERSION ${SYSREPO_SOVERSION_FULL} SOVER
 if(SR_ENABLED_DS_PLG_MONGO)
     # cannot separately include and link mongoc library, thus add include to srobj and link with sysrepo
     # to add include directories
-    get_target_property(BSON_INTERFACE_INCLUDE_DIR mongo::bson_shared INTERFACE_INCLUDE_DIRECTORIES)
-    get_target_property(MONGOC_INTERFACE_INCLUDE_DIR mongo::mongoc_shared INTERFACE_INCLUDE_DIRECTORIES)
+    if (TARGET mongoc::shared)
+        get_target_property(BSON_INTERFACE_INCLUDE_DIR bson::shared INTERFACE_INCLUDE_DIRECTORIES)
+        get_target_property(MONGOC_INTERFACE_INCLUDE_DIR mongoc::shared INTERFACE_INCLUDE_DIRECTORIES)
+    elseif(TARGET mongo::mongoc_shared)
+        get_target_property(BSON_INTERFACE_INCLUDE_DIR mongo::bson_shared INTERFACE_INCLUDE_DIRECTORIES)
+        get_target_property(MONGOC_INTERFACE_INCLUDE_DIR mongo::mongoc_shared INTERFACE_INCLUDE_DIRECTORIES)
+    endif()
     set_property(TARGET srobj APPEND PROPERTY INCLUDE_DIRECTORIES ${BSON_INTERFACE_INCLUDE_DIR} ${MONGOC_INTERFACE_INCLUDE_DIR})
-    target_link_libraries(sysrepo mongo::mongoc_shared)
+    if (TARGET mongoc::shared)
+        target_link_libraries(sysrepo mongoc::shared)
+    elseif(TARGET mongo::mongoc_shared)
+        target_link_libraries(sysrepo mongo::mongoc_shared)
+    endif()
 endif()
 if (SR_ENABLED_DS_PLG_REDIS)
     # to add include directories
