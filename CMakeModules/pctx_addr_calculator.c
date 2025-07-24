@@ -56,7 +56,7 @@ calculate_mid_stack_heap_address(void)
 
     /* calculate the midpoint address and page align it */
     midpoint_address = ((uintptr_t)stack_base + (uintptr_t)heap_base) / 2;
-    midpoint_address = PAGE_ALIGNED_ADDR(midpoint_address);
+    midpoint_address = (uintptr_t)PAGE_ALIGNED_ADDR(midpoint_address);
 
     return midpoint_address;
 }
