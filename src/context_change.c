@@ -113,7 +113,9 @@ sr_ly_ctx_switch(sr_conn_ctx_t *conn, struct ly_ctx *new_ctx)
     sr_yang_ctx.sm_data_id = SR_CONN_MAIN_SHM(conn)->schema_mount_data_id;
 
     /* replace the context */
-    ly_ctx_destroy(sr_yang_ctx.ly_ctx);
+    if (sr_yang_ctx.ly_ctx) {
+        ly_ctx_destroy(sr_yang_ctx.ly_ctx);
+    }
     sr_yang_ctx.ly_ctx = new_ctx;
 }
 
@@ -257,6 +259,10 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
         if ((err_info = sr_shm_remap(&sr_yang_ctx.mod_shm, 0))) {
             goto cleanup_unlock;
         }
+
+        /* destroy the old printed context, because it is now unusable */
+        ly_ctx_destroy(sr_yang_ctx.ly_ctx);
+        sr_yang_ctx.ly_ctx = NULL;
 
         /* get the printed context from the SHM */
         if ((err_info = sr_lycc_load_context(&sr_yang_ctx.ly_ctx_shm, &new_ctx))) {
@@ -1322,7 +1328,8 @@ sr_lycc_store_context(sr_shm_t *shm, const struct ly_ctx *ctx)
         shm->size = 0;
     }
 
-    /* allocate memory for the printed context */
+    /* allocate memory for the printed context, use the same address as the resulting address,
+     * so that when this context is used, the pointers in the printed context will point to the right place */
     mem = mmap(SR_PRINTED_LYCTX_ADDRESS, ctx_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED_NOREPLACE, fd, 0);
     if (mem == MAP_FAILED) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to map the printed context (%s).", strerror(errno));
@@ -1335,6 +1342,11 @@ sr_lycc_store_context(sr_shm_t *shm, const struct ly_ctx *ctx)
         goto cleanup;
     }
     assert(((char *)mem_end - (char *)mem) == ctx_size);
+
+    /* destroy the old printed context, it is now unmapped anyways,
+     * doing it now avoids a context data collision with the new context */
+    ly_ctx_destroy(sr_yang_ctx.ly_ctx);
+    sr_yang_ctx.ly_ctx = NULL;
 
 cleanup:
     if (err_info && shm_name) {
@@ -1373,7 +1385,7 @@ sr_lycc_load_context(sr_shm_t *shm, struct ly_ctx **ctx)
     if (shm->fd == -1) {
         shm->fd = sr_open(shm_name, O_RDONLY, SR_SHM_PERM);
         if (shm->fd == -1) {
-            sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to open mod shared memory (%s).", strerror(errno));
+            sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to open context shared memory (%s).", strerror(errno));
             goto cleanup;
         }
     }
@@ -1390,6 +1402,7 @@ sr_lycc_load_context(sr_shm_t *shm, struct ly_ctx **ctx)
             shm->size = 0;
         }
 
+        /* map the shared memory to the address the context was printed to */
         shm->addr = mmap(SR_PRINTED_LYCTX_ADDRESS, shm_file_size, PROT_READ, MAP_PRIVATE | MAP_FIXED_NOREPLACE, shm->fd, 0);
         if (shm->addr == MAP_FAILED) {
             sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to map the printed context (%s).", strerror(errno));

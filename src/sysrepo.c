@@ -305,27 +305,15 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
         if (err_info) {
             goto cleanup_unlock;
         }
-    }
 
-    /* CONTEXT LOCK - to update the context if needed */
-    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
-        goto cleanup_unlock;
-    }
+        /* initialize the datastores */
+        if ((err_info = sr_shmmod_reboot_init(conn, initialized))) {
+            goto cleanup_unlock;
+        }
 
-    if (created) {
         /* This is the first connection on the system, so no need to hold a write lock.
          * Print the context for other connections to reuse. */
         if ((err_info = sr_lycc_store_context(&sr_yang_ctx.ly_ctx_shm, sr_yang_ctx.ly_ctx))) {
-            goto cleanup_unlock;
-        }
-    }
-
-    /* CONTEXT UNLOCK */
-    sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
-
-    if (created) {
-        /* initialize the datastores */
-        if ((err_info = sr_shmmod_reboot_init(conn, initialized))) {
             goto cleanup_unlock;
         }
     }
