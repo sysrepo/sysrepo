@@ -2611,12 +2611,10 @@ cleanup:
 }
 
 static sr_error_info_t *
-srpds_load_and_del_regex(redisContext *ctx, const char *mod_ns, const char *regex)
+srpds_load_and_del_regex(redisContext *ctx, const char *mod_ns, const char *regex, struct redis_bulk *bulk)
 {
     sr_error_info_t *err_info = NULL;
-    redisReply *reply = NULL;
-
-    reply = redisCommand(ctx, "EVAL %s 2 %s:data %s",
+    const char *script =
             "local reply = redis.pcall('FT.AGGREGATE', KEYS[1], '*', 'LOAD', '1', '__key', 'LIMIT', '0', '"
             REDIS_MAX_AGGREGATE_LIMIT "', 'WITHCURSOR', 'COUNT', '" REDIS_MAX_AGGREGATE_COUNT "'); "
             "if reply['err'] ~= nil then "
@@ -2639,16 +2637,25 @@ srpds_load_and_del_regex(redisContext *ctx, const char *mod_ns, const char *rege
             "return reply['err']; "
             "end "
             "end "
-            "return 0; ",
-            mod_ns, regex);
+            "return 0; ";
 
-    if ((reply->type == REDIS_REPLY_ERROR) || (reply->type == REDIS_REPLY_STRING)) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "EVAL", reply->str);
+    if ((err_info = srpds_bulk_start(5, bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("EVAL", 4, bulk);
+    srpds_bulk_add_const(script, strlen(script), bulk);
+    srpds_bulk_add_const("2", 1, bulk);
+    if ((err_info = srpds_bulk_add_format(bulk, "%s:data", mod_ns))) {
+        goto cleanup;
+    }
+    if ((err_info = srpds_bulk_add_alloc(regex, strlen(regex), bulk))) {
+        goto cleanup;
+    }
+    if ((err_info = srpds_bulk_end(ctx, bulk))) {
         goto cleanup;
     }
 
 cleanup:
-    freeReplyObject(reply);
     return err_info;
 }
 
@@ -2687,7 +2694,7 @@ srpds_use_tree2store(redisContext *ctx, const struct lyd_node *mod_data, const s
     escaped = NULL;
 
     /* delete the whole subtree */
-    if ((err_info = srpds_load_and_del_regex(ctx, mod_ns, regex))) {
+    if ((err_info = srpds_load_and_del_regex(ctx, mod_ns, regex, bulk))) {
         goto cleanup;
     }
     free(regex);
@@ -2847,7 +2854,7 @@ srpds_use_diff2store(redisContext *ctx, sr_datastore_t ds, const struct lyd_node
             }
 
             /* delete all metadata connected to the node */
-            if ((err_info = srpds_load_and_del_regex(ctx, mod_ns, regex))) {
+            if ((err_info = srpds_load_and_del_regex(ctx, mod_ns, regex, bulk))) {
                 goto cleanup;
             }
         }
