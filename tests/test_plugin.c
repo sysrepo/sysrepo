@@ -1343,17 +1343,17 @@ test_last_modif(void **state)
     check_last_modif(tdata, SR_DS_STARTUP,
             "/sysrepo-monitoring:sysrepo-state/module[name='plugin']/datastore[name='ietf-datastores:startup']/last-modified",
             "startup");
-    
+
     /* RUNNING */
     check_last_modif(tdata, SR_DS_RUNNING,
             "/sysrepo-monitoring:sysrepo-state/module[name='plugin']/datastore[name='ietf-datastores:running']/last-modified",
             "running");
-    
+
     /* CANDIDATE */
     check_last_modif(tdata, SR_DS_CANDIDATE,
             "/sysrepo-monitoring:sysrepo-state/module[name='plugin']/datastore[name='ietf-datastores:candidate']/last-modified",
             "candidate");
-    
+
     /* OPERATIONAL */
     check_last_modif(tdata, SR_DS_OPERATIONAL,
             "/sysrepo-monitoring:sysrepo-state/module[name='plugin']/datastore[name='ietf-datastores:operational']/last-modified",
