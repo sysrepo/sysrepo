@@ -629,7 +629,7 @@ srpds_add_mod_data(const char *plg_name, const struct ly_ctx *ly_ctx, sr_datasto
     }
 
     /* get the node module */
-    if (!module_name) {
+    if (!module_name || !strcmp(module_name, "")) {
         node_module = NULL;
     } else if (parent_node) {
         /* use the parent context for ext data */
@@ -689,7 +689,7 @@ srpds_add_mod_data(const char *plg_name, const struct ly_ctx *ly_ctx, sr_datasto
         break;
     case SRPDS_DB_LY_OPAQUE:       /* opaque nodes */
         if (lyd_new_opaq(parent_node, ly_ctx, name, value, NULL,
-                module_name ? module_name : lyd_node_module(parent_node)->name, &new_node) != LY_SUCCESS) {
+                (module_name && strcmp(module_name, "")) ? module_name : lyd_node_module(parent_node)->name, &new_node) != LY_SUCCESS) {
             ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_opaq()", "");
             goto cleanup;
         }
@@ -701,7 +701,7 @@ srpds_add_mod_data(const char *plg_name, const struct ly_ctx *ly_ctx, sr_datasto
     /* since last store a schema node could have been changed to an opaque node (try to create opaque) */
     if (lerr == LY_ENOTFOUND) {
         if (lyd_new_opaq(parent_node, ly_ctx, name, value, NULL,
-                module_name ? module_name : lyd_node_module(parent_node)->name, &new_node) != LY_SUCCESS) {
+                (module_name && strcmp(module_name, "")) ? module_name : lyd_node_module(parent_node)->name, &new_node) != LY_SUCCESS) {
             ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_opaq()", "");
             goto cleanup;
         }
