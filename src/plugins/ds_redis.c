@@ -4360,8 +4360,6 @@ srpds_redis_candidate_reset(const struct lys_module *mod, void *plg_data)
         goto cleanup;
     }
 
-    clock_gettime(CLOCK_REALTIME, &spec);
-
     /* set flags - e.g. last-modified and candidate-modified */
     if ((err_info = srpds_set_flags(ctx, mod_ns, SR_DS_CANDIDATE, &spec, 0))) {
         goto cleanup;
