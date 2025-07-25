@@ -1240,7 +1240,7 @@ cleanup:
 static sr_error_info_t *
 srpds_list_uo(redisContext *ctx, const char *mod_ns, const char *path, const char *name, const char *module_name,
         const char *keys, uint32_t keys_length, uint64_t order, const char *path_no_pred, const char *prev_pred,
-        int is_prev_empty, int include_prev, const char *path_modif, struct redis_bulk *bulk)
+        int is_prev_empty, int include_prev, const char *path_modif, int no_alloc, struct redis_bulk *bulk)
 {
     sr_error_info_t *err_info = NULL;
 
@@ -1252,11 +1252,15 @@ srpds_list_uo(redisContext *ctx, const char *mod_ns, const char *path, const cha
         goto cleanup;
     }
     srpds_bulk_add_const("path", 4, bulk);
-    if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
+    if (no_alloc) {
+        srpds_bulk_add_const(path, strlen(path), bulk);
+    } else if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
         goto cleanup;
     }
     srpds_bulk_add_const("name", 4, bulk);
-    if ((err_info = srpds_bulk_add_alloc(name, strlen(name), bulk))) {
+    if (no_alloc) {
+        srpds_bulk_add_const(name, strlen(name), bulk);
+    } else if ((err_info = srpds_bulk_add_alloc(name, strlen(name), bulk))) {
         goto cleanup;
     }
     srpds_bulk_add_const("type", 4, bulk);
@@ -1264,11 +1268,15 @@ srpds_list_uo(redisContext *ctx, const char *mod_ns, const char *path, const cha
         goto cleanup;
     }
     srpds_bulk_add_const("module_name", 11, bulk);
-    if ((err_info = srpds_bulk_add_alloc(module_name, module_name ? strlen(module_name) : 0, bulk))) {
+    if (no_alloc) {
+        srpds_bulk_add_const(module_name, module_name ? strlen(module_name) : 0, bulk);
+    } else if ((err_info = srpds_bulk_add_alloc(module_name, module_name ? strlen(module_name) : 0, bulk))) {
         goto cleanup;
     }
     srpds_bulk_add_const("keys", 4, bulk);
-    if ((err_info = srpds_bulk_add_alloc(keys, keys_length, bulk))) {
+    if (no_alloc) {
+        srpds_bulk_add_const(keys, keys_length, bulk);
+    } else if ((err_info = srpds_bulk_add_alloc(keys, keys_length, bulk))) {
         goto cleanup;
     }
     srpds_bulk_add_const("order", 5, bulk);
@@ -1276,12 +1284,16 @@ srpds_list_uo(redisContext *ctx, const char *mod_ns, const char *path, const cha
         goto cleanup;
     }
     srpds_bulk_add_const("path_no_pred", 12, bulk);
-    if ((err_info = srpds_bulk_add_alloc(path_no_pred, strlen(path_no_pred), bulk))) {
+    if (no_alloc) {
+        srpds_bulk_add_const(path_no_pred, strlen(path_no_pred), bulk);
+    } else if ((err_info = srpds_bulk_add_alloc(path_no_pred, strlen(path_no_pred), bulk))) {
         goto cleanup;
     }
     if (include_prev) {
         srpds_bulk_add_const("prev", 4, bulk);
-        if ((err_info = srpds_bulk_add_alloc(prev_pred, prev_pred ? strlen(prev_pred) : 0, bulk))) {
+        if (no_alloc) {
+            srpds_bulk_add_const(prev_pred, prev_pred ? strlen(prev_pred) : 0, bulk);
+        } else if ((err_info = srpds_bulk_add_alloc(prev_pred, prev_pred ? strlen(prev_pred) : 0, bulk))) {
             goto cleanup;
         }
         srpds_bulk_add_const("is_prev_empty", 13, bulk);
@@ -1290,7 +1302,9 @@ srpds_list_uo(redisContext *ctx, const char *mod_ns, const char *path, const cha
         }
     }
     srpds_bulk_add_const("path_modif", 10, bulk);
-    if ((err_info = srpds_bulk_add_alloc(path_modif, strlen(path_modif), bulk))) {
+    if (no_alloc) {
+        srpds_bulk_add_const(path_modif, strlen(path_modif), bulk);
+    } else if ((err_info = srpds_bulk_add_alloc(path_modif, strlen(path_modif), bulk))) {
         goto cleanup;
     }
     if ((err_info = srpds_bulk_end(ctx, bulk))) {
@@ -1304,7 +1318,7 @@ cleanup:
 static sr_error_info_t *
 srpds_leaflist_uo(redisContext *ctx, const char *mod_ns, const char *path, const char *name, const char *module_name,
         int dflt_flag, const char *value, uint64_t order, const char *path_no_pred, const char *prev_pred,
-        int is_prev_empty, int include_prev, const char *path_modif, struct redis_bulk *bulk)
+        int is_prev_empty, int include_prev, const char *path_modif, int no_alloc, struct redis_bulk *bulk)
 {
     sr_error_info_t *err_info = NULL;
 
@@ -1316,11 +1330,15 @@ srpds_leaflist_uo(redisContext *ctx, const char *mod_ns, const char *path, const
         goto cleanup;
     }
     srpds_bulk_add_const("path", 4, bulk);
-    if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
+    if (no_alloc) {
+        srpds_bulk_add_const(path, strlen(path), bulk);
+    } else if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
         goto cleanup;
     }
     srpds_bulk_add_const("name", 4, bulk);
-    if ((err_info = srpds_bulk_add_alloc(name, strlen(name), bulk))) {
+    if (no_alloc) {
+        srpds_bulk_add_const(name, strlen(name), bulk);
+    } else if ((err_info = srpds_bulk_add_alloc(name, strlen(name), bulk))) {
         goto cleanup;
     }
     srpds_bulk_add_const("type", 4, bulk);
@@ -1328,7 +1346,9 @@ srpds_leaflist_uo(redisContext *ctx, const char *mod_ns, const char *path, const
         goto cleanup;
     }
     srpds_bulk_add_const("module_name", 11, bulk);
-    if ((err_info = srpds_bulk_add_alloc(module_name, module_name ? strlen(module_name) : 0, bulk))) {
+    if (no_alloc) {
+        srpds_bulk_add_const(module_name, module_name ? strlen(module_name) : 0, bulk);
+    } else if ((err_info = srpds_bulk_add_alloc(module_name, module_name ? strlen(module_name) : 0, bulk))) {
         goto cleanup;
     }
     srpds_bulk_add_const("dflt_flag", 9, bulk);
@@ -1336,7 +1356,9 @@ srpds_leaflist_uo(redisContext *ctx, const char *mod_ns, const char *path, const
         goto cleanup;
     }
     srpds_bulk_add_const("value", 5, bulk);
-    if ((err_info = srpds_bulk_add_alloc(value, value ? strlen(value) : 0, bulk))) {
+    if (no_alloc) {
+        srpds_bulk_add_const(value, value ? strlen(value) : 0, bulk);
+    } else if ((err_info = srpds_bulk_add_alloc(value, value ? strlen(value) : 0, bulk))) {
         goto cleanup;
     }
     srpds_bulk_add_const("order", 5, bulk);
@@ -1344,12 +1366,16 @@ srpds_leaflist_uo(redisContext *ctx, const char *mod_ns, const char *path, const
         goto cleanup;
     }
     srpds_bulk_add_const("path_no_pred", 12, bulk);
-    if ((err_info = srpds_bulk_add_alloc(path_no_pred, strlen(path_no_pred), bulk))) {
+    if (no_alloc) {
+        srpds_bulk_add_const(path_no_pred, strlen(path_no_pred), bulk);
+    } else if ((err_info = srpds_bulk_add_alloc(path_no_pred, strlen(path_no_pred), bulk))) {
         goto cleanup;
     }
     if (include_prev) {
         srpds_bulk_add_const("prev", 4, bulk);
-        if ((err_info = srpds_bulk_add_alloc(prev_pred, prev_pred ? strlen(prev_pred) : 0, bulk))) {
+        if (no_alloc) {
+            srpds_bulk_add_const(prev_pred, prev_pred ? strlen(prev_pred) : 0, bulk);
+        } else if ((err_info = srpds_bulk_add_alloc(prev_pred, prev_pred ? strlen(prev_pred) : 0, bulk))) {
             goto cleanup;
         }
         srpds_bulk_add_const("is_prev_empty", 13, bulk);
@@ -1358,7 +1384,9 @@ srpds_leaflist_uo(redisContext *ctx, const char *mod_ns, const char *path, const
         }
     }
     srpds_bulk_add_const("path_modif", 10, bulk);
-    if ((err_info = srpds_bulk_add_alloc(path_modif, strlen(path_modif), bulk))) {
+    if (no_alloc) {
+        srpds_bulk_add_const(path_modif, strlen(path_modif), bulk);
+    } else if ((err_info = srpds_bulk_add_alloc(path_modif, strlen(path_modif), bulk))) {
         goto cleanup;
     }
     if ((err_info = srpds_bulk_end(ctx, bulk))) {
@@ -1775,13 +1803,13 @@ srpds_insert_uo_element(redisContext *ctx, const char *mod_ns, const struct lyd_
             goto cleanup;
         }
         if ((err_info = srpds_list_uo(ctx, mod_ns, path, node->schema->name, module_name, keys, keys_length, order,
-                path_no_pred, prev_pred, (prev[0] == '\0') ? 1 : 0, 1, path_modif, &bulk))) {
+                path_no_pred, prev_pred, (prev[0] == '\0') ? 1 : 0, 1, path_modif, 1, &bulk))) {
             goto cleanup;
         }
         break;
     case LYS_LEAFLIST:
         if ((err_info = srpds_leaflist_uo(ctx, mod_ns, path, node->schema->name, module_name, 0, value, order,
-                path_no_pred, prev_pred, (prev[0] == '\0') ? 1 : 0, 1, path_modif, &bulk))) {
+                path_no_pred, prev_pred, (prev[0] == '\0') ? 1 : 0, 1, path_modif, 1, &bulk))) {
             goto cleanup;
         }
         break;
@@ -2524,7 +2552,7 @@ srpds_load_state_recursively(redisContext *ctx, const struct ly_set *set, const 
             }
 
             if ((err_info = srpds_list_uo(ctx, mod_ns, path, sibling->schema->name, module_name, keys, keys_length,
-                    order, path_no_pred, NULL, 0, 0, path_modif, bulk))) {
+                    order, path_no_pred, NULL, 0, 0, path_modif, 0, bulk))) {
                 goto cleanup;
             }
             free(keys);
@@ -2548,7 +2576,7 @@ srpds_load_state_recursively(redisContext *ctx, const struct ly_set *set, const 
                 goto cleanup;
             }
             if ((err_info = srpds_leaflist_uo(ctx, mod_ns, path, sibling->schema->name, module_name,
-                    sibling->flags & LYD_DEFAULT, value, order, path_no_pred, NULL, 0, 0, path_modif,
+                    sibling->flags & LYD_DEFAULT, value, order, path_no_pred, NULL, 0, 0, path_modif, 0,
                     bulk))) {
                 goto cleanup;
             }
@@ -3171,14 +3199,14 @@ srpds_load_data_recursively(redisContext *ctx, const struct lyd_node *mod_data, 
                 }
 
                 if ((err_info = srpds_list_uo(ctx, mod_ns, path, sibling->schema->name, module_name, keys,
-                        keys_length, state_order, path_no_pred, NULL, 0, 0, path_modif, bulk))) {
+                        keys_length, state_order, path_no_pred, NULL, 0, 0, path_modif, 0, bulk))) {
                     goto cleanup;
                 }
                 ++state_order;
             } else if (lysc_is_userordered(sibling->schema)) {
                 /* userordered lists */
                 if ((err_info = srpds_list_uo(ctx, mod_ns, path, sibling->schema->name, module_name, keys,
-                        keys_length, uo_order, path_no_pred, prev_pred, (prev[0] == '\0') ? 1 : 0, 1, path_modif, bulk))) {
+                        keys_length, uo_order, path_no_pred, prev_pred, (prev[0] == '\0') ? 1 : 0, 1, path_modif, 0, bulk))) {
                     goto cleanup;
                 }
                 uo_order += 1024;
@@ -3212,7 +3240,7 @@ srpds_load_data_recursively(redisContext *ctx, const struct lyd_node *mod_data, 
                 }
 
                 if ((err_info = srpds_leaflist_uo(ctx, mod_ns, path, sibling->schema->name, module_name,
-                        sibling->flags & LYD_DEFAULT, value, state_order, path_no_pred, NULL, 0, 0, path_modif,
+                        sibling->flags & LYD_DEFAULT, value, state_order, path_no_pred, NULL, 0, 0, path_modif, 0,
                         bulk))) {
                     goto cleanup;
                 }
@@ -3221,7 +3249,7 @@ srpds_load_data_recursively(redisContext *ctx, const struct lyd_node *mod_data, 
                 /* userordered leaf-lists */
                 if ((err_info = srpds_leaflist_uo(ctx, mod_ns, path, sibling->schema->name, module_name,
                         sibling->flags & LYD_DEFAULT, value, uo_order, path_no_pred, prev_pred,
-                        (prev[0] == '\0') ? 1 : 0, 1, path_modif, bulk))) {
+                        (prev[0] == '\0') ? 1 : 0, 1, path_modif, 0, bulk))) {
                     goto cleanup;
                 }
                 uo_order += 1024;
