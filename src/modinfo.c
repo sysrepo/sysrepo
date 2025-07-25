@@ -3450,6 +3450,7 @@ sr_modinfo_add_defaults(struct sr_mod_info_s *mod_info, int finish_diff)
                 if ((err_info = sr_lyd_diff_merge_all(&mod_info->notify_diff, diff))) {
                     goto cleanup;
                 }
+                mod_info->ds_diff = mod_info->notify_diff;
 
                 lyd_free_all(diff);
                 diff = NULL;
