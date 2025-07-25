@@ -3224,18 +3224,21 @@ cleanup:
  * @brief Update last-modif flag.
  *
  * @param[in] module Given MongoDB collection.
+ * @param[in] reset Whether to reset flag.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_set_last_modif_flag(mongoc_collection_t *module)
+srpds_set_last_modif_flag(mongoc_collection_t *module, int reset)
 {
     sr_error_info_t *err_info = NULL;
     bson_error_t error;
     bson_t *doc = NULL, *update = NULL;
-    struct timespec spec;
+    struct timespec spec = {0};
 
-    clock_gettime(CLOCK_REALTIME, &spec);
+    if (!reset) {
+        clock_gettime(CLOCK_REALTIME, &spec);
+    }
     doc = BCON_NEW("_id", BCON_UTF8("0"));
     update = BCON_NEW("$set", "{", "sec", BCON_INT64((int64_t)(spec.tv_sec)), "nsec", BCON_INT64((int64_t)(spec.tv_nsec)), "}");
     if (!mongoc_collection_update_one(module, doc, update, NULL, NULL, &error)) {
@@ -3432,7 +3435,7 @@ srpds_mongo_copy(const struct lys_module *mod, sr_datastore_t trg_ds, sr_datasto
         goto cleanup;
     }
 
-    if ((err_info = srpds_set_last_modif_flag(mdata.module))) {
+    if ((err_info = srpds_set_last_modif_flag(mdata.module, 0))) {
         goto cleanup;
     }
 
@@ -3527,7 +3530,7 @@ srpds_mongo_store_commit(const struct lys_module *mod, sr_datastore_t ds, sr_cid
         }
     }
 
-    if ((err_info = srpds_set_last_modif_flag(mdata.module))) {
+    if ((err_info = srpds_set_last_modif_flag(mdata.module, 0))) {
         goto cleanup;
     }
 
@@ -4023,7 +4026,7 @@ srpds_mongo_candidate_reset(const struct lys_module *mod, void *plg_data)
         goto cleanup;
     }
 
-    if ((err_info = srpds_set_last_modif_flag(mdata.module))) {
+    if ((err_info = srpds_set_last_modif_flag(mdata.module, 1))) {
         goto cleanup;
     }
 
