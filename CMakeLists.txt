@@ -687,7 +687,7 @@ if(SR_ENABLED_DS_PLG_MONGO)
                         "--eval" "use sr_candidate" "--eval" "\"db.dropDatabase()\""
                         "--eval" "use sr_operational" "--eval" "\"db.dropDatabase()\""
                         "--eval" "use sr_factory-default" "--eval" "\"db.dropDatabase()\""
-                        "1>/dev/null"
+                        "1>" "/dev/null"
     )
     add_dependencies(sr_clean sr_mongo_clean)
 endif()
