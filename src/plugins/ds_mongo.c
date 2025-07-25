@@ -3179,7 +3179,7 @@ cleanup:
 }
 
 /**
- * @brief Store the whole data tree in the database (only for operational).
+ * @brief Store the whole data tree in the database.
  *
  * @param[in] module Given MongoDB collection.
  * @param[in] mod_data Whole data tree.
