@@ -1283,6 +1283,84 @@ test_copy(void **state)
 }
 
 int
+teardown_last_modif(void **state)
+{
+    if (teardown_store(state)) {
+        return 1;
+    }
+
+    if (teardown_store_oper(state)) {
+        return 1;
+    }
+
+    return 0;
+}
+
+static void
+check_last_modif(test_data_t *tdata, sr_datastore_t ds, const char *path_to_last_modif, const char *store)
+{
+    sr_val_t *val1 = NULL, *val2 = NULL;
+    struct timespec ts1, ts2;
+    int rc;
+
+    rc = sr_session_switch_ds(tdata->sess, ds);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(tdata->sess, "/plugin:simple-cont/simple-cont2/ac1/acl1[acs1='primary']/acs2", store, NULL, 0);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_apply_changes(tdata->sess, 0);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_switch_ds(tdata->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_get_item(tdata->sess, path_to_last_modif, 0, &val1);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_switch_ds(tdata->sess, ds);
+    rc = sr_set_item_str(tdata->sess, "/plugin:simple-cont/simple-cont2/ac1/acl1[acs1='secondary']/acs2", store, NULL, 0);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_apply_changes(tdata->sess, 0);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_switch_ds(tdata->sess, SR_DS_OPERATIONAL);
+    rc = sr_get_item(tdata->sess, path_to_last_modif, 0, &val2);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = ly_time_str2ts(val1->data.string_val, &ts1);
+    assert_int_equal(rc, LY_SUCCESS);
+    rc = ly_time_str2ts(val2->data.string_val, &ts2);
+    assert_int_equal(rc, LY_SUCCESS);
+    /* second save has latter timestamp than the first save */
+    assert_true(ts1.tv_sec < ts2.tv_sec || (ts1.tv_sec == ts2.tv_sec && ts1.tv_nsec < ts2.tv_nsec));
+    sr_free_val(val1);
+    val1 = NULL;
+    sr_free_val(val2);
+    val2 = NULL;
+}
+
+/* TEST */
+static void
+test_last_modif(void **state)
+{
+    test_data_t *tdata = *state;
+
+    /* STARTUP */
+    check_last_modif(tdata, SR_DS_STARTUP,
+            "/sysrepo-monitoring:sysrepo-state/module[name='plugin']/datastore[name='ietf-datastores:startup']/last-modified",
+            "startup");
+    
+    /* RUNNING */
+    check_last_modif(tdata, SR_DS_RUNNING,
+            "/sysrepo-monitoring:sysrepo-state/module[name='plugin']/datastore[name='ietf-datastores:running']/last-modified",
+            "running");
+    
+    /* CANDIDATE */
+    check_last_modif(tdata, SR_DS_CANDIDATE,
+            "/sysrepo-monitoring:sysrepo-state/module[name='plugin']/datastore[name='ietf-datastores:candidate']/last-modified",
+            "candidate");
+    
+    /* OPERATIONAL */
+    check_last_modif(tdata, SR_DS_OPERATIONAL,
+            "/sysrepo-monitoring:sysrepo-state/module[name='plugin']/datastore[name='ietf-datastores:operational']/last-modified",
+            "operational");
+}
+
+int
 main(void)
 {
     const struct CMUnitTest tests[] = {
@@ -1296,6 +1374,7 @@ main(void)
         cmocka_unit_test_teardown(test_access_setandget2, teardown_access),
         cmocka_unit_test(test_access_check),
         cmocka_unit_test_teardown(test_copy, teardown_store),
+        cmocka_unit_test_teardown(test_last_modif, teardown_last_modif),
     };
 
     int rc;
