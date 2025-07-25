@@ -696,8 +696,9 @@ endif()
 if(SR_ENABLED_DS_PLG_REDIS)
     add_custom_target(sr_redis_clean
         COMMAND ${REDIS_CLI_CMD} "-h" "${REDIS_HOST}" "-p" "${REDIS_PORT}" "EVAL"
-        "\"local reply = redis.pcall('FT._LIST'); if reply['err'] ~= nil then return reply['err']; end local n = table.getn(reply); local reply2; local index; for i=1,n do index = ''; for k,v in pairs(reply[i]) do index = index..v; end if string.sub(index,1,3) == 'sr:' then reply2 = redis.pcall('FT.DROPINDEX', index, 'DD'); if reply2['err'] ~= nil then return reply2['err']; end end end reply = redis.pcall('SCAN', '0', 'MATCH', 'sr:*', 'COUNT', '50000'); if reply['err'] ~= nil then return reply['err']; end while 1 do n = table.getn(reply[2]); for i=1,n do reply2 = redis.pcall('DEL', reply[2][i]); if reply2 ~= 1 then return reply2['err']; end end if reply[1] == '0' then break end reply = redis.pcall('SCAN', reply[1], 'MATCH', 'sr:*', 'COUNT', '50000'); if reply['err'] ~= nil then return reply['err']; end end return 0;\""
-        "0" "1>/dev/null"
+            "local reply = redis.pcall('FT._LIST'); if reply['err'] ~= nil then return reply['err']; end local n = table.getn(reply); local reply2; local index; for i=1,n do index = ''; for k,v in pairs(reply[i]) do index = index..v; end if string.sub(index,1,3) == 'sr:' then reply2 = redis.pcall('FT.DROPINDEX', index, 'DD'); if reply2['err'] ~= nil then return reply2['err']; end end end reply = redis.pcall('SCAN', '0', 'MATCH', 'sr:*', 'COUNT', '50000'); if reply['err'] ~= nil then return reply['err']; end while 1 do n = table.getn(reply[2]); for i=1,n do reply2 = redis.pcall('DEL', reply[2][i]); if reply2 ~= 1 then return reply2['err']; end end if reply[1] == '0' then break end reply = redis.pcall('SCAN', reply[1], 'MATCH', 'sr:*', 'COUNT', '50000'); if reply['err'] ~= nil then return reply['err']; end end return 0;"
+            "0" "1>" "/dev/null"
+        VERBATIM
     )
     add_dependencies(sr_clean sr_redis_clean)
 endif()
