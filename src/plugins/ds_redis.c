@@ -1049,6 +1049,19 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Store a new container inside bulk.
+ *
+ * @param[in] ctx Redis context.
+ * @param[in] mod_ns Database prefix for the module.
+ * @param[in] path Path of the data node.
+ * @param[in] name Name of the data node.
+ * @param[in] module_name Name of the node module.
+ * @param[in] path_modif Modified path.
+ * @param[out] bulk Structure containing the commands for bulk operation.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
 static sr_error_info_t *
 srpds_container(redisContext *ctx, const char *mod_ns, const char *path, const char *name, const char *module_name,
         const char *path_modif, struct redis_bulk *bulk)
@@ -1090,6 +1103,21 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Store a new list instance inside bulk.
+ *
+ * @param[in] ctx Redis context.
+ * @param[in] mod_ns Database prefix for the module.
+ * @param[in] path Path of the data node.
+ * @param[in] name Name of the data node.
+ * @param[in] module_name Name of the node module.
+ * @param[in] keys Keys of the list instance.
+ * @param[in] keys_length Length of @p keys.
+ * @param[in] path_modif Modified path.
+ * @param[out] bulk Structure containing the commands for bulk operation.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
 static sr_error_info_t *
 srpds_list(redisContext *ctx, const char *mod_ns, const char *path, const char *name, const char *module_name,
         const char *keys, uint32_t keys_length, const char *path_modif, struct redis_bulk *bulk)
@@ -1135,6 +1163,21 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Store a new term inside bulk.
+ *
+ * @param[in] ctx Redis context.
+ * @param[in] mod_ns Database prefix for the module.
+ * @param[in] path Path of the data node.
+ * @param[in] name Name of the data node.
+ * @param[in] module_name Name of the node module.
+ * @param[in] dflt_flag Default flag of the node.
+ * @param[in] value Value of the node.
+ * @param[in] path_modif Modified path.
+ * @param[out] bulk Structure containing the commands for bulk operation.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
 static sr_error_info_t *
 srpds_term(redisContext *ctx, const char *mod_ns, const char *path, const char *name, const char *module_name,
         int dflt_flag, const char *value, const char *path_modif, struct redis_bulk *bulk)
@@ -1184,6 +1227,22 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Store new anydata/anyxml inside bulk.
+ *
+ * @param[in] ctx Redis context.
+ * @param[in] mod_ns Database prefix for the module.
+ * @param[in] path Path of the data node.
+ * @param[in] name Name of the data node.
+ * @param[in] module_name Name of the node module.
+ * @param[in] dflt_flag Default flag of the node.
+ * @param[in] value Value of the node.
+ * @param[in] valtype Type of the value (LYD_ANYDATA_XML = 0; LYD_ANYDATA_JSON = 1)
+ * @param[in] path_modif Modified path.
+ * @param[out] bulk Structure containing the commands for bulk operation.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
 static sr_error_info_t *
 srpds_any(redisContext *ctx, const char *mod_ns, const char *path, const char *name, const char *module_name,
         int dflt_flag, const char *value, int32_t valtype, const char *path_modif, struct redis_bulk *bulk)
@@ -1237,6 +1296,27 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Store a new userordered list instance inside bulk.
+ *
+ * @param[in] ctx Redis context.
+ * @param[in] mod_ns Database prefix for the module.
+ * @param[in] path Path of the data node.
+ * @param[in] name Name of the data node.
+ * @param[in] module_name Name of the node module.
+ * @param[in] keys Keys of the list instance.
+ * @param[in] keys_length Length of @p keys.
+ * @param[in] order Order of the node.
+ * @param[in] path_no_pred Path to the node without predicate.
+ * @param[in] prev_pred Predicate of the previous node.
+ * @param[in] is_prev_empty Whether @p prev_pred is empty.
+ * @param[in] include_prev Whether to include predicate of the previous node.
+ * @param[in] path_modif Modified path.
+ * @param[in] no_alloc Whether to dynamically allocate strings (0 for allocation, 1 for no allocation).
+ * @param[out] bulk Structure containing the commands for bulk operation.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
 static sr_error_info_t *
 srpds_list_uo(redisContext *ctx, const char *mod_ns, const char *path, const char *name, const char *module_name,
         const char *keys, uint32_t keys_length, uint64_t order, const char *path_no_pred, const char *prev_pred,
@@ -1315,6 +1395,27 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Store a new userordered leaf-list instance inside bulk.
+ *
+ * @param[in] ctx Redis context.
+ * @param[in] mod_ns Database prefix for the module.
+ * @param[in] path Path of the data node.
+ * @param[in] name Name of the data node.
+ * @param[in] module_name Name of the node module.
+ * @param[in] dflt_flag Default flag of the node.
+ * @param[in] value Value of the node.
+ * @param[in] order Order of the node.
+ * @param[in] path_no_pred Path to the node without predicate.
+ * @param[in] prev_pred Predicate of the previous node.
+ * @param[in] is_prev_empty Whether @p prev_pred is empty.
+ * @param[in] include_prev Whether to include predicate of the previous node.
+ * @param[in] path_modif Modified path.
+ * @param[in] no_alloc Whether to dynamically allocate strings (0 for allocation, 1 for no allocation).
+ * @param[out] bulk Structure containing the commands for bulk operation.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
 static sr_error_info_t *
 srpds_leaflist_uo(redisContext *ctx, const char *mod_ns, const char *path, const char *name, const char *module_name,
         int dflt_flag, const char *value, uint64_t order, const char *path_no_pred, const char *prev_pred,
@@ -1397,6 +1498,20 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Store a new opaque node inside bulk.
+ *
+ * @param[in] ctx Redis context.
+ * @param[in] mod_ns Database prefix for the module.
+ * @param[in] path Path of the data node.
+ * @param[in] name Name of the data node.
+ * @param[in] module_name Name of the node module.
+ * @param[in] value Value of the node.
+ * @param[in] path_modif Modified path.
+ * @param[out] bulk Structure containing the commands for bulk operation.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
 static sr_error_info_t *
 srpds_opaque(redisContext *ctx, const char *mod_ns, const char *path, const char *name, const char *module_name,
         const char *value, const char *path_modif, struct redis_bulk *bulk)
@@ -1442,6 +1557,20 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Store new metadata inside bulk.
+ *
+ * @param[in] ctx Redis context.
+ * @param[in] mod_ns Database prefix for the module.
+ * @param[in] path Path of the data node.
+ * @param[in] name Name of the data node.
+ * @param[in] module_name Name of the node module.
+ * @param[in] value Value of the node.
+ * @param[in] path_modif Modified path.
+ * @param[out] bulk Structure containing the commands for bulk operation.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
 static sr_error_info_t *
 srpds_meta(redisContext *ctx, const char *mod_ns, const char *path, const char *name, const char *module_name,
         const char *value, const char *path_modif, struct redis_bulk *bulk)
@@ -2475,6 +2604,17 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Load state data subtree (only for state data).
+ *
+ * @param[in] ctx Redis context.
+ * @param[in] set Set of data nodes which need to be stored.
+ * @param[in] node Data subtree.
+ * @param[in] mod_ns Database prefix for the module.
+ * @param[out] bulk Structure containing the commands for bulk operation.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
 static sr_error_info_t *
 srpds_load_state_recursively(redisContext *ctx, const struct ly_set *set, const struct lyd_node *node,
         const char *mod_ns, struct redis_bulk *bulk)
@@ -2638,6 +2778,16 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Load data matching the @p regex from the database and delete them, store this operation inside bulk.
+ *
+ * @param[in] ctx Redis context.
+ * @param[in] mod_ns Database prefix for the module.
+ * @param[in] regex Regex to match against.
+ * @param[out] bulk Structure containing the commands for bulk operation.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
 static sr_error_info_t *
 srpds_load_and_del_regex(redisContext *ctx, const char *mod_ns, const char *regex, struct redis_bulk *bulk)
 {
@@ -2687,6 +2837,17 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Store the whole subtree using @p sibling inside a helper structure with info from mod_data.
+ *
+ * @param[in] ctx Redis context.
+ * @param[in] mod_data Module data tree to store.
+ * @param[in] node Subtree from diff to use.
+ * @param[in] mod_ns Database prefix for the module.
+ * @param[out] bulk Structure containing the commands for bulk operation.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
 static sr_error_info_t *
 srpds_use_tree2store(redisContext *ctx, const struct lyd_node *mod_data, const struct lyd_node *node,
         const char *mod_ns, struct redis_bulk *bulk)
@@ -2767,6 +2928,20 @@ static sr_error_info_t *srpds_load_diff_recursively(redisContext *ctx, sr_datast
         const struct lyd_node *mod_data, const struct lyd_node *node, const char *mod_ns, char parent_op,
         struct redis_bulk *bulk);
 
+/**
+ * @brief Store the node @p sibling inside a helper structure with info from diff.
+ *
+ * @param[in] ctx Redis context.
+ * @param[in] ds Datastore in use.
+ * @param[in] mod_data Whole module data tree.
+ * @param[in] sibling Current data node in the diff.
+ * @param[in] this_op Operation on this node.
+ * @param[in, out] max_order Max order for userordered lists and leaf-lists.
+ * @param[in] mod_ns Database prefix for the module.
+ * @param[out] bulk Structure containing the commands for bulk operation.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
 static sr_error_info_t *
 srpds_use_diff2store(redisContext *ctx, sr_datastore_t ds, const struct lyd_node *mod_data,
         const struct lyd_node *sibling, char this_op, uint64_t *max_order, const char *mod_ns, struct redis_bulk *bulk)
@@ -3078,6 +3253,17 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Store the whole diff inside the database.
+ *
+ * @param[in] ctx Redis context.
+ * @param[in] ds Datastore in use.
+ * @param[in] mod_data Module data tree to store.
+ * @param[in] mod_diff Module diff.
+ * @param[in] mod_ns Database prefix for the module.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
 sr_error_info_t *
 srpds_store_diff(redisContext *ctx, sr_datastore_t ds, const struct lyd_node *mod_data, const struct lyd_node *mod_diff,
         const char *mod_ns)
@@ -3462,6 +3648,15 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Store the whole data tree in the database.
+ *
+ * @param[in] ctx Redis context.
+ * @param[in] mod_data Whole data tree.
+ * @param[in] mod_ns Database prefix for the module.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
 sr_error_info_t *
 srpds_store_data(redisContext *ctx, const struct lyd_node *mod_data, const char *mod_ns)
 {
