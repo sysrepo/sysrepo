@@ -417,17 +417,6 @@ srpds_process_load_paths(struct ly_ctx *ctx, const char **xpaths, uint32_t xpath
     bson_init(xpath_filter);
     bson_append_array_begin(xpath_filter, "$or", 3, &top);
 
-    if (oper_ds) {
-        /*
-         * TODO
-         * xpath filtering is unimplemented for MONGO DS operational datastore.
-         * /sysrepo:discard-items and metadata (ietf-origin) needs to be explicitly retrieved.
-         *
-         * So, just fetch all the data until then.
-         */
-        goto cleanup;
-    }
-
     /* create new data node for lyd_find_path to work correctly */
     if (lyd_new_path(NULL, ctx, "/ietf-yang-library:yang-library", NULL, 0, &ctx_node) != LY_SUCCESS) {
         ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_new_path()", "");
@@ -497,6 +486,26 @@ srpds_process_load_paths(struct ly_ctx *ctx, const char **xpaths, uint32_t xpath
 
         free(path);
         path = NULL;
+    }
+
+    if (xpath_cnt && oper_ds) {
+        /* explicitly add discard-items to the query for operational datastore */
+        if ((err_info = srpds_escape_string(plugin_name, "/sysrepo:discard-items", '\\', &escaped_path))) {
+            goto cleanup;
+        }
+
+        /* add path as regex */
+        if (asprintf(&tmp, "^%s", escaped_path) == -1) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
+            goto cleanup;
+        }
+        bson_append_document_begin(&top, "_id", 3, &bottom);
+        bson_append_regex(&bottom, "_id", 3, tmp, "s");
+        bson_append_document_end(&top, &bottom);
+        free(tmp);
+        tmp = NULL;
+        free(escaped_path);
+        escaped_path = NULL;
     }
 
     *is_valid = xpath_cnt;
