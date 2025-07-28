@@ -870,7 +870,6 @@ sr_shmmod_del_module_sess_oper_data(sr_conn_ctx_t *conn, const struct lys_module
 {
     sr_error_info_t *err_info = NULL;
     const struct sr_ds_handle_s *oper_ds_handle;
-    struct lyd_node *mod_diff = NULL, *node;
 
     if (has_data) {
         /* get DS handle */
@@ -879,29 +878,13 @@ sr_shmmod_del_module_sess_oper_data(sr_conn_ctx_t *conn, const struct lys_module
             goto cleanup;
         }
 
-        /* create a diff only if the plugin requires it to store new data */
-        if (oper_ds_handle->plugin->oper_store_require_diff) {
-            /* load oper data */
-            if ((err_info = oper_ds_handle->plugin->load_cb(ly_mod, SR_DS_OPERATIONAL, cid, sid, NULL, 0, oper_ds_handle->plg_data,
-                    &mod_diff))) {
-                goto cleanup;
-            }
-
-            /* make into diff */
-            LY_LIST_FOR(mod_diff, node) {
-                if ((err_info = sr_diff_set_oper(node, "delete"))) {
-                    goto cleanup;
-                }
-            }
-        }
-
         /* store the empty data */
-        if ((err_info = oper_ds_handle->plugin->store_prepare_cb(ly_mod, SR_DS_OPERATIONAL, cid, sid, mod_diff,
+        if ((err_info = oper_ds_handle->plugin->store_prepare_cb(ly_mod, SR_DS_OPERATIONAL, cid, sid, NULL,
                 NULL, oper_ds_handle->plg_data))) {
             goto cleanup;
         }
 
-        if ((err_info = oper_ds_handle->plugin->store_commit_cb(ly_mod, SR_DS_OPERATIONAL, cid, sid, mod_diff,
+        if ((err_info = oper_ds_handle->plugin->store_commit_cb(ly_mod, SR_DS_OPERATIONAL, cid, sid, NULL,
                 NULL, oper_ds_handle->plg_data))) {
             goto cleanup;
         }
@@ -913,7 +896,6 @@ sr_shmmod_del_module_sess_oper_data(sr_conn_ctx_t *conn, const struct lys_module
     }
 
 cleanup:
-    lyd_free_siblings(mod_diff);
     return err_info;
 }
 
