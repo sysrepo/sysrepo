@@ -154,7 +154,7 @@ typedef sr_error_info_t *(*srds_store_prepare)(const struct lys_module *mod, sr_
  * @param[in] ds Specific datastore.
  * @param[in] cid ID of the connection storing the data, relevant for @p ds ::SR_DS_OPERATIONAL.
  * @param[in] sid ID of the session storing the data, relevant for @p ds ::SR_DS_OPERATIONAL.
- * @param[in] mod_diff Diff of currently stored module data and the new @p mod_data. __Not always available.__
+ * @param[in] mod_diff Diff of currently stored module data and the new @p mod_data. __Not always available.__ (e.g. when deleting all push operational data).
  * @param[in] mod_data New module data tree to store. If @p ds ::SR_DS_OPERATIONAL, every node may have a metadata
  * instance of 'ietf-origin:origin' that needs to be stored. Also, top-level 'discard-items' opaque nodes may be present.
  * @param[in] plg_data Plugin data.
@@ -327,7 +327,6 @@ struct srplg_ds_s {
     srds_access_check access_check_cb;  /**< callback for checking user access to module data */
     srds_last_modif last_modif_cb;  /**< callback for getting the time of last modification */
     srds_data_version data_version_cb;  /**< optional callback for checking data version */
-    const int oper_store_require_diff;  /**< if a diff is required to store operational data */
 };
 
 /**

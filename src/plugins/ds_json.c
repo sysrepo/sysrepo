@@ -1044,5 +1044,4 @@ const struct srplg_ds_s srpds_json = {
     .access_check_cb = srpds_json_access_check,
     .last_modif_cb = srpds_json_last_modif,
     .data_version_cb = NULL,
-    .oper_store_require_diff = 0,
 };
