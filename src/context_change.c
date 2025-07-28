@@ -1297,6 +1297,7 @@ sr_lycc_context_upgrade_prep_finish(sr_conn_ctx_t *conn, struct ly_ctx *new_ctx,
 sr_error_info_t *
 sr_lycc_store_context(sr_shm_t *shm, const struct ly_ctx *ctx)
 {
+#ifdef SR_PRINTED_LYCTX_ADDRESS
     sr_error_info_t *err_info = NULL;
     int ctx_size, fd = -1;
     void *mem = NULL, *mem_end;
@@ -1330,7 +1331,7 @@ sr_lycc_store_context(sr_shm_t *shm, const struct ly_ctx *ctx)
 
     /* allocate memory for the printed context, use the same address as the resulting address,
      * so that when this context is used, the pointers in the printed context will point to the right place */
-    mem = mmap(SR_PRINTED_LYCTX_ADDRESS, ctx_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED_NOREPLACE, fd, 0);
+    mem = mmap((void *)SR_PRINTED_LYCTX_ADDRESS, ctx_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED_NOREPLACE, fd, 0);
     if (mem == MAP_FAILED) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to map the printed context (%s).", strerror(errno));
         mem = NULL;
@@ -1360,11 +1361,19 @@ cleanup:
         munmap(mem, ctx_size);
     }
     return err_info;
+#else
+    /* SR_PRINTED_LYCTX_ADDRESS is not defined, so we cannot store the context,
+     * not an error, just silently do nothing */
+    (void)shm;
+    (void)ctx;
+    return NULL;
+#endif /* SR_PRINTED_LYCTX_ADDRESS */
 }
 
 sr_error_info_t *
 sr_lycc_load_context(sr_shm_t *shm, struct ly_ctx **ctx)
 {
+#ifdef SR_PRINTED_LYCTX_ADDRESS
     sr_error_info_t *err_info;
     size_t shm_file_size = 0;
     char *shm_name = NULL;
@@ -1403,7 +1412,7 @@ sr_lycc_load_context(sr_shm_t *shm, struct ly_ctx **ctx)
         }
 
         /* map the shared memory to the address the context was printed to */
-        shm->addr = mmap(SR_PRINTED_LYCTX_ADDRESS, shm_file_size, PROT_READ, MAP_PRIVATE | MAP_FIXED_NOREPLACE, shm->fd, 0);
+        shm->addr = mmap((void *)SR_PRINTED_LYCTX_ADDRESS, shm_file_size, PROT_READ, MAP_PRIVATE | MAP_FIXED_NOREPLACE, shm->fd, 0);
         if (shm->addr == MAP_FAILED) {
             sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to map the printed context (%s).", strerror(errno));
             shm->addr = NULL;
@@ -1420,4 +1429,11 @@ sr_lycc_load_context(sr_shm_t *shm, struct ly_ctx **ctx)
 cleanup:
     free(shm_name);
     return err_info;
+#else
+    /* SR_PRINTED_LYCTX_ADDRESS is not defined, so we cannot load the context,
+     * not an error, just set ctx to NULL and let the caller handle it */
+    (void)shm;
+    *ctx = NULL;
+    return NULL;
+#endif
 }

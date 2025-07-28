@@ -201,4 +201,18 @@
 /** memory address to try to map the printed libyang context to */
 #define SR_PRINTED_LYCTX_ADDRESS      (void *)@PRINTED_CONTEXT_ADDRESS@
 
+/** Defined if MAP_FIXED_NOREPLACE is available on the platform. */
+#define SR_HAVE_MAP_FIXED_NOREPLACE @HAVE_MAP_FIXED_NOREPLACE@
+
+#ifdef SR_HAVE_MAP_FIXED_NOREPLACE
+/** If the platform does not support MAP_FIXED_NOREPLACE, we use MAP_FIXED instead.
+ * This may cause undefined behavior if the address is already in use, so it is
+ * recommended to choose the address carefully and
+ * disable ASLR (Address Space Layout Randomization) in such cases.
+ */
+#define MAP_FIXED_NOREPLACE MAP_FIXED
+
+#endif
+>>>>>>> f0c204dc (cmake UPDATE account for disabling pctx)
+
 #endif /* _CONFIG_H */
