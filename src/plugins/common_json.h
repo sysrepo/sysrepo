@@ -26,8 +26,6 @@
 
 #include "sysrepo.h"
 
-/** suffix of backed-up JSON files */
-#define SRPJSON_FILE_BACKUP_SUFFIX ".bck"
 /** suffix of temporary JSON files */
 #define SRPJSON_FILE_TMP_SUFFIX ".tmp"
 

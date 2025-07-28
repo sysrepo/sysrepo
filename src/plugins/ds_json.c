@@ -49,58 +49,18 @@ static sr_error_info_t *srpds_json_access_get(const struct lys_module *mod, sr_d
         char **owner, char **group, mode_t *perm);
 
 static sr_error_info_t *
-srpds_json_store_(const char *path, const struct lyd_node *mod_data, const char *owner, const char *group, mode_t perm,
-        int make_backup)
+srpds_json_store_(const char *path, const struct lyd_node *mod_data, const char *owner, const char *group, mode_t perm)
 {
     sr_error_info_t *err_info = NULL;
-    struct stat st;
     struct ly_out *out = NULL;
-    char *bck_path = NULL, *tmp_path = NULL;
-    int fd = -1, backup = 0, creat = 0;
+    char *tmp_path = NULL;
+    int fd = -1, creat = 0;
     uint32_t print_opts;
     FILE *fp = NULL;
 
     if (asprintf(&tmp_path, "%s%s", path, SRPJSON_FILE_TMP_SUFFIX) == -1) {
         srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_NO_MEMORY, "Memory allocation failed.");
         goto cleanup;
-    }
-
-    if (make_backup) {
-        /* get original file perms */
-        if (stat(path, &st) == -1) {
-            if (errno == EACCES) {
-                srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_UNAUTHORIZED, "Learning \"%s\" permissions failed.",
-                        path);
-            } else {
-                srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_SYS, "Stat of \"%s\" failed (%s).", path,
-                        strerror(errno));
-            }
-            goto cleanup;
-        }
-
-        /* generate the backup path */
-        if (asprintf(&bck_path, "%s%s", path, SRPJSON_FILE_BACKUP_SUFFIX) == -1) {
-            srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_NO_MEMORY, "Memory allocation failed.");
-            goto cleanup;
-        }
-
-        /* create backup file with same permissions (not owner/group because it may be different and this process
-         * not has permissions to use that owner/group), overwrite any previous one since it is redundant now */
-        if ((fd = srpjson_open(srpds_name, bck_path, O_WRONLY | O_CREAT, st.st_mode)) == -1) {
-            srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_SYS, "Opening \"%s\" failed (%s).", bck_path,
-                    strerror(errno));
-            goto cleanup;
-        }
-        backup = 1;
-
-        /* close */
-        close(fd);
-        fd = -1;
-
-        /* back up any existing file */
-        if ((err_info = srpjson_cp_path(srpds_name, bck_path, path))) {
-            goto cleanup;
-        }
     }
 
     if (perm) {
@@ -151,12 +111,6 @@ srpds_json_store_(const char *path, const struct lyd_node *mod_data, const char 
     ly_print_flush(out);
 
 cleanup:
-    /* delete the backup file */
-    if (backup && (unlink(bck_path) == -1)) {
-        srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_SYS, "Failed to remove backup \"%s\" (%s).", bck_path,
-                strerror(errno));
-    }
-
     ly_out_free(out, NULL, 0);
     if (fp) {
         fclose(fp);
@@ -166,7 +120,6 @@ cleanup:
     if (err_info && creat) {
         unlink(tmp_path);
     }
-    free(bck_path);
     free(tmp_path);
     return err_info;
 }
@@ -199,7 +152,7 @@ srpds_json_install_persistent(const struct lys_module *mod, sr_datastore_t ds, c
     }
 
     /* print empty file to store permissions */
-    if ((err_info = srpds_json_store_(path, NULL, owner, group, perm, 0))) {
+    if ((err_info = srpds_json_store_(path, NULL, owner, group, perm))) {
         goto cleanup;
     }
 
@@ -435,7 +388,7 @@ srpds_json_store_prepare(const struct lys_module *mod, sr_datastore_t ds, sr_cid
 
     /* prepare store */
     if ((ds != SR_DS_OPERATIONAL) || mod_data) {
-        if ((err_info = srpds_json_store_(path, mod_data, NULL, NULL, perm, (ds == SR_DS_STARTUP) ? 1 : 0))) {
+        if ((err_info = srpds_json_store_(path, mod_data, NULL, NULL, perm))) {
             goto cleanup;
         }
     }
@@ -478,68 +431,12 @@ cleanup:
     return err_info;
 }
 
-/**
- * @brief Try to recover data of a module.
- *
- * @param[in] path Path to the file to recover.
- * @param[in] mod Module to recover.
- * @param[in] ds Datastore.
- * @param[out] recovered Whether data where recovered or not.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-srpds_json_load_recover(const char *path, const struct lys_module *mod, sr_datastore_t ds, int *recovered)
-{
-    sr_error_info_t *err_info = NULL;
-    char *start_path = NULL;
-
-    *recovered = 0;
-
-    if (ds == SR_DS_STARTUP) {
-        /* should never occur, we use backup files to prevent this */
-        srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_SYS, "Startup data of \"%s\" corrupted and unrecoverable.",
-                mod->name);
-        goto cleanup;
-    } else if (ds == SR_DS_RUNNING) {
-        /* perform startup->running data file copy */
-        SRPLG_LOG_WRN(srpds_name, "Recovering \"%s\" running data from the startup data.", mod->name);
-
-        /* generate the startup data file path */
-        if ((err_info = srpjson_get_path(srpds_name, mod->name, SR_DS_STARTUP, &start_path))) {
-            goto cleanup;
-        }
-
-        /* copy startup data to running */
-        if ((err_info = srpjson_cp_path(srpds_name, path, start_path))) {
-            goto cleanup;
-        }
-
-        *recovered = 1;
-    } else {
-        /* there is not much to do but remove the corrupted file */
-        SRPLG_LOG_WRN(srpds_name, "Recovering \"%s\" %s data by removing the corrupted data file.", mod->name,
-                srpjson_ds2str(ds));
-
-        if (unlink(path) == -1) {
-            srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_SYS, "Unlinking \"%s\" failed (%s).", path,
-                    strerror(errno));
-            goto cleanup;
-        }
-
-        *recovered = 1;
-    }
-
-cleanup:
-    free(start_path);
-    return err_info;
-}
-
 static sr_error_info_t *
 srpds_json_load(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, uint32_t sid, const char **UNUSED(xpaths),
         uint32_t UNUSED(xpath_count), void *UNUSED(plg_data), struct lyd_node **mod_data)
 {
     sr_error_info_t *err_info = NULL;
-    int fd = -1, recovered;
+    int fd = -1;
     char *path = NULL, *bck_path = NULL;
     uint32_t parse_opts;
 
@@ -556,31 +453,6 @@ srpds_json_load(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, u
         }
     }
 
-    if (ds == SR_DS_STARTUP) {
-        /* prefer using the backup file, if any exists, the store has not been fully completed */
-        if (asprintf(&bck_path, "%s%s", path, SRPJSON_FILE_BACKUP_SUFFIX) == -1) {
-            srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_NO_MEMORY, "Memory allocation failed.");
-            goto cleanup;
-        }
-
-        if (srpjson_file_exists(srpds_name, bck_path)) {
-            SRPLG_LOG_WRN(srpds_name, "Recovering \"%s\" startup data from a backup.", mod->name);
-
-            /* restore the backup data, avoid changing permissions of the target file */
-            if ((err_info = srpjson_cp_path(srpds_name, path, bck_path))) {
-                goto cleanup;
-            }
-
-            /* remove the backup file */
-            if (unlink(bck_path) == -1) {
-                srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_SYS, "Unlinking \"%s\" failed (%s).", bck_path,
-                        strerror(errno));
-                goto cleanup;
-            }
-        }
-    }
-
-retry:
     /* open fd */
     fd = srpjson_open(srpds_name, path, O_RDONLY, 0);
     if (fd == -1) {
@@ -618,24 +490,10 @@ retry:
         parse_opts |= LYD_PARSE_WHEN_TRUE | LYD_PARSE_NO_NEW;
     }
 
-    /* load the data */
+    /* load the data, must succeed */
     if (lyd_parse_data_fd(mod->ctx, fd, LYD_JSON, parse_opts, 0, mod_data)) {
-        /* try to recover the data */
-        if ((err_info = srpds_json_load_recover(path, mod, ds, &recovered))) {
-            goto cleanup;
-        } else if (!recovered) {
-            /* fatal error */
-            err_info = srpjson_log_err_ly(srpds_name, mod->ctx);
-            goto cleanup;
-        }
-
-        if (ds == SR_DS_RUNNING) {
-            /* retry only for running, otherwise we return empty data */
-            if (fd > -1) {
-                close(fd);
-            }
-            goto retry;
-        }
+        err_info = srpjson_log_err_ly(srpds_name, mod->ctx);
+        goto cleanup;
     }
 
 cleanup:
