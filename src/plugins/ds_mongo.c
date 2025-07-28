@@ -1292,6 +1292,58 @@ srpds_delete_regex(mongoc_collection_t *module, const char *regex)
 }
 
 /**
+ * @brief Delete a whole subtree of data from the database (including this @p path).
+ *
+ * @param[in] module Given MongoDB collection.
+ * @param[in] path Path to the top node of the subtree.
+ * @param[out] diff_data Helper structure for storing diff operations.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_delete_subtree(mongoc_collection_t *module, const char *path, struct mongo_diff_data *diff_data)
+{
+    sr_error_info_t *err_info = NULL;
+    char *escaped = NULL, *regex = NULL;
+
+    if ((err_info = srpds_escape_string(plugin_name, path, '\\', &escaped))) {
+        goto cleanup;
+    }
+
+    if (asprintf(&regex, "^%s[\\/\\[\\#]", escaped) == -1) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
+        goto cleanup;
+    }
+
+    if (diff_data) {
+        /* delete data under this node */
+        if ((err_info = srpds_add_operation(BCON_NEW("_id", "{", "$regex", BCON_UTF8(regex), "$options", "s", "}"),
+                &(diff_data->del_many)))) {
+            goto cleanup;
+        }
+
+        /* delete this node */
+        if ((err_info = srpds_add_operation(BCON_NEW("_id", BCON_UTF8(path)),
+                &(diff_data->del)))) {
+            goto cleanup;
+        }
+    } else if (module) {
+        if ((err_info = srpds_delete_regex(module, regex))) {
+            goto cleanup;
+        }
+
+        if ((err_info = srpds_delete_id(module, path))) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    free(escaped);
+    free(regex);
+    return err_info;
+}
+
+/**
  * @brief Update the maximum order of a list or a leaf-list in the database.
  *
  * @param[in] module Given MongoDB collection.
@@ -1914,7 +1966,6 @@ srpds_delete_uo_op(mongoc_collection_t *module, const char *path, const char *pa
     sr_error_info_t *err_info = NULL;
     bson_error_t error;
     bson_t *bson_query_uo_rep = NULL, *bson_query_uo_key = NULL;
-    char *escaped = NULL, *regex = NULL;
 
     /* add new prev element to the next element,
      * selector for replace command */
@@ -1929,14 +1980,7 @@ srpds_delete_uo_op(mongoc_collection_t *module, const char *path, const char *pa
 
     if (is_del_many) {
         /* delete many command for userordered lists and leaf-lists to delete a whole subtree */
-        if ((err_info = srpds_escape_string(plugin_name, path, '\\', &escaped))) {
-            goto cleanup;
-        }
-        if (asprintf(&regex, "^%s", escaped) == -1) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
-            goto cleanup;
-        }
-        if ((err_info = srpds_delete_regex(module, regex))) {
+        if ((err_info = srpds_delete_subtree(module, path, NULL))) {
             goto cleanup;
         }
     } else {
@@ -1949,8 +1993,6 @@ srpds_delete_uo_op(mongoc_collection_t *module, const char *path, const char *pa
 cleanup:
     bson_destroy(bson_query_uo_key);
     bson_destroy(bson_query_uo_rep);
-    free(escaped);
-    free(regex);
     return err_info;
 }
 
@@ -2176,7 +2218,6 @@ srpds_delete_op(mongoc_collection_t *module, const struct lyd_node *node, const 
         const char *predicate, const char *orig_prev_pred, struct mongo_diff_data *diff_data)
 {
     sr_error_info_t *err_info = NULL;
-    char *escaped = NULL, *regex = NULL;
 
     if (lysc_is_userordered(node->schema)) {
         /* delete an element from the user-ordered list */
@@ -2185,22 +2226,12 @@ srpds_delete_op(mongoc_collection_t *module, const struct lyd_node *node, const 
         }
     } else {
         /* delete a whole subtree (you have to do this even if you have no children since you can have metadata) */
-        if ((err_info = srpds_escape_string(plugin_name, path, '\\', &escaped))) {
-            goto cleanup;
-        }
-        if (asprintf(&regex, "^%s", escaped) == -1) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
-            goto cleanup;
-        }
-        if ((err_info = srpds_add_operation(BCON_NEW("_id", "{", "$regex", BCON_UTF8(regex), "$options", "s", "}"),
-                &(diff_data->del_many)))) {
+        if ((err_info = srpds_delete_subtree(NULL, path, diff_data))) {
             goto cleanup;
         }
     }
 
 cleanup:
-    free(escaped);
-    free(regex);
     return err_info;
 }
 
@@ -2516,8 +2547,7 @@ static sr_error_info_t *
 srpds_use_tree2store(const struct lyd_node *mod_data, const struct lyd_node *node, struct mongo_diff_data *diff_data)
 {
     sr_error_info_t *err_info = NULL;
-    char *escaped = NULL, *regex = NULL, *path_no_pred = NULL;
-    bson_t *del_query = NULL;
+    char *path_no_pred = NULL;
     struct ly_set *set = NULL;
     LY_ERR lerr;
 
@@ -2527,24 +2557,9 @@ srpds_use_tree2store(const struct lyd_node *mod_data, const struct lyd_node *nod
         goto cleanup;
     }
 
-    if ((err_info = srpds_escape_string(plugin_name, path_no_pred, '\\', &escaped))) {
+    if ((err_info = srpds_delete_subtree(NULL, path_no_pred, diff_data))) {
         goto cleanup;
     }
-
-    if (asprintf(&regex, "^%s", escaped) == -1) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
-        goto cleanup;
-    }
-    free(escaped);
-    escaped = NULL;
-
-    /* delete the whole subtree */
-    del_query = BCON_NEW("_id", "{", "$regex", BCON_UTF8(regex), "$options", "s", "}");
-    if ((err_info = srpds_add_operation(del_query, &(diff_data->del_many)))) {
-        goto cleanup;
-    }
-    free(regex);
-    regex = NULL;
 
     /* we NEED to store a deleted subtree (could be a list or a leaf-list instance with siblings which we just deleted) */
     /* state data have to be stored from mod_data */
@@ -2574,12 +2589,7 @@ srpds_use_tree2store(const struct lyd_node *mod_data, const struct lyd_node *nod
 
 cleanup:
     free(path_no_pred);
-    free(escaped);
-    free(regex);
     ly_set_free(set, NULL);
-    if (err_info) {
-        bson_destroy(del_query);
-    }
     return err_info;
 }
 
