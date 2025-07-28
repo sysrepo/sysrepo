@@ -2779,17 +2779,18 @@ cleanup:
 }
 
 /**
- * @brief Load data matching the @p regex from the database and delete them, store this operation inside bulk.
+ * @brief Load data matching the regexes from the database and delete them, store this operation inside bulk.
  *
  * @param[in] ctx Redis context.
  * @param[in] mod_ns Database prefix for the module.
- * @param[in] regex Regex to match against.
  * @param[out] bulk Structure containing the commands for bulk operation.
+ * @param[in] regex_cnt Number of regexes to match against.
+ * @param ... Regexes to match against.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_load_and_del_regex(redisContext *ctx, const char *mod_ns, const char *regex, struct redis_bulk *bulk)
+srpds_load_and_del_regex(redisContext *ctx, const char *mod_ns, struct redis_bulk *bulk, uint32_t regex_cnt, ...)
 {
     sr_error_info_t *err_info = NULL;
     const char *script =
@@ -2798,14 +2799,17 @@ srpds_load_and_del_regex(redisContext *ctx, const char *mod_ns, const char *rege
             "if reply['err'] ~= nil then "
             "return reply['err']; "
             "end "
+            "local numkeys = #KEYS; "
             "while 1 do "
             "local n = table.getn(reply[1]); "
             "for i=2,n do "
             "local reply2; "
-            "if string.find(reply[1][i][2], KEYS[2]) then "
+            "for j=2,numkeys do "
+            "if string.find(reply[1][i][2], KEYS[j]) then "
             "reply2 = redis.pcall('DEL', reply[1][i][2]); "
             "if reply2 ~= 1 then "
             "return reply2['err']; "
+            "end "
             "end "
             "end "
             "end "
@@ -2816,17 +2820,59 @@ srpds_load_and_del_regex(redisContext *ctx, const char *mod_ns, const char *rege
             "end "
             "end "
             "return 0; ";
+    uint32_t i;
+    va_list args;
+    const char *regex;
 
-    if ((err_info = srpds_bulk_start(5, bulk))) {
+    va_start(args, regex_cnt);
+
+    if ((err_info = srpds_bulk_start(4 + regex_cnt, bulk))) {
         goto cleanup;
     }
     srpds_bulk_add_const("EVAL", 4, bulk);
     srpds_bulk_add_const(script, strlen(script), bulk);
-    srpds_bulk_add_const("2", 1, bulk);
+    if ((err_info = srpds_bulk_add_format(bulk, "%d", 1 + regex_cnt))) {
+        goto cleanup;
+    }
     if ((err_info = srpds_bulk_add_format(bulk, "%s:data", mod_ns))) {
         goto cleanup;
     }
-    if ((err_info = srpds_bulk_add_alloc(regex, strlen(regex), bulk))) {
+
+    for (i = 0; i < regex_cnt; ++i) {
+        regex = va_arg(args, const char *);
+        if ((err_info = srpds_bulk_add_alloc(regex, strlen(regex), bulk))) {
+            goto cleanup;
+        }
+    }
+
+    if ((err_info = srpds_bulk_end(ctx, bulk))) {
+        goto cleanup;
+    }
+
+cleanup:
+    va_end(args);
+    return err_info;
+}
+
+/**
+ * @brief Delete a specific piece of data from the database.
+ *
+ * @param[in] ctx Redis context.
+ * @param[in] to_del Part after the prefix of the key to delete.
+ * @param[out] bulk Structure containing the commands for bulk operation.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_delete_id(redisContext *ctx, const char *to_del, struct redis_bulk *bulk)
+{
+    sr_error_info_t *err_info = NULL;
+
+    if ((err_info = srpds_bulk_start(2, bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("DEL", 3, bulk);
+    if ((err_info = srpds_bulk_add_alloc(to_del, strlen(to_del), bulk))) {
         goto cleanup;
     }
     if ((err_info = srpds_bulk_end(ctx, bulk))) {
@@ -2834,6 +2880,66 @@ srpds_load_and_del_regex(redisContext *ctx, const char *mod_ns, const char *rege
     }
 
 cleanup:
+    return err_info;
+}
+
+/**
+ * @brief Delete a whole subtree of data from the database (including this @p path).
+ *
+ * @param[in] ctx Redis context.
+ * @param[in] mod_ns Database prefix for the module.
+ * @param[in] path Path to the top node of the subtree.
+ * @param[out] bulk Structure containing the commands for bulk operation.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_delete_subtree(redisContext *ctx, const char *mod_ns, const char *path, struct redis_bulk *bulk)
+{
+    sr_error_info_t *err_info = NULL;
+    char *dbkey = NULL, *escaped = NULL, *regex1 = NULL, *regex2 = NULL, *regex3 = NULL;
+
+    /* get database key */
+    if (asprintf(&dbkey, "%s:data:%s", mod_ns, path) == -1) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
+        goto cleanup;
+    }
+
+    if ((err_info = srpds_escape_string(plugin_name, dbkey, '%', &escaped))) {
+        goto cleanup;
+    }
+
+    if (asprintf(&regex1, "^%s%%/", escaped) == -1) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
+        goto cleanup;
+    }
+
+    if (asprintf(&regex2, "^%s%%[", escaped) == -1) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
+        goto cleanup;
+    }
+
+    if (asprintf(&regex3, "^%s%%#", escaped) == -1) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
+        goto cleanup;
+    }
+
+    /* delete the whole subtree */
+    if ((err_info = srpds_load_and_del_regex(ctx, mod_ns, bulk, 3, regex1, regex2, regex3))) {
+        goto cleanup;
+    }
+
+    /* delete this node */
+    if ((err_info = srpds_delete_id(ctx, dbkey, bulk))) {
+        goto cleanup;
+    }
+
+cleanup:
+    free(dbkey);
+    free(escaped);
+    free(regex1);
+    free(regex2);
+    free(regex3);
     return err_info;
 }
 
@@ -2863,31 +2969,9 @@ srpds_use_tree2store(redisContext *ctx, const struct lyd_node *mod_data, const s
         goto cleanup;
     }
 
-    /* get database key */
-    if (asprintf(&dbkey, "%s:data:%s", mod_ns, path_no_pred) == -1) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
+    if ((err_info = srpds_delete_subtree(ctx, mod_ns, path_no_pred, bulk))) {
         goto cleanup;
     }
-
-    if ((err_info = srpds_escape_string(plugin_name, dbkey, '%', &escaped))) {
-        goto cleanup;
-    }
-    free(dbkey);
-    dbkey = NULL;
-
-    if (asprintf(&regex, "^%s", escaped) == -1) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
-        goto cleanup;
-    }
-    free(escaped);
-    escaped = NULL;
-
-    /* delete the whole subtree */
-    if ((err_info = srpds_load_and_del_regex(ctx, mod_ns, regex, bulk))) {
-        goto cleanup;
-    }
-    free(regex);
-    regex = NULL;
 
     /* we NEED to store a deleted subtree (could be a list or a leaf-list instance with siblings which we just deleted) */
     /* state data have to be stored from mod_data */
@@ -3057,7 +3141,7 @@ srpds_use_diff2store(redisContext *ctx, sr_datastore_t ds, const struct lyd_node
             }
 
             /* delete all metadata connected to the node */
-            if ((err_info = srpds_load_and_del_regex(ctx, mod_ns, regex, bulk))) {
+            if ((err_info = srpds_load_and_del_regex(ctx, mod_ns, bulk, 1, regex))) {
                 goto cleanup;
             }
         }
