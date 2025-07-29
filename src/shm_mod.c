@@ -1293,7 +1293,7 @@ sr_shmmod_lock(struct sr_mod_lock_s *shm_lock, uint32_t timeout_ms, sr_lock_mode
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     int ds_locked;
-    uint32_t sleep_ms, ds_lock_sid;
+    uint32_t sleep_ms, ds_lock_sid = 0;
     sr_cid_t dead_cid;
 
     if (!timeout_ms) {
