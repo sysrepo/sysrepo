@@ -538,7 +538,7 @@ srpds_load_all(mongoc_collection_t *module, const struct lys_module *mod, sr_dat
 {
     sr_error_info_t *err_info = NULL;
     bson_error_t error;
-    const char *path, *name, *module_name, *path_to_node, *value = NULL, *path_no_pred = NULL;
+    const char *path, *name, *module_name = NULL, *path_to_node, *value = NULL, *path_no_pred = NULL;
     char **keys = NULL;
     uint32_t *lengths = NULL;
     enum srpds_db_ly_types type;
