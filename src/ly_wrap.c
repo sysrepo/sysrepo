@@ -608,7 +608,7 @@ sr_lyd_new_path(struct lyd_node *parent, const struct ly_ctx *ctx, const char *p
 
     ly_temp_log_options(&temp_lo);
 
-    if (lyd_new_path2(parent, ctx, path, value, value ? strlen(value) : 0, LYD_ANYDATA_STRING, options, new_parent,
+    if (lyd_new_path2(parent, ctx, path, value, value ? strlen(value) * 8 : 0, LYD_ANYDATA_STRING, options, new_parent,
             new_node)) {
         sr_errinfo_new_ly(&err_info, ctx ? ctx : LYD_CTX(parent), NULL, SR_ERR_LY);
         goto cleanup;
@@ -664,7 +664,7 @@ sr_lyd_new_list(struct lyd_node *parent, const char *name, const char *key_value
 
     ly_temp_log_options(&temp_lo);
 
-    if (lyd_new_list3(parent, NULL, name, key_value ? &key_value : NULL, NULL, 0, node)) {
+    if (lyd_new_list3(parent, NULL, name, key_value ? (const void **)&key_value : NULL, NULL, 0, node)) {
         sr_errinfo_new_ly(&err_info, LYD_CTX(parent), NULL, SR_ERR_LY);
         goto cleanup;
     }
@@ -1500,7 +1500,7 @@ sr_ly_canonize_xpath10_value(const struct ly_ctx *ctx, const char *value, LY_VAL
     assert(!strcmp(type_plg->id, "ly2 xpath1.0"));
 
     /* get the path in canonical (JSON) format */
-    if (type_plg->store(ctx, leaf_xpath->type, value, strlen(value), 0, format, prefix_data,
+    if (type_plg->store(ctx, leaf_xpath->type, value, strlen(value) * 8, 0, format, prefix_data,
             LYD_HINT_DATA, NULL, &val, NULL, &err)) {
         if (err) {
             sr_errinfo_new(&err_info, SR_ERR_LY, "%s", err->msg);

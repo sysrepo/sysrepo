@@ -4312,7 +4312,6 @@ sr_val_ly2sr(const struct lyd_node *node, int with_origin, sr_val_t *sr_val)
     const struct lyd_node_term *leaf;
     const struct lyd_value *val;
     struct lyd_node_any *any;
-    struct lyd_node *tree;
 
     sr_val->xpath = lyd_path(node, LYD_PATH_STD, NULL, 0);
     SR_CHECK_MEM_GOTO(!sr_val->xpath, err_info, error);
@@ -4440,16 +4439,6 @@ store_value:
                 SR_CHECK_MEM_GOTO(!ptr, err_info, error);
             }
             break;
-        case LYD_ANYDATA_LYB:
-            /* try to convert into a data tree */
-            if ((err_info = sr_lyd_parse_data(LYD_CTX(node), any->value.mem, NULL, LYD_LYB, LYD_PARSE_STRICT, 0, &tree))) {
-                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Failed to convert LYB anyxml/anydata into XML.");
-                goto error;
-            }
-            free(any->value.mem);
-            any->value_type = LYD_ANYDATA_DATATREE;
-            any->value.tree = tree;
-        /* fallthrough */
         case LYD_ANYDATA_DATATREE:
             if ((err_info = sr_lyd_print_data(any->value.tree, LYD_XML, 0, -1, &ptr, NULL))) {
                 sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Failed to print anyxml/anydata into XML.");
