@@ -1,16 +1,25 @@
-# Find the address to use for the printed context.
+# Configure printed context mapping for memory allocation.
+#
+# This module configures the printed context feature by determining the appropriate
+# memory address and checking system capabilities.
 #
 # The following variables are used:
-# PRINTED_CONTEXT_ADDRESS - Address to use for the printed context
+# PRINTED_CONTEXT_ADDRESS - Optional. Pre-defined address to use for the printed context mapping
+# ENABLE_PRINTED_CONTEXT - Optional. Enable/disable printed context feature (default: ON)
 #
-# The following macros are defined:
-# SR_PCTX_ADDR - Address to map the printed context to
+# The following cache variables are set:
+# PRINTED_CONTEXT_ADDRESS - The final address used for printed context mapping
 #
-# If PRINTED_CONTEXT_ADDRESS is not provided, the address will be calculated.
-# The address calculation is done by compiling and executing a simple program that prints resulting address.
-# The address is then used to map the printed context to the correct memory location.
+# Behavior:
+# 1. Checks if MAP_FIXED_NOREPLACE is available on the system
+# 2. If PRINTED_CONTEXT_ADDRESS is provided, uses that address
+# 3. If not provided, attempts to calculate address using pctx_addr_calculator.c
+# 4. If MAP_FIXED_NOREPLACE is unavailable:
+#    - Requires manual PRINTED_CONTEXT_ADDRESS and warns about ASLR
+#    - Falls back to MAP_FIXED with potential undefined behavior
+# 5. Sets PRINTED_CONTEXT_ADDRESS for use in source code
 #
-# If the address calculation fails and PRINTED_CONTEXT_ADDRESS is not provided, then a printed context will not be used.
+# If address calculation fails and no manual address is provided, printed context is disabled.
 #
 # Author Roman Janota <janota@cesnet.cz>
 # Copyright (c) 2025 CESNET, z.s.p.o.
@@ -26,6 +35,8 @@ include(CheckCSourceCompiles)
 
 # clear any previous definitions
 set(CMAKE_REQUIRED_DEFINITIONS)
+
+# set required definitions for checking MAP_FIXED_NOREPLACE
 set(CMAKE_REQUIRED_INCLUDES sys/mman.h)
 
 # check if MAP_FIXED_NOREPLACE is available by compiling a simple C program that uses it
@@ -110,14 +121,8 @@ function(_configure_printed_context)
         message(STATUS "Using calculated printed context address: ${address}")
     endif()
 
-    # apply the configuration
-    add_compile_definitions(SR_PCTX_ADDR=${address})
+    # set and cache the address for use in source code
     set(PRINTED_CONTEXT_ADDRESS ${address} CACHE INTERNAL "Printed context address")
-
-    # set the address for config.h.in, just set a new var instead of renaming the existing one
-    # to keep its name similar to other options (without SR_ prefix)
-    message(STATUS "Setting printed context address in config.h.in: ${address}")
-    set(SR_PRINTED_LYCTX_ADDRESS ${address} CACHE INTERNAL "Printed libyang context address")
 endfunction()
 
 # check if MAP_FIXED_NOREPLACE is available, this will set HAVE_MAP_FIXED_NOREPLACE variable
