@@ -12,6 +12,8 @@
  *     https://opensource.org/licenses/BSD-3-Clause
  */
 
+#define _GNU_SOURCE
+
 #include <errno.h>
 #include <inttypes.h>
 #include <stdio.h>
@@ -81,7 +83,7 @@ main(void)
     }
 
     /* print the address to stdout for the cmake module to collect it */
-    printf("0x%" PRIxPTR "\n", address);
+    printf("0x%" PRIxPTR, address);
 
     return 0;
 }

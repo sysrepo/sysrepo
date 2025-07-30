@@ -88,7 +88,8 @@ else()
     option(ENABLE_VALGRIND_TESTS "Build tests with valgrind" OFF)
 endif()
 option(ENABLE_EXAMPLES "Build examples." ON)
-option(ENABLE_PRINTED_CONTEXT "Enable printed context for sysrepo, consider turning off if not using Linux kernel 4.17 or newer." ON)
+set(PRINTED_CONTEXT_ADDRESS "" CACHE STRING "Address of the printed context, generated automatically by default.
+If set, it must be page-aligned and in a memory region unlikely to conflict with normal process allocation. Set to 0 to disable printed context.")
 option(ENABLE_COVERAGE "Build code coverage report from tests" OFF)
 option(ENABLE_COMMON_TARGETS "Define common custom target names such as 'doc' or 'uninstall', may cause conflicts when using add_subdirectory() to build this project" ON)
 option(ENABLE_DS_MONGO "Enable MongoDB datastore plugin" OFF)
@@ -383,6 +384,9 @@ endif()
 
 # use compat
 use_compat()
+
+# setup printed context - needs to be after use_compat()
+setup_printed_context()
 
 # required functions
 list(APPEND CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
