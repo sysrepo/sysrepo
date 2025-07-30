@@ -1,7 +1,7 @@
 # Configure printed libyang context address.
 #
 # The following variables are used:
-# PRINTED_CONTEXT_ADDRESS - Optional. Pre-defined address to use for the printed context mapping
+# PRINTED_CONTEXT_ADDRESS - Pre-defined address to use for the printed context mapping, "" if not set, 0 if disabled
 #
 # The following cache variables are set:
 # PRINTED_CONTEXT_ADDRESS - The final address used for printed context mapping
@@ -25,70 +25,72 @@
 #     https://opensource.org/licenses/BSD-3-Clause
 #
 
-include(CheckSymbolExists)
+function(SETUP_PRINTED_CONTEXT)
+    # get the docstring for the address
+    get_property(PRINTED_CONTEXT_ADDRESS_DOCSTRING CACHE PRINTED_CONTEXT_ADDRESS PROPERTY HELPSTRING)
 
-# check if MAP_FIXED_NOREPLACE is available
-check_symbol_exists(MAP_FIXED_NOREPLACE "sys/mman.h" HAVE_MAP_FIXED_NOREPLACE)
+    # handle case when MAP_FIXED_NOREPLACE is not available
+    if(NOT HAVE_MAP_FIXED_NOREPLACE)
+        # MAP_FIXED_NOREPLACE is not available, but printed context may still be used with MAP_FIXED
+        if(NOT "${PRINTED_CONTEXT_ADDRESS}" STREQUAL "" AND NOT "${PRINTED_CONTEXT_ADDRESS}" STREQUAL "0")
+            message(WARNING "MAP_FIXED_NOREPLACE not available, but printed context enabled. "
+                            "Consider disabling ASLR (Address Space Layout Randomization) to avoid overwriting existing memory mappings.")
+            message(STATUS "Printed context: enabled (using provided address ${PRINTED_CONTEXT_ADDRESS})")
+        else()
+            # no address provided, printed context cannot be used, we can end here
+            message(WARNING "MAP_FIXED_NOREPLACE not available and no valid address provided. "
+                            "Provide page-aligned PRINTED_CONTEXT_ADDRESS to use printed context.")
+            message(STATUS "Printed context: disabled")
+            set(PRINTED_CONTEXT_ADDRESS 0 CACHE STRING "${PRINTED_CONTEXT_ADDRESS_DOCSTRING}" FORCE)
+        endif()
 
-# handle case when MAP_FIXED_NOREPLACE is not available
-if(NOT HAVE_MAP_FIXED_NOREPLACE)
-    # MAP_FIXED_NOREPLACE is not available, but printed context may still be used with MAP_FIXED
-    if(DEFINED PRINTED_CONTEXT_ADDRESS)
-        message(WARNING "MAP_FIXED_NOREPLACE not available, but printed context requested. "
-                        "Consider disabling ASLR to avoid undefined behavior.")
-    else()
-        # no address provided, printed context cannot be used, we can end here
-        message(WARNING "MAP_FIXED_NOREPLACE not available and no address provided. "
-                        "Provide page-aligned PRINTED_CONTEXT_ADDRESS and consider disabling ASLR to use printed context. "
-                        "Printed context disabled.")
         return()
     endif()
-endif()
 
-# determine the address to use
-set(address "")
+    # check if no address is provided
+    if("${PRINTED_CONTEXT_ADDRESS}" STREQUAL "")
+        # calculate printed context address
+        # no point compiling the calculator if sbrk() is not available
+        if (NOT HAVE_SBRK)
+            message(WARNING "sbrk() is required to calculate printed context address, but it is not available. "
+                            "Provide PRINTED_CONTEXT_ADDRESS manually to enable printed context.")
+            message(STATUS "Printed context: disabled")
+            set(PRINTED_CONTEXT_ADDRESS 0 CACHE STRING "${PRINTED_CONTEXT_ADDRESS_DOCSTRING}" FORCE)
+            return()
+        endif()
 
-if(DEFINED PRINTED_CONTEXT_ADDRESS)
-    set(address ${PRINTED_CONTEXT_ADDRESS})
-else()
-    message(STATUS "Calculating printed context address...")
-
-    # calculate printed context address
-    set(calculator_path "${CMAKE_CURRENT_LIST_DIR}/pctx_addr_calculator.c")
-
-    # compile the calculator
-    try_compile(calc_success
-        ${CMAKE_BINARY_DIR}
-        SOURCES ${calculator_path}
-        OUTPUT_VARIABLE compile_output
-        COPY_FILE ${CMAKE_BINARY_DIR}/pctx_addr_calculator
-    )
-
-    if(NOT calc_success)
-        message(WARNING "Failed to compile address calculator:\n${compile_output}")
-    else()
-        # execute the address calculator
-        execute_process(
-            COMMAND ${CMAKE_BINARY_DIR}/pctx_addr_calculator
-            OUTPUT_VARIABLE calculated_addr
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-            RESULT_VARIABLE exec_result
-            ERROR_VARIABLE exec_error
+        # compile and run the address calculator
+        try_run(
+            exec_result compile_result
+            ${CMAKE_BINARY_DIR}
+            SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/CMakeModules/pctx_addr_calculator.c"
+            COMPILE_OUTPUT_VARIABLE compile_output
+            RUN_OUTPUT_STDOUT_VARIABLE calculated_addr
         )
 
-        if(NOT exec_result EQUAL 0)
-            message(WARNING "Address calculation failed (${exec_result}): ${exec_error}")
-        else()
-            set(address ${calculated_addr})
+        if (NOT compile_result)
+            message(WARNING "Failed to compile address calculator:\n${compile_output}\n"
+                            "Provide PRINTED_CONTEXT_ADDRESS manually to enable printed context.")
+            message(STATUS "Printed context: disabled")
+            set(PRINTED_CONTEXT_ADDRESS 0 CACHE STRING "${PRINTED_CONTEXT_ADDRESS_DOCSTRING}" FORCE)
+            return()
         endif()
-    endif()
-endif()
 
-# set and cache the address for use in source code
-if (NOT address)
-    message(WARNING "Could not determine printed context address. "
-                       "Provide PRINTED_CONTEXT_ADDRESS manually to enable printed context.")
-else()
-    set(PRINTED_CONTEXT_ADDRESS ${address} CACHE INTERNAL "Printed context address")
-    message(STATUS "Using printed context address: ${PRINTED_CONTEXT_ADDRESS}")
-endif()
+        if(exec_result EQUAL 0)
+            # overwrite the cached address
+            set(PRINTED_CONTEXT_ADDRESS ${calculated_addr} CACHE STRING "${PRINTED_CONTEXT_ADDRESS_DOCSTRING}" FORCE)
+            message(STATUS "Printed context: enabled (using generated address ${PRINTED_CONTEXT_ADDRESS})")
+        else()
+            message(WARNING "Address calculator failed to run. "
+                            "Provide PRINTED_CONTEXT_ADDRESS manually to enable printed context.")
+            message(STATUS "Printed context: disabled")
+            set(PRINTED_CONTEXT_ADDRESS 0 CACHE STRING "${PRINTED_CONTEXT_ADDRESS_DOCSTRING}" FORCE)
+        endif()
+    elseif("${PRINTED_CONTEXT_ADDRESS}" STREQUAL "0")
+        # address is 0, printed context is disabled
+        message(STATUS "Printed context: disabled")
+    else()
+        # address provided, use it
+        message(STATUS "Printed context: enabled (using provided address ${PRINTED_CONTEXT_ADDRESS})")
+    endif()
+endfunction()
