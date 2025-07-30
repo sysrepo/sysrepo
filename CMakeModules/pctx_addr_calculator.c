@@ -14,17 +14,24 @@
 
 #include <errno.h>
 #include <inttypes.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/resource.h>
 #include <unistd.h>
 
+/**
+ * @brief Macro to align an address to the nearest page boundary.
+ *
+ * @param[in] addr The address to align.
+ */
 #define PAGE_ALIGNED_ADDR(addr) \
     (void *)(((uintptr_t)addr + getpagesize() - 1) & ~(getpagesize() - 1))
 
 /**
  * @brief Calculates a page-aligned address approximately halfway between the stack and heap.
+ *
+ * @note Assumes that the stack grows downwards and the heap grows upwards and that
+ * the heap is on a lower address than the stack in the process' virtual address space.
  *
  * @return uintptr_t The calculated address, or 0 on failure.
  */
@@ -50,7 +57,8 @@ calculate_mid_stack_heap_address(void)
         return 0;
     }
 
-    /* approximate the stack base address and page align it (assuming stack grows down) */
+    /* approximate the stack base address by subtracting the size of the stack from
+     * an address of a variable allocated on the stack and page align it (assuming stack grows down) */
     stack_base = (void*)((uintptr_t)&stack_limits - stack_limits.rlim_cur);
     stack_base = PAGE_ALIGNED_ADDR(stack_base);
 
@@ -72,7 +80,7 @@ main(void)
         return 1;
     }
 
-    /* print the address */
+    /* print the address to stdout for the cmake module to collect it */
     printf("0x%" PRIxPTR "\n", address);
 
     return 0;
