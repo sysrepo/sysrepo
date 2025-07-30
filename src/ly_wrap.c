@@ -1501,7 +1501,7 @@ sr_ly_canonize_xpath10_value(const struct ly_ctx *ctx, const char *value, LY_VAL
 
     /* get the path in canonical (JSON) format */
     if (type_plg->store(ctx, leaf_xpath->type, value, strlen(value) * 8, 0, format, prefix_data,
-            LYD_HINT_DATA, NULL, &val, NULL, &err)) {
+            LYD_HINT_DATA, NULL, NULL, &val, NULL, &err)) {
         if (err) {
             sr_errinfo_new(&err_info, SR_ERR_LY, "%s", err->msg);
         }
