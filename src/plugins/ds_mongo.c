@@ -3352,6 +3352,45 @@ cleanup:
 }
 
 /**
+ * @brief Create a bunch of indexes.
+ *
+ * @param[in] module Given MongoDB collection.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_create_indexes(mongoc_collection_t *module)
+{
+    sr_error_info_t *err_info = NULL;
+    bson_error_t error;
+    uint32_t i, idx_cnt = 3;
+    bson_t *bson_index_keys[idx_cnt];
+    mongoc_index_model_t *im[idx_cnt];
+
+    /* create a compound index on prev and path for load_next(),
+     * compound index on order and path_no_pred for srpds_shift_uo_list_recursively()
+     * and index on path_modif for quicker loading */
+    bson_index_keys[0] = BCON_NEW("prev", BCON_INT32(1), "path_no_pred", BCON_INT32(1));
+    bson_index_keys[1] = BCON_NEW("order", BCON_INT32(1), "path_no_pred", BCON_INT32(1));
+    bson_index_keys[2] = BCON_NEW("path_modif", BCON_INT32(1));
+    for (i = 0; i < idx_cnt; ++i) {
+        im[i] = mongoc_index_model_new(bson_index_keys[i], NULL /* opts */);
+    }
+    if (!mongoc_collection_create_indexes_with_opts(module, im, idx_cnt, NULL /* opts */, NULL /* reply */, &error)) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_create_indexes_with_opts",
+                error.message);
+        goto cleanup;
+    }
+
+cleanup:
+    for (i = 0; i < idx_cnt; ++i) {
+        mongoc_index_model_destroy(im[i]);
+        bson_destroy(bson_index_keys[i]);
+    }
+    return err_info;
+}
+
+/**
  * @brief Comment for this function can be found in "plugins_datastore.h".
  *
  */
@@ -3646,9 +3685,8 @@ srpds_mongo_install(const struct lys_module *mod, sr_datastore_t ds, const char 
     mongo_plg_conn_data_t *pdata = (mongo_plg_conn_data_t *)plg_data;
     sr_error_info_t *err_info = NULL;
     bson_error_t error;
-    uint32_t i, idx_cnt = 3;
-    bson_t *bson_query = NULL, *bson_index_keys[idx_cnt];
-    mongoc_index_model_t *im[idx_cnt];
+    uint32_t i;
+    bson_t *bson_query = NULL;
     char *process_user = NULL, *process_group = NULL;
     struct timespec spec = {0};
 
@@ -3658,18 +3696,7 @@ srpds_mongo_install(const struct lys_module *mod, sr_datastore_t ds, const char 
         goto cleanup;
     }
 
-    /* create a compound index on prev and path for load_next(),
-     * compound index on order and path_no_pred for srpds_shift_uo_list_recursively()
-     * and index on path_modif for quicker loading */
-    bson_index_keys[0] = BCON_NEW("prev", BCON_INT32(1), "path_no_pred", BCON_INT32(1));
-    bson_index_keys[1] = BCON_NEW("order", BCON_INT32(1), "path_no_pred", BCON_INT32(1));
-    bson_index_keys[2] = BCON_NEW("path_modif", BCON_INT32(1));
-    for (i = 0; i < idx_cnt; ++i) {
-        im[i] = mongoc_index_model_new(bson_index_keys[i], NULL /* opts */);
-    }
-    if (!mongoc_collection_create_indexes_with_opts(mdata.module, im, idx_cnt, NULL /* opts */, NULL /* reply */, &error)) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_create_indexes_with_opts",
-                error.message);
+    if ((err_info = srpds_create_indexes(mdata.module))) {
         goto cleanup;
     }
 
@@ -3714,10 +3741,6 @@ srpds_mongo_install(const struct lys_module *mod, sr_datastore_t ds, const char 
 cleanup:
     free(process_user);
     free(process_group);
-    for (i = 0; i < idx_cnt; ++i) {
-        mongoc_index_model_destroy(im[i]);
-        bson_destroy(bson_index_keys[i]);
-    }
     bson_destroy(bson_query);
     srpds_data_destroy(pdata, &mdata);
     return err_info;
