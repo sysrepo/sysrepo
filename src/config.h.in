@@ -193,7 +193,7 @@
 #define SR_DS_PLG_REDIS_PORT          @REDIS_PORT@
 
 /** Memory address to try to map the printed libyang context to */
-#cmakedefine SR_PRINTED_LYCTX_ADDRESS @PRINTED_CONTEXT_ADDRESS@
+#define SR_PRINTED_LYCTX_ADDRESS @PRINTED_CONTEXT_ADDRESS@
 
 /** Defined if MAP_FIXED_NOREPLACE is available on the platform. */
 #define SR_HAVE_MAP_FIXED_NOREPLACE @HAVE_MAP_FIXED_NOREPLACE@
