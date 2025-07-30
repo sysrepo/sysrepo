@@ -1297,11 +1297,15 @@ sr_lycc_context_upgrade_prep_finish(sr_conn_ctx_t *conn, struct ly_ctx *new_ctx,
 sr_error_info_t *
 sr_lycc_store_context(sr_shm_t *shm, const struct ly_ctx *ctx)
 {
-#ifdef SR_PRINTED_LYCTX_ADDRESS
     sr_error_info_t *err_info = NULL;
     int ctx_size, fd = -1;
     void *mem = NULL, *mem_end;
     char *shm_name = NULL;
+
+    if (!SR_PRINTED_LYCTX_ADDRESS) {
+        /* printed context not supported */
+        return NULL;
+    }
 
     if ((err_info = sr_path_ctx_shm(&shm_name))) {
         goto cleanup;
@@ -1361,24 +1365,21 @@ cleanup:
         munmap(mem, ctx_size);
     }
     return err_info;
-#else
-    /* SR_PRINTED_LYCTX_ADDRESS is not defined, so we cannot store the context,
-     * not an error, just silently do nothing */
-    (void)shm;
-    (void)ctx;
-    return NULL;
-#endif /* SR_PRINTED_LYCTX_ADDRESS */
 }
 
 sr_error_info_t *
 sr_lycc_load_context(sr_shm_t *shm, struct ly_ctx **ctx)
 {
-#ifdef SR_PRINTED_LYCTX_ADDRESS
     sr_error_info_t *err_info;
     size_t shm_file_size = 0;
     char *shm_name = NULL;
 
     *ctx = NULL;
+
+    if (!SR_PRINTED_LYCTX_ADDRESS) {
+        /* printed context not supported */
+        return NULL;
+    }
 
     if ((err_info = sr_path_ctx_shm(&shm_name))) {
         goto cleanup;
@@ -1429,11 +1430,4 @@ sr_lycc_load_context(sr_shm_t *shm, struct ly_ctx **ctx)
 cleanup:
     free(shm_name);
     return err_info;
-#else
-    /* SR_PRINTED_LYCTX_ADDRESS is not defined, so we cannot load the context,
-     * not an error, just set ctx to NULL and let the caller handle it */
-    (void)shm;
-    *ctx = NULL;
-    return NULL;
-#endif
 }

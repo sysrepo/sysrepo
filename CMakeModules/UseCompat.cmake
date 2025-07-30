@@ -64,6 +64,10 @@ macro(USE_COMPAT)
 
     check_symbol_exists(get_current_dir_name "unistd.h" HAVE_GET_CURRENT_DIR_NAME)
 
+    # for printed context
+    check_symbol_exists(MAP_FIXED_NOREPLACE "sys/mman.h" HAVE_MAP_FIXED_NOREPLACE)
+    check_symbol_exists(sbrk "unistd.h" HAVE_SBRK)
+
     test_big_endian(IS_BIG_ENDIAN)
 
     check_include_file("stdatomic.h" HAVE_STDATOMIC)
