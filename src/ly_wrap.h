@@ -422,18 +422,6 @@ sr_error_info_t *sr_lyd_dup(const struct lyd_node *node, struct lyd_node *parent
         struct lyd_node **dup);
 
 /**
- * @brief Duplicate data node siblings into a specific context.
- *
- * @param[in] sibling Siblings to duplicate.
- * @param[in] trg_ctx Target context.
- * @param[in] options Dup options.
- * @param[out] dup Duplicated data.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_lyd_dup_siblings_to_ctx(const struct lyd_node *sibling, const struct ly_ctx *trg_ctx,
-        uint32_t options, struct lyd_node **dup);
-
-/**
  * @brief Safely free a subtree when there is also a pointer that may point to it.
  *
  * @param[in] tree Tree to free.

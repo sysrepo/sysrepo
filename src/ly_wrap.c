@@ -906,25 +906,6 @@ cleanup:
     return err_info;
 }
 
-sr_error_info_t *
-sr_lyd_dup_siblings_to_ctx(const struct lyd_node *sibling, const struct ly_ctx *trg_ctx, uint32_t options,
-        struct lyd_node **dup)
-{
-    sr_error_info_t *err_info = NULL;
-    uint32_t temp_lo = LY_LOSTORE;
-
-    ly_temp_log_options(&temp_lo);
-
-    if (lyd_dup_siblings_to_ctx(sibling, trg_ctx, NULL, options, dup)) {
-        sr_errinfo_new_ly(&err_info, trg_ctx, NULL, SR_ERR_LY);
-        goto cleanup;
-    }
-
-cleanup:
-    ly_temp_log_options(NULL);
-    return err_info;
-}
-
 void
 sr_lyd_free_tree_safe(struct lyd_node *tree, struct lyd_node **first)
 {
