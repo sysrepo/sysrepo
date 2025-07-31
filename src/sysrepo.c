@@ -167,10 +167,7 @@ sr_conn_free(sr_conn_ctx_t *conn)
         /* YANG CTX UNLOCK */
         sr_lycc_unlock(conn, SR_LOCK_WRITE, 0, __func__);
 
-        /* free run cache only if connection was fully setup */
-        if (conn->cid) {
-            sr_run_cache_flush(conn, &sr_run_cache);
-        }
+        sr_run_cache_flush(conn, &sr_run_cache);
 
         /* free oper cache */
         for (i = 0; i < sr_oper_cache.sub_count; ++i) {
@@ -186,6 +183,7 @@ sr_conn_free(sr_conn_ctx_t *conn)
         sr_shm_clear(&sr_yang_ctx.ly_ctx_shm);
 
         sr_yang_ctx.content_id = 0;
+        sr_yang_ctx.sm_data_id = 0;
     }
 
     /* YANG CTX CREATE UNLOCK */
@@ -1575,6 +1573,9 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
         goto cleanup;
     }
 
+    /* send the notification */
+    sr_generate_notif_module_change_installed(conn, *new_mods, *new_mod_count);
+
     /* update content ID */
     SR_CONN_MAIN_SHM(conn)->content_id = ly_ctx_get_modules_hash(new_ctx);
 
@@ -1582,9 +1583,6 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
     if ((err_info = sr_lycc_store_context(&sr_yang_ctx.ly_ctx_shm, new_ctx))) {
         goto error;
     }
-
-    /* send the notification */
-    sr_generate_notif_module_change_installed(conn, *new_mods, *new_mod_count);
 
     goto cleanup;
 
@@ -1915,6 +1913,9 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
         goto cleanup;
     }
 
+    /* send the notification */
+    sr_generate_notif_module_change_uninstalled(conn, &mod_set);
+
     /* update content ID */
     SR_CONN_MAIN_SHM(conn)->content_id = ly_ctx_get_modules_hash(new_ctx);
 
@@ -1922,9 +1923,6 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
     if ((err_info = sr_lycc_store_context(&sr_yang_ctx.ly_ctx_shm, new_ctx))) {
         goto cleanup;
     }
-
-    /* send the notification */
-    sr_generate_notif_module_change_uninstalled(conn, &mod_set);
 
 cleanup:
     sr_lycc_context_upgrade_cleanup(&lycc_upgrade_data);
@@ -2179,6 +2177,9 @@ sr_update_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *se
         goto cleanup;
     }
 
+    /* send the notification */
+    sr_generate_notif_module_change_updated(conn, &old_mod_set, &upd_mod_set);
+
     /* update content ID */
     SR_CONN_MAIN_SHM(conn)->content_id = ly_ctx_get_modules_hash(new_ctx);
 
@@ -2186,9 +2187,6 @@ sr_update_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *se
     if ((err_info = sr_lycc_store_context(&sr_yang_ctx.ly_ctx_shm, new_ctx))) {
         goto cleanup;
     }
-
-    /* send the notification */
-    sr_generate_notif_module_change_updated(conn, &old_mod_set, &upd_mod_set);
 
 cleanup:
     sr_lycc_context_upgrade_cleanup(&lycc_upgrade_data);
@@ -2790,6 +2788,9 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
         goto cleanup;
     }
 
+    /* send the notification */
+    sr_generate_notif_module_change_feature(conn, ly_mod, &feat_set, enable);
+
     /* update content ID and safely switch the context */
     SR_CONN_MAIN_SHM(conn)->content_id = ly_ctx_get_modules_hash(new_ctx);
 
@@ -2797,9 +2798,6 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     if ((err_info = sr_lycc_store_context(&sr_yang_ctx.ly_ctx_shm, new_ctx))) {
         goto cleanup;
     }
-
-    /* send the notification */
-    sr_generate_notif_module_change_feature(conn, ly_mod, &feat_set, enable);
 
 cleanup:
     sr_lycc_context_upgrade_cleanup(&lycc_upgrade_data);
