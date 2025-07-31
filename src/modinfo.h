@@ -50,6 +50,9 @@ struct sr_mod_info_s {
     int data_cached;            /**< Whether the data are actually cached. */
     sr_conn_ctx_t *conn;        /**< Associated connection. */
     uint32_t operation_id;      /**< ID of the current operation for all the callbacks. */
+    int smdata_cached;          /**< Whether the schema-mount data are cached.
+                                   * If set, the schema mount data are valid in ::sr_schema_mount_cache until
+                                   * ::sr_modinfo_erase() is called on the mod info. */
 
     struct sr_mod_info_mod_s {
         sr_mod_t *shm_mod;      /**< Module SHM structure. */
