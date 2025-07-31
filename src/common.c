@@ -3186,7 +3186,7 @@ static sr_error_info_t *
 sr_schema_mount_data_get(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct lyd_node **schema_mount_data)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *node = NULL, *sm_data = NULL;
+    struct lyd_node *node = NULL;
     struct sr_mod_info_s mod_info;
     struct lys_module *ly_mod, *ly_mod2;
 
@@ -3213,7 +3213,7 @@ sr_schema_mount_data_get(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struc
         goto cleanup;
     }
 
-    /* add modules into mod_info with deps, locking, and their data */
+    /* the obtained data will be compatible with @p ly_ctx, because ly_mod and ly_mod2 were taken from it */
     if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_PERM_NO, NULL, SR_OPER_CB_TIMEOUT, 0, 0))) {
         goto cleanup;
     }
@@ -3233,17 +3233,11 @@ sr_schema_mount_data_get(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struc
         goto cleanup;
     }
 
-    /* make the data compatible with the given libyang context */
-    if ((err_info = sr_lyd_dup_siblings_to_ctx(mod_info.data, ly_ctx, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, &sm_data))) {
-        goto cleanup;
-    }
-
-    *schema_mount_data = sm_data;
-    sm_data = NULL;
+    /* transfer ownership of the schema mount data */
+    *schema_mount_data = mod_info.data;
+    mod_info.data = NULL;
 
 cleanup:
-    lyd_free_all(sm_data);
-
     /* MODULES UNLOCK */
     sr_shmmod_modinfo_unlock(&mod_info);
     sr_modinfo_erase(&mod_info);
