@@ -139,7 +139,7 @@ struct sr_run_cache_s sr_run_cache = {
     .data = NULL,
     .mods = NULL,
     .mod_count = 0,
-    .lock = PTHREAD_RWLOCK_INITIALIZER,
+    .lock = SR_RWLOCK_INITIALIZER,
 };
 
 /**
@@ -148,7 +148,7 @@ struct sr_run_cache_s sr_run_cache = {
 struct sr_oper_cache_s sr_oper_cache = {
     .subs = NULL,
     .sub_count = 0,
-    .lock = PTHREAD_RWLOCK_INITIALIZER,
+    .lock = SR_RWLOCK_INITIALIZER,
 };
 
 sr_error_info_t *
@@ -2270,43 +2270,11 @@ sr_rwlock_init(sr_rwlock_t *rwlock, int shared)
     return NULL;
 }
 
-/**
- * @brief Initialize a classic pthread RW lock.
- *
- * @param[in,out] rwlock RW lock to initialize.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_prwlock_init(pthread_rwlock_t *rwlock)
-{
-    sr_error_info_t *err_info = NULL;
-    int r;
-
-    r = pthread_rwlock_init(rwlock, NULL);
-    if (r) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, "Initializing pthread rwlock failed (%s).", strerror(r));
-        return err_info;
-    }
-
-    return NULL;
-}
-
 void
 sr_rwlock_destroy(sr_rwlock_t *rwlock)
 {
     pthread_mutex_destroy(&rwlock->mutex);
     sr_cond_destroy(&rwlock->cond);
-}
-
-/**
- * @brief Destroy a classic pthread RW lock.
- *
- * @param[in] rwlock RW lock to destroy.
- */
-static void
-sr_prwlock_destroy(pthread_rwlock_t *rwlock)
-{
-    pthread_rwlock_destroy(rwlock);
 }
 
 /**
@@ -2737,32 +2705,6 @@ sr_rwlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_cid_
     return sr_sub_rwlock(rwlock, &timeout_abs, mode, cid, func, cb, cb_data, 0);
 }
 
-sr_error_info_t *
-sr_prwlock(pthread_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, const char *func)
-{
-    int r;
-    sr_error_info_t *err_info = NULL;
-    struct timespec timeout_abs;
-
-    assert((mode == SR_LOCK_READ) || (mode == SR_LOCK_WRITE));
-
-    sr_timeouttime_get(&timeout_abs, timeout_ms);
-
-    if (mode == SR_LOCK_READ) {
-        r = pthread_rwlock_clockrdlock(rwlock, COMPAT_CLOCK_ID, &timeout_abs);
-        if (r) {
-            sr_errinfo_new(&err_info, SR_ERR_SYS, "Locking a rdlock in %s() failed (%s).", func, strerror(r));
-        }
-    } else {
-        r = pthread_rwlock_clockwrlock(rwlock, COMPAT_CLOCK_ID, &timeout_abs);
-        if (r) {
-            sr_errinfo_new(&err_info, SR_ERR_SYS, "Locking a wrlock in %s() failed (%s).", func, strerror(r));
-        }
-    }
-
-    return err_info;
-}
-
 /**
  * @brief Lock a rwlock mutex.
  *
@@ -2978,22 +2920,6 @@ cleanup_unlock:
     return err_info;
 }
 
-sr_error_info_t *
-sr_prwrelock(pthread_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, const char *func)
-{
-    assert((mode == SR_LOCK_READ) || (mode == SR_LOCK_WRITE));
-
-    if (mode == SR_LOCK_READ) {
-        /* downgrade from write-lock to read-lock */
-        sr_prwunlock(rwlock, __func__);
-        return sr_prwlock(rwlock, timeout_ms, SR_LOCK_READ, func);
-    } else {
-        /* upgrade from read-lock to write-lock */
-        sr_prwunlock(rwlock, __func__);
-        return sr_prwlock(rwlock, timeout_ms, SR_LOCK_WRITE, func);
-    }
-}
-
 void
 sr_rwunlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func)
 {
@@ -3061,19 +2987,6 @@ sr_rwunlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
     ret = pthread_mutex_unlock(&rwlock->mutex);
     if (ret) {
         sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unlocking a mutex in %s() failed (%s).", __func__, strerror(ret));
-        sr_errinfo_free(&err_info);
-    }
-}
-
-void
-sr_prwunlock(pthread_rwlock_t *rwlock, const char *func)
-{
-    sr_error_info_t *err_info = NULL;
-    int r;
-
-    r = pthread_rwlock_unlock(rwlock);
-    if (r) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, "Unlocking a rwlock in %s() failed (%s).", func, strerror(r));
         sr_errinfo_free(&err_info);
     }
 }
@@ -3415,7 +3328,8 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_oper_cache_add(sr_oper_cache_t *oper_cache, uint32_t sub_id, const char *module_name, const char *path)
+sr_oper_cache_add(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache, uint32_t sub_id,
+        const char *module_name, const char *path)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
@@ -3423,7 +3337,8 @@ sr_oper_cache_add(sr_oper_cache_t *oper_cache, uint32_t sub_id, const char *modu
     struct sr_oper_cache_sub_s *cache;
 
     /* OPER CACHE WRITE LOCK */
-    if ((err_info = sr_prwlock(&oper_cache->lock, SR_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, __func__))) {
+    if ((err_info = sr_rwlock(&oper_cache->lock, SR_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE,
+            conn->cid, __func__, NULL, NULL))) {
         return err_info;
     }
 
@@ -3449,27 +3364,28 @@ sr_oper_cache_add(sr_oper_cache_t *oper_cache, uint32_t sub_id, const char *modu
     SR_CHECK_MEM_GOTO(!cache->module_name, err_info, cleanup);
     cache->path = strdup(path);
     SR_CHECK_MEM_GOTO(!cache->path, err_info, cleanup);
-    if ((err_info = sr_prwlock_init(&cache->data_lock))) {
+    if ((err_info = sr_rwlock_init(&cache->data_lock, 0))) {
         goto cleanup;
     }
 
     ++oper_cache->sub_count;
 
 cleanup:
-    /* OPER CACHE UNLOCK */
-    sr_prwunlock(&oper_cache->lock, __func__);
+    /* OPER CACHE WRITE UNLOCK */
+    sr_rwunlock(&oper_cache->lock, SR_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
     return err_info;
 }
 
 void
-sr_oper_cache_del(sr_oper_cache_t *oper_cache, uint32_t sub_id)
+sr_oper_cache_del(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache, uint32_t sub_id)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
     struct sr_oper_cache_sub_s *cache = NULL;
 
     /* OPER CACHE WRITE LOCK */
-    if ((err_info = sr_prwlock(&oper_cache->lock, SR_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, __func__))) {
+    if ((err_info = sr_rwlock(&oper_cache->lock, SR_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE,
+            conn->cid, __func__, NULL, NULL))) {
         /* should never happen */
         sr_errinfo_free(&err_info);
     }
@@ -3486,7 +3402,7 @@ sr_oper_cache_del(sr_oper_cache_t *oper_cache, uint32_t sub_id)
     /* free members */
     free(cache->module_name);
     free(cache->path);
-    sr_prwlock_destroy(&cache->data_lock);
+    sr_rwlock_destroy(&cache->data_lock);
     lyd_free_siblings(cache->data);
 
     /* replace cache entry with the last */
@@ -3502,11 +3418,12 @@ sr_oper_cache_del(sr_oper_cache_t *oper_cache, uint32_t sub_id)
     }
 
     /* OPER CACHE UNLOCK */
-    sr_prwunlock(&oper_cache->lock, __func__);
+    sr_rwunlock(&oper_cache->lock, SR_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
 }
 
 sr_error_info_t *
-sr_run_cache_update(sr_run_cache_t *run_cache, const struct sr_mod_info_s *mod_info, sr_lock_mode_t has_lock)
+sr_run_cache_update(sr_conn_ctx_t *conn, sr_run_cache_t *run_cache,
+        const struct sr_mod_info_s *mod_info, sr_lock_mode_t has_lock)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     struct sr_mod_info_mod_s *mod;
@@ -3540,11 +3457,12 @@ sr_run_cache_update(sr_run_cache_t *run_cache, const struct sr_mod_info_s *mod_i
         if (!cmod) {
             if (has_lock != SR_LOCK_WRITE) {
                 /* CACHE READ UNLOCK */
-                sr_prwunlock(&run_cache->lock, __func__);
+                sr_rwunlock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
                 has_lock = SR_LOCK_NONE;
 
                 /* CACHE WRITE LOCK */
-                if ((err_info = sr_prwlock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, __func__))) {
+                if ((err_info = sr_rwlock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE,
+                        conn->cid, __func__, NULL, NULL))) {
                     goto cleanup;
                 }
                 has_lock = SR_LOCK_WRITE;
@@ -3577,11 +3495,12 @@ sr_run_cache_update(sr_run_cache_t *run_cache, const struct sr_mod_info_s *mod_i
 
         if (has_lock != SR_LOCK_WRITE) {
             /* CACHE READ UNLOCK */
-            sr_prwunlock(&run_cache->lock, __func__);
+            sr_rwunlock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
             has_lock = SR_LOCK_NONE;
 
             /* CACHE WRITE LOCK */
-            if ((err_info = sr_prwlock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, __func__))) {
+            if ((err_info = sr_rwlock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE,
+                    conn->cid, __func__, NULL, NULL))) {
                 goto cleanup;
             }
             has_lock = SR_LOCK_WRITE;
@@ -3610,12 +3529,14 @@ sr_run_cache_update(sr_run_cache_t *run_cache, const struct sr_mod_info_s *mod_i
 cleanup:
     if (has_lock == SR_LOCK_WRITE) {
         /* CACHE READ RELOCK */
-        if ((tmp_err = sr_prwrelock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, __func__))) {
+        if ((tmp_err = sr_rwrelock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ,
+                conn->cid, __func__, NULL, NULL))) {
             sr_errinfo_merge(&err_info, tmp_err);
         }
     } else if (has_lock == SR_LOCK_NONE) {
         /* CACHE READ LOCK */
-        if ((tmp_err = sr_prwlock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, __func__))) {
+        if ((tmp_err = sr_rwlock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ,
+                conn->cid, __func__, NULL, NULL))) {
             sr_errinfo_merge(&err_info, tmp_err);
         }
     }
@@ -3623,7 +3544,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_run_cache_update_mod(sr_run_cache_t *run_cache, const struct lys_module *ly_mod,
+sr_run_cache_update_mod(sr_conn_ctx_t *conn, sr_run_cache_t *run_cache, const struct lys_module *ly_mod,
         uint32_t mod_cache_id, struct lyd_node *mod_data)
 {
     sr_error_info_t *err_info = NULL;
@@ -3632,7 +3553,8 @@ sr_run_cache_update_mod(sr_run_cache_t *run_cache, const struct lys_module *ly_m
     uint32_t i;
 
     /* CACHE WRITE LOCK */
-    if ((err_info = sr_prwlock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, __func__))) {
+    if ((err_info = sr_rwlock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE,
+            conn->cid, __func__, NULL, NULL))) {
         return err_info;
     }
 
@@ -3661,18 +3583,19 @@ sr_run_cache_update_mod(sr_run_cache_t *run_cache, const struct lys_module *ly_m
     cmod->id = mod_cache_id;
 
     /* CACHE WRITE UNLOCK */
-    sr_prwunlock(&run_cache->lock, __func__);
+    sr_rwunlock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
 
     return err_info;
 }
 
 void
-sr_run_cache_flush(sr_run_cache_t *run_cache)
+sr_run_cache_flush(sr_conn_ctx_t *conn, sr_run_cache_t *run_cache)
 {
     sr_error_info_t *err_info = NULL;
 
     /* CACHE WRITE LOCK */
-    err_info = sr_prwlock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, __func__);
+    err_info = sr_rwlock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE,
+            conn->cid, __func__, NULL, NULL);
 
     /* nothing else to do but continue on error */
 
@@ -3685,7 +3608,7 @@ sr_run_cache_flush(sr_run_cache_t *run_cache)
 
     if (!err_info) {
         /* CACHE WRITE UNLOCK */
-        sr_prwunlock(&run_cache->lock, __func__);
+        sr_rwunlock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
     }
 
     sr_errinfo_free(&err_info);

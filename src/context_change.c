@@ -57,7 +57,8 @@ sr_oper_cache_flush(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache)
     struct sr_oper_cache_sub_s *cache;
 
     /* OPER CACHE READ LOCK */
-    if ((err_info = sr_prwlock(&oper_cache->lock, SR_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, __func__))) {
+    if ((err_info = sr_rwlock(&oper_cache->lock, SR_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ,
+            conn->cid, __func__, NULL, NULL))) {
         /* should never happen */
         sr_errinfo_free(&err_info);
     }
@@ -66,7 +67,8 @@ sr_oper_cache_flush(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache)
         cache = &oper_cache->subs[i];
 
         /* CACHE DATA WRITE LOCK */
-        if ((err_info = sr_prwlock(&cache->data_lock, SR_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, __func__))) {
+        if ((err_info = sr_rwlock(&cache->data_lock, SR_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE,
+                conn->cid, __func__, NULL, NULL))) {
             /* should never happen */
             sr_errinfo_free(&err_info);
         }
@@ -77,11 +79,11 @@ sr_oper_cache_flush(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache)
         memset(&cache->timestamp, 0, sizeof cache->timestamp);
 
         /* CACHE DATA UNLOCK */
-        sr_prwunlock(&cache->data_lock, __func__);
+        sr_rwunlock(&cache->data_lock, SR_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
     }
 
     /* OPER CACHE UNLOCK */
-    sr_prwunlock(&oper_cache->lock, __func__);
+    sr_rwunlock(&oper_cache->lock, SR_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
     /* remove oper push data cache from all sessions */
 
@@ -1273,7 +1275,7 @@ sr_lycc_context_upgrade_prep_finish(sr_conn_ctx_t *conn, struct ly_ctx *new_ctx,
 
     /* flush the running and operational caches */
     if (run_cache) {
-        sr_run_cache_flush(run_cache);
+        sr_run_cache_flush(conn, run_cache);
     }
     if (oper_cache) {
         sr_oper_cache_flush(conn, oper_cache);
