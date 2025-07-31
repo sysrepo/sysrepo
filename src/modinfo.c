@@ -48,8 +48,80 @@
 #include "subscr.h"
 #include "utils/nacm.h"
 
-static sr_error_info_t *sr_modinfo_smdata_parse(void);
-static void sr_modinfo_smdata_free(void);
+/**
+ * @brief Acquire schema mount data from the cache and increment its reference count.
+ *
+ * The schema mount data is reference-counted and its life cycle is tied to mod_info.
+ * The data is stored in sr_schema_mount_cache.
+ *
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_modinfo_smdata_cache_acquire(void)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *schema_mount_data = NULL;
+
+    /* SM DATA LOCK */
+    if ((err_info = sr_mlock(&sr_schema_mount_cache.lock, SR_SM_CTX_LOCK_TIMEOUT, __func__, NULL, NULL))) {
+        return err_info;
+    }
+
+    if (sr_schema_mount_cache.refcount) {
+        /* already parsed */
+        sr_schema_mount_cache.refcount++;
+        goto cleanup;
+    }
+
+    /* parse schema mount data from a file where they are stored */
+    if ((err_info = sr_schema_mount_data_file_parse(&schema_mount_data))) {
+        goto cleanup;
+    }
+
+    if (!schema_mount_data) {
+        /* no schema mount data, nothing to cache */
+        goto cleanup;
+    }
+
+    sr_schema_mount_cache.data = schema_mount_data;
+    sr_schema_mount_cache.refcount = 1;
+
+cleanup:
+    /* SM DATA UNLOCK */
+    sr_munlock(&sr_schema_mount_cache.lock);
+    return err_info;
+}
+
+/**
+ * @brief Release a reference to schema mount data.
+ *
+ * It should be called whenever mod_info that acquired a reference to the schema mount data is being destroyed.
+ */
+static void
+sr_smdata_cache_release(void)
+{
+    sr_error_info_t *err_info = NULL;
+
+    /* SM DATA LOCK */
+    if ((err_info = sr_mlock(&sr_schema_mount_cache.lock, SR_SM_CTX_LOCK_TIMEOUT, __func__, NULL, NULL))) {
+        /* continue on error */
+        sr_errinfo_free(&err_info);
+    }
+
+    if (sr_schema_mount_cache.refcount > 1) {
+        /* just decrease the reference count */
+        sr_schema_mount_cache.refcount--;
+    } else if (sr_schema_mount_cache.refcount == 1) {
+        /* last reference, free the data */
+        assert(sr_schema_mount_cache.data);
+        lyd_free_siblings(sr_schema_mount_cache.data);
+        sr_schema_mount_cache.data = NULL;
+        sr_schema_mount_cache.refcount = 0;
+    }
+
+    /* SM DATA UNLOCK */
+    sr_munlock(&sr_schema_mount_cache.lock);
+}
 
 sr_error_info_t *
 sr_modinfo_init(struct sr_mod_info_s *mod_info, sr_conn_ctx_t *conn,
@@ -66,7 +138,8 @@ sr_modinfo_init(struct sr_mod_info_s *mod_info, sr_conn_ctx_t *conn,
 
     if (init_sm) {
         /* parse schema mount data, the data is usable until the end of the operation */
-        err_info = sr_modinfo_smdata_parse();
+        err_info = sr_modinfo_smdata_cache_acquire();
+        mod_info->smdata_cached = 1;
     }
 
     return err_info;
@@ -401,7 +474,7 @@ sr_modinfo_collect_ext_deps(const struct lysc_node *mp_node, struct sr_mod_info_
     struct lyd_value_xpath10 *xp_val;
     const struct lys_module *mod;
     uint32_t i;
-    sr_lock_mode_t sm_lock = SR_LOCK_NONE;
+    int sm_locked = 0;
 
     /* check there is a mount-point defined */
     LY_ARRAY_FOR(mp_node->exts, u) {
@@ -436,7 +509,7 @@ sr_modinfo_collect_ext_deps(const struct lysc_node *mp_node, struct sr_mod_info_
     if ((err_info = sr_mlock(&sr_schema_mount_cache.lock, SR_SM_CTX_LOCK_TIMEOUT, __func__, NULL, NULL))) {
         goto cleanup;
     }
-    sm_lock = SR_LOCK_WRITE;
+    sm_locked = 1;
 
     if (!sr_schema_mount_cache.data) {
         /* no parent references for sure */
@@ -478,7 +551,7 @@ sr_modinfo_collect_ext_deps(const struct lysc_node *mp_node, struct sr_mod_info_
     }
 
 cleanup:
-    if (sm_lock == SR_LOCK_WRITE) {
+    if (sm_locked) {
         /* SM DATA UNLOCK */
         sr_munlock(&sr_schema_mount_cache.lock);
     }
@@ -4375,83 +4448,10 @@ sr_modinfo_erase(struct sr_mod_info_s *mod_info)
         free(mod->xpaths);
     }
 
-    /* free the schema mount reference of this mod_info */
-    sr_modinfo_smdata_free();
+    if (mod_info->smdata_cached) {
+        /* release a reference to cached schema mount data */
+        sr_smdata_cache_release();
+    }
 
     free(mod_info->mods);
-}
-
-/**
- * @brief Parse schema mount data from a file.
- *
- * The parsed data is reference-counted and its life cycle is tied to mod_info.
- * The data can be made available by multiple mod_info structures, but it is freed only by the last one.
- *
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_modinfo_smdata_parse(void)
-{
-    sr_error_info_t *err_info = NULL;
-    struct lyd_node *schema_mount_data = NULL;
-
-    /* SM DATA LOCK */
-    if ((err_info = sr_mlock(&sr_schema_mount_cache.lock, SR_SM_CTX_LOCK_TIMEOUT, __func__, NULL, NULL))) {
-        return err_info;
-    }
-
-    if (sr_schema_mount_cache.refcount) {
-        /* already parsed */
-        sr_schema_mount_cache.refcount++;
-        goto cleanup;
-    }
-
-    /* parse schema mount data from shm */
-    if ((err_info = sr_schema_mount_data_file_parse(&schema_mount_data))) {
-        goto cleanup;
-    }
-
-    if (!schema_mount_data) {
-        /* no schema mount data */
-        goto cleanup;
-    }
-
-    sr_schema_mount_cache.data = schema_mount_data;
-    sr_schema_mount_cache.refcount = 1;
-
-cleanup:
-    /* SM DATA UNLOCK */
-    sr_munlock(&sr_schema_mount_cache.lock);
-    return err_info;
-}
-
-/**
- * @brief Free schema mount data.
- *
- * Called whenever mod_info is being destroyed.
- */
-static void
-sr_modinfo_smdata_free(void)
-{
-    sr_error_info_t *err_info = NULL;
-
-    /* SM DATA LOCK */
-    if ((err_info = sr_mlock(&sr_schema_mount_cache.lock, SR_SM_CTX_LOCK_TIMEOUT, __func__, NULL, NULL))) {
-        /* continue on error */
-        sr_errinfo_free(&err_info);
-    }
-
-    if (sr_schema_mount_cache.refcount > 1) {
-        /* just decrease the reference count */
-        sr_schema_mount_cache.refcount--;
-    } else if (sr_schema_mount_cache.refcount == 1) {
-        /* last reference, free the data */
-        assert(sr_schema_mount_cache.data);
-        lyd_free_siblings(sr_schema_mount_cache.data);
-        sr_schema_mount_cache.data = NULL;
-        sr_schema_mount_cache.refcount = 0;
-    }
-
-    /* SM DATA UNLOCK */
-    sr_munlock(&sr_schema_mount_cache.lock);
 }
