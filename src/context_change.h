@@ -217,31 +217,13 @@ sr_error_info_t *sr_lycc_store_data_if_differ(sr_conn_ctx_t *conn, const struct 
 void sr_lycc_update_data_clear(struct sr_data_update_s *data_info);
 
 /**
- * @brief Cleanup during a libyang context update.
- *
- * In case sysrepo is using a printed libyang context, then YANG data
- * tied to the previous context must be cleared before the new context
- * overwrites it.
- *
- * The intended use is to only free data that has ties to the previous context.
- *
- * @param[in] conn              Connection to use.
- * @param[in,out] data_info     Data update info to clear. Freed and memset to 0.
- * @param[in,out] sr_mods       Pointer to the SR internal module data. *sr_mods is set freed to NULL.
- * @param[in,out] sr_del_mods   Pointer to the SR internal module data of deleted modules. *sr_del_mods is set freed to NULL.
- * @param[in,out] sr_mods_old   Pointer to the old SR internal module data. *sr_mods_old is set freed to NULL.
- * @param[in,out] run_cache     Running cache to flush.
- * @param[in,out] oper_cache    Operational cache to flush.
- */
-void sr_lycc_update_cleanup(sr_conn_ctx_t *conn, struct sr_data_update_s *data_info, struct lyd_node **sr_mods,
-        struct lyd_node **sr_mods_old, struct lyd_node **sr_del_mods,
-        sr_run_cache_t *run_cache, sr_oper_cache_t *oper_cache);
-
-/**
  * @brief Cleanup during a libyang context upgrade.
  *
  * During a context upgrade it is necessary to cleanup all the data that
  * contain references to the old context, because its memory will be overwritten.
+ *
+ * This functions is called by ::sr_lycc_context_upgrade_prep_finish(), but should be called
+ * in case of an error during the upgrade process to free all the allocated memory.
  *
  * @param[in,out] upgrade_data Upgrade data to cleanup. Freed members are set to NULL.
  */
@@ -250,8 +232,10 @@ void sr_lycc_context_upgrade_cleanup(struct sr_lycc_upgrade_data_s *upgrade_data
 /**
  * @brief Finish preparations for a libyang context upgrade.
  *
- * Once this functions finishes, the new context can safely be printed.
- * Freed @p upgrade_data members are set to NULL, so it is safe to call this function again.
+ * Must be called before a new libyang context is printed and
+ * once this functions finishes, the new context can safely be printed.
+ * Freed @p upgrade_data members are set to NULL, so it is safe to call this function or
+ * ::sr_lycc_context_upgrade_cleanup() multiple times.
  *
  * @param[in] conn Connection to use.
  * @param[in] new_ctx New libyang context that will later be printed.
@@ -260,7 +244,7 @@ void sr_lycc_context_upgrade_cleanup(struct sr_lycc_upgrade_data_s *upgrade_data
  * @param[in,out] oper_cache Operational cache to flush.
  * @return err_info, NULL on success.
  */
-sr_error_info_t * sr_lycc_context_upgrade_prep_finish(sr_conn_ctx_t *conn, struct ly_ctx *new_ctx,
+sr_error_info_t *sr_lycc_context_upgrade_prep_finish(sr_conn_ctx_t *conn, struct ly_ctx *new_ctx,
         struct sr_lycc_upgrade_data_s *upgrade_data, sr_run_cache_t *run_cache, sr_oper_cache_t *oper_cache);
 
 /**
@@ -269,6 +253,8 @@ sr_error_info_t * sr_lycc_context_upgrade_prep_finish(sr_conn_ctx_t *conn, struc
  * This function serializes a libyang context and prints it into shared memory.
  * This context can then be loaded later using ::sr_lycc_load_context() by
  * other connections or processes.
+ *
+ * Does nothing if printed context is disabled.
  *
  * @param[in,out] shm Shared memory to use. Any existing mapping is removed.
  * @param[in] ctx Libyang context to store.
@@ -281,10 +267,12 @@ sr_error_info_t *sr_lycc_store_context(sr_shm_t *shm, const struct ly_ctx *ctx);
  *
  * This function loads a libyang context from shared memory that was previously
  * stored using ::sr_lycc_store_context(). The context is mapped to an address
- * that is compile-time defined. This means that the address may already
- * be in use, which may lead to a failure.
+ * that is compile-time defined - the allocation may collide with another mapping
+ * leading to an error.
  *
  * The context is mapped as read-only, so it cannot be modified.
+ *
+ * Only sets @p *ctx to NULL if printed context is disabled.
  *
  * @param[in,out] shm Shared memory to use. Updated with the new mapping.
  * @param[out] ctx Pointer to the loaded libyang context. Should be freed by the caller.

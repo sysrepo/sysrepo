@@ -262,7 +262,7 @@ typedef struct sr_run_cache_s sr_run_cache_t;
 /**
  * @brief Running data cache.
  */
-extern struct sr_run_cache_s sr_run_cache;
+extern sr_run_cache_t sr_run_cache;
 
 /**
  * @brief Operational data cache.
@@ -286,7 +286,7 @@ typedef struct sr_oper_cache_s sr_oper_cache_t;
 /**
  * @brief Operational data cache.
  */
-extern struct sr_oper_cache_s sr_oper_cache;
+extern sr_oper_cache_t sr_oper_cache;
 
 /**
  * @brief Internal information about a module to be installed.
@@ -998,7 +998,7 @@ sr_error_info_t *sr_schema_mount_contexts_replace(sr_conn_ctx_t *conn, struct ly
         struct lyd_node *old_sr_data, struct lyd_node *new_sr_data);
 
 /**
- * @brief Parse schema mount data from a file.
+ * @brief Parse schema mount data from a file in which they are stored (cached).
  *
  * @param[out] schema_mount_data Parsed schema mount data, should be freed by the caller.
  * @return err_info, NULL on success.
