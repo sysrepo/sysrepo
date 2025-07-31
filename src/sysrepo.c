@@ -169,7 +169,7 @@ sr_conn_free(sr_conn_ctx_t *conn)
 
         /* free run cache only if connection was fully setup */
         if (conn->cid) {
-            sr_run_cache_flush(&sr_run_cache);
+            sr_run_cache_flush(conn, &sr_run_cache);
         }
 
         /* free oper cache */
@@ -8672,7 +8672,7 @@ sr_oper_poll_subscribe(sr_session_ctx_t *session, const char *module_name, const
     }
 
     /* add new cache entry */
-    if ((err_info = sr_oper_cache_add(&sr_oper_cache, sub_id, module_name, path))) {
+    if ((err_info = sr_oper_cache_add(conn, &sr_oper_cache, sub_id, module_name, path))) {
         goto cleanup_unlock2;
     }
 
@@ -8715,7 +8715,7 @@ error2:
     }
 
 error1:
-    sr_oper_cache_del(&sr_oper_cache, sub_id);
+    sr_oper_cache_del(conn, &sr_oper_cache, sub_id);
 
 cleanup_unlock2:
     /* SUBS WRITE UNLOCK */
