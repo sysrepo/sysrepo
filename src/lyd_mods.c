@@ -636,15 +636,15 @@ cleanup:
 /**
  * @brief Add a schema mount extension instance path into sysrepo module data.
  *
- * @param[in] mount_point_path Path to the node with the schema mount extension instance.
+ * @param[in] mount_point_ext_snode_path Path to the node with the schema mount extension instance.
  * @param[in,out] sr_mod Module to add the path to.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lydmods_add_sm_ext_path(const char *mount_point_path, struct lyd_node *sr_mod)
+sr_lydmods_add_sm_ext_path(const char *mount_point_ext_snode_path, struct lyd_node *sr_mod)
 {
     /* create new leaf-list */
-    return sr_lyd_new_term(sr_mod, NULL, "schema-mount-ext-instance", mount_point_path);
+    return sr_lyd_new_term(sr_mod, NULL, "schema-mount-ext-instance", mount_point_ext_snode_path);
 }
 
 /**

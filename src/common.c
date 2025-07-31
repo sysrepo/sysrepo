@@ -135,7 +135,7 @@ struct sr_schema_mount_cache_s sr_schema_mount_cache = {
 /**
  * @brief Running data cache.
  */
-struct sr_run_cache_s sr_run_cache = {
+sr_run_cache_t sr_run_cache = {
     .data = NULL,
     .mods = NULL,
     .mod_count = 0,
@@ -145,7 +145,7 @@ struct sr_run_cache_s sr_run_cache = {
 /**
  * @brief Operational data cache.
  */
-struct sr_oper_cache_s sr_oper_cache = {
+sr_oper_cache_t sr_oper_cache = {
     .subs = NULL,
     .sub_count = 0,
     .lock = SR_RWLOCK_INITIALIZER,

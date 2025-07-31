@@ -114,10 +114,7 @@ sr_ly_ctx_switch(sr_conn_ctx_t *conn, struct ly_ctx *new_ctx)
     /* update schema mount data ID */
     sr_yang_ctx.sm_data_id = SR_CONN_MAIN_SHM(conn)->schema_mount_data_id;
 
-    /* replace the context */
-    if (sr_yang_ctx.ly_ctx) {
-        ly_ctx_destroy(sr_yang_ctx.ly_ctx);
-    }
+    /* replace the global context */
     sr_yang_ctx.ly_ctx = new_ctx;
 }
 
@@ -245,7 +242,7 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
         }
         remap_mode = SR_LOCK_WRITE;
 
-        /* check the context again, we briefly unlocked the remap lock while relocking */
+        /* check the context again, another thread may have already updated it */
         if (context_is_up_to_date(main_shm, sr_yang_ctx.content_id, sr_yang_ctx.sm_data_id)) {
             /* context is current, abort the switch */
 
@@ -262,11 +259,13 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
             goto cleanup_unlock;
         }
 
-        /* destroy the old printed context, because it is now unusable */
+        /* destroy the old context, because if it was printed then another process could have
+         * been the one that printed it = this process did not destroy the old context while printing the new one,
+         * so it needs to be done now to avoid context data collision, see ::sr_lycc_store_context() */
         ly_ctx_destroy(sr_yang_ctx.ly_ctx);
         sr_yang_ctx.ly_ctx = NULL;
 
-        /* get the printed context from the SHM */
+        /* get the printed context from the SHM if it is supported/available */
         if ((err_info = sr_lycc_load_context(&sr_yang_ctx.ly_ctx_shm, &new_ctx))) {
             goto cleanup_unlock;
         }
@@ -276,7 +275,7 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
                 goto cleanup_unlock;
             }
 
-            /* load all modules from the SHM into the new context */
+            /* load all modules into the new context */
             if ((err_info = sr_ly_ctx_init(new_ctx))) {
                 goto cleanup_unlock;
             }
@@ -1266,12 +1265,6 @@ sr_lycc_context_upgrade_prep_finish(sr_conn_ctx_t *conn, struct ly_ctx *new_ctx,
         struct sr_lycc_upgrade_data_s *upgrade_data, sr_run_cache_t *run_cache, sr_oper_cache_t *oper_cache)
 {
     sr_error_info_t *err_info = NULL;
-
-    /* cleanup data_info */
-    if (upgrade_data->data_info) {
-        sr_lycc_update_data_clear(upgrade_data->data_info);
-        upgrade_data->data_info = NULL;
-    }
 
     /* flush the running and operational caches */
     if (run_cache) {
