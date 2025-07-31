@@ -1966,8 +1966,10 @@ error_sub_unlock:
 /**
  * @brief Load module data of the ietf-yang-library module. They are actually generated.
  *
+ * @note YANG library data are created for the context that the @p mod->ly_mod was loaded in.
+ *
  * @param[in] mod_info Mod info to use.
- * @param[in] mod Mod info module to use.
+ * @param[in] mod ietf-yang-library module to load data for.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
