@@ -4055,7 +4055,8 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
     change_sub_lock = SR_LOCK_READ;
 
     /* OPER CACHE READ LOCK */
-    if ((err_info = sr_prwlock(&sr_oper_cache.lock, SR_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, __func__))) {
+    if ((err_info = sr_rwlock(&sr_oper_cache.lock, SR_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ,
+            conn->cid, __func__, NULL, NULL))) {
         goto cleanup;
     }
 
@@ -4078,7 +4079,8 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
         assert(cache);
 
         /* CACHE DATA WRITE LOCK */
-        if ((err_info = sr_prwlock(&cache->data_lock, SR_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, __func__))) {
+        if ((err_info = sr_rwlock(&cache->data_lock, SR_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE,
+                conn->cid, __func__, NULL, NULL))) {
             goto cleanup_unlock;
         }
 
@@ -4152,7 +4154,7 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
 
 finish_iter:
         /* CACHE DATA WRITE UNLOCK */
-        sr_prwunlock(&cache->data_lock, __func__);
+        sr_rwunlock(&cache->data_lock, SR_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
 
         if (err_info) {
             goto cleanup_unlock;
@@ -4185,7 +4187,7 @@ cleanup_unlock:
     }
 
     /* OPER CACHE READ UNLOCK */
-    sr_prwunlock(&sr_oper_cache.lock, __func__);
+    sr_rwunlock(&sr_oper_cache.lock, SR_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
 cleanup:
     lyd_free_siblings(mod_info.notify_diff);

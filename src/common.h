@@ -254,7 +254,7 @@ struct sr_run_cache_s {
         uint32_t id;                    /**< Cached module data ID. */
     } *mods;                            /**< Cached modules. */
     uint32_t mod_count;                 /**< Cached module count. */
-    pthread_rwlock_t lock;              /**< Lock for accessing the cache. */
+    sr_rwlock_t lock;                   /**< Lock for accessing the cache. */
 };
 
 typedef struct sr_run_cache_s sr_run_cache_t;
@@ -273,12 +273,12 @@ struct sr_oper_cache_s {
         char *module_name;          /**< Operational poll subscription module name. */
         char *path;                 /**< Operational poll/get subscription path. */
 
-        pthread_rwlock_t data_lock; /**< Lock for accessing the data and timestamp. */
+        sr_rwlock_t data_lock;      /**< Lock for accessing the data and timestamp. */
         struct lyd_node *data;      /**< Cached data of a single operational get subscription. */
         struct timespec timestamp;  /**< Timestamp of the cached operational data. */
     } *subs;                        /**< Operational subscription data caches. */
     uint32_t sub_count;             /**< Operational subscription data cache count. */
-    pthread_rwlock_t lock;          /**< Operational subscription data cache lock. */
+    sr_rwlock_t lock;               /**< Operational subscription data cache lock. */
 };
 
 typedef struct sr_oper_cache_s sr_oper_cache_t;
@@ -945,17 +945,6 @@ sr_error_info_t *sr_rwlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mod
         sr_lock_recover_cb cb, void *cb_data);
 
 /**
- * @brief Lock a classic pthread RW lock. On failure, the lock is not changed in any way.
- *
- * @param[in] rwlock RW lock to lock.
- * @param[in] timeout_ms Timeout in ms for locking.
- * @param[in] mode Lock mode to set, either ::SR_LOCK_READ or ::SR_LOCK_WRITE.
- * @param[in] func Name of the calling function for logging.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_prwlock(pthread_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, const char *func);
-
-/**
  * @brief Relock a sysrepo RW lock (upgrade or downgrade). On failure, the lock is not changed in any way.
  *
  * If @p mode is ::SR_LOCK_WRITE, the @p rwlock must be locked with ::SR_LOCK_READ_UPGR.
@@ -975,20 +964,6 @@ sr_error_info_t *sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_m
         sr_lock_recover_cb cb, void *cb_data);
 
 /**
- * @brief Relock a classic pthread RW lock (upgrade or downgrade). On failure, the lock is not changed in any way.
- *
- * If @p mode is ::SR_LOCK_WRITE, the @p rwlock must be locked with ::SR_LOCK_READ.
- * If @p mode is ::SR_LOCK_READ, the @p rwlock must be locked with ::SR_LOCK_WRITE.
- *
- * @param[in] rwlock RW lock to relock.
- * @param[in] timeout_ms Timeout in ms for locking.
- * @param[in] mode Lock mode to set, either ::SR_LOCK_READ or ::SR_LOCK_WRITE.
- * @param[in] func Name of the calling function for logging.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_prwrelock(pthread_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, const char *func);
-
-/**
  * @brief Unlock a sysrepo RW lock. On failure, whatever steps are possible are still performed.
  *
  * @param[in] rwlock RW lock to unlock.
@@ -998,14 +973,6 @@ sr_error_info_t *sr_prwrelock(pthread_rwlock_t *rwlock, uint32_t timeout_ms, sr_
  * @param[in] func Name of the calling function for logging.
  */
 void sr_rwunlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func);
-
-/**
- * @brief Unlock a classic pthread RW lock.
- *
- * @param[in] rwlock RW lock to unlock.
- * @param[in] func Name of the calling function for logging.
- */
-void sr_prwunlock(pthread_rwlock_t *rwlock, const char *func);
 
 /**
  * @brief Check whether a connection is alive.
@@ -1041,52 +1008,57 @@ sr_error_info_t *sr_schema_mount_data_file_parse(struct lyd_node **schema_mount_
 /**
  * @brief Add a new oper cache entry.
  *
+ * @param[in] conn Connection to use.
  * @param[in] oper_cache Oper cache to add to.
  * @param[in] sub_id Subscription ID of the oper poll subscription.
  * @param[in] module_name Subscription module name.
  * @param[in] path Subscription path.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_oper_cache_add(sr_oper_cache_t *oper_cache, uint32_t sub_id,
+sr_error_info_t *sr_oper_cache_add(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache, uint32_t sub_id,
         const char *module_name, const char *path);
 
 /**
  * @brief Delete an oper cache entry.
  *
+ * @param[in] conn Connection to use.
  * @param[in] oper_cache Oper cache to delete from.
  * @param[in] sub_id Subscription ID to delete.
  */
-void sr_oper_cache_del(sr_oper_cache_t *oper_cache, uint32_t sub_id);
+void sr_oper_cache_del(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache, uint32_t sub_id);
 
 /**
  * @brief Update cached running data.
  *
+ * @param[in] conn Connection to use.
  * @param[in] run_cache Run cache to update.
  * @param[in] mod_info Mod info with modules to cache.
  * @param[in] has_lock Currently held run cache lock mode.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_run_cache_update(sr_run_cache_t *run_cache, const struct sr_mod_info_s *mod_info,
-        sr_lock_mode_t has_lock);
+sr_error_info_t *sr_run_cache_update(sr_conn_ctx_t *conn, sr_run_cache_t *run_cache,
+        const struct sr_mod_info_s *mod_info, sr_lock_mode_t has_lock);
 
 /**
  * @brief Update cached running data of a particular module with specific data.
  *
+ * @param[in] conn Connection to use.
  * @param[in] run_cache Run cache to update.
  * @param[in] ly_mod Module to update.
  * @param[in] mod_cache_id Module @p mod_data cache ID.
  * @param[in] mod_data Current module data to store in the cache, are spent.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_run_cache_update_mod(sr_run_cache_t *run_cache, const struct lys_module *ly_mod,
-        uint32_t mod_cache_id, struct lyd_node *mod_data);
+sr_error_info_t *sr_run_cache_update_mod(sr_conn_ctx_t *conn, sr_run_cache_t *run_cache,
+        const struct lys_module *ly_mod, uint32_t mod_cache_id, struct lyd_node *mod_data);
 
 /**
  * @brief Flush all cached running data.
  *
+ * @param[in] conn Connection to use.
  * @param[in] run_cache Run cache to flush.
  */
-void sr_run_cache_flush(sr_run_cache_t *run_cache);
+void sr_run_cache_flush(sr_conn_ctx_t *conn, sr_run_cache_t *run_cache);
 
 /**
  * @brief Initialize all used DS plugins not yet initialized.
