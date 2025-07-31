@@ -4502,8 +4502,9 @@ sr_schema_mount_data_update(sr_session_ctx_t *session)
     struct sr_lycc_upgrade_data_s lycc_upgrade_data = {0};
     sr_lock_mode_t ctx_mode = SR_LOCK_NONE;
 
-    /* initialized context upgrade data for cleanup,
-     * exception: use both old and new modules as they are the same, since only oper data is being updated */
+    /* initialize context upgrade data for cleanup,
+     * fake existence of new sr_mods data by using current sr_mods both as old and new,
+     * this can be done because sr_mods arent change in any way, only operational data is updated */
     SR_LYCC_UPGRADE_DATA_INIT(&lycc_upgrade_data, &data_info, &sr_mods, &sr_mods, NULL);
 
     /* create a new temporary context */
