@@ -294,8 +294,20 @@ srsn_yang_push_periodic(sr_session_ctx_t *session, sr_datastore_t ds, const char
 {
     sr_error_info_t *err_info = NULL;
     struct srsn_sub *s = NULL;
+    struct lys_module *ly_mod;
 
-    if (!ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, "ietf-yang-push")) {
+    /* CONTEXT LOCK */
+    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
+        return sr_api_ret(session, err_info);
+    }
+
+    /* check whether the yang-push module is implemented, accessing context so it must be locked */
+    ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, "ietf-yang-push");
+
+    /* CONTEXT UNLOCK */
+    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
+
+    if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Module \"ietf-yang-push\" is not implemented.");
         goto cleanup;
     }
