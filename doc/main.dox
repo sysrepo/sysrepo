@@ -192,6 +192,10 @@ Schema-mount extension ([RFC 8528](https://www.rfc-editor.org/rfc/rfc8528.html))
 for future use. Using any of the [methods](@ref oper_data) will automatically work.
 Note: If you set new operational data, ensure the context is not acquired when performing the first operation afterward.
 
+If you wish to use `inline` schema mount points, make sure to compile sysrepo without
+printed context support (-DPRINTED_CONTEXT_ADDRESS=0), because printed contexts currently
+only support `shared` mount points.
+
 # Path and XPath
 @anchor paths
 
