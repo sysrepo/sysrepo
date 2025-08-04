@@ -332,15 +332,30 @@ srctl_list_collect(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct list
 {
     struct list_item *cur_item;
     const struct lys_module *ly_mod;
-    const struct lysp_feature *f;
     char *owner, *group;
-    const char *str;
+    const char *str, *feat;
     int ret = SR_ERR_OK, enabled;
-    uint32_t idx = 0, idx2;
+    uint32_t i;
     LY_ARRAY_COUNT_TYPE u;
+    sr_data_t *sr_mods = NULL;
+    struct lyd_node *sr_mod = NULL;
+    struct ly_set *en_featset = NULL;
 
-    while ((ly_mod = ly_ctx_get_module_iter(ly_ctx, &idx))) {
-        if (!strcmp(ly_mod->name, "sysrepo")) {
+    /* get sysrepo modules */
+    ret = sr_get_module_info(conn, &sr_mods);
+    if (ret != SR_ERR_OK) {
+        return ret;
+    }
+
+    LY_LIST_FOR(lyd_child(sr_mods->tree), sr_mod) {
+        if (strcmp(LYD_NAME(sr_mod), "module")) {
+            /* not a module, skip */
+            continue;
+        }
+
+        ly_mod = ly_ctx_get_module_implemented(ly_ctx, lyd_get_value(lyd_child(sr_mod)));
+        if (!ly_mod) {
+            /* should not happen, but just in case */
             continue;
         }
 
@@ -358,32 +373,29 @@ srctl_list_collect(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct list
         cur_item->name = strdup(ly_mod->name);
         cur_item->revision = ly_mod->revision ? strdup(ly_mod->revision) : strdup("");
 
+        /* replay-support */
         if (ly_mod->implemented) {
-            /* replay-support */
             ret = sr_get_module_replay_support(conn, ly_mod->name, NULL, &enabled);
             if (ret != SR_ERR_OK) {
-                return ret;
+                goto cleanup;
             }
             cur_item->replay = enabled;
         } else {
-            /* replay-support */
             cur_item->replay = 0;
         }
 
-        /* enabled features */
-        f = NULL;
-        idx2 = 0;
-        while ((f = lysp_feature_next(f, ly_mod->parsed, &idx2))) {
-            if (!(f->flags & LYS_FENABLED)) {
-                /* disabled, skip */
-                continue;
-            }
-
-            cur_item->features = realloc(cur_item->features, strlen(cur_item->features) + strlen(f->name) + 2);
+        /* get enabled features */
+        ret = lyd_find_xpath(sr_mod, "enabled-feature", &en_featset);
+        if (ret) {
+            goto cleanup;
+        }
+        for (i = 0; i < en_featset->count; i++) {
+            feat = lyd_get_value(en_featset->dnodes[i]);
+            cur_item->features = realloc(cur_item->features, strlen(cur_item->features) + strlen(feat) + 2);
             if (cur_item->features[0]) {
                 strcat(cur_item->features, " ");
             }
-            strcat(cur_item->features, f->name);
+            strcat(cur_item->features, feat);
         }
 
         if (ly_mod->implemented) {
@@ -393,11 +405,11 @@ srctl_list_collect(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct list
             /* owner and permissions */
             ret = sr_get_module_ds_access(conn, cur_item->name, SR_DS_STARTUP, &owner, &group, &cur_item->start_perms);
             if (ret != SR_ERR_OK) {
-                return ret;
+                goto cleanup;
             }
             ret = sr_get_module_ds_access(conn, cur_item->name, SR_DS_RUNNING, NULL, NULL, &cur_item->run_perms);
             if (ret != SR_ERR_OK) {
-                return ret;
+                goto cleanup;
             }
             cur_item->owner = malloc(strlen(owner) + 1 + strlen(group) + 1);
             sprintf(cur_item->owner, "%s:%s", owner, group);
@@ -414,7 +426,7 @@ srctl_list_collect(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct list
         }
 
         /* new submodules */
-        LY_ARRAY_FOR(ly_mod->parsed->includes, u) {
+        LY_ARRAY_FOR(ly_mod->submodules, u) {
             *list = realloc(*list, (*list_count + 1) * sizeof **list);
             cur_item = &(*list)[*list_count];
             ++(*list_count);
@@ -427,16 +439,19 @@ srctl_list_collect(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct list
             cur_item->main_mod = strdup(ly_mod->name);
 
             /* name and revision */
-            if (asprintf(&cur_item->name, " %s", ly_mod->parsed->includes[u].submodule->name) == -1) {
+            if (asprintf(&cur_item->name, " %s", ly_mod->submodules[u].name) == -1) {
                 error_print(0, "Memory allocation failed");
-                return SR_ERR_NO_MEMORY;
+                ret = SR_ERR_NO_MEMORY;
+                goto cleanup;
             }
-            str = ly_mod->parsed->includes[u].submodule->revs ? ly_mod->parsed->includes[u].submodule->revs[0].date : NULL;
+            str = ly_mod->submodules[u].revision;
             cur_item->revision = str ? strdup(str) : strdup("");
         }
     }
 
-    return SR_ERR_OK;
+cleanup:
+    sr_release_data(sr_mods);
+    return ret;
 }
 
 static int
