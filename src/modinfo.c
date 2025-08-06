@@ -3291,7 +3291,7 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int read_only, sr_session_c
     conn = mod_info->conn;
 
     /* cache may be useful only for some datastores */
-    if (!mod_info->data_cached && mod_info->mod_count && (conn->opts & SR_CONN_CACHE_RUNNING) &&
+    if (!mod_info->data_cached && mod_info->mod_count && ATOMIC_LOAD_RELAXED(sr_run_cache.enabled) &&
             !(get_oper_opts & SR_OPER_NO_RUN_CACHED) &&
             ((mod_info->ds == SR_DS_RUNNING) || (mod_info->ds == SR_DS_CANDIDATE) || (mod_info->ds2 == SR_DS_RUNNING))) {
 
@@ -4303,7 +4303,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
                 /* update the cache ID because data were modified, ignored if data_version callback is used instead */
                 mod->shm_mod->run_cache_id++;
 
-                if (mod_info->conn->opts & SR_CONN_CACHE_RUNNING) {
+                if (ATOMIC_LOAD_RELAXED(sr_run_cache.enabled)) {
                     /* store the changed data in the cache */
                     if ((err_info = sr_run_cache_update_mod(session->conn, &sr_run_cache, mod->ly_mod, mod->shm_mod->run_cache_id,
                             mod_data))) {

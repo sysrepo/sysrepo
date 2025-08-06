@@ -96,7 +96,7 @@ sr_errinfo_new_ly(sr_error_info_t **err_info, const struct ly_ctx *ly_ctx, const
 }
 
 sr_error_info_t *
-sr_ly_ctx_new(sr_conn_ctx_t *conn, struct ly_ctx **ly_ctx)
+sr_ly_ctx_new(struct ly_ctx **ly_ctx)
 {
     sr_error_info_t *err_info = NULL;
     char *yang_dir;
@@ -109,9 +109,9 @@ sr_ly_ctx_new(sr_conn_ctx_t *conn, struct ly_ctx **ly_ctx)
     /* context options */
     ctx_opts = LY_CTX_NO_YANGLIBRARY | LY_CTX_DISABLE_SEARCHDIR_CWD | LY_CTX_REF_IMPLEMENTED |
             LY_CTX_EXPLICIT_COMPILE | LY_CTX_STATIC_PLUGINS_ONLY | LY_CTX_LYB_HASHES;
-    if (conn && (conn->opts & SR_CONN_CTX_SET_PRIV_PARSED)) {
-        ctx_opts |= LY_CTX_SET_PRIV_PARSED;
-    }
+
+    /* add the configured options */
+    ctx_opts |= ATOMIC_LOAD_RELAXED(sr_yang_ctx.ly_ctx_opts);
 
     /* create new context */
     ly_temp_log_options(&temp_lo);

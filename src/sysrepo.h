@@ -137,6 +137,30 @@ int sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn);
 int sr_disconnect(sr_conn_ctx_t *conn);
 
 /**
+ * @brief Enable or disable caching running datastore data for all connections.
+ *
+ * Caching the running data makes its repeated retrieval much faster, but it also
+ * consumes more memory.
+ *
+ * Running cache is disabled by default.
+ *
+ * @param[in] enable non-zero to enable caching, 0 to disable it.
+ */
+void sr_cache_running(int enable);
+
+/**
+ * @brief Set options for the sysrepo context.
+ *
+ * Any options set will override the previous ones.
+ *
+ * The context options are not applied immediately, they are only applied when the
+ * current YANG context is altered (e.g. a new module is installed by ::sr_install_modules()).
+ *
+ * @param[in] opts Options to set, it is a bitwise OR of ::sr_context_flag_t flags.
+ */
+void sr_context_options(uint32_t opts);
+
+/**
  * @brief Get the _libyang_ context used by a connection. Can be used in an application for working with data
  * and schemas.
  *
