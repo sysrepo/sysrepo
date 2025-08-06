@@ -213,6 +213,7 @@ struct sr_yang_ctx_s {
 
     sr_shm_t ly_ctx_shm;            /**< Printed libyang context SHM. */
     struct ly_ctx *ly_ctx;          /**< Process-local libyang context. */
+    ATOMIC_T ly_ctx_opts;           /**< Options used for the libyang context. */
 
     sr_shm_t mod_shm;               /**< YANG modules SHM. */
     sr_rwlock_t remap_lock;         /**< Lock for remapping libyang modules SHM. */
@@ -248,6 +249,7 @@ extern struct sr_schema_mount_cache_s sr_schema_mount_cache;
  * @brief Running data cache.
  */
 struct sr_run_cache_s {
+    ATOMIC_T enabled;                   /**< Whether the running data cache is enabled. */
     struct lyd_node *data;              /**< Cached running data of all the modules. */
     struct sr_run_cache_mod_s {
         const struct lys_module *mod;   /**< Cached libyang module. */

@@ -271,7 +271,7 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
         }
         if (!new_ctx) {
             /* failed to get the printed context, create a new non-printed one */
-            if ((err_info = sr_ly_ctx_new(conn, &new_ctx))) {
+            if ((err_info = sr_ly_ctx_new(&new_ctx))) {
                 goto cleanup_unlock;
             }
 

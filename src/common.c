@@ -117,6 +117,7 @@ struct sr_yang_ctx_s sr_yang_ctx = {
     .sm_data_id = 0,
     .ly_ctx_shm = SR_SHM_INITIALIZER,
     .ly_ctx = NULL,
+    .ly_ctx_opts = 0,
     .mod_shm = SR_SHM_INITIALIZER,
     .remap_lock = SR_RWLOCK_INITIALIZER,
     .refcount = 0,
@@ -136,6 +137,7 @@ struct sr_schema_mount_cache_s sr_schema_mount_cache = {
  * @brief Running data cache.
  */
 sr_run_cache_t sr_run_cache = {
+    .enabled = 0,
     .data = NULL,
     .mods = NULL,
     .mod_count = 0,
