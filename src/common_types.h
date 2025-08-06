@@ -117,7 +117,7 @@ typedef struct {
  * @brief Sysrepo connection.
  */
 struct sr_conn_ctx_s {
-    sr_conn_options_t opts;         /**< Connection options. */
+    uint32_t opts;                  /**< Connection options. */
 
     pthread_mutex_t ptr_lock;       /**< Session-shared lock for accessing pointers to sessions. */
     sr_session_ctx_t **sessions;    /**< Array of sessions for this connection. */
@@ -221,7 +221,7 @@ struct sr_subscription_ctx_s {
             uint32_t sub_id;        /**< Unique subscription ID. */
             char *xpath;            /**< Subscription XPath. */
             uint32_t priority;      /**< Subscription priority. */
-            sr_subscr_options_t opts;   /**< Subscription options. */
+            uint32_t sub_opts;      /**< Subscription options. */
             sr_module_change_cb cb; /**< Subscription callback. */
             void *private_data;     /**< Subscription callback private data. */
             sr_session_ctx_t *sess; /**< Subscription session. */
@@ -261,7 +261,7 @@ struct sr_subscription_ctx_s {
             uint32_t sub_id;        /**< Unique subscription ID. */
             char *path;             /**< Subscription path. */
             uint32_t valid_ms;      /**< Cached operational data validity interval in ms. */
-            sr_subscr_options_t opts;   /**< Subscription options. */
+            uint32_t sub_opts;      /**< Subscription options. */
             sr_session_ctx_t *sess; /**< Subscription session. */
             ATOMIC_T suspended;     /**< Whether the subscription is suspended. */
         } *subs;                    /**< Operational subscriptions for each XPath. */

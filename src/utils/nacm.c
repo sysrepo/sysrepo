@@ -1008,7 +1008,7 @@ sr_nacm_get_user(sr_session_ctx_t *session)
     }
 
 API int
-sr_nacm_init(sr_session_ctx_t *session, sr_subscr_options_t opts, sr_subscription_ctx_t **sub)
+sr_nacm_init(sr_session_ctx_t *session, uint32_t opts, sr_subscription_ctx_t **sub)
 {
     sr_error_info_t *err_info = NULL;
     const char *mod_name, *xpath;
@@ -1052,7 +1052,7 @@ cleanup:
 }
 
 API int
-sr_nacm_glob_stats_subscribe(sr_session_ctx_t *session, sr_subscr_options_t opts, sr_subscription_ctx_t **sub)
+sr_nacm_glob_stats_subscribe(sr_session_ctx_t *session, uint32_t opts, sr_subscription_ctx_t **sub)
 {
     sr_error_info_t *err_info = NULL;
     const char *mod_name, *xpath;
