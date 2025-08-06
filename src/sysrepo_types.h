@@ -102,17 +102,16 @@ typedef struct sr_session_ctx_s sr_session_ctx_t;
  * @brief Flags used to override default connection handling by ::sr_connect call.
  */
 typedef enum {
-    SR_CONN_DEFAULT = 0x0,              /**< No special behaviour. */
-    SR_CONN_CACHE_RUNNING = 0x1,        /**< Always cache running datastore data which makes mainly repeated retrieval
-                                             of data much faster. Affects all sessions created on this connection. */
-    SR_CONN_CTX_SET_PRIV_PARSED = 0x2   /**< Use LY_CTX_SET_PRIV_PARSED option for the connection libyang context. */
+    SR_CONN_DEFAULT = 0x0               /**< No special behaviour. */
 } sr_conn_flag_t;
 
 /**
- * @brief Options overriding default connection handling by ::sr_connect call,
- * it is supposed to be bitwise OR-ed value of any ::sr_conn_flag_t flags.
+ * @brief Flags used to override default context behaviour.
  */
-typedef uint32_t sr_conn_options_t;
+typedef enum {
+    SR_CTX_DEFAULT = 0x0,          /**< No special behaviour. */
+    SR_CTX_SET_PRIV_PARSED = 0x1   /**< Use LY_CTX_SET_PRIV_PARSED option for the global libyang context. */
+} sr_context_flag_t;
 
 /**
  * @brief [Datastores](@ref datastores) that sysrepo supports. To change which datastore a session operates on,

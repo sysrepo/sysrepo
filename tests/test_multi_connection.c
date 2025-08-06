@@ -56,8 +56,11 @@ setup_f(void **state)
     st = calloc(1, sizeof *st);
     *state = st;
 
+    /* use running cache */
+    sr_cache_running(1);
+
     /* connection 1 */
-    if (sr_connect(SR_CONN_CACHE_RUNNING, &(st->conn1)) != SR_ERR_OK) {
+    if (sr_connect(0, &(st->conn1)) != SR_ERR_OK) {
         return 1;
     }
     if (sr_session_start(st->conn1, SR_DS_RUNNING, &st->sess1) != SR_ERR_OK) {
@@ -65,7 +68,7 @@ setup_f(void **state)
     }
 
     /* connection 2 */
-    if (sr_connect(SR_CONN_CACHE_RUNNING, &(st->conn2)) != SR_ERR_OK) {
+    if (sr_connect(0, &(st->conn2)) != SR_ERR_OK) {
         return 1;
     }
     if (sr_session_start(st->conn2, SR_DS_RUNNING, &st->sess2) != SR_ERR_OK) {
@@ -73,7 +76,7 @@ setup_f(void **state)
     }
 
     /* connection 3 */
-    if (sr_connect(SR_CONN_CACHE_RUNNING, &(st->conn3)) != SR_ERR_OK) {
+    if (sr_connect(0, &(st->conn3)) != SR_ERR_OK) {
         return 1;
     }
     if (sr_session_start(st->conn3, SR_DS_RUNNING, &st->sess3) != SR_ERR_OK) {
