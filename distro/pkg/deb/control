@@ -14,7 +14,7 @@ Build-Depends: cmake,
 Vcs-Browser: https://github.com/sysrepo/sysrepo/tree/master
 Vcs-Git: https://github.com/sysrepo/sysrepo.git
 
-Package: libsysrepo7
+Package: libsysrepo8
 Depends: adduser,
          coreutils,
          ${misc:Depends},
@@ -31,7 +31,7 @@ Description: YANG-based configuration and operational data store - runtime
 
 Package: libsysrepo-dev
 Depends: libyang-dev,
-         libsysrepo7 (= ${binary:Version}),
+         libsysrepo8 (= ${binary:Version}),
          ${misc:Depends}
 Section: libdevel
 Architecture: any
@@ -45,7 +45,7 @@ Description: YANG-based configuration and operational data store - development f
  for sysrepo.
 
 Package: sysrepo-tools
-Depends: libsysrepo7 (= ${binary:Version}),
+Depends: libsysrepo8 (= ${binary:Version}),
          ${misc:Depends},
          ${shlibs:Depends}
 Section: devel
