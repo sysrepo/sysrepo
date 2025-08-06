@@ -39,7 +39,7 @@
 sr_error_info_t *
 sr_subscr_change_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session_ctx_t *sess, const char *mod_name,
         const char *xpath, sr_module_change_cb change_cb, void *private_data, uint32_t priority,
-        sr_subscr_options_t sub_opts, sr_lock_mode_t has_subs_lock)
+        uint32_t sub_opts, sr_lock_mode_t has_subs_lock)
 {
     sr_error_info_t *err_info = NULL;
     struct modsub_change_s *change_sub = NULL;
@@ -100,7 +100,7 @@ sr_subscr_change_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_sess
         change_sub->subs[change_sub->sub_count].xpath = mem[3];
     }
     change_sub->subs[change_sub->sub_count].priority = priority;
-    change_sub->subs[change_sub->sub_count].opts = sub_opts;
+    change_sub->subs[change_sub->sub_count].sub_opts = sub_opts;
     change_sub->subs[change_sub->sub_count].cb = change_cb;
     change_sub->subs[change_sub->sub_count].private_data = private_data;
     change_sub->subs[change_sub->sub_count].sess = sess;
@@ -306,7 +306,7 @@ sr_subscr_oper_get_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id)
 
 sr_error_info_t *
 sr_subscr_oper_poll_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session_ctx_t *sess, const char *mod_name,
-        const char *path, uint32_t valid_ms, sr_subscr_options_t sub_opts, sr_lock_mode_t has_subs_lock)
+        const char *path, uint32_t valid_ms, uint32_t sub_opts, sr_lock_mode_t has_subs_lock)
 {
     sr_error_info_t *err_info = NULL;
     struct modsub_operpoll_s *oper_poll_sub = NULL;
@@ -361,7 +361,7 @@ sr_subscr_oper_poll_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_s
     SR_CHECK_MEM_GOTO(!mem[3], err_info, error);
     oper_poll_sub->subs[oper_poll_sub->sub_count].path = mem[3];
     oper_poll_sub->subs[oper_poll_sub->sub_count].valid_ms = valid_ms;
-    oper_poll_sub->subs[oper_poll_sub->sub_count].opts = sub_opts;
+    oper_poll_sub->subs[oper_poll_sub->sub_count].sub_opts = sub_opts;
     oper_poll_sub->subs[oper_poll_sub->sub_count].sess = sess;
 
     ++oper_poll_sub->sub_count;

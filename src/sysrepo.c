@@ -74,7 +74,7 @@ static sr_error_info_t *sr_rpc_send_tree_internal(sr_session_ctx_t *session, str
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_conn_new(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
+sr_conn_new(const uint32_t opts, sr_conn_ctx_t **conn_p)
 {
     sr_conn_ctx_t *conn;
     sr_error_info_t *err_info = NULL;
@@ -206,7 +206,7 @@ sr_conn_free(sr_conn_ctx_t *conn)
 }
 
 API int
-sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
+sr_connect(const uint32_t opts, sr_conn_ctx_t **conn_p)
 {
     sr_error_info_t *err_info = NULL;
     sr_conn_ctx_t *conn = NULL;
@@ -249,7 +249,7 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
             goto cleanup_unlock;
         }
 
-        if ((err_info = sr_ly_ctx_new(conn, &sr_yang_ctx.ly_ctx))) {
+        if ((err_info = sr_ly_ctx_new(&sr_yang_ctx.ly_ctx))) {
             goto cleanup_unlock;
         }
     }
@@ -1468,7 +1468,7 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
     SR_LYCC_UPGRADE_DATA_INIT(&lycc_upgrade_data, &data_info, &sr_mods, &sr_mods_old, &sr_del_mods);
 
     /* create new temporary context */
-    if ((err_info = sr_ly_ctx_new(conn, &new_ctx))) {
+    if ((err_info = sr_ly_ctx_new(&new_ctx))) {
         goto cleanup;
     }
 
@@ -1872,7 +1872,7 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
     }
 
     /* create new temporary context */
-    if ((err_info = sr_ly_ctx_new(conn, &new_ctx))) {
+    if ((err_info = sr_ly_ctx_new(&new_ctx))) {
         goto cleanup;
     }
 
@@ -2124,7 +2124,7 @@ sr_update_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *se
     SR_LYCC_UPGRADE_DATA_INIT(&lycc_upgrade_data, &data_info, &sr_mods, &sr_mods_old, NULL);
 
     /* create new temporary context */
-    if ((err_info = sr_ly_ctx_new(conn, &new_ctx))) {
+    if ((err_info = sr_ly_ctx_new(&new_ctx))) {
         goto cleanup;
     }
 
@@ -2700,7 +2700,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     SR_LYCC_UPGRADE_DATA_INIT(&lycc_upgrade_data, &data_info, &sr_mods, &sr_mods_old, NULL);
 
     /* create a temporary context */
-    if ((err_info = sr_ly_ctx_new(conn, &new_ctx))) {
+    if ((err_info = sr_ly_ctx_new(&new_ctx))) {
         goto cleanup;
     }
 
@@ -3062,7 +3062,7 @@ sr_acquire_data(sr_conn_ctx_t *conn, struct lyd_node *tree, sr_data_t **data)
 }
 
 API int
-sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, const sr_get_options_t opts,
+sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, const uint32_t opts,
         sr_val_t **values, size_t *value_cnt)
 {
     sr_error_info_t *err_info = NULL;
@@ -3353,7 +3353,7 @@ sr_lyht_get_data_dup_equal_cb(void *val1_p, void *val2_p, ly_bool UNUSED(mod), v
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_get_data_dup(sr_session_ctx_t *session, const struct ly_set *set, uint32_t max_depth, const sr_get_options_t opts,
+sr_get_data_dup(sr_session_ctx_t *session, const struct ly_set *set, uint32_t max_depth, const uint32_t opts,
         struct lyd_node **tree)
 {
     sr_error_info_t *err_info = NULL;
@@ -3463,7 +3463,7 @@ sr_lyht_get_data_prune_equal_cb(void *val1_p, void *val2_p, ly_bool UNUSED(mod),
  */
 static sr_error_info_t *
 sr_get_data_prune(sr_session_ctx_t *session, struct lyd_node **first, const struct ly_set *set, uint32_t max_depth,
-        const sr_get_options_t opts)
+        const uint32_t opts)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
@@ -3569,7 +3569,7 @@ cleanup:
 
 API int
 sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, uint32_t timeout_ms,
-        const sr_get_options_t opts, sr_data_t **data)
+        const uint32_t opts, sr_data_t **data)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_s mod_info;
@@ -3822,7 +3822,7 @@ sr_free_values(sr_val_t *values, size_t count)
 }
 
 API int
-sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, const sr_edit_options_t opts)
+sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, const uint32_t opts)
 {
     sr_error_info_t *err_info = NULL;
     char str[22], *str_val;
@@ -3850,7 +3850,7 @@ sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, 
 
 API int
 sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *value, const char *origin,
-        const sr_edit_options_t opts)
+        const uint32_t opts)
 {
     sr_error_info_t *err_info = NULL;
     char *pref_origin = NULL;
@@ -3917,7 +3917,7 @@ cleanup:
 }
 
 API int
-sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_options_t opts)
+sr_delete_item(sr_session_ctx_t *session, const char *path, const uint32_t opts)
 {
     sr_error_info_t *err_info = NULL;
     const char *op;
@@ -4015,7 +4015,7 @@ cleanup:
 }
 
 API int
-sr_oper_delete_item_str(sr_session_ctx_t *session, const char *path, const char *UNUSED(value), const sr_edit_options_t opts)
+sr_oper_delete_item_str(sr_session_ctx_t *session, const char *path, const char *UNUSED(value), const uint32_t opts)
 {
     return sr_delete_item(session, path, opts);
 }
@@ -4082,7 +4082,7 @@ cleanup:
 }
 
 API int
-sr_delete_discard_items(sr_session_ctx_t *session, const char *xpath, const sr_edit_options_t opts)
+sr_delete_discard_items(sr_session_ctx_t *session, const char *xpath, const uint32_t opts)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *node = NULL;
@@ -4164,7 +4164,7 @@ cleanup:
 
 API int
 sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_position_t position, const char *list_keys,
-        const char *leaflist_value, const char *UNUSED(origin), const sr_edit_options_t opts)
+        const char *leaflist_value, const char *UNUSED(origin), const uint32_t opts)
 {
     sr_error_info_t *err_info = NULL;
 
@@ -4488,7 +4488,7 @@ sr_schema_mount_data_update(sr_session_ctx_t *session)
     SR_LYCC_UPGRADE_DATA_INIT(&lycc_upgrade_data, &data_info, &sr_mods, &sr_mods, NULL);
 
     /* create a new temporary context */
-    if ((err_info = sr_ly_ctx_new(session->conn, &new_ctx))) {
+    if ((err_info = sr_ly_ctx_new(&new_ctx))) {
         goto cleanup;
     }
 
@@ -6518,7 +6518,7 @@ cleanup:
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_subscr_new(sr_conn_ctx_t *conn, sr_subscr_options_t opts, sr_subscription_ctx_t **subs_p)
+sr_subscr_new(sr_conn_ctx_t *conn, uint32_t opts, sr_subscription_ctx_t **subs_p)
 {
     sr_error_info_t *err_info = NULL;
     char *path = NULL;
@@ -6588,7 +6588,7 @@ error:
 
 API int
 sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath,
-        sr_module_change_cb callback, void *private_data, uint32_t priority, sr_subscr_options_t opts,
+        sr_module_change_cb callback, void *private_data, uint32_t priority, uint32_t opts,
         sr_subscription_ctx_t **subscription)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
@@ -6596,7 +6596,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     struct sr_mod_info_s mod_info;
     sr_conn_ctx_t *conn;
     uint32_t sub_id;
-    sr_subscr_options_t sub_opts;
+    uint32_t sub_opts;
     sr_mod_t *shm_mod;
     uint16_t config_flag;
     sr_lock_mode_t change_sub_mode = SR_LOCK_NONE, subs_mode = SR_LOCK_NONE;
@@ -7215,7 +7215,7 @@ sr_get_change_diff(sr_session_ctx_t *session)
  */
 static int
 _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callback, sr_rpc_tree_cb tree_callback,
-        void *private_data, uint32_t priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
+        void *private_data, uint32_t priority, uint32_t opts, sr_subscription_ctx_t **subscription)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     char *module_name = NULL, *path = NULL;
@@ -7364,14 +7364,14 @@ cleanup:
 
 API int
 sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callback, void *private_data,
-        uint32_t priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
+        uint32_t priority, uint32_t opts, sr_subscription_ctx_t **subscription)
 {
     return _sr_rpc_subscribe(session, xpath, callback, NULL, private_data, priority, opts, subscription);
 }
 
 API int
 sr_rpc_subscribe_tree(sr_session_ctx_t *session, const char *xpath, sr_rpc_tree_cb callback, void *private_data,
-        uint32_t priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
+        uint32_t priority, uint32_t opts, sr_subscription_ctx_t **subscription)
 {
     return _sr_rpc_subscribe(session, xpath, NULL, callback, private_data, priority, opts, subscription);
 }
@@ -7926,7 +7926,7 @@ cleanup:
 static int
 _sr_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const char *xpath, const struct timespec *start_time,
         const struct timespec *stop_time, sr_event_notif_cb callback, sr_event_notif_tree_cb tree_callback,
-        void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
+        void *private_data, uint32_t opts, sr_subscription_ctx_t **subscription)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     struct timespec listen_since_mono, listen_since_real, cur_ts;
@@ -8052,7 +8052,7 @@ cleanup:
 
 API int
 sr_notif_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath, const struct timespec *start_time,
-        const struct timespec *stop_time, sr_event_notif_cb callback, void *private_data, sr_subscr_options_t opts,
+        const struct timespec *stop_time, sr_event_notif_cb callback, void *private_data, uint32_t opts,
         sr_subscription_ctx_t **subscription)
 {
     return _sr_notif_subscribe(session, module_name, xpath, start_time, stop_time, callback, NULL, private_data, opts,
@@ -8062,7 +8062,7 @@ sr_notif_subscribe(sr_session_ctx_t *session, const char *module_name, const cha
 API int
 sr_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_name, const char *xpath,
         const struct timespec *start_time, const struct timespec *stop_time, sr_event_notif_tree_cb callback,
-        void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
+        void *private_data, uint32_t opts, sr_subscription_ctx_t **subscription)
 {
     return _sr_notif_subscribe(session, module_name, xpath, start_time, stop_time, NULL, callback, private_data, opts,
             subscription);
@@ -8455,14 +8455,14 @@ cleanup_unlock:
 
 API int
 sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const char *path, sr_oper_get_items_cb callback,
-        void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
+        void *private_data, uint32_t opts, sr_subscription_ctx_t **subscription)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     sr_conn_ctx_t *conn;
     const struct lys_module *ly_mod;
     sr_mod_oper_get_sub_type_t sub_type = 0;
     uint32_t sub_id;
-    sr_subscr_options_t sub_opts;
+    uint32_t sub_opts;
     sr_mod_t *shm_mod;
     uint32_t prio = 0;
 
@@ -8585,13 +8585,13 @@ cleanup:
 
 API int
 sr_oper_poll_subscribe(sr_session_ctx_t *session, const char *module_name, const char *path, uint32_t valid_ms,
-        sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
+        uint32_t opts, sr_subscription_ctx_t **subscription)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     sr_conn_ctx_t *conn;
     const struct lys_module *ly_mod;
     uint32_t sub_id;
-    sr_subscr_options_t sub_opts;
+    uint32_t sub_opts;
     sr_mod_t *shm_mod;
 
     SR_CHECK_ARG_APIRET(!session || SR_IS_EVENT_SESS(session) || !path || !valid_ms || !subscription, session, err_info);

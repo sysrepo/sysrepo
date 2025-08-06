@@ -324,12 +324,6 @@ typedef enum {
                                           to retrieve from subscribers and similar optimization cases. */
 } sr_get_flag_t;
 
-/**
- * @brief Options overriding default get handling by ::sr_get_data call,
- * it is supposed to be a bitmask ::sr_get_oper_flag_t and ::sr_get_flag_t flags.
- */
-typedef uint32_t sr_get_options_t;
-
 /** @} getdata */
 
 /**
@@ -352,12 +346,6 @@ typedef enum {
                                      are set and an error is observed. This flag can in those cases be used. Also, if an error
                                      is returned the previous edit is always left untouched. */
 } sr_edit_flag_t;
-
-/**
- * @brief Options overriding default behavior of data manipulation calls,
- * it is supposed to be bitwise OR-ed value of any ::sr_edit_flag_t flags.
- */
-typedef uint32_t sr_edit_options_t;
 
 /**
  * @brief Options for specifying move direction of ::sr_move_item call.
@@ -474,12 +462,6 @@ typedef enum {
  * it is supposed to be released by the caller using ::sr_unsubscribe call.
  */
 typedef struct sr_subscription_ctx_s sr_subscription_ctx_t;
-
-/**
- * @brief Options overriding default behavior of subscriptions,
- * it is supposed to be a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
- */
-typedef uint32_t sr_subscr_options_t;
 
 /** @} subs */
 

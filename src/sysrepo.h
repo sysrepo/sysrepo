@@ -121,7 +121,7 @@ void sr_log_set_cb(sr_log_cb log_callback);
  * @param[out] conn Created connection.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn);
+int sr_connect(const uint32_t opts, sr_conn_ctx_t **conn);
 
 /**
  * @brief Disconnect from the sysrepo datastore.
@@ -800,7 +800,7 @@ int sr_get_item(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms
  * @param[out] value_cnt Number of returned elements in the values array.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, const sr_get_options_t opts,
+int sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, const uint32_t opts,
         sr_val_t **values, size_t *value_cnt);
 
 /**
@@ -874,7 +874,7 @@ int sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout
  * @return Error code (::SR_ERR_OK on success, ::SR_ERR_NOT_FOUND if xpath is invalid - no nodes will ever match it).
  */
 int sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, uint32_t timeout_ms,
-        const sr_get_options_t opts, sr_data_t **data);
+        const uint32_t opts, sr_data_t **data);
 
 /**
  * @brief Retrieve a single value matching the provided XPath.
@@ -956,7 +956,7 @@ void sr_free_values(sr_val_t *values, size_t count);
  * @param[in] opts Options overriding default behavior of this call.
  * @return Error code (::SR_ERR_OK on success, ::SR_ERR_OPERATION_FAILED if the whole edit was discarded).
  */
-int sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, const sr_edit_options_t opts);
+int sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, const uint32_t opts);
 
 /**
  * @brief Prepare to set (create) the value of a leaf, leaf-list, list, or presence container.
@@ -974,7 +974,7 @@ int sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *val
  * @return Error code (::SR_ERR_OK on success, ::SR_ERR_OPERATION_FAILED if the whole edit was discarded).
  */
 int sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *value, const char *origin,
-        const sr_edit_options_t opts);
+        const uint32_t opts);
 
 /**
  * @brief Prepare to delete the nodes matching the specified xpath. These changes are applied only
@@ -995,12 +995,12 @@ int sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *val
  * @param[in] opts Options overriding default behavior of this call.
  * @return Error code (::SR_ERR_OK on success, ::SR_ERR_OPERATION_FAILED if the whole edit was discarded).
  */
-int sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_options_t opts);
+int sr_delete_item(sr_session_ctx_t *session, const char *path, const uint32_t opts);
 
 /**
  * @brief Deprecated, not supported.
  */
-int sr_oper_delete_item_str(sr_session_ctx_t *session, const char *path, const char *value, const sr_edit_options_t opts);
+int sr_oper_delete_item_str(sr_session_ctx_t *session, const char *path, const char *value, const uint32_t opts);
 
 /**
  * @brief Prepare to discard nodes matching the specified xpath in the operational datastore before applying
@@ -1034,7 +1034,7 @@ int sr_discard_items(sr_session_ctx_t *session, const char *xpath);
  * @param[in] opts Options overriding the default behavior of this call.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_delete_discard_items(sr_session_ctx_t *session, const char *xpath, const sr_edit_options_t opts);
+int sr_delete_discard_items(sr_session_ctx_t *session, const char *xpath, const uint32_t opts);
 
 /**
  * @brief Prepare to move/create the instance of an user-ordered list or leaf-list to the specified position.
@@ -1063,7 +1063,7 @@ int sr_delete_discard_items(sr_session_ctx_t *session, const char *xpath, const 
  * @return Error code (::SR_ERR_OK on success, ::SR_ERR_OPERATION_FAILED if the whole edit was discarded).
  */
 int sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_position_t position, const char *list_keys,
-        const char *leaflist_value, const char *origin, const sr_edit_options_t opts);
+        const char *leaflist_value, const char *origin, const uint32_t opts);
 
 /**
  * @brief Provide a prepared edit data tree to be applied.
@@ -1485,7 +1485,7 @@ int sr_module_change_get_order(sr_conn_ctx_t *conn, const char *module_name, sr_
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath,
-        sr_module_change_cb callback, void *private_data, uint32_t priority, sr_subscr_options_t opts,
+        sr_module_change_cb callback, void *private_data, uint32_t priority, uint32_t opts,
         sr_subscription_ctx_t **subscription);
 
 /**
@@ -1635,7 +1635,7 @@ const struct lyd_node *sr_get_change_diff(sr_session_ctx_t *session);
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callback, void *private_data,
-        uint32_t priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
+        uint32_t priority, uint32_t opts, sr_subscription_ctx_t **subscription);
 
 /**
  * @brief Subscribe for the delivery of an RPC/action. Data are represented as _libyang_ subtrees.
@@ -1653,7 +1653,7 @@ int sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb cal
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_rpc_subscribe_tree(sr_session_ctx_t *session, const char *xpath, sr_rpc_tree_cb callback,
-        void *private_data, uint32_t priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
+        void *private_data, uint32_t priority, uint32_t opts, sr_subscription_ctx_t **subscription);
 
 /**
  * @brief Send an RPC/action and wait for the result. Data are represented as ::sr_val_t structures.
@@ -1722,7 +1722,7 @@ int sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t
  */
 int sr_notif_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath,
         const struct timespec *start_time, const struct timespec *stop_time, sr_event_notif_cb callback,
-        void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
+        void *private_data, uint32_t opts, sr_subscription_ctx_t **subscription);
 
 /**
  * @brief Subscribes for the delivery of a notification(s). Data are represented as _libyang_ subtrees.
@@ -1743,7 +1743,7 @@ int sr_notif_subscribe(sr_session_ctx_t *session, const char *module_name, const
  */
 int sr_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_name, const char *xpath,
         const struct timespec *start_time, const struct timespec *stop_time, sr_event_notif_tree_cb callback,
-        void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
+        void *private_data, uint32_t opts, sr_subscription_ctx_t **subscription);
 
 /**
  * @brief Send a notification. Data are represented as ::sr_val_t structures. In case there are
@@ -1864,7 +1864,7 @@ int sr_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uint32_t 
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const char *path,
-        sr_oper_get_items_cb callback, void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
+        sr_oper_get_items_cb callback, void *private_data, uint32_t opts, sr_subscription_ctx_t **subscription);
 
 /**
  * @brief Start periodic retrieval and caching of operational data at the given path.
@@ -1899,7 +1899,7 @@ int sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, co
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_oper_poll_subscribe(sr_session_ctx_t *session, const char *module_name, const char *path, uint32_t valid_ms,
-        sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
+        uint32_t opts, sr_subscription_ctx_t **subscription);
 
 /** @} oper_subs */
 
