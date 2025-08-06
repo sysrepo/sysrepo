@@ -102,7 +102,7 @@ rm -rf /dev/shm/srsub_*
 %license LICENSE
 %doc README.md
 %{_sysusersdir}/sysrepo.conf
-%{_libdir}/libsysrepo.so.7*
+%{_libdir}/libsysrepo.so.*
 %{_datadir}/yang/modules/sysrepo/*.yang
 %dir %{_datadir}/yang/modules/sysrepo/
 %dir %{_sysconfdir}/sysrepo
