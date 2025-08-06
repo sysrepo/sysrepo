@@ -359,7 +359,7 @@ op_export(sr_session_ctx_t *sess, const char *file_path, const char *module_name
     FILE *file = NULL;
     char *str;
     int r;
-    sr_get_options_t opts = SR_OPER_DEFAULT;
+    uint32_t opts = SR_OPER_DEFAULT;
 
     if ((sr_session_get_ds(sess) == SR_DS_OPERATIONAL) && no_subs) {
         opts |= SR_OPER_NO_SUBS;

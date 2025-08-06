@@ -869,7 +869,7 @@ sr_shmsub_notify_write_event(sr_sub_shm_t *sub_shm, sr_cid_t orig_cid, uint32_t 
  * @return 0 if not, non-zero is it is.
  */
 static int
-sr_shmsub_change_listen_event_is_valid(sr_sub_event_t ev, sr_subscr_options_t sub_opts)
+sr_shmsub_change_listen_event_is_valid(sr_sub_event_t ev, uint32_t sub_opts)
 {
     sr_error_info_t *err_info = NULL;
 
@@ -3316,7 +3316,7 @@ sr_shmsub_change_listen_is_new_event(sr_sub_shm_t *sub_shm, struct modsub_change
     }
 
     /* subscription options and event */
-    if (!sr_shmsub_change_listen_event_is_valid(event, sub->opts)) {
+    if (!sr_shmsub_change_listen_event_is_valid(event, sub->sub_opts)) {
         return 0;
     }
 
@@ -3532,7 +3532,7 @@ sr_shmsub_change_listen_relock(sr_sub_shm_t *sub_shm, sr_lock_mode_t mode, struc
 
         /* self-generate abort event in case the change was applied successfully */
         if ((sub_info->event == SR_SUB_EV_CHANGE) && (err_code == SR_ERR_OK) && filter_valid &&
-                sr_shmsub_change_listen_event_is_valid(SR_SUB_EV_ABORT, sub->opts)) {
+                sr_shmsub_change_listen_event_is_valid(SR_SUB_EV_ABORT, sub->sub_opts)) {
             /* update session */
             ev_sess->ev = SR_SUB_EV_ABORT;
             if ((*err_info = sr_lyd_diff_reverse_all(ev_sess->dt[ev_sess->ds].diff, &abort_diff))) {
@@ -3657,7 +3657,7 @@ process_event:
         if (filter_valid) {
             ret = change_sub->cb(ev_sess, change_sub->sub_id, change_subs->module_name, change_sub->xpath,
                     sr_ev2api(sub_info.event), sub_info.operation_id, change_sub->private_data);
-        } else if (!(change_sub->opts & SR_SUBSCR_FILTER_ORIG)) {
+        } else if (!(change_sub->sub_opts & SR_SUBSCR_FILTER_ORIG)) {
             /* filtered out (not by originator) */
             ATOMIC_INC_RELAXED(change_sub->filtered_out);
         }
@@ -3669,7 +3669,7 @@ process_event:
         }
         sub_lock = SR_LOCK_READ;
 
-        if (!filter_valid && (change_sub->opts & SR_SUBSCR_FILTER_ORIG)) {
+        if (!filter_valid && (change_sub->sub_opts & SR_SUBSCR_FILTER_ORIG)) {
             /* not a valid event for this subscription */
             continue;
         }
@@ -4033,7 +4033,7 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
     struct modsub_operpollsub_s *oper_poll_sub;
     struct timespec invalid_in;
     sr_session_ctx_t *ev_sess = NULL;
-    sr_get_options_t get_opts;
+    uint32_t get_opts;
 
     /* find LY module */
     ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, oper_poll_subs->module_name);
@@ -4111,7 +4111,7 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
         }
 
         /* generate diff if supported */
-        if (oper_poll_sub->opts & SR_SUBSCR_OPER_POLL_DIFF) {
+        if (oper_poll_sub->sub_opts & SR_SUBSCR_OPER_POLL_DIFF) {
             /* prepare mod info */
             mod_info.data = cache->data;
             if ((err_info = sr_lyd_diff_siblings(cache->data, data ? data->tree : NULL, LYD_DIFF_DEFAULTS,
