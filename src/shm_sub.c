@@ -3006,6 +3006,7 @@ sr_shmsub_rpc_notify_abort(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count
     if ((err_info = sr_shmsub_open_map(lyd_owner_module(input)->name, "rpc", sr_str_hash(path, 0), &shm_sub))) {
         goto cleanup;
     }
+    assert(shm_sub.addr);
     sub_shm = (sr_sub_shm_t *)shm_sub.addr;
 
     /* SUB WRITE LOCK */
