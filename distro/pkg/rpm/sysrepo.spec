@@ -106,6 +106,7 @@ rm -rf /dev/shm/srsub_*
 %{_datadir}/yang/modules/sysrepo/*.yang
 %dir %{_datadir}/yang/modules/sysrepo/
 %dir %{_sysconfdir}/sysrepo
+%dir %{_libdir}/sysrepo
 %dir %{_libdir}/sysrepo/plugins
 %attr(0770,root,sysrepo) %{_sysconfdir}/sysrepo
 
@@ -121,6 +122,7 @@ rm -rf /dev/shm/srsub_*
 %{_sysusersdir}/sysrepo-plugind.conf
 %{_bindir}/sysrepo-plugind
 %{_datadir}/man/man8/sysrepo-plugind.8.gz
+%dir %{_libdir}/sysrepo-plugind
 %dir %{_libdir}/sysrepo-plugind/plugins
 
 %files tools
