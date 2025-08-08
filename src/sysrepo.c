@@ -404,21 +404,19 @@ sr_cache_running(int enable)
 {
     /* normalize the value */
     enable = !!enable;
+
     ATOMIC_STORE_RELAXED(sr_run_cache.enabled, enable);
 }
 
-API void
+API uint32_t
 sr_context_options(uint32_t opts)
 {
-    uint32_t new_opts = 0;
-
-    /* only priv parsed is supported for now */
-    if (opts & SR_CTX_SET_PRIV_PARSED) {
-        new_opts |= LY_CTX_SET_PRIV_PARSED;
-    }
+    uint32_t cur_opts = ATOMIC_LOAD_RELAXED(sr_yang_ctx.sr_opts);
 
     /* override the current options */
-    ATOMIC_STORE_RELAXED(sr_yang_ctx.ly_ctx_opts, new_opts);
+    ATOMIC_STORE_RELAXED(sr_yang_ctx.sr_opts, opts);
+
+    return cur_opts;
 }
 
 API const struct ly_ctx *
