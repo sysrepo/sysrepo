@@ -156,9 +156,10 @@ void sr_cache_running(int enable);
  * The context options are not applied immediately, they are only applied when the
  * current YANG context is altered (e.g. a new module is installed by ::sr_install_modules()).
  *
- * @param[in] opts Options to set, it is a bitwise OR of ::sr_context_flag_t flags.
+ * @param[in] opts New options to use, it is a bitwise OR of ::sr_context_flag_t flags.
+ * @return Previous options.
  */
-void sr_context_options(uint32_t opts);
+uint32_t sr_context_options(uint32_t opts);
 
 /**
  * @brief Get the _libyang_ context used by a connection. Can be used in an application for working with data
