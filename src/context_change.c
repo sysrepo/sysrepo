@@ -1290,17 +1290,20 @@ sr_lycc_context_upgrade_prep_finish(sr_conn_ctx_t *conn, struct ly_ctx *new_ctx,
 }
 
 sr_error_info_t *
-sr_lycc_store_context(sr_shm_t *shm, const struct ly_ctx *ctx)
+sr_lycc_store_context(sr_shm_t *shm, struct ly_ctx *ctx)
 {
     sr_error_info_t *err_info = NULL;
     int ctx_size, fd = -1;
     void *mem = NULL, *mem_end;
     char *shm_name = NULL;
 
-    if (!SR_PRINTED_LYCTX_ADDRESS) {
+    if (!SR_PRINTED_LYCTX_ADDRESS || (ATOMIC_LOAD_RELAXED(sr_yang_ctx.sr_opts) & SR_CTX_NO_PRINTED)) {
         /* printed context not supported */
         return NULL;
     }
+
+    /* free the parsed modules */
+    ly_ctx_free_parsed(ctx);
 
     if ((err_info = sr_path_ctx_shm(&shm_name))) {
         goto cleanup;
@@ -1371,7 +1374,7 @@ sr_lycc_load_context(sr_shm_t *shm, struct ly_ctx **ctx)
 
     *ctx = NULL;
 
-    if (!SR_PRINTED_LYCTX_ADDRESS) {
+    if (!SR_PRINTED_LYCTX_ADDRESS || (ATOMIC_LOAD_RELAXED(sr_yang_ctx.sr_opts) & SR_CTX_NO_PRINTED)) {
         /* printed context not supported */
         return NULL;
     }
