@@ -111,7 +111,9 @@ sr_ly_ctx_new(struct ly_ctx **ly_ctx)
             LY_CTX_EXPLICIT_COMPILE | LY_CTX_STATIC_PLUGINS_ONLY | LY_CTX_LYB_HASHES;
 
     /* add the configured options */
-    ctx_opts |= ATOMIC_LOAD_RELAXED(sr_yang_ctx.ly_ctx_opts);
+    if (ATOMIC_LOAD_RELAXED(sr_yang_ctx.sr_opts) & SR_CTX_SET_PRIV_PARSED) {
+        ctx_opts |= LY_CTX_SET_PRIV_PARSED;
+    }
 
     /* create new context */
     ly_temp_log_options(&temp_lo);

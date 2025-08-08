@@ -213,7 +213,7 @@ struct sr_yang_ctx_s {
 
     sr_shm_t ly_ctx_shm;            /**< Printed libyang context SHM. */
     struct ly_ctx *ly_ctx;          /**< Process-local libyang context. */
-    ATOMIC_T ly_ctx_opts;           /**< Options used for the libyang context. */
+    ATOMIC_T sr_opts;               /**< Context sysrepo options used for the libyang context. */
 
     sr_shm_t mod_shm;               /**< YANG modules SHM. */
     sr_rwlock_t remap_lock;         /**< Lock for remapping libyang modules SHM. */
