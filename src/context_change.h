@@ -257,10 +257,10 @@ sr_error_info_t *sr_lycc_context_upgrade_prep_finish(sr_conn_ctx_t *conn, struct
  * Does nothing if printed context is disabled.
  *
  * @param[in,out] shm Shared memory to use. Any existing mapping is removed.
- * @param[in] ctx Libyang context to store.
+ * @param[in,out] ctx Libyang context to store, parsed modules are freed first.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lycc_store_context(sr_shm_t *shm, const struct ly_ctx *ctx);
+sr_error_info_t *sr_lycc_store_context(sr_shm_t *shm, struct ly_ctx *ctx);
 
 /**
  * @brief Load a libyang context from shared memory.

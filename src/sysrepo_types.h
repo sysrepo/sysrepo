@@ -109,8 +109,11 @@ typedef enum {
  * @brief Flags used to override default context behaviour.
  */
 typedef enum {
-    SR_CTX_DEFAULT = 0x0,          /**< No special behaviour. */
-    SR_CTX_SET_PRIV_PARSED = 0x1   /**< Use LY_CTX_SET_PRIV_PARSED option for the global libyang context. */
+    SR_CTX_DEFAULT = 0x0,           /**< No special behaviour. */
+    SR_CTX_NO_PRINTED = 0x1,        /**< Do not print nor use printed context even if available. Can be used to keep
+                                         parsed modules in the context. */
+    SR_CTX_SET_PRIV_PARSED = 0x2    /**< Use LY_CTX_SET_PRIV_PARSED libyang option for the context. Affects only
+                                         non-printed context. */
 } sr_context_flag_t;
 
 /**
