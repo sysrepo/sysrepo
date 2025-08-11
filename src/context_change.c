@@ -262,6 +262,8 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
         /* destroy the old context, because if it was printed then another process could have
          * been the one that printed it = this process did not destroy the old context while printing the new one,
          * so it needs to be done now to avoid context data collision, see ::sr_lycc_store_context() */
+        sr_yang_ctx.content_id = 0;
+        sr_yang_ctx.sm_data_id = 0;
         ly_ctx_destroy(sr_yang_ctx.ly_ctx);
         sr_yang_ctx.ly_ctx = NULL;
 
@@ -330,7 +332,6 @@ sr_lycc_relock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, const char *func)
     if ((err_info = sr_rwrelock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, mode, conn->cid, func, NULL, NULL))) {
         return err_info;
     }
-    assert(main_shm->content_id == sr_yang_ctx.content_id);
 
     return NULL;
 }
@@ -1348,6 +1349,8 @@ sr_lycc_store_context(sr_shm_t *shm, struct ly_ctx *ctx)
 
     /* destroy the old printed context, it is now unmapped anyways,
      * doing it now avoids a context data collision with the new context */
+    sr_yang_ctx.content_id = 0;
+    sr_yang_ctx.sm_data_id = 0;
     ly_ctx_destroy(sr_yang_ctx.ly_ctx);
     sr_yang_ctx.ly_ctx = NULL;
 
