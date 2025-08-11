@@ -335,27 +335,11 @@ srctl_list_collect(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct list
     char *owner, *group;
     const char *str, *feat;
     int ret = SR_ERR_OK, enabled;
-    uint32_t i;
+    uint32_t idx = 0;
     LY_ARRAY_COUNT_TYPE u;
-    sr_data_t *sr_mods = NULL;
-    struct lyd_node *sr_mod = NULL;
-    struct ly_set *en_featset;
 
-    /* get sysrepo modules */
-    ret = sr_get_module_info(conn, &sr_mods);
-    if (ret != SR_ERR_OK) {
-        return ret;
-    }
-
-    LY_LIST_FOR(lyd_child(sr_mods->tree), sr_mod) {
-        if (strcmp(LYD_NAME(sr_mod), "module")) {
-            /* not a module, skip */
-            continue;
-        }
-
-        ly_mod = ly_ctx_get_module_implemented(ly_ctx, lyd_get_value(lyd_child(sr_mod)));
-        if (!ly_mod) {
-            /* should not happen, but just in case */
+    while ((ly_mod = ly_ctx_get_module_iter(ly_ctx, &idx))) {
+        if (!strcmp(ly_mod->name, "sysrepo")) {
             continue;
         }
 
@@ -374,30 +358,26 @@ srctl_list_collect(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct list
         cur_item->revision = ly_mod->revision ? strdup(ly_mod->revision) : strdup("");
 
         /* replay-support */
+        enabled = 0;
         if (ly_mod->implemented) {
             ret = sr_get_module_replay_support(conn, ly_mod->name, NULL, &enabled);
             if (ret != SR_ERR_OK) {
                 goto cleanup;
             }
-            cur_item->replay = enabled;
-        } else {
-            cur_item->replay = 0;
         }
+        cur_item->replay = enabled;
 
-        /* get enabled features */
-        ret = lyd_find_xpath(sr_mod, "enabled-feature", &en_featset);
-        if (ret) {
-            goto cleanup;
-        }
-        for (i = 0; i < en_featset->count; i++) {
-            feat = lyd_get_value(en_featset->dnodes[i]);
-            cur_item->features = realloc(cur_item->features, strlen(cur_item->features) + strlen(feat) + 2);
-            if (cur_item->features[0]) {
-                strcat(cur_item->features, " ");
+        /* collect enabled features */
+        if (ly_mod->implemented) {
+            LY_ARRAY_FOR(ly_mod->compiled->features, u) {
+                feat = ly_mod->compiled->features[u];
+                cur_item->features = realloc(cur_item->features, strlen(cur_item->features) + strlen(feat) + 2);
+                if (cur_item->features[0]) {
+                    strcat(cur_item->features, " ");
+                }
+                strcat(cur_item->features, feat);
             }
-            strcat(cur_item->features, feat);
         }
-        ly_set_free(en_featset, NULL);
 
         if (ly_mod->implemented) {
             /* conformance */
@@ -451,7 +431,6 @@ srctl_list_collect(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct list
     }
 
 cleanup:
-    sr_release_data(sr_mods);
     return ret;
 }
 
