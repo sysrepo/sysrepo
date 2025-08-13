@@ -903,6 +903,8 @@ cleanup:
 /**
  * @brief Store (print) sysrepo module data.
  *
+ * Thread-safe without any locks, the final rename() command is atomic.
+ *
  * @param[in,out] sr_mods Data to store, are validated so could (in theory) be modified.
  * @return err_info, NULL on success.
  */
@@ -991,7 +993,7 @@ sr_lydmods_create(sr_conn_ctx_t *conn, struct ly_ctx *ly_ctx, struct lyd_node **
     struct lyd_node *sr_mods = NULL, *init_data = NULL;
     sr_int_install_mod_t *new_mods = NULL;
     uint32_t i, new_mod_count = 0;
-    struct sr_data_update_s data_info = {0};
+    struct sr_lycc_ds_data_s data_info = {0};
     const char *mod_origin;
 
 #define SR_INSTALL_INT_MOD(ctx, yang_mod, dep, new_mods, new_mod_count) \
@@ -1088,7 +1090,7 @@ sr_lydmods_create(sr_conn_ctx_t *conn, struct ly_ctx *ly_ctx, struct lyd_node **
     }
 
     /* store initial or implicit data */
-    if ((err_info = sr_lycc_store_data_if_differ(conn, ly_ctx, sr_mods, &data_info))) {
+    if ((err_info = sr_lycc_store_ds_data_if_differ(conn, ly_ctx, sr_mods, &data_info))) {
         goto cleanup;
     }
 
@@ -1105,7 +1107,7 @@ sr_lydmods_create(sr_conn_ctx_t *conn, struct ly_ctx *ly_ctx, struct lyd_node **
 cleanup:
     free(new_mods);
     lyd_free_tree(init_data);
-    sr_lycc_update_data_clear(&data_info);
+    sr_lycc_ds_data_clear(&data_info);
     if (err_info) {
         lyd_free_all(sr_mods);
     } else {
@@ -1263,19 +1265,23 @@ cleanup:
 
 sr_error_info_t *
 sr_lydmods_change_del_module(const struct ly_ctx *ly_ctx, const struct ly_ctx *new_ctx, const struct ly_set *mod_set,
-        sr_conn_ctx_t *conn, struct lyd_node **sr_del_mods, struct lyd_node **sr_mods)
+        sr_conn_ctx_t *conn, struct lyd_node **sr_del_mods_p, struct lyd_node **sr_mods_p)
 {
     sr_error_info_t *err_info = NULL;
     struct lys_module *ly_mod;
-    struct lyd_node *sr_mod;
+    struct lyd_node *sr_mod, *sr_del_mods = NULL, *sr_mods = NULL;
     char *path = NULL;
     uint32_t i;
 
-    *sr_del_mods = NULL;
-    *sr_mods = NULL;
+    if (sr_del_mods_p) {
+        *sr_del_mods_p = NULL;
+    }
+    if (sr_mods_p) {
+        *sr_mods_p = NULL;
+    }
 
     /* parse current module information */
-    if ((err_info = sr_lydmods_parse(ly_ctx, conn, NULL, sr_mods))) {
+    if ((err_info = sr_lydmods_parse(ly_ctx, conn, NULL, &sr_mods))) {
         goto cleanup;
     }
 
@@ -1287,15 +1293,15 @@ sr_lydmods_change_del_module(const struct ly_ctx *ly_ctx, const struct ly_ctx *n
             SR_ERRINFO_MEM(&err_info);
             goto cleanup;
         }
-        SR_CHECK_INT_GOTO(lyd_find_path(*sr_mods, path, 0, &sr_mod), err_info, cleanup);
+        SR_CHECK_INT_GOTO(lyd_find_path(sr_mods, path, 0, &sr_mod), err_info, cleanup);
         free(path);
         path = NULL;
 
         /* relink it */
-        if (!*sr_del_mods && (err_info = sr_lyd_dup(*sr_mods, NULL, 0, 0, sr_del_mods))) {
+        if (!sr_del_mods && (err_info = sr_lyd_dup(sr_mods, NULL, 0, 0, &sr_del_mods))) {
             goto cleanup;
         }
-        if ((err_info = sr_lyd_insert_child(*sr_del_mods, sr_mod))) {
+        if ((err_info = sr_lyd_insert_child(sr_del_mods, sr_mod))) {
             goto cleanup;
         }
 
@@ -1303,28 +1309,33 @@ sr_lydmods_change_del_module(const struct ly_ctx *ly_ctx, const struct ly_ctx *n
     }
 
     /* delete all dependencies */
-    if ((err_info = sr_lydmods_del_deps_all(*sr_mods))) {
+    if ((err_info = sr_lydmods_del_deps_all(sr_mods))) {
         goto cleanup;
     }
 
     /* add new dependencies for all the modules */
-    if ((err_info = sr_lydmods_add_deps_all(new_ctx, *sr_mods))) {
+    if ((err_info = sr_lydmods_add_deps_all(new_ctx, sr_mods))) {
         goto cleanup;
     }
 
     /* store updated SR internal module data */
-    if ((err_info = sr_lydmods_print(sr_mods))) {
+    if ((err_info = sr_lydmods_print(&sr_mods))) {
         goto cleanup;
+    }
+
+    if (sr_del_mods_p) {
+        *sr_del_mods_p = sr_del_mods;
+        sr_del_mods = NULL;
+    }
+    if (sr_mods_p) {
+        *sr_mods_p = sr_mods;
+        sr_mods = NULL;
     }
 
 cleanup:
     free(path);
-    if (err_info) {
-        lyd_free_all(*sr_del_mods);
-        *sr_del_mods = NULL;
-        lyd_free_all(*sr_mods);
-        *sr_mods = NULL;
-    }
+    lyd_free_all(sr_del_mods);
+    lyd_free_all(sr_mods);
     return err_info;
 }
 
@@ -1397,18 +1408,20 @@ cleanup:
 sr_error_info_t *
 sr_lydmods_change_chng_feature(const struct ly_ctx *ly_ctx, const struct lys_module *old_mod,
         const struct ly_ctx *new_ctx, const struct ly_set *feat_set, int enable, sr_conn_ctx_t *conn,
-        struct lyd_node **sr_mods)
+        struct lyd_node **sr_mods_p)
 {
     sr_error_info_t *err_info = NULL;
     const char *feat_name;
-    struct lyd_node *sr_mod, *node;
+    struct lyd_node *sr_mod, *node, *sr_mods = NULL;
     char *path = NULL;
     uint32_t i;
 
-    *sr_mods = NULL;
+    if (sr_mods_p) {
+        *sr_mods_p = NULL;
+    }
 
     /* parse current module information */
-    if ((err_info = sr_lydmods_parse(ly_ctx, conn, NULL, sr_mods))) {
+    if ((err_info = sr_lydmods_parse(ly_ctx, conn, NULL, &sr_mods))) {
         goto cleanup;
     }
 
@@ -1417,7 +1430,7 @@ sr_lydmods_change_chng_feature(const struct ly_ctx *ly_ctx, const struct lys_mod
         SR_ERRINFO_MEM(&err_info);
         goto cleanup;
     }
-    if ((err_info = sr_lyd_find_path(*sr_mods, path, 0, &sr_mod))) {
+    if ((err_info = sr_lyd_find_path(sr_mods, path, 0, &sr_mod))) {
         goto cleanup;
     }
     SR_CHECK_INT_GOTO(!sr_mod, err_info, cleanup);
@@ -1450,26 +1463,28 @@ sr_lydmods_change_chng_feature(const struct ly_ctx *ly_ctx, const struct lys_mod
     }
 
     /* delete all dependencies */
-    if ((err_info = sr_lydmods_del_deps_all(*sr_mods))) {
+    if ((err_info = sr_lydmods_del_deps_all(sr_mods))) {
         goto cleanup;
     }
 
     /* add new dependencies for all the modules */
-    if ((err_info = sr_lydmods_add_deps_all(new_ctx, *sr_mods))) {
+    if ((err_info = sr_lydmods_add_deps_all(new_ctx, sr_mods))) {
         goto cleanup;
     }
 
     /* store updated SR internal module data */
-    if ((err_info = sr_lydmods_print(sr_mods))) {
+    if ((err_info = sr_lydmods_print(&sr_mods))) {
         goto cleanup;
+    }
+
+    if (sr_mods_p) {
+        *sr_mods_p = sr_mods;
+        sr_mods = NULL;
     }
 
 cleanup:
     free(path);
-    if (err_info) {
-        lyd_free_all(*sr_mods);
-        *sr_mods = NULL;
-    }
+    lyd_free_all(sr_mods);
     return err_info;
 }
 

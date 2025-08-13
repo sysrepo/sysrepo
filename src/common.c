@@ -3009,15 +3009,7 @@ sr_conn_is_alive(sr_cid_t cid)
     return alive;
 }
 
-/**
- * @brief Write schema mount data to a file.
- *
- * The file is used to cache the schema mount data so that it can be quickly accessed.
- *
- * @param[in] schema_mount_data Schema mount data to write.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
+sr_error_info_t *
 sr_schema_mount_data_file_write(struct lyd_node *schema_mount_data)
 {
     sr_error_info_t *err_info = NULL;
@@ -3087,17 +3079,7 @@ cleanup:
     return err_info;
 }
 
-/**
- * @brief Get the current schema mount data and make them compatible with @p ly_ctx.
- *
- * @note The caller must hold the global libyang context READ lock.
- *
- * @param[in] conn Connection to use.
- * @param[in] ly_ctx libyang context to bind the schema mount data to.
- * @param[out] schema_mount_data New schema mount data, should be freed by the caller.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
+sr_error_info_t *
 sr_schema_mount_data_get(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct lyd_node **schema_mount_data)
 {
     sr_error_info_t *err_info = NULL;
@@ -3159,14 +3141,7 @@ cleanup:
     return err_info;
 }
 
-/**
- * @brief Destroy schema mount contexts in a libyang context based on the sysrepo data.
- *
- * @param[in] ly_ctx libyang context.
- * @param[in] sr_data sysrepo module data.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
+sr_error_info_t *
 sr_destroy_schema_mount_contexts(struct ly_ctx *ly_ctx, struct lyd_node *sr_data)
 {
     sr_error_info_t *err_info = NULL;
@@ -3220,15 +3195,7 @@ cleanup:
     return err_info;
 }
 
-/**
- * @brief Create schema mount contexts in a libyang context based on the sysrepo data.
- *
- * @param[in] ly_ctx libyang context.
- * @param[in] sr_data sysrepo module data.
- * @param[in] schema_mount_data ietf-schema-mount and ietf-yang-library YANG data.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
+sr_error_info_t *
 sr_create_schema_mount_contexts(struct ly_ctx *ly_ctx, struct lyd_node *sr_data, struct lyd_node *schema_mount_data)
 {
     sr_error_info_t *err_info = NULL;
@@ -3287,45 +3254,6 @@ sr_create_schema_mount_contexts(struct ly_ctx *ly_ctx, struct lyd_node *sr_data,
     }
 
 cleanup:
-    return err_info;
-}
-
-sr_error_info_t *
-sr_schema_mount_contexts_replace(sr_conn_ctx_t *conn, struct ly_ctx *old_ly_ctx, struct ly_ctx *new_ly_ctx,
-        struct lyd_node *old_sr_data, struct lyd_node *new_sr_data)
-{
-    sr_error_info_t *err_info = NULL;
-    struct lyd_node *sm_data = NULL;
-
-    /* destroy the old schema mount contexts */
-    err_info = sr_destroy_schema_mount_contexts(old_ly_ctx, old_sr_data);
-    if (err_info) {
-        goto cleanup;
-    }
-
-    /* get schema mount data for the new context */
-    if ((err_info = sr_schema_mount_data_get(conn, new_ly_ctx, &sm_data))) {
-        goto cleanup;
-    }
-
-    if (!sm_data) {
-        /* no need to create new contexts if there is no schema mount data */
-        goto cleanup;
-    }
-
-    /* write the schema mount data to a file, so it can later be cached and used */
-    if ((err_info = sr_schema_mount_data_file_write(sm_data))) {
-        goto cleanup;
-    }
-
-    /* create the new schema mount contexts */
-    err_info = sr_create_schema_mount_contexts(new_ly_ctx, new_sr_data, sm_data);
-    if (err_info) {
-        goto cleanup;
-    }
-
-cleanup:
-    lyd_free_siblings(sm_data);
     return err_info;
 }
 
