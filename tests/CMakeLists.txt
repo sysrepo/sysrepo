@@ -79,6 +79,7 @@ if(ENABLE_TESTS)
             "SYSREPO_REPOSITORY_PATH=${PROJECT_BINARY_DIR}/test_repositories/${test_name}"
             "SYSREPO_SHM_PREFIX=_tests_sr_${test_name}"
             "SR_ENV_RUN_TESTS=1"
+            "SR_TEST_SCALE=1"
         )
 
         # avoid loading installed plugins by sysrepo-plugind

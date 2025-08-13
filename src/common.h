@@ -682,57 +682,6 @@ off_t sr_shmstrcpy(char *shm_addr, const char *str, char **shm_end);
 size_t sr_strshmlen(const char *str);
 
 /**
- * @brief Realloc for an array in ext SHM adding one new item. The array offset and item count is properly
- * updated in the ext SHM.
- *
- * May remap ext SHM!
- *
- * @param[in] shm_ext Ext SHM structure.
- * @param[in,out] shm_array_off Pointer to array offset in SHM, is updated.
- * @param[in,out] shm_count Pointer to array count in SHM, is updated.
- * @param[in] in_ext_shm Whether @p shm_array_off and @p shm_count themselves are stored in ext SHM or not (in main SHM).
- * In case they are in ext SHM, they should not be used directly after this function as they may have been remapped!
- * @param[in] item_size Array item size.
- * @param[in] add_idx Index of the new item, -1 for adding at the end.
- * @param[out] new_item Pointer to the new item.
- * @param[in] dyn_attr_size Optional dynamic attribute size to allocate as well.
- * @param[out] dyn_attr_off Optional allocated dynamic attribute offset.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmrealloc_add(sr_shm_t *shm_ext, off_t *shm_array_off, uint32_t *shm_count_off, int in_ext_shm,
-        size_t item_size, int64_t add_idx, void **new_item, size_t dyn_attr_size, off_t *dyn_attr_off);
-
-/**
- * @brief Realloc for a generic dynamic memory (attribute) in ext SHM. The attribute offset is properly
- * updated in ext SHM.
- *
- * May remap ext SHM!
- *
- * @param[in] shm_ext Ext SHM structure.
- * @param[in,out] dyn_attr_off Pointer to the attr offset in SHM, is updated.
- * @param[in] in_ext_shm Whether @p dyn_array_off itself is stored in ext SHM or not (in main SHM).
- * In case it is in ext SHM, it should not be used directly after this function as it may have been remapped!
- * @param[in] cur_size Current attribute size, may be 0.
- * @param[in] new_size New attribute size, may be 0.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmrealloc(sr_shm_t *shm_ext, off_t *dyn_attr_off, int in_ext_shm, size_t cur_size, size_t new_size);
-
-/**
- * @brief Realloc for an array in SHM deleting one item.
- *
- * @param[in] shm_ext Ext SHM structure.
- * @param[in,out] shm_array_off Pointer to array in SHM, set to 0 if last item was removed.
- * @param[in,out] shm_count Pointer to array count in SHM, will be updated.
- * @param[in] item_size Array item size.
- * @param[in] del_idx Item index to delete.
- * @param[in] dyn_attr_size Aligned size of dynamic attributes of the deleted item, if any.
- * @param[in] dyn_attr_off Offset of the dynamic attribute, if any.
- */
-void sr_shmrealloc_del(sr_shm_t *shm_ext, off_t *shm_array_off, uint32_t *shm_count, size_t item_size, uint32_t del_idx,
-        size_t dyn_attr_size, off_t dyn_attr_off);
-
-/**
  * @brief Get exact size of event data. Those are both originator data or error data.
  *
  * @param[in] data Beginning of the event data.
