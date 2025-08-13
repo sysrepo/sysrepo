@@ -157,21 +157,25 @@ sr_conn_free(sr_conn_ctx_t *conn)
 
     /* check if we are the last connection, if so then destroy global contexts */
     if (!sr_yang_ctx.refcount) {
-        /* YANG CTX LOCK - just to get the most recent lyctx */
-        if ((err_info = sr_lycc_lock(conn, SR_LOCK_WRITE, 0, __func__))) {
-            /* should not happen when there are no other connections */
-            sr_errinfo_free(&err_info);
-            assert(0);
-        }
+        /* check for failed connection */
+        if (conn->cid) {
+            /* YANG CTX LOCK - just to get the most recent lyctx */
+            if ((err_info = sr_lycc_lock(conn, SR_LOCK_WRITE, 0, __func__))) {
+                /* should not happen when there are no other connections */
+                sr_errinfo_free(&err_info);
+                assert(0);
+            }
 
-        /* YANG CTX UNLOCK */
-        sr_lycc_unlock(conn, SR_LOCK_WRITE, 0, __func__);
+            /* YANG CTX UNLOCK */
+            sr_lycc_unlock(conn, SR_LOCK_WRITE, 0, __func__);
 
-        sr_run_cache_flush(conn, &sr_run_cache);
+            /* free running cache */
+            sr_run_cache_flush(conn, &sr_run_cache);
 
-        /* free oper cache */
-        for (i = 0; i < sr_oper_cache.sub_count; ++i) {
-            lyd_free_siblings(sr_oper_cache.subs[i].data);
+            /* free oper cache */
+            for (i = 0; i < sr_oper_cache.sub_count; ++i) {
+                lyd_free_siblings(sr_oper_cache.subs[i].data);
+            }
         }
 
         /* destroy lyctx */
@@ -402,7 +406,8 @@ sr_disconnect(sr_conn_ctx_t *conn)
     }
 
     SR_LOG_INF("Connection %" PRIu32 " destroyed.", conn->cid);
-    /* free attributes */
+
+    /* free members */
     sr_conn_free(conn);
 
     return sr_api_ret(NULL, NULL);
