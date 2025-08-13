@@ -2026,21 +2026,14 @@ sr_update_modules_prepare(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, const cha
     for (i = 0; i < schema_path_count; ++i) {
         old_mod = old_mod_set->objs[i];
 
-        /* collect current enabled features */
-        j = 0;
-        while ((f = lysp_feature_next(f, old_mod->parsed, &j))) {
-            if (f->flags & LYS_FENABLED) {
-                features = sr_realloc(features, (feat_count + 2) * sizeof *features);
-                SR_CHECK_MEM_GOTO(!features, err_info, cleanup);
-                features[feat_count] = f->name;
-                features[feat_count + 1] = NULL;
-                ++feat_count;
-            }
+        /* set current enabled features */
+        if ((err_info = sr_sizedarray2nullarray(old_mod->compiled->features, &features))) {
+            goto cleanup;
         }
 
         /* try to parse the updated module, if already an import, at least implement it and set the features */
-        if ((err_info = sr_lys_parse(new_ctx, NULL, upd_mods[i].schema_path, upd_mods[i].format,
-                features ? features : no_features, (struct lys_module **)&upd_mod))) {
+        if ((err_info = sr_lys_parse(new_ctx, NULL, upd_mods[i].schema_path, upd_mods[i].format, features,
+                (struct lys_module **)&upd_mod))) {
             goto cleanup;
         }
 
@@ -2052,7 +2045,6 @@ sr_update_modules_prepare(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, const cha
 
         free(features);
         features = NULL;
-        feat_count = 0;
     }
 
 cleanup:
@@ -2551,66 +2543,6 @@ cleanup:
 }
 
 /**
- * @brief Get enabled features of a module.
- *
- * @param[in] mod_name Name of the module to get features for.
- * @param[in] sr_mods sysrepo modules data.
- * @param[out] features Array of enabled feature names, NULL if no features are enabled.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_get_module_enabled_features(const char *mod_name, const struct lyd_node *sr_mods, const char ***features)
-{
-    sr_error_info_t *err_info = NULL;
-    struct lyd_node *mod_node, *iter;
-    const char **feat_names = NULL;
-    uint32_t feat_count = 0;
-    char *path = NULL;
-
-    *features = NULL;
-
-    if (asprintf(&path, "/sysrepo:sysrepo-modules/module[name='%s']", mod_name) == -1) {
-        SR_ERRINFO_MEM(&err_info);
-        return err_info;
-    }
-
-    /* find the module */
-    if ((err_info = sr_lyd_find_path(sr_mods, path, 0, &mod_node))) {
-        goto cleanup;
-    }
-    if (!mod_node) {
-        assert(0);
-        goto cleanup;
-    }
-
-    /* iterate through all the enabled features */
-    LY_LIST_FOR(lyd_child(mod_node), iter) {
-        if (strcmp(iter->schema->name, "enabled-feature")) {
-            /* ignore other nodes */
-            continue;
-        }
-
-        feat_names = sr_realloc(feat_names, (feat_count + 1) * sizeof *feat_names);
-        SR_CHECK_MEM_GOTO(!feat_names, err_info, cleanup);
-        feat_names[feat_count] = lyd_get_value(iter);
-        ++feat_count;
-    }
-
-    if (feat_count) {
-        /* add terminating NULL */
-        feat_names = sr_realloc(feat_names, (feat_count + 1) * sizeof *feat_names);
-        SR_CHECK_MEM_GOTO(!feat_names, err_info, cleanup);
-        feat_names[feat_count] = NULL;
-
-        *features = feat_names;
-    }
-
-cleanup:
-    free(path);
-    return err_info;
-}
-
-/**
  * @brief Enable/disable module feature.
  *
  * @param[in] conn Connection to use.
@@ -2658,8 +2590,9 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
         goto cleanup;
     }
 
-    /* get the enabled features of the module */
-    if ((err_info = sr_get_module_enabled_features(ly_mod->name, sr_mods_old, &mod_features))) {
+    /* load the module with all its currently enabled features, this way we can obtain the parsed data of the module,
+     * it will then be loaded again with the changed features */
+    if ((err_info = sr_sizedarray2nullarray(ly_mod->compiled->features, &features))) {
         goto cleanup;
     }
     if ((err_info = sr_ly_ctx_load_module(new_ctx, ly_mod->name, ly_mod->revision, features, &ly_mod2))) {

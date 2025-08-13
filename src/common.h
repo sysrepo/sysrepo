@@ -1210,6 +1210,15 @@ const char *sr_mod_ds2ident(int mod_ds);
 const char *sr_ds2ident(sr_datastore_t ds);
 
 /**
+ * @brief Transform a sized array into a NULL-terminated array.
+ *
+ * @param[in] sa Sized array.
+ * @param[out] na NULL-terminated array.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_sizedarray2nullarray(const char **sa, const char ***na);
+
+/**
  * @brief Sleep for specified milliseconds.
  *
  * @param[in] msec Number of ms to sleep for.
