@@ -985,19 +985,14 @@ void sr_rwunlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, 
 int sr_conn_is_alive(sr_cid_t cid);
 
 /**
- * @brief Destroy schema mount contexts in the old context and create new ones in the new context based on @p new_sr_data.
+ * @brief Write schema mount data to a file.
  *
- * Also write the new schema mount data to a file (cache).
+ * The file is used to cache the schema mount data so that it can be quickly accessed.
  *
- * @param[in] conn Connection to use.
- * @param[in] old_ly_ctx Old libyang context to destroy schema mount contexts in.
- * @param[in] new_ly_ctx New libyang context to create schema mount contexts in.
- * @param[in] old_sr_data Old sysrepo data to find the old schema mount contexts with.
- * @param[in] new_sr_data New sysrepo data to find the new schema mount contexts with.
+ * @param[in] schema_mount_data Schema mount data to write.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_schema_mount_contexts_replace(sr_conn_ctx_t *conn, struct ly_ctx *old_ly_ctx, struct ly_ctx *new_ly_ctx,
-        struct lyd_node *old_sr_data, struct lyd_node *new_sr_data);
+sr_error_info_t *sr_schema_mount_data_file_write(struct lyd_node *schema_mount_data);
 
 /**
  * @brief Parse schema mount data from a file in which they are stored (cached).
@@ -1006,6 +1001,39 @@ sr_error_info_t *sr_schema_mount_contexts_replace(sr_conn_ctx_t *conn, struct ly
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_schema_mount_data_file_parse(struct lyd_node **schema_mount_data);
+
+/**
+ * @brief Get the current schema mount data and make them compatible with @p ly_ctx.
+ *
+ * @note The caller must hold the global libyang context READ lock.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] ly_ctx libyang context to bind the schema mount data to.
+ * @param[out] schema_mount_data New schema mount data, should be freed by the caller.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_schema_mount_data_get(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx,
+        struct lyd_node **schema_mount_data);
+
+/**
+ * @brief Destroy schema mount contexts in a libyang context based on the sysrepo data.
+ *
+ * @param[in] ly_ctx libyang context.
+ * @param[in] sr_data sysrepo module data.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_destroy_schema_mount_contexts(struct ly_ctx *ly_ctx, struct lyd_node *sr_data);
+
+/**
+ * @brief Create schema mount contexts in a libyang context based on the sysrepo data.
+ *
+ * @param[in] ly_ctx libyang context.
+ * @param[in] sr_data sysrepo module data.
+ * @param[in] schema_mount_data ietf-schema-mount and ietf-yang-library YANG data.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_create_schema_mount_contexts(struct ly_ctx *ly_ctx, struct lyd_node *sr_data,
+        struct lyd_node *schema_mount_data);
 
 /**
  * @brief Add a new oper cache entry.
