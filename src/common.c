@@ -3991,6 +3991,21 @@ sr_ds2ident(sr_datastore_t ds)
     return sr_mod_ds2ident(ds);
 }
 
+sr_error_info_t *
+sr_sizedarray2nullarray(const char **sa, const char ***na)
+{
+    sr_error_info_t *err_info = NULL;
+    LY_ARRAY_COUNT_TYPE c = LY_ARRAY_COUNT(sa);
+
+    *na = malloc((c + 1) * sizeof **na);
+    SR_CHECK_MEM_RET(!*na, err_info);
+
+    memcpy(*na, sa, c * sizeof **na);
+    (*na)[c] = NULL;
+
+    return NULL;
+}
+
 void
 sr_msleep(uint32_t msec)
 {
