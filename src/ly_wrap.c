@@ -433,7 +433,7 @@ sr_lyd_parse_data(const struct ly_ctx *ctx, const char *data, const char *data_p
     }
 
     /* empty data are fine */
-    if (lyrc && (lyrc != LY_EINVAL)) {
+    if (lyrc && ((lyrc != LY_EINVAL) || strcmp(ly_last_logmsg(), "Empty input file."))) {
         sr_errinfo_new_ly(&err_info, ctx, NULL, SR_ERR_LY);
         goto cleanup;
     }
