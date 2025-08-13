@@ -260,6 +260,10 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
             goto cleanup_unlock;
         }
 
+        /* flush caches */
+        sr_run_cache_flush(conn, &sr_run_cache);
+        sr_oper_cache_flush(conn, &sr_oper_cache);
+
         /* destroy the old context, because if it was printed then another process could have
          * been the one that printed it = this process did not destroy the old context while printing the new one,
          * so it needs to be done now to avoid context data collision, see ::sr_lycc_store_context() */
