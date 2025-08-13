@@ -24,40 +24,24 @@
 #include "sysrepo_types.h"
 
 /**
- * @brief Initialize structure for holding data needed for context upgrade and cleanup.
- *
- * @param[in] upgrade_data Upgrade data structure to initialize.
- * @param[in] _data_info Data update information.
- * @param[in] _sr_mods Mandatory SR internal module data AFTER a context change.
- * @param[in] _sr_mods_old Mandatory SR internal module data BEFORE a context change. Can be the same as @p _sr_mods.
- * @param[in] _sr_del_mods Optional SR internal module data of deleted modules.
- */
-#define SR_LYCC_UPGRADE_DATA_INIT(upgrade_data, _data_info, _sr_mods, _sr_mods_old, _sr_del_mods) \
-    (upgrade_data)->data_info = (_data_info); \
-    (upgrade_data)->sr_mods = (_sr_mods); \
-    (upgrade_data)->sr_mods_old = (_sr_mods_old); \
-    (upgrade_data)->sr_del_mods = (_sr_del_mods)
-
-/**
  * @brief Structure for holding old and new data when being updated.
  */
-struct sr_data_update_s {
-    struct sr_data_update_set_s {
+struct sr_lycc_ds_data_s {
+    struct sr_lycc_ds_data_set_s {
         struct lyd_node *start;
         struct lyd_node *run;
         struct lyd_node *fdflt;
     } old;
-    struct sr_data_update_set_s new;
+    struct sr_lycc_ds_data_set_s new;
 };
 
-/**
- * @brief Structure for holding data needed for context upgrade and cleanup.
- */
-struct sr_lycc_upgrade_data_s {
-    struct sr_data_update_s *data_info;     /**< Data update information. */
-    struct lyd_node **sr_mods;              /**< SR internal module data AFTER a context change. */
-    struct lyd_node **sr_mods_old;          /**< SR internal module data BEFORE a context change. */
-    struct lyd_node **sr_del_mods;          /**< SR internal module data of deleted modules. */
+struct sr_lycc_info_s {
+    struct sr_lycc_ds_data_s data_info; /**< datastore data prepared for update on a context change */
+    struct ly_ctx *ly_ctx_old;          /**< current libyang context */
+    struct lyd_node *sr_mods_old;       /**< current internal SR data */
+    struct ly_ctx *ly_ctx_new;          /**< updated libyang context */
+    struct lyd_node *sr_mods_new;       /**< updated internal SR data */
+    struct lyd_node *sm_data_new;       /**< updated schema-mount operational data */
 };
 
 /**
@@ -90,6 +74,63 @@ sr_error_info_t *sr_lycc_relock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, const 
  * @param[in] func Caller function name.
  */
 void sr_lycc_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const char *func);
+
+/**
+ * @brief Prepare lycc structure for a context change.
+ *
+ * Expected READ_UPGR CONTEXT lock.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] ly_ctx_old Current context (before the update).
+ * @param[in] ly_ctx_new New context (after the update).
+ * @param[in,out] init_data Initial data to use for new modules, if any. Is spent.
+ * @param[in] new_mods Any new modules.
+ * @param[in] new_mod_count Count of @p new_mods.
+ * @param[out] cc_info Context-change info.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lycc_prepare_data(sr_conn_ctx_t *conn, struct ly_ctx *ly_ctx_old, struct ly_ctx *ly_ctx_new,
+        struct lyd_node **init_data, sr_int_install_mod_t *new_mods, uint32_t new_mod_count, struct sr_lycc_info_s *cc_info);
+
+/**
+ * @brief Free all the members of a DS data info structure.
+ *
+ * @param[in] data_info Data info to clear.
+ */
+void sr_lycc_ds_data_clear(struct sr_lycc_ds_data_s *data_info);
+
+/**
+ * @brief Clear lycc structure.
+ *
+ * @param[in] cc_info Contect-change info.
+ */
+void sr_lycc_clear_data(struct sr_lycc_info_s *cc_info);
+
+/**
+ * @brief Store updated SR data (destructively) for each module only if they differ from the current data.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] new_ctx New context to iterate over.
+ * @param[in,out] data_info Old (current) data and new data.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lycc_store_ds_data_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx,
+        const struct lyd_node *sr_mods, struct sr_lycc_ds_data_s *data_info);
+
+/**
+ * @brief Update data in a lycc structure before a context change.
+ *
+ * Expected WRITE context lock.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in,out] cc_info Context-change info, its data are freed once not needed.
+ * @param[in] mod_shm Mod SHM to use for storing the updated SHM modules, skipped if NULL.
+ * @param[in] sr_run_cache Running cache to free.
+ * @param[in] sr_oper_cache Operational cache to free.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lycc_update_data(sr_conn_ctx_t *conn, struct sr_lycc_info_s *cc_info, sr_shm_t *mod_shm,
+        sr_run_cache_t *sr_run_cache, sr_oper_cache_t *sr_oper_cache);
 
 /**
  * @brief Check that modules can be added.
@@ -183,69 +224,6 @@ sr_error_info_t *sr_lycc_check_chng_feature(sr_conn_ctx_t *conn, const struct ly
  */
 sr_error_info_t *sr_lycc_set_replay_support(sr_conn_ctx_t *conn, const struct ly_set *mod_set, int enable,
         const struct lyd_node *sr_mods);
-
-/**
- * @brief Update SR data for use with the changed context.
- *
- * @param[in] conn Connection to use.
- * @param[in] new_ctx New context.
- * @param[in] init_data Optional initial data for the new modules, are spent.
- * @param[in] new_mods Optional new modules with DS plugins to use for loading initial data if @p mod_data is not set.
- * @param[in] new_mod_count Count of @p new_mods.
- * @param[in,out] data_info Old (current) data in @p conn context and new data in @p new_ctx.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_lycc_update_data(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx, struct lyd_node *init_data,
-        sr_int_install_mod_t *new_mods, uint32_t new_mod_count, struct sr_data_update_s *data_info);
-
-/**
- * @brief Store updated SR data (destructively) for each module only if they differ from the current data.
- *
- * @param[in] conn Connection to use.
- * @param[in] new_ctx New context to iterate over.
- * @param[in,out] data_info Old (current) data and new data.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_lycc_store_data_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx,
-        const struct lyd_node *sr_mods, struct sr_data_update_s *data_info);
-
-/**
- * @brief Free all the members of an update data info structure.
- *
- * @param[in] data_info Data info to clear.
- */
-void sr_lycc_update_data_clear(struct sr_data_update_s *data_info);
-
-/**
- * @brief Cleanup during a libyang context upgrade.
- *
- * During a context upgrade it is necessary to cleanup all the data that
- * contain references to the old context, because its memory will be overwritten.
- *
- * This functions is called by ::sr_lycc_context_upgrade_prep_finish(), but should be called
- * in case of an error during the upgrade process to free all the allocated memory.
- *
- * @param[in,out] upgrade_data Upgrade data to cleanup. Freed members are set to NULL.
- */
-void sr_lycc_context_upgrade_cleanup(struct sr_lycc_upgrade_data_s *upgrade_data);
-
-/**
- * @brief Finish preparations for a libyang context upgrade.
- *
- * Must be called before a new libyang context is printed and
- * once this functions finishes, the new context can safely be printed.
- * Freed @p upgrade_data members are set to NULL, so it is safe to call this function or
- * ::sr_lycc_context_upgrade_cleanup() multiple times.
- *
- * @param[in] conn Connection to use.
- * @param[in] new_ctx New libyang context that will later be printed.
- * @param[in,out] upgrade_data Upgrade data to use, must be initialized with ::SR_LYCC_UPGRADE_DATA_INIT().
- * @param[in,out] run_cache Running cache to flush.
- * @param[in,out] oper_cache Operational cache to flush.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_lycc_context_upgrade_prep_finish(sr_conn_ctx_t *conn, struct ly_ctx *new_ctx,
-        struct sr_lycc_upgrade_data_s *upgrade_data, sr_run_cache_t *run_cache, sr_oper_cache_t *oper_cache);
 
 /**
  * @brief Store a libyang context to shared memory.
