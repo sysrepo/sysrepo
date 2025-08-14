@@ -581,11 +581,12 @@ sr_error_info_t *sr_lyd_any_copy_value(struct lyd_node *node, const union lyd_an
  * @param[in] target Target diff siblings.
  * @param[in] source Source diff siblings.
  * @param[in] options Diff options.
+ * @param[out] snode_not_found If provided, is set when this particular error is returned, the function succeeds.
  * @param[out] diff Generated diff.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_lyd_diff_siblings(const struct lyd_node *target, const struct lyd_node *source, uint32_t options,
-        struct lyd_node **diff);
+        int *snode_not_found, struct lyd_node **diff);
 
 /**
  * @brief Apply diff of a specific module on data.
