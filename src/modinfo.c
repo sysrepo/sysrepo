@@ -124,8 +124,8 @@ sr_smdata_cache_release(void)
 }
 
 sr_error_info_t *
-sr_modinfo_init(struct sr_mod_info_s *mod_info, sr_conn_ctx_t *conn,
-        sr_datastore_t ds, sr_datastore_t ds2, int init_sm, uint32_t op_id)
+sr_modinfo_init(struct sr_mod_info_s *mod_info, sr_conn_ctx_t *conn, sr_datastore_t ds, sr_datastore_t ds2, int init_sm,
+        uint32_t op_id)
 {
     sr_error_info_t *err_info = NULL;
 
