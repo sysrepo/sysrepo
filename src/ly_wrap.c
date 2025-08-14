@@ -28,6 +28,7 @@
 #include <libyang/plugins_types.h>
 
 #include "common.h"
+#include "context_change.h"
 #include "log.h"
 #include "sysrepo.h"
 
@@ -140,6 +141,9 @@ sr_ly_ctx_new(struct ly_ctx **ly_ctx)
     if ((err_info = sr_ly_ctx_compile(*ly_ctx))) {
         goto cleanup;
     }
+
+    /* set the ext callback */
+    ly_ctx_set_ext_data_clb(*ly_ctx, sr_ly_ext_data_clb, NULL);
 
 cleanup:
     if (err_info) {

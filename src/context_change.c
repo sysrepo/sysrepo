@@ -119,12 +119,9 @@ sr_ly_ctx_switch(sr_conn_ctx_t *conn, struct ly_ctx *new_ctx)
     sr_yang_ctx.ly_ctx = new_ctx;
 }
 
-/**
- * @brief Ext data callback for providing the schema mount data.
- */
-static LY_ERR
-sr_ly_ext_data_clb(const struct lysc_ext_instance *ext,  const struct lyd_node *UNUSED(parent),
-        void *UNUSED(user_data), void **ext_data, ly_bool *ext_data_free)
+LY_ERR
+sr_ly_ext_data_clb(const struct lysc_ext_instance *ext, const struct lyd_node *UNUSED(parent), void *UNUSED(user_data),
+        void **ext_data, ly_bool *ext_data_free)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *ext_data_dup;
@@ -1500,6 +1497,9 @@ sr_lycc_load_context(sr_shm_t *shm, struct ly_ctx **ctx)
     if ((err_info = sr_ly_ctx_new_printed(shm->addr, ctx))) {
         goto cleanup;
     }
+
+    /* set the ext callback */
+    ly_ctx_set_ext_data_clb(*ctx, sr_ly_ext_data_clb, NULL);
 
 cleanup:
     free(shm_name);

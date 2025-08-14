@@ -45,6 +45,12 @@ struct sr_lycc_info_s {
 };
 
 /**
+ * @brief Ext data callback for providing the schema mount data.
+ */
+LY_ERR sr_ly_ext_data_clb(const struct lysc_ext_instance *ext, const struct lyd_node *parent, void *user_data,
+        void **ext_data, ly_bool *ext_data_free);
+
+/**
  * @brief Lock context and update it if needed.
  *
  * @param[in] conn Connection to use.
