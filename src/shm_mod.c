@@ -1776,7 +1776,7 @@ sr_shmmod_copy_mod(const struct lys_module *ly_mod, const struct sr_ds_handle_s 
     }
 
     /* get data diff */
-    if ((err_info = sr_lyd_diff_siblings(r_mod_data, s_mod_data, LYD_DIFF_DEFAULTS, &mod_diff))) {
+    if ((err_info = sr_lyd_diff_siblings(r_mod_data, s_mod_data, LYD_DIFF_DEFAULTS, NULL, &mod_diff))) {
         goto cleanup;
     } else if (!mod_diff) {
         /* no data changes */

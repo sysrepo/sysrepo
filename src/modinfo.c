@@ -808,7 +808,7 @@ sr_modinfo_replace(struct sr_mod_info_s *mod_info, struct lyd_node **src_data)
         src_mod_data = sr_module_data_unlink(src_data, mod->ly_mod, 0);
 
         /* get diff on only this module's data */
-        if ((err_info = sr_lyd_diff_siblings(dst_mod_data, src_mod_data, LYD_DIFF_DEFAULTS, &diff))) {
+        if ((err_info = sr_lyd_diff_siblings(dst_mod_data, src_mod_data, LYD_DIFF_DEFAULTS, NULL, &diff))) {
             lyd_free_all(dst_mod_data);
             lyd_free_all(src_mod_data);
             return err_info;
@@ -987,7 +987,7 @@ sr_modinfo_oper_notify_diff(struct sr_mod_info_s *mod_info, struct lyd_node **ol
         old_mod_data = sr_module_data_unlink(old_data, mod->ly_mod, 0);
 
         /* get diff on only this module's data */
-        if ((err_info = sr_lyd_diff_siblings(old_mod_data, new_mod_data, LYD_DIFF_DEFAULTS, &diff))) {
+        if ((err_info = sr_lyd_diff_siblings(old_mod_data, new_mod_data, LYD_DIFF_DEFAULTS, NULL, &diff))) {
             goto cleanup;
         }
 

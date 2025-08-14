@@ -835,8 +835,8 @@ sr_lycc_store_ds_data_if_differ_ds(sr_conn_ctx_t *conn, const struct ly_ctx *new
     const struct sr_ds_handle_s *ds_handle;
     struct ly_set *set;
     char *xpath;
-    uint32_t idx = 0, ly_log_opts = 0;
-    int diff;
+    uint32_t idx = 0;
+    int snode_not_found;
 
     assert(ds != SR_DS_OPERATIONAL);
 
@@ -884,25 +884,21 @@ sr_lycc_store_ds_data_if_differ_ds(sr_conn_ctx_t *conn, const struct ly_ctx *new
 
         /* generate a diff of old and new data */
         lyd_free_siblings(mod_diff);
-        diff = 0;
-        ly_temp_log_options(&ly_log_opts);
-        if (lyd_diff_siblings(old_mod_data, new_mod_data, LYD_DIFF_DEFAULTS, &mod_diff)) {
-            /* assume it is because a schema node was not found in a context but there is a diff,
-             * this can always happen because nodes can be added wtih default values/removed, even in a single
-             * module so neither old nor new context can be used for all the cases */
-            diff = 1;
-        } else if (mod_diff) {
-            diff = 1;
+        if ((err_info = sr_lyd_diff_siblings(old_mod_data, new_mod_data, LYD_DIFF_DEFAULTS, &snode_not_found, &mod_diff))) {
+            break;
         }
-        ly_temp_log_options(NULL);
 
-        if (diff) {
+        /* schema node may not be found because nodes can be added/removed with default values added/removed, even in a
+         * single module so neither old nor new context can be used for all the cases */
+        if (mod_diff || snode_not_found) {
             /* store new data */
-            if ((err_info = ds_handle->plugin->store_prepare_cb(new_ly_mod, ds, 0, 0, mod_diff, new_mod_data, ds_handle->plg_data))) {
+            if ((err_info = ds_handle->plugin->store_prepare_cb(new_ly_mod, ds, 0, 0, mod_diff, new_mod_data,
+                    ds_handle->plg_data))) {
                 break;
             }
 
-            if ((err_info = ds_handle->plugin->store_commit_cb(new_ly_mod, ds, 0, 0, mod_diff, new_mod_data, ds_handle->plg_data))) {
+            if ((err_info = ds_handle->plugin->store_commit_cb(new_ly_mod, ds, 0, 0, mod_diff, new_mod_data,
+                    ds_handle->plg_data))) {
                 break;
             }
         }
