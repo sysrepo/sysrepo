@@ -1250,15 +1250,25 @@ cleanup:
 
 sr_error_info_t *
 sr_lyd_diff_siblings(const struct lyd_node *target, const struct lyd_node *source, uint32_t options,
-        struct lyd_node **diff)
+        int *snode_not_found, struct lyd_node **diff)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t temp_lo = LY_LOSTORE;
+    LY_ERR lyrc;
+
+    if (snode_not_found) {
+        *snode_not_found = 0;
+    }
 
     ly_temp_log_options(&temp_lo);
 
-    if (lyd_diff_siblings(target, source, options, diff)) {
-        sr_errinfo_new_ly(&err_info, target ? LYD_CTX(target) : LYD_CTX(source), source, SR_ERR_LY);
+    lyrc = lyd_diff_siblings(target, source, options, diff);
+    if ((lyrc == LY_ENOTFOUND) && snode_not_found) {
+        /* ignore this error, just set the flag */
+        ly_err_clean(target ? LYD_CTX(target) : LYD_CTX(source), NULL);
+        *snode_not_found = 1;
+    } else if (lyrc) {
+        sr_errinfo_new_ly(&err_info, target ? LYD_CTX(target) : LYD_CTX(source), SR_ERR_LY);
         goto cleanup;
     }
 

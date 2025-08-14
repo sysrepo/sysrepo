@@ -2461,7 +2461,7 @@ sr_oper_edit_mod_apply_data(const struct lyd_node *mod_first, struct ly_set *opa
         trg_tree = sr_module_data_unlink(data, ly_mod, 0);
 
         /* generate diff and replace module data */
-        if ((err_info = sr_lyd_diff_siblings(trg_tree, src_tree, LYD_DIFF_DEFAULTS, mod_diff))) {
+        if ((err_info = sr_lyd_diff_siblings(trg_tree, src_tree, LYD_DIFF_DEFAULTS, NULL, mod_diff))) {
             goto cleanup;
         }
         if (*mod_diff) {

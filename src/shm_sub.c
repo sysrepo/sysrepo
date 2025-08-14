@@ -4114,7 +4114,7 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
         if (oper_poll_sub->sub_opts & SR_SUBSCR_OPER_POLL_DIFF) {
             /* prepare mod info */
             mod_info.data = cache->data;
-            if ((err_info = sr_lyd_diff_siblings(cache->data, data ? data->tree : NULL, LYD_DIFF_DEFAULTS,
+            if ((err_info = sr_lyd_diff_siblings(cache->data, data ? data->tree : NULL, LYD_DIFF_DEFAULTS, NULL,
                     &mod_info.notify_diff))) {
                 goto finish_iter;
             }
