@@ -771,8 +771,8 @@ sr_lycc_prepare_data(sr_conn_ctx_t *conn, struct ly_ctx *ly_ctx_old, struct ly_c
         goto cleanup;
     }
 
-    /* get schema mount data for the new context */
-    if ((err_info = sr_schema_mount_data_get(conn, cc_info->ly_ctx_new, &cc_info->sm_data_new))) {
+    /* get schema mount data for the new context, use the old context for possible oper_get subscription */
+    if ((err_info = sr_schema_mount_data_get(conn, cc_info->ly_ctx_old, cc_info->ly_ctx_new, &cc_info->sm_data_new))) {
         goto cleanup;
     }
 

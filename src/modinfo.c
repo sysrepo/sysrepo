@@ -2040,91 +2040,6 @@ error_sub_unlock:
 }
 
 /**
- * @brief Load module data of the ietf-yang-library module. They are actually generated.
- *
- * @note YANG library data are created for the context that the @p mod->ly_mod was loaded in.
- *
- * @param[in] mod_info Mod info to use.
- * @param[in] mod ietf-yang-library module to load data for.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_modinfo_module_data_load_yanglib(struct sr_mod_info_s *mod_info, struct sr_mod_info_mod_s *mod)
-{
-    sr_error_info_t *err_info = NULL;
-    struct lyd_node *mod_data;
-    uint32_t content_id, i;
-    struct ly_set *set = NULL;
-
-    /* get content-id */
-    content_id = ly_ctx_get_modules_hash(mod->ly_mod->ctx);
-
-    /* get the data from libyang */
-    if ((err_info = sr_ly_ctx_get_yanglib_data(mod->ly_mod->ctx, &mod_data, content_id))) {
-        goto cleanup;
-    }
-
-    if (!strcmp(mod->ly_mod->revision, "2019-01-04")) {
-        assert(!strcmp(mod_data->schema->name, "yang-library"));
-
-        /* add supported datastores */
-        if ((err_info = sr_lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:running']/schema", "complete",
-                0, NULL, NULL))) {
-            goto cleanup;
-        }
-        if ((err_info = sr_lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:candidate']/schema", "complete",
-                0, NULL, NULL))) {
-            goto cleanup;
-        }
-        if ((err_info = sr_lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:startup']/schema", "complete",
-                0, NULL, NULL))) {
-            goto cleanup;
-        }
-        if ((err_info = sr_lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:operational']/schema", "complete",
-                0, NULL, NULL))) {
-            goto cleanup;
-        }
-    } else if (!strcmp(mod->ly_mod->revision, "2016-06-21")) {
-        assert(!strcmp(mod_data->schema->name, "modules-state"));
-
-        /* all data should already be there */
-    } else {
-        /* no other revision is supported */
-        SR_ERRINFO_INT(&err_info);
-        goto cleanup;
-    }
-
-    /* add missing 'location' and 'schema' nodes */
-    if ((err_info = sr_lyd_find_xpath(mod_data, "/ietf-yang-library:yang-library/module-set/module[not(location)] | "
-            "/ietf-yang-library:yang-library/module-set/import-only-module[not(location)]", &set))) {
-        goto cleanup;
-    }
-    for (i = 0; i < set->count; ++i) {
-        if ((err_info = sr_lyd_new_term(set->dnodes[i], NULL, "location", "file://@internal"))) {
-            goto cleanup;
-        }
-    }
-    ly_set_free(set, NULL);
-    if ((err_info = sr_lyd_find_xpath(mod_data, "/ietf-yang-library:modules-state/module[not(schema)]", &set))) {
-        goto cleanup;
-    }
-    for (i = 0; i < set->count; ++i) {
-        if ((err_info = sr_lyd_new_term(set->dnodes[i], NULL, "schema", "file://@internal"))) {
-            goto cleanup;
-        }
-    }
-
-    /* connect to the rest of data */
-    if ((err_info = sr_lyd_merge(&mod_info->data, mod_data, 1, LYD_MERGE_DESTRUCT))) {
-        goto cleanup;
-    }
-
-cleanup:
-    ly_set_free(set, NULL);
-    return err_info;
-}
-
-/**
  * @brief Add last datastore modification time nodes to a data tree.
  *
  * @param[in] conn Connection to use.
@@ -3094,7 +3009,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
     if (mod_info->ds == SR_DS_OPERATIONAL) {
         if (!strcmp(mod->ly_mod->name, "ietf-yang-library")) {
             /* append ietf-yang-library state data - internal */
-            if ((err_info = sr_modinfo_module_data_load_yanglib(mod_info, mod))) {
+            if ((err_info = sr_module_data_append_yanglib(mod->ly_mod, &mod_info->data))) {
                 return err_info;
             }
         } else if (!strcmp(mod->ly_mod->name, "sysrepo-monitoring")) {

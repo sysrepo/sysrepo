@@ -989,31 +989,33 @@ int sr_conn_is_alive(sr_cid_t cid);
  *
  * The file is used to cache the schema mount data so that it can be quickly accessed.
  *
- * @param[in] schema_mount_data Schema mount data to write.
+ * @param[in] sm_data Schema mount data to write.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_schema_mount_data_file_write(struct lyd_node *schema_mount_data);
+sr_error_info_t *sr_schema_mount_data_file_write(const struct lyd_node *sm_data);
 
 /**
  * @brief Parse schema mount data from a file in which they are stored (cached).
  *
- * @param[out] schema_mount_data Parsed schema mount data, should be freed by the caller.
+ * @param[out] sm_data Parsed schema mount data, should be freed by the caller.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_schema_mount_data_file_parse(struct lyd_node **schema_mount_data);
+sr_error_info_t *sr_schema_mount_data_file_parse(struct lyd_node **sm_data);
 
 /**
- * @brief Get the current schema mount data and make them compatible with @p ly_ctx.
+ * @brief Get the current schema mount data.
  *
  * @note The caller must hold the global libyang context READ lock.
  *
  * @param[in] conn Connection to use.
- * @param[in] ly_ctx libyang context to bind the schema mount data to.
- * @param[out] schema_mount_data New schema mount data, should be freed by the caller.
+ * @param[in] sm_ctx Context to use for getting `ietf-yang-schema-mount` data (with possible oper get subscription
+ * parsing LYB data).
+ * @param[in] ly_ctx Context to use for generating `ietf-yang-library` data and for @p sm_data.
+ * @param[out] sm_data New schema mount data, should be freed by the caller.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_schema_mount_data_get(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx,
-        struct lyd_node **schema_mount_data);
+sr_error_info_t *sr_schema_mount_data_get(sr_conn_ctx_t *conn, const struct ly_ctx *sm_ctx, const struct ly_ctx *ly_ctx,
+        struct lyd_node **sm_data);
 
 /**
  * @brief Destroy schema mount contexts in a libyang context based on the sysrepo data.
@@ -1029,11 +1031,11 @@ sr_error_info_t *sr_destroy_schema_mount_contexts(struct ly_ctx *ly_ctx, const s
  *
  * @param[in] ly_ctx libyang context.
  * @param[in] sr_data sysrepo module data.
- * @param[in] schema_mount_data ietf-schema-mount and ietf-yang-library YANG data.
+ * @param[in] sm_data ietf-schema-mount and ietf-yang-library YANG data.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_create_schema_mount_contexts(struct ly_ctx *ly_ctx, const struct lyd_node *sr_data,
-        const struct lyd_node *schema_mount_data);
+        const struct lyd_node *sm_data);
 
 /**
  * @brief Add a new oper cache entry.
@@ -1531,6 +1533,15 @@ sr_error_info_t *sr_module_file_data_append(const struct lys_module *ly_mod, con
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_conn_info(sr_cid_t **cids, pid_t **pids, uint32_t *count, sr_cid_t **dead_cids, uint32_t *dead_count);
+
+/**
+ * @brief Append generated module data of the ietf-yang-library module.
+ *
+ * @param[in] ly_mod ietf-yang-library module to generate data for.
+ * @param[in,out] data Data tree to append to.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_module_data_append_yanglib(const struct lys_module *ly_mod, struct lyd_node **data);
 
 /**
  * @brief Check if we are running in a development/test env - we may not be able to chown/chmod.

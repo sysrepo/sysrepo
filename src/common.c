@@ -4,8 +4,8 @@
  * @brief common routines
  *
  * @copyright
- * Copyright (c) 2018 - 2024 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2024 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2025 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2025 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -3010,7 +3010,7 @@ sr_conn_is_alive(sr_cid_t cid)
 }
 
 sr_error_info_t *
-sr_schema_mount_data_file_write(struct lyd_node *schema_mount_data)
+sr_schema_mount_data_file_write(const struct lyd_node *sm_data)
 {
     sr_error_info_t *err_info = NULL;
     int fd = -1;
@@ -3029,7 +3029,7 @@ sr_schema_mount_data_file_write(struct lyd_node *schema_mount_data)
     }
 
     /* print the data to the file */
-    if ((err_info = sr_lyd_print_data(schema_mount_data, LYD_LYB, LY_PRINT_SHRINK, fd, NULL, &data_len))) {
+    if ((err_info = sr_lyd_print_data(sm_data, LYD_LYB, LY_PRINT_SHRINK, fd, NULL, &data_len))) {
         goto cleanup;
     }
 
@@ -3048,13 +3048,12 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_schema_mount_data_file_parse(struct lyd_node **schema_mount_data)
+sr_schema_mount_data_file_parse(struct lyd_node **sm_data)
 {
     sr_error_info_t *err_info = NULL;
     char *file_path = NULL;
-    struct lyd_node *sm_data = NULL;
 
-    *schema_mount_data = NULL;
+    *sm_data = NULL;
 
     if ((err_info = sr_path_smdata_shm(&file_path))) {
         return err_info;
@@ -3067,12 +3066,10 @@ sr_schema_mount_data_file_parse(struct lyd_node **schema_mount_data)
     }
 
     /* parse the lyb schema mount data and validate them to resolve the parent reference prefixes */
-    if ((err_info = sr_lyd_parse_data(sr_yang_ctx.ly_ctx, NULL, file_path,
-            LYD_LYB, LYD_PARSE_STRICT, LYD_VALIDATE_OPERATIONAL, &sm_data))) {
+    if ((err_info = sr_lyd_parse_data(sr_yang_ctx.ly_ctx, NULL, file_path, LYD_LYB, LYD_PARSE_STRICT,
+            LYD_VALIDATE_OPERATIONAL, sm_data))) {
         goto cleanup;
     }
-
-    *schema_mount_data = sm_data;
 
 cleanup:
     free(file_path);
@@ -3080,59 +3077,58 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_schema_mount_data_get(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct lyd_node **schema_mount_data)
+sr_schema_mount_data_get(sr_conn_ctx_t *conn, const struct ly_ctx *sm_ctx, const struct ly_ctx *ly_ctx,
+        struct lyd_node **sm_data)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *node = NULL;
+    struct lyd_node *sm_root;
     struct sr_mod_info_s mod_info;
-    struct lys_module *ly_mod, *ly_mod2;
+    const struct lys_module *sm_mod, *yanglib_mod;
 
-    *schema_mount_data = NULL;
+    *sm_data = NULL;
 
     /* init modinfo and parse schema mount data, requires ctx read lock */
     if ((err_info = sr_modinfo_init(&mod_info, conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, 1, 0))) {
         goto cleanup;
     }
 
-    /* get yang library and schema mount modules */
-    ly_mod = ly_ctx_get_module_implemented(ly_ctx, "ietf-yang-library");
-    ly_mod2 = ly_ctx_get_module_implemented(ly_ctx, "ietf-yang-schema-mount");
-    if (!ly_mod || !ly_mod2) {
+    /* get the schema mount module and ietf-yang-library module */
+    sm_mod = ly_ctx_get_module_implemented(sm_ctx, "ietf-yang-schema-mount");
+    yanglib_mod = ly_ctx_get_module_implemented(ly_ctx, "ietf-yang-library");
+    if (!sm_mod || !yanglib_mod) {
         /* modules not found, they were not loaded yet */
         goto cleanup;
     }
 
-    /* add the modules into mod_info */
-    if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, 1, &mod_info))) {
+    /* get SM data using mod_info, sm_ctx should be the current context so that any oper_get subscription successfully
+     * parses LYB data obtained from a subscriber that can only have the current context */
+    if ((err_info = sr_modinfo_add(sm_mod, NULL, 0, 0, 1, &mod_info))) {
         goto cleanup;
     }
-    if ((err_info = sr_modinfo_add(ly_mod2, NULL, 0, 0, 1, &mod_info))) {
-        goto cleanup;
-    }
-
-    /* the obtained data will be compatible with @p ly_ctx, because ly_mod and ly_mod2 were taken from it */
     if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_PERM_NO, NULL, SR_OPER_CB_TIMEOUT, 0, 0))) {
         goto cleanup;
     }
-
-    /* get the schema mount data */
-    if ((err_info = sr_lyd_find_path(mod_info.data, "/ietf-yang-schema-mount:schema-mounts", 0, &node))) {
+    if ((err_info = sr_lyd_find_path(mod_info.data, "/ietf-yang-schema-mount:schema-mounts", 0, &sm_root))) {
         goto cleanup;
     }
 
-    if (!node || (node->flags & LYD_DEFAULT)) {
+    if (!sm_root || (sm_root->flags & LYD_DEFAULT)) {
         /* empty data, do not store */
         goto cleanup;
     }
 
     /* validate the sm data to resolve the parent reference prefixes */
-    if ((err_info = sr_lyd_validate_module(&node, node->schema->module, LYD_VALIDATE_OPERATIONAL, NULL))) {
+    if ((err_info = sr_lyd_validate_module(&sm_root, sm_mod, LYD_VALIDATE_OPERATIONAL, NULL))) {
         goto cleanup;
     }
 
-    /* transfer ownership of the schema mount data */
-    *schema_mount_data = mod_info.data;
-    mod_info.data = NULL;
+    /* move the data to the updated context */
+    if ((err_info = sr_lyd_dup_single_to_ctx(sm_root, ly_ctx, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, sm_data))) {
+        goto cleanup;
+    }
+
+    /* now append also the yang-library data of the updated context */
+    sr_module_data_append_yanglib(yanglib_mod, sm_data);
 
 cleanup:
     /* MODULES UNLOCK */
@@ -3196,8 +3192,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_create_schema_mount_contexts(struct ly_ctx *ly_ctx, const struct lyd_node *sr_data,
-        const struct lyd_node *schema_mount_data)
+sr_create_schema_mount_contexts(struct ly_ctx *ly_ctx, const struct lyd_node *sr_data, const struct lyd_node *sm_data)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
@@ -3247,7 +3242,7 @@ sr_create_schema_mount_contexts(struct ly_ctx *ly_ctx, const struct lyd_node *sr
                 }
 
                 /* create shared context for this mount point */
-                if ((err_info = sr_lyplg_ext_schema_mount_create_shared_context(ext, schema_mount_data))) {
+                if ((err_info = sr_lyplg_ext_schema_mount_create_shared_context(ext, sm_data))) {
                     goto cleanup;
                 }
             }
@@ -5752,6 +5747,82 @@ cleanup:
         }
         *count = 0;
     }
+    return err_info;
+}
+
+sr_error_info_t *
+sr_module_data_append_yanglib(const struct lys_module *ly_mod, struct lyd_node **data)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *mod_data;
+    uint32_t content_id, i;
+    struct ly_set *set = NULL;
+
+    /* get content-id */
+    content_id = ly_ctx_get_modules_hash(ly_mod->ctx);
+
+    /* get the data from libyang */
+    if ((err_info = sr_ly_ctx_get_yanglib_data(ly_mod->ctx, &mod_data, content_id))) {
+        goto cleanup;
+    }
+
+    if (!strcmp(ly_mod->revision, "2019-01-04")) {
+        assert(!strcmp(mod_data->schema->name, "yang-library"));
+
+        /* add supported datastores */
+        if ((err_info = sr_lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:running']/schema", "complete",
+                0, NULL, NULL))) {
+            goto cleanup;
+        }
+        if ((err_info = sr_lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:candidate']/schema", "complete",
+                0, NULL, NULL))) {
+            goto cleanup;
+        }
+        if ((err_info = sr_lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:startup']/schema", "complete",
+                0, NULL, NULL))) {
+            goto cleanup;
+        }
+        if ((err_info = sr_lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:operational']/schema", "complete",
+                0, NULL, NULL))) {
+            goto cleanup;
+        }
+    } else if (!strcmp(ly_mod->revision, "2016-06-21")) {
+        assert(!strcmp(mod_data->schema->name, "modules-state"));
+
+        /* all data should already be there */
+    } else {
+        /* no other revision is supported */
+        SR_ERRINFO_INT(&err_info);
+        goto cleanup;
+    }
+
+    /* add missing 'location' and 'schema' nodes */
+    if ((err_info = sr_lyd_find_xpath(mod_data, "/ietf-yang-library:yang-library/module-set/module[not(location)] | "
+            "/ietf-yang-library:yang-library/module-set/import-only-module[not(location)]", &set))) {
+        goto cleanup;
+    }
+    for (i = 0; i < set->count; ++i) {
+        if ((err_info = sr_lyd_new_term(set->dnodes[i], NULL, "location", "file://@internal"))) {
+            goto cleanup;
+        }
+    }
+    ly_set_free(set, NULL);
+    if ((err_info = sr_lyd_find_xpath(mod_data, "/ietf-yang-library:modules-state/module[not(schema)]", &set))) {
+        goto cleanup;
+    }
+    for (i = 0; i < set->count; ++i) {
+        if ((err_info = sr_lyd_new_term(set->dnodes[i], NULL, "schema", "file://@internal"))) {
+            goto cleanup;
+        }
+    }
+
+    /* connect to the rest of data */
+    if ((err_info = sr_lyd_merge(data, mod_data, 1, LYD_MERGE_DESTRUCT))) {
+        goto cleanup;
+    }
+
+cleanup:
+    ly_set_free(set, NULL);
     return err_info;
 }
 

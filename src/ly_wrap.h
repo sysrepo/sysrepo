@@ -4,8 +4,8 @@
  * @brief libyang function wrappers header
  *
  * @copyright
- * Copyright (c) 2024 Deutsche Telekom AG.
- * Copyright (c) 2024 CESNET, z.s.p.o.
+ * Copyright (c) 2024 - 2025 Deutsche Telekom AG.
+ * Copyright (c) 2024 - 2025 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -418,6 +418,18 @@ sr_error_info_t *sr_lyd_new_implicit_tree(struct lyd_node *tree, uint32_t option
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_lyd_dup(const struct lyd_node *node, struct lyd_node *parent, uint32_t options, int siblings,
+        struct lyd_node **dup);
+
+/**
+ * @brief Duplicate a data tree into another context.
+ *
+ * @param[in] node Subtree to duplicate.
+ * @param[in] trg_ctx Target context.
+ * @param[in] options Dup options.
+ * @param[out] dup Diplicated subtree.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lyd_dup_single_to_ctx(const struct lyd_node *node, const struct ly_ctx *trg_ctx, uint32_t options,
         struct lyd_node **dup);
 
 /**
