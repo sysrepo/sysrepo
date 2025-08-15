@@ -231,7 +231,8 @@ srpds_get_mod_ns(sr_datastore_t ds, const char *module_name, sr_cid_t cid, uint3
     int r;
 
     if ((ds == SR_DS_OPERATIONAL) && cid && sid) {
-        r = asprintf(mod_ns, "%s:%s:%s-%" PRIu32 "-%" PRIu32, srpds_ds2dsprefix(ds), sr_get_shm_prefix(), module_name, cid, sid);
+        r = asprintf(mod_ns, "%s:%s:%s+%" PRIu32 "+%" PRIu32, srpds_ds2dsprefix(ds), sr_get_shm_prefix(), module_name,
+                cid, sid);
     } else {
         r = asprintf(mod_ns, "%s:%s:%s", srpds_ds2dsprefix(ds), sr_get_shm_prefix(), module_name);
     }
