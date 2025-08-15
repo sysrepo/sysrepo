@@ -3142,7 +3142,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_destroy_schema_mount_contexts(struct ly_ctx *ly_ctx, struct lyd_node *sr_data)
+sr_destroy_schema_mount_contexts(struct ly_ctx *ly_ctx, const struct lyd_node *sr_data)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
@@ -3196,7 +3196,8 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_create_schema_mount_contexts(struct ly_ctx *ly_ctx, struct lyd_node *sr_data, struct lyd_node *schema_mount_data)
+sr_create_schema_mount_contexts(struct ly_ctx *ly_ctx, const struct lyd_node *sr_data,
+        const struct lyd_node *schema_mount_data)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
