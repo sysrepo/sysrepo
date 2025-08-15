@@ -6939,6 +6939,7 @@ test_change_schema_mount(void **state)
     pthread_join(tid[1], NULL);
 }
 
+/* TEST */
 static void
 test_change_schema_mount_point(void **arg)
 {
