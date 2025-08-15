@@ -1022,7 +1022,7 @@ sr_error_info_t *sr_schema_mount_data_get(sr_conn_ctx_t *conn, const struct ly_c
  * @param[in] sr_data sysrepo module data.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_destroy_schema_mount_contexts(struct ly_ctx *ly_ctx, struct lyd_node *sr_data);
+sr_error_info_t *sr_destroy_schema_mount_contexts(struct ly_ctx *ly_ctx, const struct lyd_node *sr_data);
 
 /**
  * @brief Create schema mount contexts in a libyang context based on the sysrepo data.
@@ -1032,8 +1032,8 @@ sr_error_info_t *sr_destroy_schema_mount_contexts(struct ly_ctx *ly_ctx, struct 
  * @param[in] schema_mount_data ietf-schema-mount and ietf-yang-library YANG data.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_create_schema_mount_contexts(struct ly_ctx *ly_ctx, struct lyd_node *sr_data,
-        struct lyd_node *schema_mount_data);
+sr_error_info_t *sr_create_schema_mount_contexts(struct ly_ctx *ly_ctx, const struct lyd_node *sr_data,
+        const struct lyd_node *schema_mount_data);
 
 /**
  * @brief Add a new oper cache entry.
