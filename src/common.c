@@ -3029,7 +3029,7 @@ sr_schema_mount_data_file_write(const struct lyd_node *sm_data)
     }
 
     /* print the data to the file */
-    if ((err_info = sr_lyd_print_data(sm_data, LYD_LYB, LY_PRINT_SHRINK, fd, NULL, &data_len))) {
+    if ((err_info = sr_lyd_print_data(sm_data, LYD_JSON, LY_PRINT_SHRINK, fd, NULL, &data_len))) {
         goto cleanup;
     }
 
@@ -3066,7 +3066,7 @@ sr_schema_mount_data_file_parse(struct lyd_node **sm_data)
     }
 
     /* parse the lyb schema mount data and validate them to resolve the parent reference prefixes */
-    if ((err_info = sr_lyd_parse_data(sr_yang_ctx.ly_ctx, NULL, file_path, LYD_LYB, LYD_PARSE_STRICT,
+    if ((err_info = sr_lyd_parse_data(sr_yang_ctx.ly_ctx, NULL, file_path, LYD_JSON, LYD_PARSE_STRICT,
             LYD_VALIDATE_OPERATIONAL, sm_data))) {
         goto cleanup;
     }
