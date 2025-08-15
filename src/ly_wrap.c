@@ -404,10 +404,14 @@ sr_lyd_parse_data(const struct ly_ctx *ctx, const char *data, const char *data_p
         uint32_t parse_options, uint32_t validation_options, struct lyd_node **tree)
 {
     sr_error_info_t *err_info = NULL;
-    uint32_t temp_lo = LY_LOSTORE;
+    uint32_t temp_lo = LY_LOSTORE, *prev_lo;
     LY_ERR lyrc = LY_SUCCESS;
 
-    ly_temp_log_options(&temp_lo);
+    prev_lo = ly_temp_log_options(&temp_lo);
+    if (prev_lo) {
+        /* nested call, keep the previous lo */
+        ly_temp_log_options(prev_lo);
+    }
 
     *tree = NULL;
 
@@ -431,7 +435,9 @@ cleanup:
         lyd_free_siblings(*tree);
         *tree = NULL;
     }
-    ly_temp_log_options(NULL);
+    if (!prev_lo) {
+        ly_temp_log_options(NULL);
+    }
     return err_info;
 }
 
