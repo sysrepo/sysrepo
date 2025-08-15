@@ -576,7 +576,7 @@ srsn_filter_create_subtree(const struct lyd_node *node, struct srsn_filter *filt
 
                 snode = NULL;
                 while ((snode = lys_getnext(snode, NULL, mod->compiled, 0))) {
-                    if (snode->name == ((struct lyd_node_opaq *)iter)->name.name) {
+                    if (!strcmp(snode->name, ((struct lyd_node_opaq *)iter)->name.name)) {
                         /* match */
                         match = 1;
                         if ((err_info = srsn_filter_xpath_create_top(iter, mod, filter))) {
