@@ -41,12 +41,14 @@
 typedef struct mongo_data_s {
     mongoc_client_t *client; /* client that connects to the database and manages changes on the data */
     mongoc_database_t *datastore; /* specific database that is currently being managed (startup, running, ...) */
-    mongoc_collection_t *module; /* specific collection that is currently being managed (contains data of a specific YANG module) */
+    mongoc_collection_t *module; /* specific collection that is currently being managed (contains data of a specific
+            YANG module) */
     char *module_name; /* allocated module name of the module */
 } mongo_data_t;
 
 typedef struct mongo_plg_conn_data_s {
-    mongoc_client_pool_t *pool; /* pool of clients that connect to the database so that multithreading is supported, pool is the used pool of clients */
+    mongoc_client_pool_t *pool; /* pool of clients that connect to the database so that multithreading is supported,
+            pool is the used pool of clients */
 } mongo_plg_conn_data_t;
 
 /* specific data for MongoDB */
@@ -57,22 +59,15 @@ typedef struct mongo_plg_data_s {
 
 mongo_plg_data_t plugin_data = {0};
 
-/* helper structure for storing bson data */
-struct mongo_diff_inner_data {
-    bson_t **docs;
-    uint32_t size;
-    uint32_t idx;
-};
+typedef struct mongo_bulk_data_s {
+    mongoc_bulk_operation_t *bulk; /* MongoDB abstraction for handling bulk pipelines */
+    int has_operation; /* whether the bulk has an operation in it (MongoDB cannot execute an empty bulk) */
+} mongo_bulk_data_t;
 
-/* helper structure for storing data to be committed */
-struct mongo_diff_data {
-    struct mongo_diff_inner_data cre; /* array for storing nodes with create operation */
-    struct mongo_diff_inner_data del; /* array for storing nodes with delete operation */
-    struct mongo_diff_inner_data del_many; /* array for storing nodes with delete many operation */
-    struct mongo_diff_inner_data rep; /* array for storing nodes with replace operation */
-    struct mongo_diff_inner_data rep_keys; /* array for storing selectors for replace operation */
-};
-
+/**
+ * @brief Exit function.
+ *
+ */
 static void
 terminate(void)
 {
@@ -306,7 +301,7 @@ srpds_get_access(mongoc_collection_t *module, char **owner, char **group, mode_t
 {
     sr_error_info_t *err_info = NULL;
     bson_error_t error;
-    bson_t *doc = NULL, *doc2 = NULL;
+    bson_t *query = NULL, *query_opts = NULL, *query_iter = NULL;
     mongoc_cursor_t *cursor = NULL;
     bson_iter_t iter;
     const char *str;
@@ -321,17 +316,14 @@ srpds_get_access(mongoc_collection_t *module, char **owner, char **group, mode_t
         *perm = 0;
     }
 
-    doc = BCON_NEW("_id", BCON_UTF8("2"));
-    cursor = mongoc_collection_find_with_opts(module, doc, NULL, NULL);
+    query = BCON_NEW("_id", BCON_UTF8("2"));
+    query_opts = BCON_NEW("projection", "{", "owner", BCON_BOOL(1), "group", BCON_BOOL(1), "perm", BCON_BOOL(1),
+            "_id", BCON_BOOL(0), "}");
+    cursor = mongoc_collection_find_with_opts(module, query, query_opts, NULL);
 
-    if (mongoc_cursor_next(cursor, (const bson_t **) &doc2)) {
-        if (!bson_iter_init(&iter, doc2)) {
+    if (mongoc_cursor_next(cursor, (const bson_t **) &query_iter)) {
+        if (!bson_iter_init(&iter, query_iter)) {
             ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_init()", "");
-            goto cleanup;
-        }
-
-        if (!bson_iter_next(&iter)) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
             goto cleanup;
         }
 
@@ -385,7 +377,8 @@ cleanup:
             *perm = 0;
         }
     }
-    bson_destroy(doc);
+    bson_destroy(query);
+    bson_destroy(query_opts);
     mongoc_cursor_destroy(cursor);
     return err_info;
 }
@@ -403,7 +396,8 @@ cleanup:
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_process_load_paths(struct ly_ctx *ctx, const char **xpaths, uint32_t xpath_cnt, int oper_ds, int *is_valid, bson_t *xpath_filter)
+srpds_process_load_paths(struct ly_ctx *ctx, const char **xpaths, uint32_t xpath_cnt, int oper_ds, int *is_valid,
+        bson_t *xpath_filter)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
@@ -522,8 +516,8 @@ cleanup:
     return err_info;
 }
 
-/*
- * @brief Load all data (only nodes (/), metadata (4) and attributes (5)) and store them inside the lyd_node structure.
+/**
+ * @brief Load all data and store them inside the lyd_node structure.
  *
  * @param[in] module Given MongoDB collection.
  * @param[in] mod Given module.
@@ -534,62 +528,64 @@ cleanup:
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_load_all(mongoc_collection_t *module, const struct lys_module *mod, sr_datastore_t ds, bson_t *xpath_filter, struct lyd_node **mod_data)
+srpds_load_all(mongoc_collection_t *module, const struct lys_module *mod, sr_datastore_t ds, bson_t *xpath_filter,
+        struct lyd_node **mod_data)
 {
     sr_error_info_t *err_info = NULL;
     bson_error_t error;
-    const char *path, *name, *module_name = NULL, *path_to_node, *value = NULL, *path_no_pred = NULL;
+    const char *path, *name, *module_name = NULL, *value = NULL, *path_no_pred = NULL;
     char **keys = NULL;
     uint32_t *lengths = NULL;
     enum srpds_db_ly_types type;
     int32_t valtype = 0;
     int64_t order = 0;
     int dflt_flag = 0;
+    int32_t meta_count = 0;
+    const char *meta_name = NULL, *meta_value = NULL;
     srpds_db_userordered_lists_t uo_lists = {0};
     struct lyd_node **parent_nodes = NULL;
     size_t pnodes_size = 0;
 
-    uint32_t pathlen = 0;
-    char *newpath = NULL;
-
-    bson_t *doc2 = NULL, *opts = NULL;
+    bson_t *query_opts = NULL, *query_iter = NULL;
     mongoc_cursor_t *cursor = NULL;
     bson_iter_t iter;
 
-    opts = BCON_NEW("sort", "{", "path_modif", BCON_INT32(1), "}");
-    cursor = mongoc_collection_find_with_opts(module, xpath_filter, opts, NULL);
+    query_opts = BCON_NEW("sort", "{", "path_modif", BCON_INT32(1), "}");
+    cursor = mongoc_collection_find_with_opts(module, xpath_filter, query_opts, NULL);
 
     /*
     *   Loading multiple different sets of data
     *
     *   Load All Datastores
     *   | 1) containers (LYS_CONTAINER)
-    *   |    Dataset [ path(_id) | name | type | module_name | path_modif ]
+    *   |    Dataset [ path(_id) | name | type | module_name | path_modif | meta_count | {metadata} ]
     *   |
     *   | 2) lists (LYS_LIST)
-    *   |    Dataset [ path(_id) | name | type | module_name | keys | path_modif ]
+    *   |    Dataset [ path(_id) | name | type | module_name | keys | path_modif | meta_count | {metadata} ]
     *   |
     *   | 3) leafs and leaf-lists (LYS_LEAF and LYS_LEAFLIST)
-    *   |    Dataset [ path(_id) | name | type | module_name | dflt_flag | value | path_modif ]
+    *   |    Dataset [ path(_id) | name | type | module_name | dflt_flag | value | path_modif | meta_count
+    *   |            | {metadata} ]
     *   |
     *   | 4) anydata and anyxml (LYS_ANYDATA and LYS_ANYXML)
-    *   |    Dataset [ path(_id) | name | type | module_name | dflt_flag | value | valtype | path_modif ]
+    *   |    Dataset [ path(_id) | name | type | module_name | value | valtype | path_modif | meta_count | {metadata} ]
     *   |
-    *   | 5) user-ordered lists (for state lists prev field is omitted)
-    *   |    Dataset [ path(_id) | name | type | module_name | keys | order | path_no_pred | prev | path_modif ]
+    *   | 5) user-ordered lists
+    *   |    Dataset [ path(_id) | name | type | module_name | keys | order | path_no_pred | prev | path_modif
+    *   |            | meta_count | {metadata} ]
     *   |
-    *   | 6) user-ordered leaf-lists (for state leaf-lists prev field is omitted)
-    *   |    Dataset [ path(_id) | name | type | module_name | dflt_flag | value | order | path_no_pred | prev | path_modif ]
+    *   | 6) user-ordered leaf-lists
+    *   |    Dataset [ path(_id) | name | type | module_name | dflt_flag | value | order | path_no_pred | prev
+    *   |            | path_modif | meta_count | {metadata} ]
     *   |
     *   | 7) opaque nodes
-    *   |    Dataset [ path_with_value(_id) | name | type | module_name | value | path_modif ]
+    *   |    Dataset [ path_with_value(_id) | name | type | module_name | path | value | path_modif | attr_count
+    *   |            | {attributes} ]
     *   |
-    *   | 8) metadata
-    *   |    Dataset [ path_with_name(_id) | name | type | path_to_node | value | path_modif ]
-    *   |
-    *   | 9) other metadata (0, 1, 2, #) DO NOT LOAD
+    *   | 8) other metadata (0, 1, 2, #) DO NOT LOAD
     *   |
     *   | module_name = NULL - use parent's module | name - use the module specified by this name
+    *   | {metadata}  = meta_count number of fields containing metadata of the node
     *   | valtype     = 0 - XML | 1 - JSON
     *   | start number defines the type (1 - container, 2 - list...)
     *
@@ -607,8 +603,8 @@ srpds_load_all(mongoc_collection_t *module, const struct lys_module *mod, sr_dat
     *   [ !!! NOT LOADED ] data are only for internal use
     */
 
-    while (mongoc_cursor_next(cursor, (const bson_t **) &doc2)) {
-        if (!bson_iter_init(&iter, doc2)) {
+    while (mongoc_cursor_next(cursor, (const bson_t **) &query_iter)) {
+        if (!bson_iter_init(&iter, query_iter)) {
             ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_init()", "");
             goto cleanup;
         }
@@ -627,8 +623,8 @@ srpds_load_all(mongoc_collection_t *module, const struct lys_module *mod, sr_dat
         /* do not load, this is additional data
          * 0 - timestamp of the last modification
          * 1 - modified flag for candidate datastore
-         * # - maximum load-order for list or leaf-list
-         * 2 - owner, group and permissions */
+         * 2 - owner, group and permissions
+         * # - maximum load-order for list or leaf-list */
         switch (path[0]) {
         case '0':
         case '1':
@@ -657,42 +653,35 @@ srpds_load_all(mongoc_collection_t *module, const struct lys_module *mod, sr_dat
         }
         type = bson_iter_int32(&iter);
 
-        /* get module_name or path_to_node based on type */
+        /* get module_name */
+        if (!bson_iter_next(&iter)) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
+            goto cleanup;
+        }
+        module_name = bson_iter_utf8(&iter, NULL);
+        if (module_name && !bson_utf8_validate(module_name, strlen(module_name), 0)) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_utf8()", "");
+            goto cleanup;
+        }
+
+        /* get path based on type */
         switch (type) {
-        case SRPDS_DB_LY_CONTAINER:    /* containers */
-        case SRPDS_DB_LY_LIST:         /* lists */
-        case SRPDS_DB_LY_TERM:         /* leafs and leaf-lists */
-        case SRPDS_DB_LY_ANY:          /* anydata and anyxml */
-        case SRPDS_DB_LY_LIST_UO:      /* userordered lists */
-        case SRPDS_DB_LY_LEAFLIST_UO:  /* userordered leaf-lists */
-        case SRPDS_DB_LY_OPAQUE:       /* opaque nodes */
+        case SRPDS_DB_LY_OPAQUE:
             if (!bson_iter_next(&iter)) {
                 ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
                 goto cleanup;
             }
-            module_name = bson_iter_utf8(&iter, NULL);
-            if (module_name && !bson_utf8_validate(module_name, strlen(module_name), 0)) {
+            path = bson_iter_utf8(&iter, NULL);
+            if (!bson_utf8_validate(path, strlen(path), 0)) {
                 ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_utf8()", "");
                 goto cleanup;
             }
-            break;
-        case SRPDS_DB_LY_META:
-            if (!bson_iter_next(&iter)) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
-                goto cleanup;
-            }
-            path_to_node = bson_iter_utf8(&iter, NULL);
-            if (!bson_utf8_validate(path_to_node, strlen(path_to_node), 0)) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_utf8()", "");
-                goto cleanup;
-            }
-            path = path_to_node;
             break;
         default:
             break;
         }
 
-        /* get keys or dflt flag or value based on type */
+        /* get keys or dflt flag based on type */
         switch (type) {
         case SRPDS_DB_LY_LIST:     /* lists */
         case SRPDS_DB_LY_LIST_UO:  /* user-ordered lists */
@@ -706,7 +695,6 @@ srpds_load_all(mongoc_collection_t *module, const struct lys_module *mod, sr_dat
             }
             break;
         case SRPDS_DB_LY_TERM:         /* leafs and leaf-lists */
-        case SRPDS_DB_LY_ANY:          /* anydata and anyxml */
         case SRPDS_DB_LY_LEAFLIST_UO:  /* user-ordered leaf-lists */
             if (!bson_iter_next(&iter)) {
                 ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
@@ -714,27 +702,16 @@ srpds_load_all(mongoc_collection_t *module, const struct lys_module *mod, sr_dat
             }
             dflt_flag = bson_iter_as_bool(&iter);
             break;
-        case SRPDS_DB_LY_OPAQUE:    /* opaque nodes */
-        case SRPDS_DB_LY_META:      /* metadata */
-            if (!bson_iter_next(&iter)) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
-                goto cleanup;
-            }
-            value = bson_iter_utf8(&iter, NULL);
-            if (!bson_utf8_validate(value, strlen(value), 0)) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_utf8()", "");
-                goto cleanup;
-            }
-            break;
         default:
             break;
         }
 
-        /* get value or order based on type */
+        /* get value based on type */
         switch (type) {
         case SRPDS_DB_LY_TERM:         /* leafs and leaf-lists */
         case SRPDS_DB_LY_ANY:          /* anydata and anyxml */
         case SRPDS_DB_LY_LEAFLIST_UO:  /* user-ordered leaf-lists */
+        case SRPDS_DB_LY_OPAQUE:       /* opaque nodes */
             if (!bson_iter_next(&iter)) {
                 ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
                 goto cleanup;
@@ -745,18 +722,11 @@ srpds_load_all(mongoc_collection_t *module, const struct lys_module *mod, sr_dat
                 goto cleanup;
             }
             break;
-        case SRPDS_DB_LY_LIST_UO:  /* user-ordered lists */
-            if (!bson_iter_next(&iter)) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
-                goto cleanup;
-            }
-            order = bson_iter_int64(&iter);
-            break;
         default:
             break;
         }
 
-        /* get valtype or path_no_pred or order based on type */
+        /* get valtype or order based on type */
         switch (type) {
         case SRPDS_DB_LY_ANY:  /* anydata and anyxml */
             if (!bson_iter_next(&iter)) {
@@ -765,17 +735,7 @@ srpds_load_all(mongoc_collection_t *module, const struct lys_module *mod, sr_dat
             }
             valtype = bson_iter_int32(&iter);
             break;
-        case SRPDS_DB_LY_LIST_UO:  /* user-ordered lists */
-            if (!bson_iter_next(&iter)) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
-                goto cleanup;
-            }
-            path_no_pred = bson_iter_utf8(&iter, NULL);
-            if (!bson_utf8_validate(path_no_pred, strlen(path_no_pred), 0)) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_utf8()", "");
-                goto cleanup;
-            }
-            break;
+        case SRPDS_DB_LY_LIST_UO:      /* user-ordered lists */
         case SRPDS_DB_LY_LEAFLIST_UO:  /* user-ordered leaf-lists */
             if (!bson_iter_next(&iter)) {
                 ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
@@ -787,7 +747,9 @@ srpds_load_all(mongoc_collection_t *module, const struct lys_module *mod, sr_dat
             break;
         }
 
+        /* get path_no_pred based on type */
         switch (type) {
+        case SRPDS_DB_LY_LIST_UO:      /* user-ordered lists */
         case SRPDS_DB_LY_LEAFLIST_UO:  /* user-ordered leaf-lists */
             if (!bson_iter_next(&iter)) {
                 ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
@@ -798,36 +760,63 @@ srpds_load_all(mongoc_collection_t *module, const struct lys_module *mod, sr_dat
                 ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_utf8()", "");
                 goto cleanup;
             }
+
+            /* skip prev */
+            if (!bson_iter_next(&iter)) {
+                ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
+                goto cleanup;
+            }
             break;
         default:
             break;
         }
 
-        /* get proper path to node */
-        if (type == SRPDS_DB_LY_OPAQUE) {
-            pathlen = strlen(path) - strlen(value);
-            newpath = malloc(pathlen);
-            if (!newpath) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "malloc()", "");
+        /* skip path_modif */
+        if (!bson_iter_next(&iter)) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
+            goto cleanup;
+        }
+
+        /* get meta_count */
+        if (!bson_iter_next(&iter)) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
+            goto cleanup;
+        }
+        meta_count = bson_iter_int32(&iter);
+
+        /* get meta name and meta value */
+        if (meta_count) {
+            if (!bson_iter_next(&iter)) {
+                ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
                 goto cleanup;
             }
-            strncpy(newpath, path, pathlen);
-            newpath[pathlen - 1] = '\0';
-            path = newpath;
+            meta_name = bson_iter_utf8(&iter, NULL);
+            if (!bson_utf8_validate(meta_name, strlen(meta_name), 0)) {
+                ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_utf8()", "");
+                goto cleanup;
+            }
+
+            if (!bson_iter_next(&iter)) {
+                ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
+                goto cleanup;
+            }
+            meta_value = bson_iter_utf8(&iter, NULL);
+            if (!bson_utf8_validate(meta_value, strlen(meta_value), 0)) {
+                ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_utf8()", "");
+                goto cleanup;
+            }
         }
 
         /* add a new node to mod_data */
         if ((err_info = srpds_add_mod_data(plugin_name, mod->ctx, ds, path, name, type, module_name, value, valtype,
-                &dflt_flag, (const char **)keys, lengths, order, path_no_pred, &uo_lists, &parent_nodes, &pnodes_size,
-                mod_data))) {
+                &dflt_flag, (const char **)keys, lengths, order, path_no_pred, meta_count, meta_name, meta_value,
+                &uo_lists, &parent_nodes, &pnodes_size, mod_data))) {
             goto cleanup;
         }
         free(keys);
         free(lengths);
-        free(newpath);
         keys = NULL;
         lengths = NULL;
-        newpath = NULL;
     }
 
     if (mongoc_cursor_error(cursor, &error)) {
@@ -845,165 +834,57 @@ srpds_load_all(mongoc_collection_t *module, const struct lys_module *mod, sr_dat
 cleanup:
     free(keys);
     free(lengths);
-    free(newpath);
     free(parent_nodes);
     srpds_cleanup_uo_lists(&uo_lists);
-    bson_destroy(opts);
+    bson_destroy(query_opts);
     mongoc_cursor_destroy(cursor);
     return err_info;
 }
 
 /**
- * @brief Initialize an array of bson documents.
+ * @brief Add metadata to the query to store in the database.
  *
- * @param[out] docs New array of bson documents.
- * @param[out] size New size of the array.
+ * @param[in] meta Metadata to store.
+ * @param[out] query Query to append metadata to.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_docs_init(bson_t ***docs, uint32_t *size)
+srpds_add_meta(const struct lyd_meta *meta, bson_t *query)
 {
     sr_error_info_t *err_info = NULL;
-    bson_t **ptr;
+    int32_t meta_count = srpds_get_meta_count(meta);
+    char *meta_name = NULL;
 
-    ptr = (bson_t **)calloc(1000, sizeof *ptr);
-    if (!ptr) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "calloc()", "");
-        return err_info;
-    }
-    *docs = ptr;
-    *size = 1000;
+    /* store the number of metadata */
+    bson_append_int32(query, "meta_count", 10, meta_count);
 
-    return err_info;
-}
+    /* we are only expecting zero or one metadata (origin) */
+    while (meta_count && meta) {
+        /* skip yang: and sysrepo: metadata, this is libyang and sysrepo specific data */
+        if (strcmp(meta->annotation->module->name, "yang") && strcmp(meta->annotation->module->name, "sysrepo")) {
+            /* concatenate meta name with module name */
+            if (asprintf(&meta_name, "%s:%s", meta->annotation->module->name, meta->name) == -1) {
+                ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
+                goto cleanup;
+            }
 
-/**
- * @brief Add a bson document to the array.
- *
- * @param[in,out] docs Array of bson documents.
- * @param[in,out] size Size of the array.
- * @param[in,out] index Index of the last bson document in the array.
- * @param[in] doc Document to insert into the array.
- * @return NULL on success;
- * @return Sysrepo error info on error.
- */
-static sr_error_info_t *
-srpds_docs_add(bson_t ***docs, uint32_t *size, uint32_t *index, bson_t *doc)
-{
-    sr_error_info_t *err_info = NULL;
-    bson_t **ptr;
+            /* store metadata */
+            bson_append_utf8(query, "meta_name", 9, meta_name, -1);
+            bson_append_utf8(query, "meta_value", 10, lyd_get_meta_value(meta), -1);
 
-    if (*index >= *size) {
-        ptr = (bson_t **)realloc(*docs, *size * 2 * sizeof *ptr);
-        if (!ptr) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "realloc()", "");
-            return err_info;
+            free(meta_name);
+            meta_name = NULL;
+
+            /* we found origin, break */
+            break;
         }
-
-        *docs = ptr;
-        *size *= 2;
-    }
-
-    (*docs)[*index] = doc;
-    *index += 1;
-
-    return err_info;
-}
-
-/**
- * @brief Free the bson document array.
- *
- * @param[in] docs Array of bson documents.
- */
-static void
-srpds_docs_destroy(bson_t **docs)
-{
-    free(docs);
-}
-
-/**
- * @brief Initialize a helper structure for storing the contents of a diff inside the database.
- *
- * @param[out] diff_data Helper structure to initialize.
- * @return NULL on success;
- * @return Sysrepo error info on error.
- */
-static sr_error_info_t *
-srpds_diff_data_init(struct mongo_diff_data *diff_data)
-{
-    sr_error_info_t *err_info = NULL;
-
-    diff_data->cre.docs = NULL;
-    diff_data->cre.idx = 0;
-    diff_data->cre.size = 0;
-    diff_data->del.docs = NULL;
-    diff_data->del.idx = 0;
-    diff_data->del.size = 0;
-    diff_data->del_many.docs = NULL;
-    diff_data->del_many.idx = 0;
-    diff_data->del_many.size = 0;
-    diff_data->rep.docs = NULL;
-    diff_data->rep.idx = 0;
-    diff_data->rep.size = 0;
-    diff_data->rep_keys.docs = NULL;
-    diff_data->rep_keys.idx = 0;
-    diff_data->rep_keys.size = 0;
-
-    if ((err_info = srpds_docs_init(&(diff_data->cre.docs), &(diff_data->cre.size)))) {
-        goto cleanup;
-    }
-    if ((err_info = srpds_docs_init(&(diff_data->del.docs), &(diff_data->del.size)))) {
-        goto cleanup;
-    }
-    if ((err_info = srpds_docs_init(&(diff_data->del_many.docs), &(diff_data->del_many.size)))) {
-        goto cleanup;
-    }
-    if ((err_info = srpds_docs_init(&(diff_data->rep.docs), &(diff_data->rep.size)))) {
-        goto cleanup;
-    }
-    if ((err_info = srpds_docs_init(&(diff_data->rep_keys.docs), &(diff_data->rep_keys.size)))) {
-        goto cleanup;
+        meta = meta->next;
     }
 
 cleanup:
+    free(meta_name);
     return err_info;
-}
-
-/**
- * @brief Destroy the helper structure for storing the contents of a diff inside the database.
- *
- * @param[in] diff_data Helper structure to destroy.
- */
-static void
-srpds_diff_data_destroy(struct mongo_diff_data *diff_data)
-{
-    uint32_t i;
-
-    for (i = 0; i < diff_data->cre.idx; ++i) {
-        bson_destroy(diff_data->cre.docs[i]);
-    }
-    srpds_docs_destroy(diff_data->cre.docs);
-
-    for (i = 0; i < diff_data->del.idx; ++i) {
-        bson_destroy(diff_data->del.docs[i]);
-    }
-    srpds_docs_destroy(diff_data->del.docs);
-
-    for (i = 0; i < diff_data->del_many.idx; ++i) {
-        bson_destroy(diff_data->del_many.docs[i]);
-    }
-    srpds_docs_destroy(diff_data->del_many.docs);
-
-    for (i = 0; i < diff_data->rep.idx; ++i) {
-        bson_destroy(diff_data->rep.docs[i]);
-    }
-    srpds_docs_destroy(diff_data->rep.docs);
-
-    for (i = 0; i < diff_data->rep_keys.idx; ++i) {
-        bson_destroy(diff_data->rep_keys.docs[i]);
-    }
-    srpds_docs_destroy(diff_data->rep_keys.docs);
 }
 
 /**
@@ -1013,16 +894,33 @@ srpds_diff_data_destroy(struct mongo_diff_data *diff_data)
  * @param[in] name Name of the node.
  * @param[in] module_name Name of the module.
  * @param[in] path_modif Modified path.
- * @return Command to create a container.
+ * @param[in] meta Metadata of the node.
+ * @param[out] query Query to use.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
  */
-static bson_t *
-srpds_container(const char *path, const char *name, const char *module_name, const char *path_modif)
+static sr_error_info_t *
+srpds_container(const char *path, const char *name, const char *module_name, const char *path_modif,
+        const struct lyd_meta *meta, bson_t **query)
 {
-    return BCON_NEW("_id", BCON_UTF8(path),
-            "name", BCON_UTF8(name),
-            "type", BCON_INT32(SRPDS_DB_LY_CONTAINER),
-            "module_name", BCON_UTF8(module_name),
-            "path_modif", BCON_UTF8(path_modif));
+    sr_error_info_t *err_info = NULL;
+
+    *query = bson_new();
+    bson_append_utf8(*query, "_id", 3, path, -1);
+    bson_append_utf8(*query, "name", 4, name, -1);
+    bson_append_int32(*query, "type", 4, SRPDS_DB_LY_CONTAINER);
+    bson_append_utf8(*query, "module_name", 11, module_name, -1);
+    bson_append_utf8(*query, "path_modif", 10, path_modif, -1);
+    if ((err_info = srpds_add_meta(meta, *query))) {
+        goto cleanup;
+    }
+
+cleanup:
+    if (err_info) {
+        bson_destroy(*query);
+        *query = NULL;
+    }
+    return err_info;
 }
 
 /**
@@ -1034,23 +932,34 @@ srpds_container(const char *path, const char *name, const char *module_name, con
  * @param[in] keys Keys of the list.
  * @param[in] keys_length Length of @p keys.
  * @param[in] path_modif Modified path.
- * @return Command to create a list instance.
+ * @param[in] meta Metadata of the node.
+ * @param[out] query Query to use.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
  */
-static bson_t *
+static sr_error_info_t *
 srpds_list(const char *path, const char *name, const char *module_name, const char *keys, uint32_t keys_length,
-        const char *path_modif)
+        const char *path_modif, const struct lyd_meta *meta, bson_t **query)
 {
-    bson_t *bson_query;
+    sr_error_info_t *err_info = NULL;
 
-    bson_query = bson_new();
-    bson_append_utf8(bson_query, "_id", 3, path, -1);
-    bson_append_utf8(bson_query, "name", 4, name, -1);
-    bson_append_int32(bson_query, "type", 4, SRPDS_DB_LY_LIST);
-    bson_append_utf8(bson_query, "module_name", 11, module_name, -1);
-    bson_append_utf8(bson_query, "keys", 4, keys, keys_length);
-    bson_append_utf8(bson_query, "path_modif", 10, path_modif, -1);
+    *query = bson_new();
+    bson_append_utf8(*query, "_id", 3, path, -1);
+    bson_append_utf8(*query, "name", 4, name, -1);
+    bson_append_int32(*query, "type", 4, SRPDS_DB_LY_LIST);
+    bson_append_utf8(*query, "module_name", 11, module_name, -1);
+    bson_append_utf8(*query, "keys", 4, keys, keys_length);
+    bson_append_utf8(*query, "path_modif", 10, path_modif, -1);
+    if ((err_info = srpds_add_meta(meta, *query))) {
+        goto cleanup;
+    }
 
-    return bson_query;
+cleanup:
+    if (err_info) {
+        bson_destroy(*query);
+        *query = NULL;
+    }
+    return err_info;
 }
 
 /**
@@ -1062,19 +971,35 @@ srpds_list(const char *path, const char *name, const char *module_name, const ch
  * @param[in] dflt_flag Default flag of the node.
  * @param[in] value Value of the node.
  * @param[in] path_modif Modified path.
- * @return Command to create a term.
+ * @param[in] meta Metadata of the node.
+ * @param[out] query Query to use.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
  */
-static bson_t *
+static sr_error_info_t *
 srpds_term(const char *path, const char *name, const char *module_name, int dflt_flag, const char *value,
-        const char *path_modif)
+        const char *path_modif, const struct lyd_meta *meta, bson_t **query)
 {
-    return BCON_NEW("_id", BCON_UTF8(path),
-            "name", BCON_UTF8(name),
-            "type", BCON_INT32(SRPDS_DB_LY_TERM),
-            "module_name", BCON_UTF8(module_name),
-            "dflt_flag", BCON_BOOL(dflt_flag),
-            "value", BCON_UTF8(value),
-            "path_modif", BCON_UTF8(path_modif));
+    sr_error_info_t *err_info = NULL;
+
+    *query = bson_new();
+    bson_append_utf8(*query, "_id", 3, path, -1);
+    bson_append_utf8(*query, "name", 4, name, -1);
+    bson_append_int32(*query, "type", 4, SRPDS_DB_LY_TERM);
+    bson_append_utf8(*query, "module_name", 11, module_name, -1);
+    bson_append_bool(*query, "dflt_flag", 9, dflt_flag);
+    bson_append_utf8(*query, "value", 5, value, -1);
+    bson_append_utf8(*query, "path_modif", 10, path_modif, -1);
+    if ((err_info = srpds_add_meta(meta, *query))) {
+        goto cleanup;
+    }
+
+cleanup:
+    if (err_info) {
+        bson_destroy(*query);
+        *query = NULL;
+    }
+    return err_info;
 }
 
 /**
@@ -1083,24 +1008,38 @@ srpds_term(const char *path, const char *name, const char *module_name, int dflt
  * @param[in] path Path to the node.
  * @param[in] name Name of the node.
  * @param[in] module_name Name of the module.
- * @param[in] dflt_flag Default flag of the node.
  * @param[in] value Value of the node.
  * @param[in] valtype Type of the value (LYD_ANYDATA_XML = 0; LYD_ANYDATA_JSON = 1)
  * @param[in] path_modif Modified path.
- * @return Command to create an anyxml or anydata node.
+ * @param[in] meta Metadata of the node.
+ * @param[out] query Query to use.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
  */
-static bson_t *
-srpds_any(const char *path, const char *name, const char *module_name, int dflt_flag, const char *value, int32_t valtype,
-        const char *path_modif)
+static sr_error_info_t *
+srpds_any(const char *path, const char *name, const char *module_name, const char *value, int32_t valtype,
+        const char *path_modif, const struct lyd_meta *meta, bson_t **query)
 {
-    return BCON_NEW("_id", BCON_UTF8(path),
-            "name", BCON_UTF8(name),
-            "type", BCON_INT32(SRPDS_DB_LY_ANY),
-            "module_name", BCON_UTF8(module_name),
-            "dflt_flag", BCON_BOOL(dflt_flag),
-            "value", BCON_UTF8(value),
-            "valtype", BCON_INT32(valtype),
-            "path_modif", BCON_UTF8(path_modif));
+    sr_error_info_t *err_info = NULL;
+
+    *query = bson_new();
+    bson_append_utf8(*query, "_id", 3, path, -1);
+    bson_append_utf8(*query, "name", 4, name, -1);
+    bson_append_int32(*query, "type", 4, SRPDS_DB_LY_ANY);
+    bson_append_utf8(*query, "module_name", 11, module_name, -1);
+    bson_append_utf8(*query, "value", 5, value, -1);
+    bson_append_int32(*query, "valtype", 7, valtype);
+    bson_append_utf8(*query, "path_modif", 10, path_modif, -1);
+    if ((err_info = srpds_add_meta(meta, *query))) {
+        goto cleanup;
+    }
+
+cleanup:
+    if (err_info) {
+        bson_destroy(*query);
+        *query = NULL;
+    }
+    return err_info;
 }
 
 /**
@@ -1114,30 +1053,39 @@ srpds_any(const char *path, const char *name, const char *module_name, int dflt_
  * @param[in] order Order of the node.
  * @param[in] path_no_pred Path to the node without predicate.
  * @param[in] prev_pred Predicate of the previous node.
- * @param[in] include_prev Whether to include predicate of the previous node.
  * @param[in] path_modif Modified path.
- * @return Command to create a list instance.
+ * @param[in] meta Metadata of the node.
+ * @param[out] query Query to use.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
  */
-static bson_t *
+static sr_error_info_t *
 srpds_list_uo(const char *path, const char *name, const char *module_name, const char *keys, uint32_t keys_length,
-        uint64_t order, const char *path_no_pred, const char *prev_pred, int include_prev, const char *path_modif)
+        uint64_t order, const char *path_no_pred, const char *prev_pred, const char *path_modif,
+        const struct lyd_meta *meta, bson_t **query)
 {
-    bson_t *bson_query;
+    sr_error_info_t *err_info = NULL;
 
-    bson_query = bson_new();
-    bson_append_utf8(bson_query, "_id", 3, path, -1);
-    bson_append_utf8(bson_query, "name", 4, name, -1);
-    bson_append_int32(bson_query, "type", 4, SRPDS_DB_LY_LIST_UO);
-    bson_append_utf8(bson_query, "module_name", 11, module_name, -1);
-    bson_append_utf8(bson_query, "keys", 4, keys, keys_length);
-    bson_append_int64(bson_query, "order", 5, order);
-    bson_append_utf8(bson_query, "path_no_pred", 12, path_no_pred, -1);
-    if (include_prev) {
-        bson_append_utf8(bson_query, "prev", 4, prev_pred, -1);
+    *query = bson_new();
+    bson_append_utf8(*query, "_id", 3, path, -1);
+    bson_append_utf8(*query, "name", 4, name, -1);
+    bson_append_int32(*query, "type", 4, SRPDS_DB_LY_LIST_UO);
+    bson_append_utf8(*query, "module_name", 11, module_name, -1);
+    bson_append_utf8(*query, "keys", 4, keys, keys_length);
+    bson_append_int64(*query, "order", 5, order);
+    bson_append_utf8(*query, "path_no_pred", 12, path_no_pred, -1);
+    bson_append_utf8(*query, "prev", 4, prev_pred, -1);
+    bson_append_utf8(*query, "path_modif", 10, path_modif, -1);
+    if ((err_info = srpds_add_meta(meta, *query))) {
+        goto cleanup;
     }
-    bson_append_utf8(bson_query, "path_modif", 10, path_modif, -1);
 
-    return bson_query;
+cleanup:
+    if (err_info) {
+        bson_destroy(*query);
+        *query = NULL;
+    }
+    return err_info;
 }
 
 /**
@@ -1151,96 +1099,65 @@ srpds_list_uo(const char *path, const char *name, const char *module_name, const
  * @param[in] order Order of the node.
  * @param[in] path_no_pred Path to the node without predicate.
  * @param[in] prev_pred Predicate of the previous node.
- * @param[in] include_prev Whether to include predicate of the previous node.
  * @param[in] path_modif Modified path.
- * @return Command to create a leaf-list instance.
+ * @param[in] meta Metadata of the node.
+ * @param[out] query Query to use.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
  */
-static bson_t *
+static sr_error_info_t *
 srpds_leaflist_uo(const char *path, const char *name, const char *module_name, int dflt_flag, const char *value,
-        uint64_t order, const char *path_no_pred, const char *prev_pred, int include_prev, const char *path_modif)
+        uint64_t order, const char *path_no_pred, const char *prev_pred, const char *path_modif,
+        const struct lyd_meta *meta, bson_t **query)
 {
-    bson_t *bson_query;
+    sr_error_info_t *err_info = NULL;
 
-    bson_query = bson_new();
-    bson_append_utf8(bson_query, "_id", 3, path, -1);
-    bson_append_utf8(bson_query, "name", 4, name, -1);
-    bson_append_int32(bson_query, "type", 4, SRPDS_DB_LY_LEAFLIST_UO);
-    bson_append_utf8(bson_query, "module_name", 11, module_name, -1);
-    bson_append_bool(bson_query, "dflt_flag", 9, dflt_flag);
-    bson_append_utf8(bson_query, "value", 5, value, -1);
-    bson_append_int64(bson_query, "order", 5, order);
-    bson_append_utf8(bson_query, "path_no_pred", 12, path_no_pred, -1);
-    if (include_prev) {
-        bson_append_utf8(bson_query, "prev", 4, prev_pred, -1);
+    *query = bson_new();
+    bson_append_utf8(*query, "_id", 3, path, -1);
+    bson_append_utf8(*query, "name", 4, name, -1);
+    bson_append_int32(*query, "type", 4, SRPDS_DB_LY_LEAFLIST_UO);
+    bson_append_utf8(*query, "module_name", 11, module_name, -1);
+    bson_append_bool(*query, "dflt_flag", 9, dflt_flag);
+    bson_append_utf8(*query, "value", 5, value, -1);
+    bson_append_int64(*query, "order", 5, order);
+    bson_append_utf8(*query, "path_no_pred", 12, path_no_pred, -1);
+    bson_append_utf8(*query, "prev", 4, prev_pred, -1);
+    bson_append_utf8(*query, "path_modif", 10, path_modif, -1);
+    if ((err_info = srpds_add_meta(meta, *query))) {
+        goto cleanup;
     }
-    bson_append_utf8(bson_query, "path_modif", 10, path_modif, -1);
 
-    return bson_query;
+cleanup:
+    if (err_info) {
+        bson_destroy(*query);
+        *query = NULL;
+    }
+    return err_info;
 }
 
 /**
  * @brief Get a bson command to create an opaque node.
  *
- * @param[in] path Path to the node.
+ * @param[in] path_with_value Path to the node with value.
  * @param[in] name Name of the node.
  * @param[in] module_name Name of the module.
+ * @param[in] path Path to the node.
  * @param[in] value Value of the node.
  * @param[in] path_modif Modified path.
  * @return Command to create an opaque node.
  */
 static bson_t *
-srpds_opaque(const char *path, const char *name, const char *module_name, const char *value, const char *path_modif)
+srpds_opaque(const char *path_with_value, const char *name, const char *module_name, const char *path,
+        const char *value, const char *path_modif)
 {
-    return BCON_NEW("_id", BCON_UTF8(path),
+    return BCON_NEW("_id", BCON_UTF8(path_with_value),
             "name", BCON_UTF8(name),
             "type", BCON_INT32(SRPDS_DB_LY_OPAQUE),
             "module_name", BCON_UTF8(module_name),
+            "path", BCON_UTF8(path),
             "value", BCON_UTF8(value),
-            "path_modif", BCON_UTF8(path_modif));
-}
-
-/**
- * @brief Get a bson command to create metadata.
- *
- * @param[in] id_path Path to the node with module name and name of the metadata.
- * @param[in] name Name of the metadata.
- * @param[in] path Path to the node.
- * @param[in] value Value of the metadata.
- * @param[in] id_path_modif Modified path with module name and name of the metadata.
- * @return Command to create metadata.
- */
-static bson_t *
-srpds_meta(const char *id_path, const char *name, const char *path, const char *value, const char *id_path_modif)
-{
-    return BCON_NEW("_id", BCON_UTF8(id_path),
-            "name", BCON_UTF8(name),
-            "type", BCON_INT32(SRPDS_DB_LY_META),
-            "path_to_node", BCON_UTF8(path),
-            "value", BCON_UTF8(value),
-            "path_modif", BCON_UTF8(id_path_modif));
-}
-
-/**
- * @brief Add a new operation to a bson document array to store later.
- *
- * @param[in] bson_query Bson query (operation) to add.
- * @param[out] inner Inner structure to add the operation to.
- * @return NULL on success;
- * @return Sysrepo error info on error.
- */
-static sr_error_info_t *
-srpds_add_operation(bson_t *bson_query, struct mongo_diff_inner_data *inner)
-{
-    sr_error_info_t *err_info = NULL;
-
-    if (!bson_query) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Adding operation to a list", "");
-        return err_info;
-    }
-    if ((err_info = srpds_docs_add(&(inner->docs), &(inner->size), &(inner->idx), bson_query))) {
-        return err_info;
-    }
-    return err_info;
+            "path_modif", BCON_UTF8(path_modif),
+            "attr_count", BCON_INT32(0));
 }
 
 /**
@@ -1256,14 +1173,40 @@ srpds_delete_id(mongoc_collection_t *module, const char *id)
 {
     sr_error_info_t *err_info = NULL;
     bson_error_t error;
-    bson_t *doc = NULL;
+    bson_t *query;
 
-    doc = BCON_NEW("_id", BCON_UTF8(id));
-    if (!mongoc_collection_delete_one(module, doc, NULL, NULL, &error)) {
+    query = BCON_NEW("_id", BCON_UTF8(id));
+    if (!mongoc_collection_delete_one(module, query, NULL, NULL, &error)) {
         ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_delete_one()", error.message);
     }
 
-    bson_destroy(doc);
+    bson_destroy(query);
+    return err_info;
+}
+
+/**
+ * @brief Delete one element from the database using its id (but use bulk pipeline).
+ *
+ * @param[in] id In-database id of the element.
+ * @param[out] bulk Bulk structure to insert query into.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_bulk_delete_id(const char *id, mongo_bulk_data_t *bulk)
+{
+    sr_error_info_t *err_info = NULL;
+    bson_error_t error;
+    bson_t *query;
+
+    query = BCON_NEW("_id", BCON_UTF8(id));
+    if (!mongoc_bulk_operation_remove_one_with_opts(bulk->bulk, (const bson_t *)query, NULL, &error)) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_bulk_operation_remove_one_with_opts()",
+                error.message);
+    }
+    bulk->has_operation = 1;
+
+    bson_destroy(query);
     return err_info;
 }
 
@@ -1280,28 +1223,54 @@ srpds_delete_regex(mongoc_collection_t *module, const char *regex)
 {
     sr_error_info_t *err_info = NULL;
     bson_error_t error;
-    bson_t *doc = NULL;
+    bson_t *query;
 
-    doc = BCON_NEW("_id", "{", "$regex", BCON_UTF8(regex), "$options", "s", "}");
-    if (!mongoc_collection_delete_many(module, doc, NULL, NULL, &error)) {
+    query = BCON_NEW("_id", "{", "$regex", BCON_UTF8(regex), "$options", "s", "}");
+    if (!mongoc_collection_delete_many(module, query, NULL, NULL, &error)) {
         ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_delete_many()", error.message);
     }
 
-    bson_destroy(doc);
+    bson_destroy(query);
     return err_info;
 }
 
 /**
- * @brief Delete a whole subtree of data from the database (including this @p path).
+ * @brief Delete multiple elements from the database using regex (but use bulk pipeline).
  *
- * @param[in] module Given MongoDB collection.
- * @param[in] path Path to the top node of the subtree.
- * @param[out] diff_data Helper structure for storing diff operations.
+ * @param[in] regex Regex to match for deletion.
+ * @param[out] bulk Bulk structure to insert query into.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_delete_subtree(mongoc_collection_t *module, const char *path, struct mongo_diff_data *diff_data)
+srpds_bulk_delete_regex(const char *regex, mongo_bulk_data_t *bulk)
+{
+    sr_error_info_t *err_info = NULL;
+    bson_error_t error;
+    bson_t *query;
+
+    query = BCON_NEW("_id", "{", "$regex", BCON_UTF8(regex), "$options", "s", "}");
+    if (!mongoc_bulk_operation_remove_many_with_opts(bulk->bulk, (const bson_t *)query, NULL,
+            &error)) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_bulk_operation_remove_many_with_opts()",
+                error.message);
+    }
+    bulk->has_operation = 1;
+
+    bson_destroy(query);
+    return err_info;
+}
+
+/**
+ * @brief Delete everything under the node defined by @p path except for the node itself.
+ *
+ * @param[in] path Path to the top node of the subtree.
+ * @param[out] bulk Bulk structure to insert query into.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_bulk_delete_subtree(const char *path, mongo_bulk_data_t *bulk)
 {
     sr_error_info_t *err_info = NULL;
     char *escaped = NULL, *regex = NULL;
@@ -1310,36 +1279,155 @@ srpds_delete_subtree(mongoc_collection_t *module, const char *path, struct mongo
         goto cleanup;
     }
 
-    if (asprintf(&regex, "^%s[\\/\\[\\#]", escaped) == -1) {
+    if (asprintf(&regex, "^%s[\\/\\[]", escaped) == -1) {
         ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
         goto cleanup;
     }
 
-    if (diff_data) {
-        /* delete data under this node */
-        if ((err_info = srpds_add_operation(BCON_NEW("_id", "{", "$regex", BCON_UTF8(regex), "$options", "s", "}"),
-                &(diff_data->del_many)))) {
-            goto cleanup;
-        }
-
-        /* delete this node */
-        if ((err_info = srpds_add_operation(BCON_NEW("_id", BCON_UTF8(path)),
-                &(diff_data->del)))) {
-            goto cleanup;
-        }
-    } else if (module) {
-        if ((err_info = srpds_delete_regex(module, regex))) {
-            goto cleanup;
-        }
-
-        if ((err_info = srpds_delete_id(module, path))) {
-            goto cleanup;
-        }
+    /* delete data under this node */
+    if ((err_info = srpds_bulk_delete_regex(regex, bulk))) {
+        goto cleanup;
     }
 
 cleanup:
     free(escaped);
     free(regex);
+    return err_info;
+}
+
+/**
+ * @brief Insert an element into the database.
+ *
+ * @param[in] module Given MongoDB collection.
+ * @param[in] query Query to use.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_insert(mongoc_collection_t *module, const bson_t *query)
+{
+    sr_error_info_t *err_info = NULL;
+    bson_error_t error;
+
+    if (!mongoc_collection_insert_one(module, query, NULL, NULL, &error)) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_insert_one()", error.message);
+    }
+
+    return err_info;
+}
+
+/**
+ * @brief Insert an element into the database (but use bulk pipeline).
+ *
+ * @param[in] query Query to use.
+ * @param[out] bulk Bulk structure to insert query into.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_bulk_insert(const bson_t *query, mongo_bulk_data_t *bulk)
+{
+    sr_error_info_t *err_info = NULL;
+    bson_error_t error;
+
+    if (!mongoc_bulk_operation_insert_with_opts(bulk->bulk, query, NULL, &error)) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_bulk_operation_insert_with_opts()",
+                error.message);
+    }
+    bulk->has_operation = 1;
+
+    return err_info;
+}
+
+/**
+ * @brief Update an element in the database.
+ *
+ * @param[in] module Given MongoDB collection.
+ * @param[in] query_key Query to specify the node.
+ * @param[in] query Query to use for the update.
+ * @param[in] upsert Whether to create the element if it is not found.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_update(mongoc_collection_t *module, const bson_t *query_key, const bson_t *query, int upsert)
+{
+    sr_error_info_t *err_info = NULL;
+    bson_error_t error;
+    bson_t *opts = BCON_NEW("upsert", BCON_BOOL(upsert));
+
+    if (!mongoc_collection_update_one(module, query_key, query, opts, NULL, &error)) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_update_one()", error.message);
+    }
+
+    bson_destroy(opts);
+    return err_info;
+}
+
+/**
+ * @brief Update an element in the database (but use bulk pipeline).
+ *
+ * @param[in] query_key Query to specify the node.
+ * @param[in] query Query to use for the update.
+ * @param[in] upsert Whether to create the element if it is not found.
+ * @param[out] bulk Bulk structure to insert query into.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_bulk_update(const bson_t *query_key, const bson_t *query, int upsert, mongo_bulk_data_t *bulk)
+{
+    sr_error_info_t *err_info = NULL;
+    bson_error_t error;
+    bson_t *opts = BCON_NEW("upsert", BCON_BOOL(upsert));
+
+    if (!mongoc_bulk_operation_update_one_with_opts(bulk->bulk, query_key, query, opts, &error)) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_bulk_operation_update_one_with_opts()",
+                error.message);
+    }
+    bulk->has_operation = 1;
+
+    bson_destroy(opts);
+    return err_info;
+}
+
+/**
+ * @brief Delete all metadata fields of an element in the database.
+ *
+ * @param[in] module Given MongoDB collection.
+ * @param[in] path Path to the node with metadata.
+ * @param[out] bulk Bulk structure to insert query into.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_delete_meta(mongoc_collection_t *module, const char *path, mongo_bulk_data_t *bulk)
+{
+    sr_error_info_t *err_info = NULL;
+    bson_t *query = NULL, *query_key = NULL;
+    bson_t subquery;
+
+    query = bson_new();
+    bson_append_document_begin(query, "$unset", 6, &subquery);
+    bson_append_utf8(&subquery, "meta_name", 9, "", -1);
+    bson_append_utf8(&subquery, "meta_value", 10, "", -1);
+    bson_append_document_end(query, &subquery);
+
+    /* delete all metadata */
+    query_key = BCON_NEW("_id", BCON_UTF8(path));
+    if (bulk) {
+        if ((err_info = srpds_bulk_update(query_key, query, 0, bulk))) {
+            goto cleanup;
+        }
+    } else {
+        if ((err_info = srpds_update(module, query_key, query, 0))) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    bson_destroy(query);
+    bson_destroy(query_key);
     return err_info;
 }
 
@@ -1353,80 +1441,33 @@ cleanup:
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_update_maxord(mongoc_collection_t *module, const char *path_no_pred, uint64_t max_order)
+srpds_set_maxord(mongoc_collection_t *module, const char *path_no_pred, uint64_t max_order)
 {
     sr_error_info_t *err_info = NULL;
-    bson_error_t error;
-    char *final_path = NULL;
-    bson_t *bson_query = NULL, *bson_query_key = NULL;
+    bson_t *query = NULL, *query_key = NULL;
+    char *maxord_path = NULL;
 
     /* update only if max_order has been changed
      * aka is different from zero */
     if (max_order) {
         /* update maximum order of the list
          * list's maximum order is stored here */
-        if (asprintf(&final_path, "#%s", path_no_pred) == -1) {
+        if (asprintf(&maxord_path, "#%s", path_no_pred) == -1) {
             ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
             goto cleanup;
         }
 
-        /* selector for replace command */
-        bson_query_key = BCON_NEW("_id", BCON_UTF8(final_path));
-
-        /* replace command */
-        bson_query = BCON_NEW("$set", "{", "value", BCON_INT64(max_order), "}");
-        if (!mongoc_collection_update_one(module, bson_query_key, bson_query, NULL, NULL, &error)) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_update_one()", error.message);
+        query_key = BCON_NEW("_id", BCON_UTF8(maxord_path));
+        query = BCON_NEW("$set", "{", "value", BCON_INT64(max_order), "}");
+        if ((err_info = srpds_update(module, query_key, query, 1))) {
             goto cleanup;
         }
     }
 
 cleanup:
-    free(final_path);
-    bson_destroy(bson_query_key);
-    bson_destroy(bson_query);
-    return err_info;
-}
-
-/**
- * @brief Update the maximum order of a list or a leaf-list in the database by deleting the old record and creating a new record.
- *
- * @param[in] module Given MongoDB collection.
- * @param[in] path_no_pred Path of a list/leaf-list instance without a predicate.
- * @return NULL on success;
- * @return Sysrepo error info on error.
- */
-static sr_error_info_t *
-srpds_set_maxord(mongoc_collection_t *module, const char *path_no_pred)
-{
-    sr_error_info_t *err_info = NULL;
-    bson_error_t error;
-    bson_t *bson_query = NULL;
-    char *final_path = NULL;
-
-    /* set maximum order of the list */
-    if (asprintf(&final_path, "#%s", path_no_pred) == -1) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
-        goto cleanup;
-    }
-
-    /* use case: some elements are inserted, all of them are deleted and another element is
-     * inserted -> previous max order has to be deleted and a new one inserted */
-    if ((err_info = srpds_delete_id(module, final_path))) {
-        goto cleanup;
-    }
-
-    /* maximum order starts at 1024, so that a large gap in front of the first element is created
-     * to easily insert elements here */
-    bson_query = BCON_NEW("_id", BCON_UTF8(final_path), "value", BCON_INT64(SRPDS_DB_UO_ELEMS_GAP_SIZE));
-    if (!mongoc_collection_insert_one(module, bson_query, NULL, NULL, &error)) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_insert_one()", error.message);
-        goto cleanup;
-    }
-
-cleanup:
-    free(final_path);
-    bson_destroy(bson_query);
+    free(maxord_path);
+    bson_destroy(query_key);
+    bson_destroy(query);
     return err_info;
 }
 
@@ -1459,31 +1500,28 @@ srpds_get_maxord(mongoc_collection_t *module, const char *path_no_pred, uint64_t
     sr_error_info_t *err_info = NULL;
     bson_error_t error;
     mongoc_cursor_t *cursor = NULL;
-    bson_t *doc = NULL, *doc2 = NULL;
+    bson_t *query = NULL, *query_opts = NULL, *query_iter = NULL;
     bson_iter_t iter;
-    char *final_path = NULL;
+    char *maxord_path = NULL;
 
     if (*out_max_order == 0) {
         /* get maximum order of the list
          * list's maximum order is stored here */
-        if (asprintf(&final_path, "#%s", path_no_pred) == -1) {
+        if (asprintf(&maxord_path, "#%s", path_no_pred) == -1) {
             ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
             goto cleanup;
         }
 
-        doc = BCON_NEW("_id", BCON_UTF8(final_path));
-        cursor = mongoc_collection_find_with_opts(module, doc, NULL, NULL);
+        query = BCON_NEW("_id", BCON_UTF8(maxord_path));
+        query_opts = BCON_NEW("projection", "{", "value", BCON_BOOL(1), "_id", BCON_BOOL(0), "}");
+        cursor = mongoc_collection_find_with_opts(module, query, query_opts, NULL);
 
-        if (mongoc_cursor_next(cursor, (const bson_t **) &doc2)) {
-            if (!bson_iter_init(&iter, doc2)) {
+        if (mongoc_cursor_next(cursor, (const bson_t **) &query_iter)) {
+            if (!bson_iter_init(&iter, query_iter)) {
                 ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_init()", "");
                 goto cleanup;
             }
 
-            if (!bson_iter_next(&iter)) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
-                goto cleanup;
-            }
             if (!bson_iter_next(&iter)) {
                 ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
                 goto cleanup;
@@ -1502,8 +1540,9 @@ srpds_get_maxord(mongoc_collection_t *module, const char *path_no_pred, uint64_t
     }
 
 cleanup:
-    free(final_path);
-    bson_destroy(doc);
+    free(maxord_path);
+    bson_destroy(query);
+    bson_destroy(query_opts);
     mongoc_cursor_destroy(cursor);
     return err_info;
 }
@@ -1512,7 +1551,6 @@ cleanup:
  * @brief Get the order of the previous element in a list or a leaf-list from the database.
  *
  * @param[in] module Given MongoDB collection.
- * @param[in] nodetype Type of the node (userordered list or leaflist).
  * @param[in] prev_pred Predicate of the previous element.
  * @param[in] path_no_pred Path of a list/leaf-list instance without a predicate.
  * @param[out] order Order of the previous element.
@@ -1520,12 +1558,12 @@ cleanup:
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_load_prev(mongoc_collection_t *module, uint16_t nodetype, const char *prev_pred, const char *path_no_pred, uint64_t *order)
+srpds_load_prev(mongoc_collection_t *module, const char *prev_pred, const char *path_no_pred, uint64_t *order)
 {
     sr_error_info_t *err_info = NULL;
     bson_error_t error;
     mongoc_cursor_t *cursor = NULL;
-    bson_t *doc = NULL, *doc2 = NULL;
+    bson_t *query = NULL, *query_opts = NULL, *query_iter = NULL;
     bson_iter_t iter;
     char *prev_path = NULL;
 
@@ -1535,45 +1573,16 @@ srpds_load_prev(mongoc_collection_t *module, uint16_t nodetype, const char *prev
         goto cleanup;
     }
 
-    doc = BCON_NEW("_id", BCON_UTF8(prev_path));
-    cursor = mongoc_collection_find_with_opts(module, doc, NULL, NULL);
+    query = BCON_NEW("_id", BCON_UTF8(prev_path));
+    query_opts = BCON_NEW("projection", "{", "order", BCON_BOOL(1), "_id", BCON_BOOL(0), "}");
+    cursor = mongoc_collection_find_with_opts(module, query, query_opts, NULL);
 
-    if (mongoc_cursor_next(cursor, (const bson_t **) &doc2)) {
-        if (!bson_iter_init(&iter, doc2)) {
+    if (mongoc_cursor_next(cursor, (const bson_t **) &query_iter)) {
+        if (!bson_iter_init(&iter, query_iter)) {
             ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_init()", "");
             goto cleanup;
         }
 
-        /* path */
-        if (!bson_iter_next(&iter)) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
-            goto cleanup;
-        }
-        /* name */
-        if (!bson_iter_next(&iter)) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
-            goto cleanup;
-        }
-        /* type */
-        if (!bson_iter_next(&iter)) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
-            goto cleanup;
-        }
-        /* module_name */
-        if (!bson_iter_next(&iter)) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
-            goto cleanup;
-        }
-        /* predicate or dflt_flag */
-        if (!bson_iter_next(&iter)) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
-            goto cleanup;
-        }
-        /* value */
-        if ((nodetype == LYS_LEAFLIST) && !bson_iter_next(&iter)) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
-            goto cleanup;
-        }
         /* order */
         if (!bson_iter_next(&iter)) {
             ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
@@ -1589,7 +1598,8 @@ srpds_load_prev(mongoc_collection_t *module, uint16_t nodetype, const char *prev
 
 cleanup:
     free(prev_path);
-    bson_destroy(doc);
+    bson_destroy(query);
+    bson_destroy(query_opts);
     mongoc_cursor_destroy(cursor);
     return err_info;
 }
@@ -1598,7 +1608,6 @@ cleanup:
  * @brief Get the order of the next element in a list or a leaf-list from the database.
  *
  * @param[in] module Given MongoDB collection.
- * @param[in] nodetype Type of the node (userordered list or leaflist).
  * @param[in] prev_pred Predicate of the next element's previous element.
  * @param[in] path_no_pred Path of a list/leaf-list instance without a predicate.
  * @param[out] order Order of the next element.
@@ -1606,57 +1615,28 @@ cleanup:
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_load_next(mongoc_collection_t *module, uint16_t nodetype, const char *prev_pred, const char *path_no_pred, uint64_t *order)
+srpds_load_next(mongoc_collection_t *module, const char *prev_pred, const char *path_no_pred, uint64_t *order)
 {
     sr_error_info_t *err_info = NULL;
     bson_error_t error;
     mongoc_cursor_t *cursor = NULL;
-    bson_t *doc = NULL, *doc2 = NULL;
+    bson_t *query = NULL, *query_opts = NULL, *query_iter = NULL;
     bson_iter_t iter;
     char *order_str = NULL;
     uint64_t order_cur = 0, order_min = UINT64_MAX;
 
     *order = 0;
 
-    doc = BCON_NEW("prev", BCON_UTF8(prev_pred), "path_no_pred", BCON_UTF8(path_no_pred));
-    cursor = mongoc_collection_find_with_opts(module, doc, NULL, NULL);
+    query = BCON_NEW("prev", BCON_UTF8(prev_pred), "path_no_pred", BCON_UTF8(path_no_pred));
+    query_opts = BCON_NEW("projection", "{", "order", BCON_BOOL(1), "_id", BCON_BOOL(0), "}");
+    cursor = mongoc_collection_find_with_opts(module, query, query_opts, NULL);
 
-    if (mongoc_cursor_next(cursor, (const bson_t **) &doc2)) {
-        if (!bson_iter_init(&iter, doc2)) {
+    if (mongoc_cursor_next(cursor, (const bson_t **) &query_iter)) {
+        if (!bson_iter_init(&iter, query_iter)) {
             ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_init()", "");
             goto cleanup;
         }
 
-        /* path */
-        if (!bson_iter_next(&iter)) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
-            goto cleanup;
-        }
-        /* name */
-        if (!bson_iter_next(&iter)) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
-            goto cleanup;
-        }
-        /* type */
-        if (!bson_iter_next(&iter)) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
-            goto cleanup;
-        }
-        /* module_name */
-        if (!bson_iter_next(&iter)) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
-            goto cleanup;
-        }
-        /* predicate or dflt_flag */
-        if (!bson_iter_next(&iter)) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
-            goto cleanup;
-        }
-        /* value */
-        if ((nodetype == LYS_LEAFLIST) && !bson_iter_next(&iter)) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
-            goto cleanup;
-        }
         /* order */
         if (!bson_iter_next(&iter)) {
             ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
@@ -1679,7 +1659,8 @@ srpds_load_next(mongoc_collection_t *module, uint16_t nodetype, const char *prev
 
 cleanup:
     free(order_str);
-    bson_destroy(doc);
+    bson_destroy(query);
+    bson_destroy(query_opts);
     mongoc_cursor_destroy(cursor);
     return err_info;
 }
@@ -1701,14 +1682,14 @@ cleanup:
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_shift_uo_list_recursively(mongoc_collection_t *module, const char *path_no_pred, uint64_t next_elem_order, uint64_t *max_order)
+srpds_shift_uo_list_recursively(mongoc_collection_t *module, const char *path_no_pred, uint64_t next_elem_order,
+        uint64_t *max_order)
 {
     sr_error_info_t *err_info = 0;
     int found = 0;
     bson_error_t error;
     mongoc_cursor_t *cursor = NULL;
-    bson_t *doc = NULL, *doc2 = NULL, *bson_query_key = NULL,
-            *bson_query_rep = NULL;
+    bson_t *query = NULL, *query_opts = NULL, *query_iter = NULL, *query_key = NULL;
     bson_iter_t iter;
     const char *path = NULL;
 
@@ -1721,13 +1702,14 @@ srpds_shift_uo_list_recursively(mongoc_collection_t *module, const char *path_no
     }
 
     /* find the next element */
-    doc = BCON_NEW("order", BCON_INT64(next_elem_order), "path_no_pred", BCON_UTF8(path_no_pred));
-    cursor = mongoc_collection_find_with_opts(module, doc, NULL, NULL);
+    query = BCON_NEW("order", BCON_INT64(next_elem_order), "path_no_pred", BCON_UTF8(path_no_pred));
+    query_opts = BCON_NEW("projection", "{", "_id", BCON_BOOL(1), "}");
+    cursor = mongoc_collection_find_with_opts(module, query, query_opts, NULL);
 
-    if (mongoc_cursor_next(cursor, (const bson_t **) &doc2)) {
+    if (mongoc_cursor_next(cursor, (const bson_t **) &query_iter)) {
         found = 1;
 
-        if (!bson_iter_init(&iter, doc2)) {
+        if (!bson_iter_init(&iter, query_iter)) {
             ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_init()", "");
             goto cleanup;
         }
@@ -1748,6 +1730,8 @@ srpds_shift_uo_list_recursively(mongoc_collection_t *module, const char *path_no
         ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_find_with_opts()", error.message);
         goto cleanup;
     }
+    bson_destroy(query);
+    query = NULL;
 
     if (found) {
         /* An element with such order has been found, shift all elements
@@ -1756,67 +1740,53 @@ srpds_shift_uo_list_recursively(mongoc_collection_t *module, const char *path_no
             goto cleanup;
         }
 
-        /* change order of this element,
-         * selector for replace command */
-        bson_query_key = BCON_NEW("_id", BCON_UTF8(path));
-
-        /* replace command */
-        bson_query_rep = BCON_NEW("$set", "{", "order", BCON_INT64(next_elem_order + 1), "}");
-        if (!mongoc_collection_update_one(module, bson_query_key, bson_query_rep, NULL, NULL, &error)) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_update_one()", error.message);
+        /* change order of this element */
+        query_key = BCON_NEW("_id", BCON_UTF8(path));
+        query = BCON_NEW("$set", "{", "order", BCON_INT64(next_elem_order + 1), "}");
+        if ((err_info = srpds_update(module, query_key, query, 0))) {
             goto cleanup;
         }
     }
 
 cleanup:
-    bson_destroy(doc);
+    bson_destroy(query);
+    bson_destroy(query_opts);
     mongoc_cursor_destroy(cursor);
-    bson_destroy(bson_query_key);
-    bson_destroy(bson_query_rep);
+    bson_destroy(query_key);
     return err_info;
 }
 
 /**
- * @brief Insert a user-ordered element into a list or a leaf-list in the database.
+ * @brief Prepare the insertion/update of a user-ordered element in the database.
  *
  * @param[in] module Given MongoDB collection.
- * @param[in] node Current data node in the diff.
- * @param[in] module_name Name of the module the node belongs to.
- * @param[in] path Path of the user-ordered element.
  * @param[in] path_no_pred Path without a predicate of the user-ordered element.
- * @param[in] path_modif Modified path with ' ' instead of '/' for loading purposes.
  * @param[in] predicate Predicate of the user-ordered element.
- * @param[in] value Value of the user-ordered element.
  * @param[in] prev Value of the node before this node.
- * @param[in] prev_pred Value of the node before this node in predicate.
  * @param[out] max_order Changed maximum order.
+ * @param[out] order Order to use for insert/update.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_create_uo_op(mongoc_collection_t *module, const struct lyd_node *node, const char *module_name, const char *path,
-        const char *path_no_pred, const char *path_modif, const char *predicate, const char *value, const char *prev,
-        const char *prev_pred, uint64_t *max_order)
+srpds_prepare_create_uo_op(mongoc_collection_t *module, const char *path_no_pred, const char *predicate,
+        const char *prev, uint64_t *max_order, uint64_t *order)
 {
     sr_error_info_t *err_info = NULL;
-    bson_error_t error;
-    bson_t *bson_query_uo_rep = NULL, *bson_query_uo_key = NULL,
-            *bson_query_uo = NULL;
-    uint64_t prev_order = 0, next_order = 0, order;
-    char *keys = NULL;
-    uint32_t keys_length = 0;
+    bson_t *query = NULL, *query_key = NULL;
+    uint64_t prev_order = 0, next_order = 0;
 
     /* there is a previous element */
     if (strcmp(prev, "")) {
         /* load previous,
          * get order of the previous element */
-        if ((err_info = srpds_load_prev(module, node->schema->nodetype, prev_pred, path_no_pred, &prev_order))) {
+        if ((err_info = srpds_load_prev(module, prev, path_no_pred, &prev_order))) {
             goto cleanup;
         }
 
         /* load next
          * get order of the next element */
-        if ((err_info = srpds_load_next(module, node->schema->nodetype, prev_pred, path_no_pred, &next_order))) {
+        if ((err_info = srpds_load_next(module, prev, path_no_pred, &next_order))) {
             goto cleanup;
         }
 
@@ -1829,7 +1799,7 @@ srpds_create_uo_op(mongoc_collection_t *module, const struct lyd_node *node, con
             srpds_inc_maxord(max_order);
 
             /* calculate order */
-            order = *max_order;
+            *order = *max_order;
         } else if (next_order - prev_order == 1) {
             /* shift the next elements by one recursively */
             if ((err_info = srpds_shift_uo_list_recursively(module, path_no_pred, next_order, max_order))) {
@@ -1837,37 +1807,29 @@ srpds_create_uo_op(mongoc_collection_t *module, const struct lyd_node *node, con
             }
 
             /* calculate order */
-            order = next_order;
+            *order = next_order;
 
-            /* add new prev element to the next element,
-             * selector for replace command */
-            bson_query_uo_key = BCON_NEW("prev", BCON_UTF8(prev_pred), "path_no_pred", BCON_UTF8(path_no_pred));
-
-            /* replace command */
-            bson_query_uo_rep = BCON_NEW("$set", "{", "prev", BCON_UTF8(predicate), "}");
-            if (!mongoc_collection_update_one(module, bson_query_uo_key, bson_query_uo_rep, NULL, NULL, &error)) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_update_one()", error.message);
+            /* add new prev element to the next element */
+            query_key = BCON_NEW("prev", BCON_UTF8(prev), "path_no_pred", BCON_UTF8(path_no_pred));
+            query = BCON_NEW("$set", "{", "prev", BCON_UTF8(predicate), "}");
+            if ((err_info = srpds_update(module, query_key, query, 0))) {
                 goto cleanup;
             }
         } else {
             /* calculate order */
-            order = (uint64_t)(prev_order + (next_order - prev_order) / 2);
+            *order = (uint64_t)(prev_order + (next_order - prev_order) / 2);
 
-            /* add new prev element to the next element,
-             * selector for replace command */
-            bson_query_uo_key = BCON_NEW("prev", BCON_UTF8(prev_pred), "path_no_pred", BCON_UTF8(path_no_pred));
-
-            /* replace command */
-            bson_query_uo_rep = BCON_NEW("$set", "{", "prev", BCON_UTF8(predicate), "}");
-            if (!mongoc_collection_update_one(module, bson_query_uo_key, bson_query_uo_rep, NULL, NULL, &error)) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_update_one()", error.message);
+            /* add new prev element to the next element */
+            query_key = BCON_NEW("prev", BCON_UTF8(prev), "path_no_pred", BCON_UTF8(path_no_pred));
+            query = BCON_NEW("$set", "{", "prev", BCON_UTF8(predicate), "}");
+            if ((err_info = srpds_update(module, query_key, query, 0))) {
                 goto cleanup;
             }
         }
         /* there is no previous element */
     } else {
         /* load next */
-        if ((err_info = srpds_load_next(module, node->schema->nodetype, prev_pred, path_no_pred, &next_order))) {
+        if ((err_info = srpds_load_next(module, prev, path_no_pred, &next_order))) {
             goto cleanup;
         }
 
@@ -1878,12 +1840,12 @@ srpds_create_uo_op(mongoc_collection_t *module, const struct lyd_node *node, con
              * list were deleted */
 
             /* set max order for lists and leaf-lists */
-            if ((err_info = srpds_set_maxord(module, path_no_pred))) {
+            if ((err_info = srpds_set_maxord(module, path_no_pred, SRPDS_DB_UO_ELEMS_GAP_SIZE))) {
                 goto cleanup;
             }
 
             /* calculate order */
-            order = SRPDS_DB_UO_ELEMS_GAP_SIZE;
+            *order = SRPDS_DB_UO_ELEMS_GAP_SIZE;
         } else if (next_order == 1) {
             /* shift next elements by one recursively */
             if ((err_info = srpds_shift_uo_list_recursively(module, path_no_pred, next_order, max_order))) {
@@ -1891,342 +1853,474 @@ srpds_create_uo_op(mongoc_collection_t *module, const struct lyd_node *node, con
             }
 
             /* calculate order */
-            order = next_order;
+            *order = next_order;
 
-            /* add new prev element to the next element,
-             * selector for replace command */
-            bson_query_uo_key = BCON_NEW("prev", BCON_UTF8(prev_pred), "path_no_pred", BCON_UTF8(path_no_pred));
-
-            /* replace command */
-            bson_query_uo_rep = BCON_NEW("$set", "{", "prev", BCON_UTF8(predicate), "}");
-            if (!mongoc_collection_update_one(module, bson_query_uo_key, bson_query_uo_rep, NULL, NULL, &error)) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_update_one()", error.message);
+            /* add new prev element to the next element */
+            query_key = BCON_NEW("prev", BCON_UTF8(prev), "path_no_pred", BCON_UTF8(path_no_pred));
+            query = BCON_NEW("$set", "{", "prev", BCON_UTF8(predicate), "}");
+            if ((err_info = srpds_update(module, query_key, query, 0))) {
                 goto cleanup;
             }
         } else {
             /* calculate order */
-            order = (uint64_t)(next_order / 2);
+            *order = (uint64_t)(next_order / 2);
 
-            /* add new prev element to the next element,
-             * selector for replace command */
-            bson_query_uo_key = BCON_NEW("prev", BCON_UTF8(prev_pred), "path_no_pred", BCON_UTF8(path_no_pred));
-
-            /* replace command */
-            bson_query_uo_rep = BCON_NEW("$set", "{", "prev", BCON_UTF8(predicate), "}");
-            if (!mongoc_collection_update_one(module, bson_query_uo_key, bson_query_uo_rep, NULL, NULL, &error)) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_update_one()", error.message);
+            /* add new prev element to the next element */
+            query_key = BCON_NEW("prev", BCON_UTF8(prev), "path_no_pred", BCON_UTF8(path_no_pred));
+            query = BCON_NEW("$set", "{", "prev", BCON_UTF8(predicate), "}");
+            if ((err_info = srpds_update(module, query_key, query, 0))) {
                 goto cleanup;
             }
         }
     }
 
+cleanup:
+    bson_destroy(query_key);
+    bson_destroy(query);
+    return err_info;
+}
+
+/**
+ * @brief Prepare a deletion/update of a user-ordered element from a list or a leaf-list in the database.
+ *
+ * @param[in] module Given MongoDB collection.
+ * @param[in] path_no_pred Path without a predicate of the user-ordered element.
+ * @param[in] predicate Predicate of the user-ordered element.
+ * @param[in] orig_value_pred Predicate of a previous element.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_prepare_delete_uo_op(mongoc_collection_t *module, const char *path_no_pred, const char *predicate,
+        const char *orig_value_pred)
+{
+    sr_error_info_t *err_info = NULL;
+    bson_t *query = NULL, *query_key = NULL;
+
+    /* add new prev element to the next element */
+    query_key = BCON_NEW("prev", BCON_UTF8(predicate), "path_no_pred", BCON_UTF8(path_no_pred));
+    query = BCON_NEW("$set", "{", "prev", BCON_UTF8(orig_value_pred), "}");
+    if ((err_info = srpds_update(module, query_key, query, 0))) {
+        goto cleanup;
+    }
+
+cleanup:
+    bson_destroy(query_key);
+    bson_destroy(query);
+    return err_info;
+}
+
+/**
+ * @brief Create a userordered element in the database.
+ *
+ * @param[in] module Given MongoDB collection.
+ * @param[in] ds Given datastore.
+ * @param[in] node Node to store.
+ * @param[in] path Path to the node.
+ * @param[in] path_no_pred Path without a predicate.
+ * @param[in] tree Whole data tree.
+ * @param[out] max_order Maximum order of the userordered list/leaflist.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_create_uo_op(mongoc_collection_t *module, sr_datastore_t ds, const struct lyd_node *node, const char *path,
+        const char *path_no_pred, const struct lyd_node *tree, uint64_t *max_order)
+{
+    sr_error_info_t *err_info = NULL;
+    bson_t *query = NULL;
+    const char *module_name, *value;
+    char *path_modif = NULL, *prev = NULL, *keys = NULL;
+    uint32_t keys_length = 0;
+    struct lyd_node *match = NULL;
+    uint64_t order = 0;
+
+    /* get modified version of path */
+    if ((err_info = srpds_get_modif_path(plugin_name, path, &path_modif))) {
+        goto cleanup;
+    }
+
+    /* get module name */
+    if ((node->parent == NULL) || strcmp(node->schema->module->name, node->parent->schema->module->name)) {
+        module_name = node->schema->module->name;
+    } else {
+        module_name = NULL;
+    }
+
+    /* get prev value */
+    if ((err_info = srpds_get_prev_value(plugin_name, node, &prev))) {
+        goto cleanup;
+    }
+
+    /* metadata are only stored in oper ds */
+    if (ds == SR_DS_OPERATIONAL) {
+        /* find the node in the mod_data to read metadata from */
+        if ((err_info = srpds_find_node(plugin_name, node, tree, &match))) {
+            goto cleanup;
+        }
+    }
+
+    /* prepare insertion of a new element into the user-ordered list */
+    if ((err_info = srpds_prepare_create_uo_op(module, path_no_pred, srpds_get_predicate(path, path_no_pred),
+            prev, max_order, &order))) {
+        goto cleanup;
+    }
+
     /* insert an element */
+    /* we need is_prev_empty field since we cannot check if prev is empty or not */
     switch (node->schema->nodetype) {
     case LYS_LIST:
         if ((err_info = srpds_concat_key_values(plugin_name, node, &keys, &keys_length))) {
             goto cleanup;
         }
-        bson_query_uo = srpds_list_uo(path, node->schema->name, module_name, keys, keys_length, order, path_no_pred,
-                prev_pred, 1, path_modif);
+        if ((err_info = srpds_list_uo(path, node->schema->name, module_name, keys, keys_length, order,
+                path_no_pred, prev, path_modif, match ? match->meta : NULL, &query))) {
+            goto cleanup;
+        }
         break;
     case LYS_LEAFLIST:
-        bson_query_uo = srpds_leaflist_uo(path, node->schema->name, module_name, 0, value, order, path_no_pred,
-                prev_pred, 1, path_modif);
+        value = lyd_get_value(node);
+        if ((err_info = srpds_leaflist_uo(path, node->schema->name, module_name, (node->flags & LYD_DEFAULT),
+                value, order, path_no_pred, prev, path_modif, match ? match->meta : NULL, &query))) {
+            goto cleanup;
+        }
         break;
     }
-    if (!mongoc_collection_insert_one(module, bson_query_uo, NULL, NULL, &error)) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_insert_one()", error.message);
+
+    if ((err_info = srpds_insert(module, query))) {
         goto cleanup;
     }
 
 cleanup:
+    free(path_modif);
+    free(prev);
     free(keys);
-    bson_destroy(bson_query_uo);
-    bson_destroy(bson_query_uo_key);
-    bson_destroy(bson_query_uo_rep);
+    bson_destroy(query);
     return err_info;
 }
 
 /**
- * @brief Delete a user-ordered element from a list or a leaf-list in the database.
+ * @brief Delete a userordered element from the database.
  *
  * @param[in] module Given MongoDB collection.
- * @param[in] path Path of the user-ordered element.
- * @param[in] path_no_pred Path without a predicate of the user-ordered element.
- * @param[in] predicate Predicate of the user-ordered element.
- * @param[in] orig_value_pred Predicate of a previous element.
- * @param[in] is_del_many Whether a delete many operation should be executed.
+ * @param[in] node Node to delete.
+ * @param[in] path Path to the node.
+ * @param[in] path_no_pred Path without a predicate.
+ * @param[out] bulk Bulk structure to insert query into.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_delete_uo_op(mongoc_collection_t *module, const char *path, const char *path_no_pred, const char *predicate,
-        const char *orig_value_pred, int is_del_many)
+srpds_delete_uo_op(mongoc_collection_t *module, const struct lyd_node *node, const char *path,
+        const char *path_no_pred, mongo_bulk_data_t *bulk)
 {
     sr_error_info_t *err_info = NULL;
-    bson_error_t error;
-    bson_t *bson_query_uo_rep = NULL, *bson_query_uo_key = NULL;
+    char *orig_prev = NULL;
 
-    /* add new prev element to the next element,
-     * selector for replace command */
-    bson_query_uo_key = BCON_NEW("prev", BCON_UTF8(predicate), "path_no_pred", BCON_UTF8(path_no_pred));
-
-    /* change the next element's prev */
-    bson_query_uo_rep = BCON_NEW("$set", "{", "prev", BCON_UTF8(orig_value_pred), "}");
-    if (!mongoc_collection_update_one(module, bson_query_uo_key, bson_query_uo_rep, NULL, NULL, &error)) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_update_one()", error.message);
+    /* get orig_prev value */
+    if ((err_info = srpds_get_orig_prev_value(plugin_name, node, &orig_prev))) {
         goto cleanup;
     }
 
-    if (is_del_many) {
-        /* delete many command for userordered lists and leaf-lists to delete a whole subtree */
-        if ((err_info = srpds_delete_subtree(module, path, NULL))) {
-            goto cleanup;
-        }
-    } else {
-        /* delete command for userordered lists and leaf-lists */
-        if ((err_info = srpds_delete_id(module, path))) {
+    /* prepare deletion of an element from the user-ordered list */
+    if ((err_info = srpds_prepare_delete_uo_op(module, path_no_pred, srpds_get_predicate(path, path_no_pred),
+            orig_prev))) {
+        goto cleanup;
+    }
+
+    /* delete one element */
+    if ((err_info = srpds_delete_id(module, path))) {
+        goto cleanup;
+    }
+
+    if (lyd_child_no_keys(node)) {
+        /* delete a whole subtree */
+        if ((err_info = srpds_bulk_delete_subtree(path, bulk))) {
             goto cleanup;
         }
     }
 
 cleanup:
-    bson_destroy(bson_query_uo_key);
-    bson_destroy(bson_query_uo_rep);
+    free(orig_prev);
     return err_info;
 }
 
 /**
- * @brief Change the default flag of a node.
+ * @brief Move/update a userordered element in the database.
  *
- * @param[in] path Path to a data node.
- * @param[in] diff_data Helper structure for storing diff operations.
- * @param[in] add_or_remove Whether the default flag should be added or removed.
+ * @param[in] module Given MongoDB collection.
+ * @param[in] ds Given datastore.
+ * @param[in] node Node to update.
+ * @param[in] path Path to the node.
+ * @param[in] path_no_pred Path without a predicate.
+ * @param[in] tree Whole data tree.
+ * @param[out] max_order Maximum order of the userordered list/leaflist.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_change_default_flag(const char *path, struct mongo_diff_data *diff_data, int add_or_remove)
+srpds_replace_uo_op(mongoc_collection_t *module, sr_datastore_t ds, const struct lyd_node *node, const char *path,
+        const char *path_no_pred, const struct lyd_node *tree, uint64_t *max_order)
 {
     sr_error_info_t *err_info = NULL;
+    bson_t *query_key = NULL, *query = NULL;
+    bson_t subquery;
+    const char *predicate, *value;
+    char *prev = NULL, *orig_prev = NULL;
+    struct lyd_node *match = NULL;
+    uint64_t order = 0;
 
-    /* selector for replace command */
-    if ((err_info = srpds_add_operation(BCON_NEW("_id", BCON_UTF8(path)), &(diff_data->rep_keys)))) {
+    /* get predicate */
+    predicate = srpds_get_predicate(path, path_no_pred);
+
+    /* get prev value */
+    if ((err_info = srpds_get_prev_value(plugin_name, node, &prev))) {
+        goto cleanup;
+    }
+
+    /* get orig_prev value */
+    if ((err_info = srpds_get_orig_prev_value(plugin_name, node, &orig_prev))) {
+        goto cleanup;
+    }
+
+    /* prepare deletion of an element from the user-ordered list */
+    if ((err_info = srpds_prepare_delete_uo_op(module, path_no_pred, predicate, orig_prev))) {
+        goto cleanup;
+    }
+
+    /* insert a new element into the user-ordered list */
+    if ((err_info = srpds_prepare_create_uo_op(module, path_no_pred, predicate, prev, max_order, &order))) {
         goto cleanup;
     }
 
     /* replace command */
-    if ((err_info = srpds_add_operation(BCON_NEW("$set", "{", "dflt_flag", BCON_BOOL(add_or_remove), "}"), &(diff_data->rep)))) {
-        goto cleanup;
+    query = bson_new();
+    bson_append_document_begin(query, "$set", 4, &subquery);
+    switch (node->schema->nodetype) {
+    case LYS_LIST:
+        /* add nothing */
+        break;
+    case LYS_LEAFLIST:
+        value = lyd_get_value(node);
+        bson_append_bool(&subquery, "dflt_flag", 9, node->flags & LYD_DEFAULT);
+        bson_append_utf8(&subquery, "value", 5, value, -1);
+        break;
     }
+    bson_append_int64(&subquery, "order", 5, order);
+    bson_append_utf8(&subquery, "prev", 4, prev, -1);
 
-cleanup:
-    return err_info;
-}
-
-/**
- * @brief Change the default flag of a node to the opposite.
- *
- * @param[in] path Path to a data node.
- * @param[in] node Data node.
- * @param[in] diff_data Helper structure for storing diff operations.
- * @return NULL on success;
- * @return Sysrepo error info on error.
- */
-static sr_error_info_t *
-srpds_update_default_flag(const char *path, const struct lyd_node *node, struct mongo_diff_data *diff_data)
-{
-    sr_error_info_t *err_info = NULL;
-
-    if (!strcmp(lyd_get_meta_value(lyd_find_meta(node->meta, NULL, "yang:orig-default")), "true")) {
-        if (!(node->flags & LYD_DEFAULT)) {
-            err_info = srpds_change_default_flag(path, diff_data, 0);
+    if (ds == SR_DS_OPERATIONAL) {
+        /* delete metadata immediately (no bulking) */
+        if ((err_info = srpds_delete_meta(module, path, NULL))) {
+            goto cleanup;
         }
-    } else {
-        if (node->flags & LYD_DEFAULT) {
-            err_info = srpds_change_default_flag(path, diff_data, 1);
+
+        /* find the node in the mod_data to read metadata from */
+        if ((err_info = srpds_find_node(plugin_name, node, tree, &match))) {
+            goto cleanup;
+        }
+
+        /* add new metadata */
+        if ((err_info = srpds_add_meta(match->meta, &subquery))) {
+            goto cleanup;
         }
     }
+    bson_append_document_end(query, &subquery);
 
-    return err_info;
-}
-
-/**
- * @brief Change the default flag of a node to true.
- *
- * @param[in] path Path to a data node.
- * @param[in] node Data node.
- * @param[out] diff_data Helper structure for storing diff operations.
- * @return NULL on success;
- * @return Sysrepo error info on error.
- */
-static sr_error_info_t *
-srpds_create_op_default_flag(const char *path, const struct lyd_node *node, struct mongo_diff_data *diff_data)
-{
-    sr_error_info_t *err_info = NULL;
-
-    if (!(node->schema->nodetype & LYD_NODE_TERM)) {
+    query_key = BCON_NEW("_id", BCON_UTF8(path));
+    if ((err_info = srpds_update(module, query_key, query, 0))) {
         goto cleanup;
     }
 
-    if (node->flags & LYD_DEFAULT) {
-        err_info = srpds_change_default_flag(path, diff_data, 1);
-    }
-
 cleanup:
+    free(prev);
+    free(orig_prev);
+    bson_destroy(query_key);
+    bson_destroy(query);
     return err_info;
 }
 
 /**
- * @brief Change the default flag of a node to the opposite.
+ * @brief Update node's default flag and metadata.
  *
- * @param[in] path Path to a data node.
- * @param[in] node Data node.
- * @param[out] diff_data Helper structure for storing diff operations.
+ * @param[in] ds Given datastore.
+ * @param[in] node Node to update.
+ * @param[in] path Path to the node.
+ * @param[in] tree Whole data tree.
+ * @param[out] bulk Bulk structure to insert query into.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_none_op_default_flag(const char *path, const struct lyd_node *node, struct mongo_diff_data *diff_data)
+srpds_none_op(sr_datastore_t ds, const struct lyd_node *node, const char *path, const struct lyd_node *tree,
+        mongo_bulk_data_t *bulk)
 {
     sr_error_info_t *err_info = NULL;
+    bson_t *query = NULL, *query_key = NULL;
+    bson_t subquery;
+    struct lyd_node *match = NULL;
 
-    if (!(node->schema->nodetype & LYD_NODE_TERM)) {
+    if (!(node->schema->nodetype & LYD_NODE_TERM) && (ds != SR_DS_OPERATIONAL)) {
         goto cleanup;
     }
 
-    err_info = srpds_update_default_flag(path, node, diff_data);
+    query = bson_new();
+    bson_append_document_begin(query, "$set", 4, &subquery);
 
-cleanup:
-    return err_info;
-}
+    /* update default flag */
+    if (node->schema->nodetype & LYD_NODE_TERM) {
+        bson_append_bool(&subquery, "dflt_flag", 9, node->flags & LYD_DEFAULT);
+    }
 
-/**
- * @brief Change the default flag of a node to the opposite.
- *
- * @param[in] path Path to a data node.
- * @param[in] node Data node.
- * @param[out] diff_data Helper structure for storing diff operations.
- * @return NULL on success;
- * @return Sysrepo error info on error.
- */
-static sr_error_info_t *
-srpds_replace_op_default_flag(const char *path, const struct lyd_node *node, struct mongo_diff_data *diff_data)
-{
-    sr_error_info_t *err_info = NULL;
+    /* metadata are only stored in oper ds */
+    if (ds == SR_DS_OPERATIONAL) {
+        /* delete metadata */
+        if ((err_info = srpds_delete_meta(NULL, path, bulk))) {
+            goto cleanup;
+        }
 
-    /* for userordered leaflists replace operation can never change the default flag */
-    if (!(node->schema->nodetype & LYD_NODE_TERM) ||
-            ((node->schema->nodetype & LYS_LEAFLIST) && lysc_is_userordered(node->schema))) {
+        /* find the node in the mod_data to read metadata from */
+        if ((err_info = srpds_find_node(plugin_name, node, tree, &match))) {
+            goto cleanup;
+        }
+
+        /* add metadata */
+        if ((err_info = srpds_add_meta(match->meta, &subquery))) {
+            goto cleanup;
+        }
+    }
+    bson_append_document_end(query, &subquery);
+
+    query_key = BCON_NEW("_id", BCON_UTF8(path));
+    if ((err_info = srpds_bulk_update(query_key, query, 0, bulk))) {
         goto cleanup;
     }
 
-    err_info = srpds_update_default_flag(path, node, diff_data);
-
 cleanup:
+    bson_destroy(query_key);
+    bson_destroy(query);
     return err_info;
 }
 
 /**
- * @brief Diff operation create.
+ * @brief Create a standard node in the database.
  *
- * @param[in] module Given MongoDB collection.
- * @param[in] node Current data node in the diff.
- * @param[in] module_name Name of the module the node belongs to.
- * @param[in] path Path of the data node.
- * @param[in] path_no_pred Path without the predicate of the data node.
- * @param[in] predicate Predicate of the data node.
- * @param[in] path_modif Modified path with ' ' instead of '/' for loading purposes.
- * @param[in] value Value of the node.
- * @param[in] prev Value of the node before this node.
- * @param[in] prev_pred Value of the node before this node in predicate.
- * @param[in] valtype Type of the node's value (XML or JSON).
- * @param[in,out] max_order Maximum order of the list or leaf-list.
- * @param[out] diff_data Helper structure for storing diff operations.
+ * @param[in] ds Given datastore.
+ * @param[in] node Node to store.
+ * @param[in] path Path to the node.
+ * @param[in] tree Whole data tree.
+ * @param[out] bulk Bulk structure to insert query into.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_create_op(mongoc_collection_t *module, const struct lyd_node *node, const char *module_name, const char *path, const char *path_no_pred,
-        const char *predicate, const char *path_modif, const char *value, const char *prev, const char *prev_pred, int32_t valtype,
-        uint64_t *max_order, struct mongo_diff_data *diff_data)
+srpds_create_op(sr_datastore_t ds, const struct lyd_node *node, const char *path, const struct lyd_node *tree,
+        mongo_bulk_data_t *bulk)
 {
     sr_error_info_t *err_info = NULL;
-    bson_t *bson_query = NULL;
-    char *keys = NULL;
+    bson_t *query = NULL;
+    const char *module_name, *value;
+    char *any_value = NULL, *keys = NULL, *path_modif = NULL;
     uint32_t keys_length = 0;
+    struct lyd_node *match = NULL;
 
-    if (lysc_is_userordered(node->schema)) {
-        /* insert a new element into the user-ordered list */
-        if ((err_info = srpds_create_uo_op(module, node, module_name, path, path_no_pred, path_modif, predicate, value, prev, prev_pred, max_order))) {
-            goto cleanup;
-        }
+    /* get modified version of path */
+    if ((err_info = srpds_get_modif_path(plugin_name, path, &path_modif))) {
+        goto cleanup;
+    }
+
+    /* get module name */
+    if ((node->parent == NULL) || strcmp(node->schema->module->name, node->parent->schema->module->name)) {
+        module_name = node->schema->module->name;
     } else {
-        switch (node->schema->nodetype) {
-        case LYS_CONTAINER:
-            bson_query = srpds_container(path, node->schema->name, module_name, path_modif);
-            break;
-        case LYS_LIST:
-            if ((err_info = srpds_concat_key_values(plugin_name, node, &keys, &keys_length))) {
-                goto cleanup;
-            }
-            bson_query = srpds_list(path, node->schema->name, module_name, keys, keys_length, path_modif);
-            break;
-        case LYS_LEAF:
-        case LYS_LEAFLIST:
-            bson_query = srpds_term(path, node->schema->name, module_name, 0, value, path_modif);
-            break;
-        case LYS_ANYDATA:
-        case LYS_ANYXML:
-            bson_query = srpds_any(path, node->schema->name, module_name, 0, value, valtype, path_modif);
-            break;
-        }
+        module_name = NULL;
+    }
 
-        if ((err_info = srpds_add_operation(bson_query, &(diff_data->cre)))) {
+    /* metadata are only stored in oper ds */
+    if (ds == SR_DS_OPERATIONAL) {
+        /* find the node in the mod_data to read metadata from */
+        if ((err_info = srpds_find_node(plugin_name, node, tree, &match))) {
             goto cleanup;
         }
     }
 
-    /* default nodes */
-    if ((err_info = srpds_create_op_default_flag(path, node, diff_data))) {
+    /* insert an element */
+    switch (node->schema->nodetype) {
+    case LYS_CONTAINER:
+        if ((err_info = srpds_container(path, node->schema->name, module_name, path_modif, match ? match->meta : NULL,
+                &query))) {
+            goto cleanup;
+        }
+        break;
+    case LYS_LIST:
+        if ((err_info = srpds_concat_key_values(plugin_name, node, &keys, &keys_length))) {
+            goto cleanup;
+        }
+        if ((err_info = srpds_list(path, node->schema->name, module_name, keys, keys_length, path_modif,
+                match ? match->meta : NULL, &query))) {
+            goto cleanup;
+        }
+        break;
+    case LYS_LEAF:
+    case LYS_LEAFLIST:
+        value = lyd_get_value(node);
+        if ((err_info = srpds_term(path, node->schema->name, module_name, (node->flags & LYD_DEFAULT), value,
+                path_modif, match ? match->meta : NULL, &query))) {
+            goto cleanup;
+        }
+        break;
+    case LYS_ANYDATA:
+    case LYS_ANYXML:
+        /* lyd_node_any */
+        if (lyd_any_value_str(node, &any_value) != LY_SUCCESS) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_any_value_str()", "");
+            goto cleanup;
+        }
+        if ((err_info = srpds_any(path, node->schema->name, module_name, any_value,
+                (((struct lyd_node_any *)node)->value_type == LYD_ANYDATA_JSON), path_modif,
+                match ? match->meta : NULL, &query))) {
+            goto cleanup;
+        }
+        break;
+    default:
+        break;
+    }
+
+    /* insert element */
+    if ((err_info = srpds_bulk_insert(query, bulk))) {
         goto cleanup;
     }
 
 cleanup:
+    free(path_modif);
+    free(any_value);
     free(keys);
-    if (err_info) {
-        bson_destroy(bson_query);
-    }
+    bson_destroy(query);
     return err_info;
 }
 
 /**
- * @brief Diff operation delete.
+ * @brief Delete a standard node from the database.
  *
- * @param[in] module Given MongoDB collection.
- * @param[in] node Current data node in the diff.
- * @param[in] path Path of the data node.
- * @param[in] path_no_pred Path without the predicate of the data node.
- * @param[in] predicate Predicate of the data node.
- * @param[in] orig_prev_pred Original value of the previous node in predicate.
- * @param[out] diff_data Helper structure for storing diff operations.
+ * @param[in] node Node to delete.
+ * @param[in] path Path to the node.
+ * @param[out] bulk Bulk structure to insert query into.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_delete_op(mongoc_collection_t *module, const struct lyd_node *node, const char *path, const char *path_no_pred,
-        const char *predicate, const char *orig_prev_pred, struct mongo_diff_data *diff_data)
+srpds_delete_op(const struct lyd_node *node, const char *path, mongo_bulk_data_t *bulk)
 {
     sr_error_info_t *err_info = NULL;
 
-    if (lysc_is_userordered(node->schema)) {
-        /* delete an element from the user-ordered list */
-        if ((err_info = srpds_delete_uo_op(module, path, path_no_pred, predicate, orig_prev_pred, 1))) {
-            goto cleanup;
-        }
-    } else {
-        /* delete a whole subtree (you have to do this even if you have no children since you can have metadata) */
-        if ((err_info = srpds_delete_subtree(NULL, path, diff_data))) {
+    /* delete one element */
+    if ((err_info = srpds_bulk_delete_id(path, bulk))) {
+        goto cleanup;
+    }
+
+    if (lyd_child_no_keys(node)) {
+        /* delete a whole subtree */
+        if ((err_info = srpds_bulk_delete_subtree(path, bulk))) {
             goto cleanup;
         }
     }
@@ -2236,133 +2330,69 @@ cleanup:
 }
 
 /**
- * @brief Diff operation replace.
+ * @brief Update a standard node in the database.
  *
- * @param[in] module Given MongoDB collection.
- * @param[in] node Current data node in the diff.
- * @param[in] module_name Name of the module the node belongs to.
- * @param[in] path Path of the data node.
- * @param[in] path_no_pred Path without the predicate of the data node.
- * @param[in] path_modif Modified path with ' ' instead of '/' for loading purposes.
- * @param[in] predicate Predicate of the data node.
- * @param[in] value Value of the node.
- * @param[in] prev Value of the node before this node.
- * @param[in] prev_pred Value of the node before this node in predicate.
- * @param[in] orig_prev_pred Original value of the node in predicate.
- * @param[in,out] max_order Maximum order of the list or leaf-list.
- * @param[out] diff_data Helper structure for storing diff operations.
+ * @param[in] ds Given datastore.
+ * @param[in] node Node to update.
+ * @param[in] path Path to the node.
+ * @param[in] tree Whole data tree.
+ * @param[out] bulk Bulk structure to insert query into.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_replace_op(mongoc_collection_t *module, const struct lyd_node *node, const char *module_name, const char *path, const char *path_no_pred,
-        const char *path_modif, const char *predicate, const char *value, const char *prev, const char *prev_pred, const char *orig_prev_pred,
-        uint64_t *max_order, struct mongo_diff_data *diff_data)
+srpds_replace_op(sr_datastore_t ds, const struct lyd_node *node, const char *path, const struct lyd_node *tree,
+        mongo_bulk_data_t *bulk)
 {
     sr_error_info_t *err_info = NULL;
+    bson_t *query = NULL, *query_key = NULL;
+    bson_t subquery;
+    const char *value;
+    char *any_value = NULL;
+    struct lyd_node *match = NULL;
 
-    if (lysc_is_userordered(node->schema)) {
-        /* note: replace can be executed more efficiently by only calling
-            * mongo_collection_update_one() instead of delete and then create,
-            * however the rest of the code in srpds_delete_uo_op and srpds_create_uo_op
-            * has to be executed nevertheless */
+    /* get value */
+    if ((err_info = srpds_get_norm_values(plugin_name, node, &value, &any_value))) {
+        goto cleanup;
+    }
 
-        /* delete an element from the user-ordered list */
-        if ((err_info = srpds_delete_uo_op(module, path, path_no_pred, predicate, orig_prev_pred, 0))) {
+    query = bson_new();
+    bson_append_document_begin(query, "$set", 4, &subquery);
+    bson_append_utf8(&subquery, "value", 5, value, -1);
+
+    /* handle default flag update */
+    if (node->schema->nodetype & LYD_NODE_TERM) {
+        bson_append_bool(&subquery, "dflt_flag", 9, node->flags & LYD_DEFAULT);
+    }
+
+    /* metadata are only stored in oper ds */
+    if (ds == SR_DS_OPERATIONAL) {
+        /* delete metadata (with bulking) */
+        if ((err_info = srpds_delete_meta(NULL, path, bulk))) {
             goto cleanup;
         }
 
-        /* insert a new element into the user-ordered list */
-        if ((err_info = srpds_create_uo_op(module, node, module_name, path, path_no_pred, path_modif, predicate, value, prev, prev_pred, max_order))) {
-            goto cleanup;
-        }
-    } else {
-        /* selector for replace command */
-        if ((err_info = srpds_add_operation(BCON_NEW("_id", BCON_UTF8(path)), &(diff_data->rep_keys)))) {
+        /* find the node in the mod_data to read metadata from */
+        if ((err_info = srpds_find_node(plugin_name, node, tree, &match))) {
             goto cleanup;
         }
 
-        /* replace command */
-        if ((err_info = srpds_add_operation(BCON_NEW("$set", "{", "value", BCON_UTF8(value), "}"), &(diff_data->rep)))) {
+        /* add new metadata */
+        if ((err_info = srpds_add_meta(match->meta, &subquery))) {
             goto cleanup;
         }
     }
+    bson_append_document_end(query, &subquery);
 
-    /* default nodes */
-    if ((err_info = srpds_replace_op_default_flag(path, node, diff_data))) {
+    query_key = BCON_NEW("_id", BCON_UTF8(path));
+    if ((err_info = srpds_bulk_update(query_key, query, 0, bulk))) {
         goto cleanup;
     }
 
 cleanup:
-    return err_info;
-}
-
-/**
- * @brief Add new metadata to store in the database.
- *
- * @param[in] meta Metadata to store.
- * @param[in] path Path to the node with metadata.
- * @param[in] path_modif Modified path.
- * @param[out] diff_data Structure to store the operation in.
- * @return NULL on success;
- * @return Sysrepo error info on error.
- */
-static sr_error_info_t *
-srpds_add_meta(struct lyd_meta *meta, const char *path, const char *path_modif, struct mongo_diff_data *diff_data)
-{
-    sr_error_info_t *err_info = NULL;
-    const char *meta_value;
-    char *path_with_name = NULL, *path_modif_with_name = NULL, *meta_name = NULL;
-    bson_t *bson_query = NULL;
-
-    while (meta) {
-        meta_value = lyd_get_meta_value(meta);
-
-        /* skip yang: and sysrepo: metadata, this is libyang and sysrepo specific data */
-        if (strcmp(meta->annotation->module->name, "yang") && strcmp(meta->annotation->module->name, "sysrepo")) {
-            /* concatenate meta name with module name */
-            if (asprintf(&meta_name, "%s:%s", meta->annotation->module->name, meta->name) == -1) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
-                goto cleanup;
-            }
-
-            /* create unique path for new metadata */
-            if (asprintf(&path_with_name, "%s#%s", path, meta_name) == -1) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
-                goto cleanup;
-            }
-
-            /* create modified unique path for loading */
-            if (asprintf(&path_modif_with_name, "%s#%s", path_modif, meta_name) == -1) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
-                goto cleanup;
-            }
-
-            /* create new metadata */
-            bson_query = srpds_meta(path_with_name, meta_name, path, meta_value, path_modif_with_name);
-
-            if ((err_info = srpds_add_operation(bson_query, &(diff_data->cre)))) {
-                goto cleanup;
-            }
-
-            free(meta_name);
-            meta_name = NULL;
-            free(path_with_name);
-            path_with_name = NULL;
-            free(path_modif_with_name);
-            path_modif_with_name = NULL;
-        }
-
-        meta = meta->next;
-    }
-
-cleanup:
-    free(meta_name);
-    free(path_with_name);
-    free(path_modif_with_name);
-    if (err_info) {
-        bson_destroy(bson_query);
-    }
+    free(any_value);
+    bson_destroy(query_key);
+    bson_destroy(query);
     return err_info;
 }
 
@@ -2371,21 +2401,20 @@ cleanup:
  *
  * @param[in] set Set of data nodes which need to be stored.
  * @param[in] node Data subtree.
- * @param[out] diff_data Helper structure for storing diff operations.
+ * @param[out] bulk Bulk structure to insert query into.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_load_state_recursively(const struct ly_set *set, const struct lyd_node *node, struct mongo_diff_data *diff_data)
+srpds_store_state_recursively(const struct ly_set *set, const struct lyd_node *node, mongo_bulk_data_t *bulk)
 {
     sr_error_info_t *err_info = NULL;
+    bson_t *query = NULL;
     const struct lyd_node *sibling = node;
     struct lyd_node *child = NULL;
     char *path = NULL, *path_no_pred = NULL, *path_modif = NULL;
     const char *module_name = NULL, *value = NULL;
     char *any_value = NULL;
-    int32_t valtype;
-    bson_t *bson_query = NULL;
     char *keys = NULL;
     uint32_t keys_length = 0;
     uint64_t order = 1;
@@ -2413,12 +2442,6 @@ srpds_load_state_recursively(const struct ly_set *set, const struct lyd_node *no
             goto cleanup;
         }
 
-        /* node's values */
-        if ((err_info = srpds_get_values(plugin_name, sibling, &value, NULL, NULL, NULL, NULL,
-                &any_value, &valtype))) {
-            goto cleanup;
-        }
-
         /* create all data (state nodes) */
         /* get module name */
         if ((sibling->parent == NULL) || strcmp(sibling->schema->module->name, sibling->parent->schema->module->name)) {
@@ -2429,7 +2452,10 @@ srpds_load_state_recursively(const struct ly_set *set, const struct lyd_node *no
 
         switch (sibling->schema->nodetype) {
         case LYS_CONTAINER:
-            bson_query = srpds_container(path, sibling->schema->name, module_name, path_modif);
+            if ((err_info = srpds_container(path, sibling->schema->name, module_name, path_modif, sibling->meta,
+                    &query))) {
+                goto cleanup;
+            }
             break;
         case LYS_LIST:     /* state lists are always userordered (either key or keyless) */
             if ((err_info = srpds_concat_key_values(plugin_name, sibling, &keys, &keys_length))) {
@@ -2448,18 +2474,24 @@ srpds_load_state_recursively(const struct ly_set *set, const struct lyd_node *no
                 }
             }
 
-            bson_query = srpds_list_uo(path, sibling->schema->name, module_name, keys, keys_length, order, path_no_pred,
-                    NULL, 0, path_modif);
+            if ((err_info = srpds_list_uo(path, sibling->schema->name, module_name, keys, keys_length, order,
+                    path_no_pred, "", path_modif, sibling->meta, &query))) {
+                goto cleanup;
+            }
             free(keys);
             keys = NULL;
             keys_length = 0;
             order++;
             break;
         case LYS_LEAF:
-            bson_query = srpds_term(path, sibling->schema->name, module_name, sibling->flags & LYD_DEFAULT, value,
-                    path_modif);
+            value = lyd_get_value(sibling);
+            if ((err_info = srpds_term(path, sibling->schema->name, module_name, sibling->flags & LYD_DEFAULT, value,
+                    path_modif, sibling->meta, &query))) {
+                goto cleanup;
+            }
             break;
         case LYS_LEAFLIST:  /* state leaf-lists are always userordered */
+            value = lyd_get_value(sibling);
             free(path);
             path = NULL;
 
@@ -2468,26 +2500,33 @@ srpds_load_state_recursively(const struct ly_set *set, const struct lyd_node *no
                 ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
                 goto cleanup;
             }
-            bson_query = srpds_leaflist_uo(path, sibling->schema->name, module_name, sibling->flags & LYD_DEFAULT,
-                    value, order, path_no_pred, NULL, 0, path_modif);
+            if ((err_info = srpds_leaflist_uo(path, sibling->schema->name, module_name, sibling->flags & LYD_DEFAULT,
+                    value, order, path_no_pred, "", path_modif, sibling->meta, &query))) {
+                goto cleanup;
+            }
             order++;
             break;
         case LYS_ANYDATA:
         case LYS_ANYXML:
-            bson_query = srpds_any(path, sibling->schema->name, module_name, sibling->flags & LYD_DEFAULT, value,
-                    valtype, path_modif);
+            /* lyd_node_any */
+            if (lyd_any_value_str(sibling, &any_value) != LY_SUCCESS) {
+                ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_any_value_str()", "");
+                goto cleanup;
+            }
+            if ((err_info = srpds_any(path, sibling->schema->name, module_name, any_value,
+                    (((struct lyd_node_any *)sibling)->value_type == LYD_ANYDATA_JSON), path_modif, sibling->meta,
+                    &query))) {
+                goto cleanup;
+            }
+            free(any_value);
+            any_value = NULL;
             break;
         default:
             break;
         }
 
         /* create new node */
-        if ((err_info = srpds_add_operation(bson_query, &(diff_data->cre)))) {
-            goto cleanup;
-        }
-
-        /* create new metadata */
-        if ((err_info = srpds_add_meta(sibling->meta, path, path_modif, diff_data))) {
+        if ((err_info = srpds_bulk_insert(query, bulk))) {
             goto cleanup;
         }
 
@@ -2505,11 +2544,11 @@ srpds_load_state_recursively(const struct ly_set *set, const struct lyd_node *no
         path_no_pred = NULL;
         free(path_modif);
         path_modif = NULL;
-        free(any_value);
-        any_value = NULL;
+        bson_destroy(query);
+        query = NULL;
 
         if ((child = lyd_child_no_keys(sibling))) {
-            if ((err_info = srpds_load_state_recursively(NULL, child, diff_data))) {
+            if ((err_info = srpds_store_state_recursively(NULL, child, bulk))) {
                 goto cleanup;
             }
         }
@@ -2528,23 +2567,21 @@ cleanup:
     free(path_modif);
     free(any_value);
     free(keys);
-    if (err_info) {
-        bson_destroy(bson_query);
-    }
+    bson_destroy(query);
     return err_info;
 }
 
 /**
- * @brief Store the whole subtree using @p sibling inside a helper structure with info from mod_data.
+ * @brief Store the whole subtree using @p sibling inside a bulk with info from mod_data.
  *
  * @param[in] mod_data Module data tree to store.
  * @param[in] node Subtree from diff to use.
- * @param[out] diff_data Helper structure for storing diff operations.
+ * @param[out] bulk Bulk structure to insert query into.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_use_tree2store(const struct lyd_node *mod_data, const struct lyd_node *node, struct mongo_diff_data *diff_data)
+srpds_use_tree2store(const struct lyd_node *mod_data, const struct lyd_node *node, mongo_bulk_data_t *bulk)
 {
     sr_error_info_t *err_info = NULL;
     char *path_no_pred = NULL;
@@ -2557,14 +2594,20 @@ srpds_use_tree2store(const struct lyd_node *mod_data, const struct lyd_node *nod
         goto cleanup;
     }
 
-    if ((err_info = srpds_delete_subtree(NULL, path_no_pred, diff_data))) {
+    if ((node->schema->nodetype != LYS_LIST) && (node->schema->nodetype != LYS_LEAFLIST)) {
+        /* also delete the node if it has no predicate, otherwise it is deleted afterwards */
+        if ((err_info = srpds_bulk_delete_id(path_no_pred, bulk))) {
+            goto cleanup;
+        }
+    }
+    if ((err_info = srpds_bulk_delete_subtree(path_no_pred, bulk))) {
         goto cleanup;
     }
 
-    /* we NEED to store a deleted subtree (could be a list or a leaf-list instance with siblings which we just deleted) */
-    /* state data have to be stored from mod_data */
-    /* metadata of state data are always stored */
-    /* find all data of state list/leaf-list or opaque nodes */
+    /* we NEED to store a deleted subtree
+     * (could be a list or a leaf-list instance with siblings which we just deleted)
+     * state data have to be stored from mod_data
+     * find all data of state list/leaf-list */
     if (mod_data) {
         lerr = lyd_find_xpath(mod_data, path_no_pred, &set);
         if ((lerr != LY_SUCCESS) && (lerr != LY_ENOTFOUND)) {
@@ -2577,7 +2620,7 @@ srpds_use_tree2store(const struct lyd_node *mod_data, const struct lyd_node *nod
         if (lerr != LY_ENOTFOUND) {
             /* go through the whole subtree and create every node */
             if (set->count) {
-                if ((err_info = srpds_load_state_recursively(set, set->dnodes[0], diff_data))) {
+                if ((err_info = srpds_store_state_recursively(set, set->dnodes[0], bulk))) {
                     goto cleanup;
                 }
             }
@@ -2593,11 +2636,12 @@ cleanup:
     return err_info;
 }
 
-static sr_error_info_t *srpds_load_diff_recursively(mongoc_collection_t *module, sr_datastore_t ds,
-        const struct lyd_node *mod_data, const struct lyd_node *node, char parent_op, struct mongo_diff_data *diff_data);
+static sr_error_info_t *srpds_store_diff_recursively(mongoc_collection_t *module, sr_datastore_t ds,
+        const struct lyd_node *mod_data, const struct lyd_node *node, char parent_op, uint64_t *max_order,
+        mongo_bulk_data_t *bulk);
 
 /**
- * @brief Store the node @p sibling inside a helper structure with info from diff.
+ * @brief Store the userordered node @p sibling inside a bulk with info from diff.
  *
  * @param[in] module Given MongoDB collection.
  * @param[in] ds Datastore in use.
@@ -2605,23 +2649,17 @@ static sr_error_info_t *srpds_load_diff_recursively(mongoc_collection_t *module,
  * @param[in] sibling Current data node in the diff.
  * @param[in] this_op Operation on this node.
  * @param[in, out] max_order Max order for userordered lists and leaf-lists.
- * @param[out] diff_data Helper structure for storing diff operations.
+ * @param[out] bulk Bulk structure to insert query into.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_use_diff2store(mongoc_collection_t *module, sr_datastore_t ds, const struct lyd_node *mod_data,
-        const struct lyd_node *sibling, char this_op, uint64_t *max_order, struct mongo_diff_data *diff_data)
+srpds_use_diff_uo2store(mongoc_collection_t *module, sr_datastore_t ds, const struct lyd_node *mod_data,
+        const struct lyd_node *sibling, char this_op, uint64_t *max_order, mongo_bulk_data_t *bulk)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *child = NULL, *match = NULL;
-    char *path = NULL, *path_no_pred = NULL, *path_modif = NULL;
-    const char *module_name = NULL;
-    const char *value = NULL, *prev = NULL, *orig_prev = NULL;
-    char *prev_pred = NULL, *orig_prev_pred = NULL, *any_value = NULL;
-    int32_t valtype;
-    bson_t *del_query = NULL;
-    char *tmp = NULL, *regex = NULL;
+    struct lyd_node *child = NULL;
+    char *path = NULL, *path_no_pred = NULL;
 
     /* get path */
     path = lyd_path(sibling, LYD_PATH_STD, NULL, 0);
@@ -2631,57 +2669,32 @@ srpds_use_diff2store(mongoc_collection_t *module, sr_datastore_t ds, const struc
     }
 
     /* get path_no_pred */
-    if (lysc_is_userordered(sibling->schema)) {
-        path_no_pred = lyd_path(sibling, LYD_PATH_STD_NO_LAST_PRED, NULL, 0);
-        if (!path_no_pred) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_path()", "");
-            return err_info;
-        }
-    }
-
-    /* get modified version of path */
-    if ((err_info = srpds_get_modif_path(plugin_name, path, &path_modif))) {
-        goto cleanup;
-    }
-
-    /* node's values */
-    if ((err_info = srpds_get_values(plugin_name, sibling, &value, &prev, &orig_prev, &prev_pred, &orig_prev_pred,
-            &any_value, &valtype))) {
-        goto cleanup;
-    }
-
-    /* get module name */
-    if ((sibling->parent == NULL) || strcmp(sibling->schema->module->name, sibling->parent->schema->module->name)) {
-        module_name = sibling->schema->module->name;
-    } else {
-        module_name = NULL;
+    path_no_pred = lyd_path(sibling, LYD_PATH_STD_NO_LAST_PRED, NULL, 0);
+    if (!path_no_pred) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_path()", "");
+        return err_info;
     }
 
     /* operation */
     switch (this_op) {
     case 'n':
-        /* default nodes */
-        if ((err_info = srpds_none_op_default_flag(path, sibling, diff_data))) {
+        /* use bulk */
+        if ((err_info = srpds_none_op(ds, sibling, path, mod_data, bulk))) {
             goto cleanup;
         }
         break;
     case 'c':
-        if ((err_info = srpds_create_op(module, sibling, module_name, path, path_no_pred,
-                srpds_get_predicate(path, path_no_pred), path_modif, value, prev, prev_pred, valtype, max_order,
-                diff_data))) {
+        if ((err_info = srpds_create_uo_op(module, ds, sibling, path, path_no_pred, mod_data, max_order))) {
             goto cleanup;
         }
         break;
     case 'd':
-        if ((err_info = srpds_delete_op(module, sibling, path, path_no_pred, srpds_get_predicate(path, path_no_pred),
-                orig_prev_pred, diff_data))) {
+        if ((err_info = srpds_delete_uo_op(module, sibling, path, path_no_pred, bulk))) {
             goto cleanup;
         }
         break;
     case 'r':
-        if ((err_info = srpds_replace_op(module, sibling, module_name, path, path_no_pred, path_modif,
-                srpds_get_predicate(path, path_no_pred), value, prev, prev_pred, orig_prev_pred, max_order,
-                diff_data))) {
+        if ((err_info = srpds_replace_uo_op(module, ds, sibling, path, path_no_pred, mod_data, max_order))) {
             goto cleanup;
         }
         break;
@@ -2692,50 +2705,12 @@ srpds_use_diff2store(mongoc_collection_t *module, sr_datastore_t ds, const struc
 
     /* reset the max_order if the next sibling
      * is from a different list or if the next sibling does not exist */
-    if (lysc_is_userordered(sibling->schema) && ((sibling->next &&
-            (sibling->schema->name != sibling->next->schema->name)) || !(sibling->next))) {
+    if ((sibling->next && (sibling->schema->name != sibling->next->schema->name)) || !(sibling->next)) {
         /* update max order for lists and leaf-lists */
-        if ((err_info = srpds_update_maxord(module, path_no_pred, *max_order))) {
+        if ((err_info = srpds_set_maxord(module, path_no_pred, *max_order))) {
             goto cleanup;
         }
         *max_order = 0;
-    }
-
-    /* metadata are not always included in diff
-     * delete any related to this node in the database,
-     * find them in mod_data and store them (best-effort) */
-    /* if delete operation: do not delete metadata or store them,
-     * all node's metadata and descendants are deleted in srpds_delete_op() */
-    /* for now store metadata using diff only in oper ds as it is an expensive operation */
-    if ((ds == SR_DS_OPERATIONAL) && (this_op != 'd')) {
-        /* If the node has to be created, then there is nothing to delete in the database */
-        if (this_op != 'c') {
-            if ((err_info = srpds_escape_string(plugin_name, path, '\\', &tmp))) {
-                goto cleanup;
-            }
-
-            /* this regex only deletes node's metadata and not the whole subtree because of # (specific for metadata) */
-            if (asprintf(&regex, "^%s\\#", tmp) == -1) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno));
-                goto cleanup;
-            }
-
-            /* delete all metadata connected to the node */
-            del_query = BCON_NEW("_id", "{", "$regex", BCON_UTF8(regex), "$options", "s", "}");
-            if ((err_info = srpds_add_operation(del_query, &(diff_data->del_many)))) {
-                goto cleanup;
-            }
-        }
-
-        /* find the node in the mod_data to read metadata from */
-        if ((err_info = srpds_find_node(plugin_name, sibling, mod_data, &match))) {
-            goto cleanup;
-        }
-
-        /* create new metadata */
-        if ((err_info = srpds_add_meta(match->meta, path, path_modif, diff_data))) {
-            goto cleanup;
-        }
     }
 
     /* free memory early before further recursion */
@@ -2743,17 +2718,10 @@ srpds_use_diff2store(mongoc_collection_t *module, sr_datastore_t ds, const struc
     path = NULL;
     free(path_no_pred);
     path_no_pred = NULL;
-    free(path_modif);
-    path_modif = NULL;
-    free(tmp);
-    tmp = NULL;
-    free(regex);
-    regex = NULL;
-    srpds_cleanup_values(sibling, prev, orig_prev, &prev_pred, &orig_prev_pred, &any_value);
 
     /* we do not care about children that were already deleted */
     if ((this_op != 'd') && (child = lyd_child_no_keys(sibling))) {
-        if ((err_info = srpds_load_diff_recursively(module, ds, mod_data, child, this_op, diff_data))) {
+        if ((err_info = srpds_store_diff_recursively(module, ds, mod_data, child, this_op, max_order, bulk))) {
             goto cleanup;
         }
     }
@@ -2761,13 +2729,77 @@ srpds_use_diff2store(mongoc_collection_t *module, sr_datastore_t ds, const struc
 cleanup:
     free(path);
     free(path_no_pred);
-    free(path_modif);
-    free(tmp);
-    free(regex);
-    srpds_cleanup_values(sibling, prev, orig_prev, &prev_pred, &orig_prev_pred, &any_value);
-    if (err_info) {
-        bson_destroy(del_query);
+    return err_info;
+}
+
+/**
+ * @brief Store the node @p sibling inside a bulk with info from diff.
+ *
+ * @param[in] module Given MongoDB collection.
+ * @param[in] ds Datastore in use.
+ * @param[in] mod_data Whole module data tree.
+ * @param[in] sibling Current data node in the diff.
+ * @param[in] this_op Operation on this node.
+ * @param[in, out] max_order Max order for userordered lists and leaf-lists.
+ * @param[out] bulk Bulk structure to insert query into.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_use_diff2store(mongoc_collection_t *module, sr_datastore_t ds, const struct lyd_node *mod_data,
+        const struct lyd_node *sibling, char this_op, uint64_t *max_order, mongo_bulk_data_t *bulk)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *child = NULL;
+    char *path = NULL;
+
+    /* get path */
+    path = lyd_path(sibling, LYD_PATH_STD, NULL, 0);
+    if (!path) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_path()", "");
+        return err_info;
     }
+
+    /* operation */
+    switch (this_op) {
+    case 'n':
+        if ((err_info = srpds_none_op(ds, sibling, path, mod_data, bulk))) {
+            goto cleanup;
+        }
+        break;
+    case 'c':
+        if ((err_info = srpds_create_op(ds, sibling, path, mod_data, bulk))) {
+            goto cleanup;
+        }
+        break;
+    case 'd':
+        if ((err_info = srpds_delete_op(sibling, path, bulk))) {
+            goto cleanup;
+        }
+        break;
+    case 'r':
+        if ((err_info = srpds_replace_op(ds, sibling, path, mod_data, bulk))) {
+            goto cleanup;
+        }
+        break;
+    default:
+        ERRINFO(&err_info, plugin_name, SR_ERR_UNSUPPORTED, "Operation for a node", "Unsupported operation");
+        goto cleanup;
+    }
+
+    /* free memory early before further recursion */
+    free(path);
+    path = NULL;
+
+    /* we do not care about children that were already deleted */
+    if ((this_op != 'd') && (child = lyd_child_no_keys(sibling))) {
+        if ((err_info = srpds_store_diff_recursively(module, ds, mod_data, child, this_op, max_order, bulk))) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    free(path);
     return err_info;
 }
 
@@ -2776,19 +2808,18 @@ cleanup:
  *
  * @param[in] node Opaque node.
  * @param[in] op Operation to perform.
- * @param[out] diff_data Helper structure for storing diff operations.
+ * @param[out] bulk Bulk structure to insert query into.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_handle_opaque_node(const struct lyd_node *node, char op, struct mongo_diff_data *diff_data)
+srpds_handle_opaque_node(const struct lyd_node *node, char op, mongo_bulk_data_t *bulk)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node_opaq *opaque = NULL;
-    char *path = NULL, *path_modif = NULL, *discard_items_path = NULL,
-            *escaped = NULL, *regex = NULL;
+    char *path = NULL, *path_modif = NULL, *discard_items_path = NULL;
     const char *module_name = NULL, *value = NULL;
-    bson_t *bson_query = NULL;
+    bson_t *query = NULL;
     struct lyd_attr *attr = NULL;
 
     /* get node's path */
@@ -2820,7 +2851,8 @@ srpds_handle_opaque_node(const struct lyd_node *node, char op, struct mongo_diff
         if (attr) {
             op = attr->value[0];
         } else {
-            ERRINFO(&err_info, plugin_name, SR_ERR_NOT_FOUND, "", "Operation for opaque node was not found in attributes.");
+            ERRINFO(&err_info, plugin_name, SR_ERR_NOT_FOUND, "",
+                    "Operation for opaque node was not found in attributes.");
             goto cleanup;
         }
     }
@@ -2828,8 +2860,7 @@ srpds_handle_opaque_node(const struct lyd_node *node, char op, struct mongo_diff
     switch (op) {
     case 'd':
         /* delete only one instance (attributes are not stored and opaque nodes are only top-level discard-items) */
-        if ((err_info = srpds_add_operation(BCON_NEW("_id", BCON_UTF8(discard_items_path)),
-                &(diff_data->del)))) {
+        if ((err_info = srpds_bulk_delete_id(discard_items_path, bulk))) {
             goto cleanup;
         }
         break;
@@ -2843,8 +2874,8 @@ srpds_handle_opaque_node(const struct lyd_node *node, char op, struct mongo_diff
         module_name = opaque->name.module_name;
 
         /* create new opaque node */
-        bson_query = srpds_opaque(discard_items_path, opaque->name.name, module_name, value, path_modif);
-        if ((err_info = srpds_add_operation(bson_query, &(diff_data->cre)))) {
+        query = srpds_opaque(discard_items_path, opaque->name.name, module_name, path, value, path_modif);
+        if ((err_info = srpds_bulk_insert(query, bulk))) {
             goto cleanup;
         }
         break;
@@ -2857,35 +2888,31 @@ cleanup:
     free(path);
     free(discard_items_path);
     free(path_modif);
-    free(escaped);
-    free(regex);
-    if (err_info) {
-        bson_destroy(bson_query);
-    }
+    bson_destroy(query);
     return err_info;
 }
 
 /**
- * @brief Load the whole diff and store the operations inside a helper structure.
+ * @brief Load the whole diff and store the operations inside a bulk.
  *
  * @param[in] module Given MongoDB collection.
  * @param[in] ds Datastore in use.
  * @param[in] mod_data Module data tree to store.
  * @param[in] node Current data node in the diff.
  * @param[in] parent_op Operation on the node's parent.
- * @param[out] diff_data Helper structure for storing diff operations.
+ * @param[in,out] max_order Maximum order of the userordered lists/leaflists.
+ * @param[out] bulk Bulk structure to insert query into.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_load_diff_recursively(mongoc_collection_t *module, sr_datastore_t ds, const struct lyd_node *mod_data,
-        const struct lyd_node *node, char parent_op, struct mongo_diff_data *diff_data)
+srpds_store_diff_recursively(mongoc_collection_t *module, sr_datastore_t ds, const struct lyd_node *mod_data,
+        const struct lyd_node *node, char parent_op, uint64_t *max_order, mongo_bulk_data_t *bulk)
 {
     sr_error_info_t *err_info = NULL;
     const struct lyd_node *sibling = node;
     struct lyd_meta *meta_op;
     char this_op = 0;
-    uint64_t max_order = 0;
     const struct lysc_node *previous_schema = NULL;
 
     while (sibling) {
@@ -2899,19 +2926,23 @@ srpds_load_diff_recursively(mongoc_collection_t *module, sr_datastore_t ds, cons
 
         /* check whether to rely on diff or delete and store the whole subtree from mod_data */
         if (!sibling->schema) {
-            if ((err_info = srpds_handle_opaque_node(sibling, 0, diff_data))) {
+            if ((err_info = srpds_handle_opaque_node(sibling, 0, bulk))) {
                 goto cleanup;
             }
         } else if (!(sibling->schema->flags & LYS_CONFIG_W)) {
             /* only delete and store a state subtree if it was not stored before */
             if (previous_schema != sibling->schema) {
-                if ((err_info = srpds_use_tree2store(mod_data, sibling, diff_data))) {
+                if ((err_info = srpds_use_tree2store(mod_data, sibling, bulk))) {
                     goto cleanup;
                 }
             }
             previous_schema = sibling->schema;
+        } else if (lysc_is_userordered(sibling->schema)) {
+            if ((err_info = srpds_use_diff_uo2store(module, ds, mod_data, sibling, this_op, max_order, bulk))) {
+                goto cleanup;
+            }
         } else {
-            if ((err_info = srpds_use_diff2store(module, ds, mod_data, sibling, this_op, &max_order, diff_data))) {
+            if ((err_info = srpds_use_diff2store(module, ds, mod_data, sibling, this_op, max_order, bulk))) {
                 goto cleanup;
             }
         }
@@ -2934,74 +2965,34 @@ cleanup:
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_store_diff(mongoc_collection_t *module, sr_datastore_t ds, const struct lyd_node *mod_data, const struct lyd_node *mod_diff)
+srpds_store_diff(mongoc_collection_t *module, sr_datastore_t ds, const struct lyd_node *mod_data,
+        const struct lyd_node *mod_diff)
 {
     sr_error_info_t *err_info = NULL;
     bson_error_t error;
-    struct mongo_diff_data diff_data;
-    uint32_t i;
-    mongoc_bulk_operation_t *bulk = NULL;
+    mongo_bulk_data_t bulk = {0};
     bson_t *opts = NULL, reply;
+    uint64_t max_order = 0;
 
     bson_init(&reply);
 
-    if ((err_info = srpds_diff_data_init(&diff_data))) {
-        goto cleanup;
-    }
-
-    if ((err_info = srpds_load_diff_recursively(module, ds, mod_data, mod_diff, 0, &diff_data))) {
-        goto cleanup;
-    }
-
     opts = BCON_NEW("ordered", BCON_BOOL(0));
-    bulk = mongoc_collection_create_bulk_operation_with_opts(module, opts);
+    bulk.bulk = mongoc_collection_create_bulk_operation_with_opts(module, opts);
 
-    for (i = 0; i < diff_data.del.idx; ++i) {
-        if (!mongoc_bulk_operation_remove_one_with_opts(bulk, (const bson_t *)(diff_data.del.docs)[i], NULL, &error)) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_bulk_operation_remove_one_with_opts()",
-                    error.message);
-            goto cleanup;
-        }
+    if ((err_info = srpds_store_diff_recursively(module, ds, mod_data, mod_diff, 0, &max_order, &bulk))) {
+        goto cleanup;
     }
 
-    for (i = 0; i < diff_data.del_many.idx; ++i) {
-        if (!mongoc_bulk_operation_remove_many_with_opts(bulk, (const bson_t *)(diff_data.del_many.docs)[i], NULL,
-                &error)) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_bulk_operation_remove_many_with_opts()",
-                    error.message);
-            goto cleanup;
-        }
-    }
-
-    /* order of operations matters... first: nodes have to be created in order for default flags to be updated later */
-    for (i = 0; i < diff_data.cre.idx; ++i) {
-        if (!mongoc_bulk_operation_insert_with_opts(bulk, (const bson_t *)(diff_data.cre.docs)[i], NULL, &error)) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_bulk_operation_insert_with_opts()",
-                    error.message);
-            goto cleanup;
-        }
-    }
-
-    for (i = 0; i < diff_data.rep.idx; ++i) {
-        if (!mongoc_bulk_operation_update_one_with_opts(bulk, (const bson_t *)(diff_data.rep_keys.docs)[i],
-                (const bson_t *)(diff_data.rep.docs)[i], NULL, &error)) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_bulk_operation_update_one_with_opts()",
-                    error.message);
-            goto cleanup;
-        }
-    }
-
-    if (diff_data.cre.idx || diff_data.rep.idx || diff_data.del.idx || diff_data.del_many.idx) {
-        if (!mongoc_bulk_operation_execute(bulk, &reply, &error)) {
+    if (bulk.has_operation) {
+        if (!mongoc_bulk_operation_execute(bulk.bulk, &reply, &error)) {
             ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_bulk_operation_execute()", error.message);
             goto cleanup;
         }
     }
 
 cleanup:
-    srpds_diff_data_destroy(&diff_data);
-    mongoc_bulk_operation_destroy(bulk);
     bson_destroy(opts);
+    mongoc_bulk_operation_destroy(bulk.bulk);
     bson_destroy(&reply);
     return err_info;
 }
@@ -3010,21 +3001,19 @@ cleanup:
  * @brief Load the whole data tree (if there is no diff).
  *
  * @param[in] mod_data Whole data tree.
- * @param[out] diff_data Helper structure for storing diff operations.
+ * @param[out] bulk Bulk structure to insert query into.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_load_data_recursively(const struct lyd_node *mod_data, struct mongo_diff_data *diff_data)
+srpds_store_data_recursively(const struct lyd_node *mod_data, mongo_bulk_data_t *bulk)
 {
     sr_error_info_t *err_info = NULL;
+    bson_t *query = NULL;
     const struct lyd_node *sibling = mod_data;
     struct lyd_node *child = NULL;
-    char *path = NULL, *path_no_pred = NULL, *path_modif = NULL;
-    const char *value, *module_name, *prev = NULL, *orig_prev = NULL;
-    char *prev_pred = NULL, *orig_prev_pred = NULL, *any_value = NULL;
-    bson_t *bson_query = NULL;
-    int32_t valtype = 0;
+    char *path = NULL, *path_no_pred = NULL, *path_modif = NULL, *prev = NULL, *any_value = NULL;
+    const char *value, *module_name;
     char *keys = NULL;
     uint32_t keys_length = 0;
     uint64_t state_order = 1, uo_order = 1024;
@@ -3032,7 +3021,7 @@ srpds_load_data_recursively(const struct lyd_node *mod_data, struct mongo_diff_d
     while (sibling) {
         /* store opaque nodes separately */
         if (!sibling->schema) {
-            if ((err_info = srpds_handle_opaque_node(sibling, 'c', diff_data))) {
+            if ((err_info = srpds_handle_opaque_node(sibling, 'c', bulk))) {
                 goto cleanup;
             }
             sibling = sibling->next;
@@ -3060,9 +3049,8 @@ srpds_load_data_recursively(const struct lyd_node *mod_data, struct mongo_diff_d
             goto cleanup;
         }
 
-        /* get values */
-        if ((err_info = srpds_get_values(plugin_name, sibling, &value, &prev, &orig_prev, &prev_pred,
-                &orig_prev_pred, &any_value, &valtype))) {
+        /* get prev value */
+        if ((err_info = srpds_get_prev_value(plugin_name, sibling, &prev))) {
             goto cleanup;
         }
 
@@ -3076,7 +3064,10 @@ srpds_load_data_recursively(const struct lyd_node *mod_data, struct mongo_diff_d
         /* create all data */
         switch (sibling->schema->nodetype) {
         case LYS_CONTAINER:
-            bson_query = srpds_container(path, sibling->schema->name, module_name, path_modif);
+            if ((err_info = srpds_container(path, sibling->schema->name, module_name, path_modif, sibling->meta,
+                    &query))) {
+                goto cleanup;
+            }
             break;
         case LYS_LIST:
             if ((err_info = srpds_concat_key_values(plugin_name, sibling, &keys, &keys_length))) {
@@ -3097,27 +3088,38 @@ srpds_load_data_recursively(const struct lyd_node *mod_data, struct mongo_diff_d
                     }
                 }
 
-                bson_query = srpds_list_uo(path, sibling->schema->name, module_name, keys, keys_length, state_order,
-                        path_no_pred, NULL, 0, path_modif);
+                if ((err_info = srpds_list_uo(path, sibling->schema->name, module_name, keys, keys_length, state_order,
+                        path_no_pred, "", path_modif, sibling->meta, &query))) {
+                    goto cleanup;
+                }
                 ++state_order;
             } else if (lysc_is_userordered(sibling->schema)) {
                 /* userordered lists */
-                bson_query = srpds_list_uo(path, sibling->schema->name, module_name, keys, keys_length, uo_order,
-                        path_no_pred, prev_pred, 1, path_modif);
+                if ((err_info = srpds_list_uo(path, sibling->schema->name, module_name, keys, keys_length, uo_order,
+                        path_no_pred, prev, path_modif, sibling->meta, &query))) {
+                    goto cleanup;
+                }
                 uo_order += 1024;
             } else {
                 /* lists */
-                bson_query = srpds_list(path, sibling->schema->name, module_name, keys, keys_length, path_modif);
+                if ((err_info = srpds_list(path, sibling->schema->name, module_name, keys, keys_length, path_modif,
+                        sibling->meta, &query))) {
+                    goto cleanup;
+                }
             }
             free(keys);
             keys = NULL;
             keys_length = 0;
             break;
         case LYS_LEAF:
-            bson_query = srpds_term(path, sibling->schema->name, module_name, sibling->flags & LYD_DEFAULT, value,
-                    path_modif);
+            value = lyd_get_value(sibling);
+            if ((err_info = srpds_term(path, sibling->schema->name, module_name, sibling->flags & LYD_DEFAULT, value,
+                    path_modif, sibling->meta, &query))) {
+                goto cleanup;
+            }
             break;
         case LYS_LEAFLIST:
+            value = lyd_get_value(sibling);
             if (!(sibling->schema->flags & LYS_CONFIG_W)) {
                 /* state leaf-lists */
                 free(path);
@@ -3129,34 +3131,47 @@ srpds_load_data_recursively(const struct lyd_node *mod_data, struct mongo_diff_d
                     goto cleanup;
                 }
 
-                bson_query = srpds_leaflist_uo(path, sibling->schema->name, module_name, sibling->flags & LYD_DEFAULT,
-                        value, state_order, path_no_pred, NULL, 0, path_modif);
+                if ((err_info = srpds_leaflist_uo(path, sibling->schema->name, module_name,
+                        sibling->flags & LYD_DEFAULT, value, state_order, path_no_pred, "", path_modif, sibling->meta,
+                        &query))) {
+                    goto cleanup;
+                }
                 ++state_order;
             } else if (lysc_is_userordered(sibling->schema)) {
                 /* userordered leaf-lists */
-                bson_query = srpds_leaflist_uo(path, sibling->schema->name, module_name, sibling->flags & LYD_DEFAULT,
-                        value, uo_order, path_no_pred, prev_pred, 1, path_modif);
+                if ((err_info = srpds_leaflist_uo(path, sibling->schema->name, module_name,
+                        sibling->flags & LYD_DEFAULT, value, uo_order, path_no_pred, prev, path_modif,
+                        sibling->meta, &query))) {
+                    goto cleanup;
+                }
                 uo_order += 1024;
             } else {
                 /* leaf-lists */
-                bson_query = srpds_term(path, sibling->schema->name, module_name, sibling->flags & LYD_DEFAULT, value,
-                        path_modif);
+                if ((err_info = srpds_term(path, sibling->schema->name, module_name, sibling->flags & LYD_DEFAULT,
+                        value, path_modif, sibling->meta, &query))) {
+                    goto cleanup;
+                }
             }
             break;
         case LYS_ANYDATA:
         case LYS_ANYXML:
-            bson_query = srpds_any(path, sibling->schema->name, module_name, sibling->flags & LYD_DEFAULT, value,
-                    valtype, path_modif);
+            /* lyd_node_any */
+            if (lyd_any_value_str(sibling, &any_value) != LY_SUCCESS) {
+                ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_any_value_str()", "");
+                goto cleanup;
+            }
+            if ((err_info = srpds_any(path, sibling->schema->name, module_name, any_value,
+                    (((struct lyd_node_any *)sibling)->value_type == LYD_ANYDATA_JSON), path_modif, sibling->meta,
+                    &query))) {
+                goto cleanup;
+            }
+            free(any_value);
+            any_value = NULL;
             break;
         }
 
         /* create new node */
-        if ((err_info = srpds_add_operation(bson_query, &(diff_data->cre)))) {
-            goto cleanup;
-        }
-
-        /* create new metadata */
-        if ((err_info = srpds_add_meta(sibling->meta, path, path_modif, diff_data))) {
+        if ((err_info = srpds_bulk_insert(query, bulk))) {
             goto cleanup;
         }
 
@@ -3168,19 +3183,23 @@ srpds_load_data_recursively(const struct lyd_node *mod_data, struct mongo_diff_d
             uo_order = 1024;
         }
 
-        if ((child = lyd_child_no_keys(sibling))) {
-            if ((err_info = srpds_load_data_recursively(child, diff_data))) {
-                goto cleanup;
-            }
-        }
-
+        /* free memory early before further recursion */
         free(path);
         path = NULL;
         free(path_no_pred);
         path_no_pred = NULL;
         free(path_modif);
         path_modif = NULL;
-        srpds_cleanup_values(sibling, prev, orig_prev, &prev_pred, &orig_prev_pred, &any_value);
+        free(prev);
+        prev = NULL;
+        bson_destroy(query);
+        query = NULL;
+
+        if ((child = lyd_child_no_keys(sibling))) {
+            if ((err_info = srpds_store_data_recursively(child, bulk))) {
+                goto cleanup;
+            }
+        }
 
         sibling = sibling->next;
     }
@@ -3189,11 +3208,10 @@ cleanup:
     free(path);
     free(path_no_pred);
     free(path_modif);
-    srpds_cleanup_values(sibling, prev, orig_prev, &prev_pred, &orig_prev_pred, &any_value);
+    free(prev);
+    free(any_value);
     free(keys);
-    if (err_info) {
-        bson_destroy(bson_query);
-    }
+    bson_destroy(query);
     return err_info;
 }
 
@@ -3210,32 +3228,34 @@ srpds_store_data(mongoc_collection_t *module, const struct lyd_node *mod_data)
 {
     sr_error_info_t *err_info = NULL;
     bson_error_t error;
-    struct mongo_diff_data diff_data;
+    mongo_bulk_data_t bulk = {0};
+    bson_t *opts = NULL, reply;
 
-    if ((err_info = srpds_diff_data_init(&diff_data))) {
-        goto cleanup;
-    }
-
-    if (mod_data && (err_info = srpds_load_data_recursively(mod_data, &diff_data))) {
-        goto cleanup;
-    }
+    bson_init(&reply);
 
     /* delete all data */
     if ((err_info = srpds_delete_regex(module, "^[^012]"))) {
         goto cleanup;
     }
 
-    /* create all data and metadata and attributes */
-    if (diff_data.cre.idx) {
-        if (!mongoc_collection_insert_many(module, (const bson_t **) diff_data.cre.docs,
-                diff_data.cre.idx, NULL, NULL, &error)) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_insert_many()", error.message);
+    opts = BCON_NEW("ordered", BCON_BOOL(0));
+    bulk.bulk = mongoc_collection_create_bulk_operation_with_opts(module, opts);
+
+    if (mod_data && (err_info = srpds_store_data_recursively(mod_data, &bulk))) {
+        goto cleanup;
+    }
+
+    if (bulk.has_operation) {
+        if (!mongoc_bulk_operation_execute(bulk.bulk, &reply, &error)) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_bulk_operation_execute()", error.message);
             goto cleanup;
         }
     }
 
 cleanup:
-    srpds_diff_data_destroy(&diff_data);
+    bson_destroy(opts);
+    mongoc_bulk_operation_destroy(bulk.bulk);
+    bson_destroy(&reply);
     return err_info;
 }
 
@@ -3251,23 +3271,22 @@ static sr_error_info_t *
 srpds_set_last_modif_flag(mongoc_collection_t *module, int reset)
 {
     sr_error_info_t *err_info = NULL;
-    bson_error_t error;
-    bson_t *doc = NULL, *update = NULL;
+    bson_t *query_key = NULL, *query = NULL;
     struct timespec spec = {0};
 
     if (!reset) {
         clock_gettime(CLOCK_REALTIME, &spec);
     }
-    doc = BCON_NEW("_id", BCON_UTF8("0"));
-    update = BCON_NEW("$set", "{", "sec", BCON_INT64((int64_t)(spec.tv_sec)), "nsec", BCON_INT64((int64_t)(spec.tv_nsec)), "}");
-    if (!mongoc_collection_update_one(module, doc, update, NULL, NULL, &error)) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_update_one()", error.message);
+    query_key = BCON_NEW("_id", BCON_UTF8("0"));
+    query = BCON_NEW("$set", "{", "nsec", BCON_INT64((int64_t)(spec.tv_nsec)), "sec",
+            BCON_INT64((int64_t)(spec.tv_sec)), "}");
+    if ((err_info = srpds_update(module, query_key, query, 1))) {
         goto cleanup;
     }
 
 cleanup:
-    bson_destroy(doc);
-    bson_destroy(update);
+    bson_destroy(query_key);
+    bson_destroy(query);
     return err_info;
 }
 
@@ -3283,83 +3302,29 @@ static sr_error_info_t *
 srpds_set_candidate_modified_flag(mongoc_collection_t *module, int modified)
 {
     sr_error_info_t *err_info = NULL;
-    bson_error_t error;
-    bson_t *doc = NULL, *update = NULL;
+    bson_t *query_key = NULL, *query = NULL;
 
-    doc = BCON_NEW("_id", BCON_UTF8("1"));
-    update = BCON_NEW("$set", "{", "modified", BCON_BOOL(modified), "}");
-    if (!mongoc_collection_update_one(module, doc, update, NULL, NULL, &error)) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_update_one()", error.message);
+    query_key = BCON_NEW("_id", BCON_UTF8("1"));
+    query = BCON_NEW("$set", "{", "modified", BCON_BOOL(modified), "}");
+    if ((err_info = srpds_update(module, query_key, query, 1))) {
         goto cleanup;
     }
 
 cleanup:
-    bson_destroy(doc);
-    bson_destroy(update);
+    bson_destroy(query_key);
+    bson_destroy(query);
     return err_info;
 }
 
 /**
- * @brief Create last-modif flag.
- *
- * @param[in] module Given MongoDB collection.
- * @param[in] spec Time of the last modification.
- * @return NULL on success;
- * @return Sysrepo error info on error.
- */
-static sr_error_info_t *
-srpds_insert_last_modif_flag(mongoc_collection_t *module, struct timespec *spec)
-{
-    sr_error_info_t *err_info = NULL;
-    bson_error_t error;
-    bson_t *doc = NULL;
-
-    doc = BCON_NEW("_id", BCON_UTF8("0"), "sec", BCON_INT64(spec->tv_sec), "nsec", BCON_INT64(spec->tv_nsec));
-    if (!mongoc_collection_insert_one(module, doc, NULL, NULL, &error)) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_insert_one()", error.message);
-        goto cleanup;
-    }
-
-cleanup:
-    bson_destroy(doc);
-    return err_info;
-}
-
-/**
- * @brief Create candidate-modified flag.
- *
- * @param[in] module Given MongoDB collection.
- * @param[in] modified Whether candidate datastore is modified.
- * @return NULL on success;
- * @return Sysrepo error info on error.
- */
-static sr_error_info_t *
-srpds_insert_candidate_modified_flag(mongoc_collection_t *module, int modified)
-{
-    sr_error_info_t *err_info = NULL;
-    bson_error_t error;
-    bson_t *doc = NULL;
-
-    doc = BCON_NEW("_id", BCON_UTF8("1"), "modified", BCON_BOOL(modified));
-    if (!mongoc_collection_insert_one(module, doc, NULL, NULL, &error)) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_insert_one()", error.message);
-        goto cleanup;
-    }
-
-cleanup:
-    bson_destroy(doc);
-    return err_info;
-}
-
-/**
- * @brief Create a bunch of indexes.
+ * @brief Create a bunch of indices.
  *
  * @param[in] module Given MongoDB collection.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_create_indexes(mongoc_collection_t *module)
+srpds_create_indices(mongoc_collection_t *module)
 {
     sr_error_info_t *err_info = NULL;
     bson_error_t error;
@@ -3401,7 +3366,7 @@ srpds_mongo_candidate_modified(const struct lys_module *mod, void *plg_data, int
     mongo_plg_conn_data_t *pdata = (mongo_plg_conn_data_t *)plg_data;
     sr_error_info_t *err_info = NULL;
     bson_error_t error;
-    bson_t *doc = NULL, *doc2 = NULL;
+    bson_t *query = NULL, *query_opts = NULL, *query_iter = NULL;
     mongoc_cursor_t *cursor = NULL;
     bson_iter_t iter;
 
@@ -3411,17 +3376,13 @@ srpds_mongo_candidate_modified(const struct lys_module *mod, void *plg_data, int
         goto cleanup;
     }
 
-    doc = BCON_NEW("_id", BCON_UTF8("1"));
-    cursor = mongoc_collection_find_with_opts(mdata.module, doc, NULL, NULL);
+    query = BCON_NEW("_id", BCON_UTF8("1"));
+    query_opts = BCON_NEW("projection", "{", "modified", BCON_BOOL(1), "_id", BCON_BOOL(0), "}");
+    cursor = mongoc_collection_find_with_opts(mdata.module, query, query_opts, NULL);
 
-    if (mongoc_cursor_next(cursor, (const bson_t **) &doc2)) {
-        if (!bson_iter_init(&iter, doc2)) {
+    if (mongoc_cursor_next(cursor, (const bson_t **) &query_iter)) {
+        if (!bson_iter_init(&iter, query_iter)) {
             ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_init()", "");
-            goto cleanup;
-        }
-
-        if (!bson_iter_next(&iter)) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
             goto cleanup;
         }
 
@@ -3438,7 +3399,8 @@ srpds_mongo_candidate_modified(const struct lys_module *mod, void *plg_data, int
     }
 
 cleanup:
-    bson_destroy(doc);
+    bson_destroy(query);
+    bson_destroy(query_opts);
     mongoc_cursor_destroy(cursor);
     srpds_data_destroy(pdata, &mdata);
     return err_info;
@@ -3455,7 +3417,7 @@ srpds_mongo_copy(const struct lys_module *mod, sr_datastore_t trg_ds, sr_datasto
     mongo_plg_conn_data_t *pdata = (mongo_plg_conn_data_t *)plg_data;
     sr_error_info_t *err_info = NULL;
     bson_error_t error;
-    bson_t *command = NULL, *doc = NULL;
+    bson_t *query = NULL, *query_iter = NULL;
     mongoc_cursor_t *cursor = NULL;
 
     assert(mod);
@@ -3464,7 +3426,7 @@ srpds_mongo_copy(const struct lys_module *mod, sr_datastore_t trg_ds, sr_datasto
         goto cleanup;
     }
 
-    command = BCON_NEW("pipeline", "[",
+    query = BCON_NEW("pipeline", "[",
             "{", "$addFields",
             "{", "returns",
             "{", "$regexMatch",
@@ -3481,9 +3443,9 @@ srpds_mongo_copy(const struct lys_module *mod, sr_datastore_t trg_ds, sr_datasto
             "}",
             "}", "]");
 
-    cursor = mongoc_collection_aggregate(mdata.module, MONGOC_QUERY_NONE, command, NULL, NULL);
+    cursor = mongoc_collection_aggregate(mdata.module, MONGOC_QUERY_NONE, query, NULL, NULL);
 
-    while (mongoc_cursor_next(cursor, (const bson_t **)&doc)) {}
+    while (mongoc_cursor_next(cursor, (const bson_t **)&query_iter)) {}
     if (mongoc_cursor_error(cursor, &error)) {
         ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_aggregate()", error.message);
         goto cleanup;
@@ -3499,14 +3461,14 @@ srpds_mongo_copy(const struct lys_module *mod, sr_datastore_t trg_ds, sr_datasto
 
     if (trg_ds == SR_DS_CANDIDATE) {
         /* the modified flag got deleted while copying data */
-        if ((err_info = srpds_insert_candidate_modified_flag(mdata.module, !(src_ds == SR_DS_RUNNING)))) {
+        if ((err_info = srpds_set_candidate_modified_flag(mdata.module, !(src_ds == SR_DS_RUNNING)))) {
             goto cleanup;
         }
     }
 
 cleanup:
     mongoc_cursor_destroy(cursor);
-    bson_destroy(command);
+    bson_destroy(query);
     srpds_data_destroy(pdata, &mdata);
     return err_info;
 }
@@ -3679,16 +3641,14 @@ srpds_mongo_conn_destroy(sr_conn_ctx_t *conn, void *plg_data)
  *
  */
 sr_error_info_t *
-srpds_mongo_install(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group, mode_t perm, void *plg_data)
+srpds_mongo_install(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group, mode_t perm,
+        void *plg_data)
 {
     mongo_data_t mdata;
     mongo_plg_conn_data_t *pdata = (mongo_plg_conn_data_t *)plg_data;
     sr_error_info_t *err_info = NULL;
-    bson_error_t error;
-    uint32_t i;
-    bson_t *bson_query = NULL;
+    bson_t *query = NULL;
     char *process_user = NULL, *process_group = NULL;
-    struct timespec spec = {0};
 
     assert(mod && perm);
 
@@ -3696,7 +3656,7 @@ srpds_mongo_install(const struct lys_module *mod, sr_datastore_t ds, const char 
         goto cleanup;
     }
 
-    if ((err_info = srpds_create_indexes(mdata.module))) {
+    if ((err_info = srpds_create_indices(mdata.module))) {
         goto cleanup;
     }
 
@@ -3715,25 +3675,24 @@ srpds_mongo_install(const struct lys_module *mod, sr_datastore_t ds, const char 
     }
 
     /* insert owner, group and permissions */
-    bson_query = BCON_NEW("_id", "2", "owner", BCON_UTF8(owner), "group", BCON_UTF8(group), "perm", BCON_INT32((int32_t)perm));
-    if (!mongoc_collection_insert_one(mdata.module, bson_query, NULL, NULL, &error)) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_insert_one()", error.message);
+    query = BCON_NEW("_id", "2", "owner", BCON_UTF8(owner), "group", BCON_UTF8(group), "perm",
+            BCON_INT32((int32_t)perm));
+    if ((err_info = srpds_insert(mdata.module, query))) {
         goto cleanup;
     }
 
     if ((ds == SR_DS_RUNNING) || (ds == SR_DS_STARTUP) || (ds == SR_DS_FACTORY_DEFAULT)) {
-        clock_gettime(CLOCK_REALTIME, &spec);
-        if ((err_info = srpds_insert_last_modif_flag(mdata.module, &spec))) {
+        if ((err_info = srpds_set_last_modif_flag(mdata.module, 0))) {
             goto cleanup;
         }
     } else {
-        if ((err_info = srpds_insert_last_modif_flag(mdata.module, &spec))) {
+        if ((err_info = srpds_set_last_modif_flag(mdata.module, 1))) {
             goto cleanup;
         }
     }
 
     if (ds == SR_DS_CANDIDATE) {
-        if ((err_info = srpds_insert_candidate_modified_flag(mdata.module, 0))) {
+        if ((err_info = srpds_set_candidate_modified_flag(mdata.module, 0))) {
             goto cleanup;
         }
     }
@@ -3741,7 +3700,7 @@ srpds_mongo_install(const struct lys_module *mod, sr_datastore_t ds, const char 
 cleanup:
     free(process_user);
     free(process_group);
-    bson_destroy(bson_query);
+    bson_destroy(query);
     srpds_data_destroy(pdata, &mdata);
     return err_info;
 }
@@ -3751,7 +3710,8 @@ cleanup:
  *
  */
 sr_error_info_t *
-srpds_mongo_access_get(const struct lys_module *mod, sr_datastore_t ds, void *plg_data, char **owner, char **group, mode_t *perm)
+srpds_mongo_access_get(const struct lys_module *mod, sr_datastore_t ds, void *plg_data, char **owner, char **group,
+        mode_t *perm)
 {
     mongo_data_t mdata;
     mongo_plg_conn_data_t *pdata = (mongo_plg_conn_data_t *)plg_data;
@@ -3777,13 +3737,13 @@ cleanup:
  *
  */
 sr_error_info_t *
-srpds_mongo_access_set(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group, mode_t perm, void *plg_data)
+srpds_mongo_access_set(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group,
+        mode_t perm, void *plg_data)
 {
     mongo_data_t mdata;
     mongo_plg_conn_data_t *pdata = (mongo_plg_conn_data_t *)plg_data;
     sr_error_info_t *err_info = NULL;
-    bson_error_t error;
-    bson_t *bson_query_key = NULL, *bson_query = NULL;
+    bson_t *query_key = NULL, *query = NULL;
 
     assert(mod);
 
@@ -3792,40 +3752,37 @@ srpds_mongo_access_set(const struct lys_module *mod, sr_datastore_t ds, const ch
     }
 
     /* _id for owner, group and permissions */
-    bson_query_key = BCON_NEW("_id", "2");
+    query_key = BCON_NEW("_id", "2");
 
     /* set owner */
     if (owner) {
-        bson_query = BCON_NEW("$set", "{", "owner", BCON_UTF8(owner), "}");
-        if (!mongoc_collection_update_one(mdata.module, bson_query_key, bson_query, NULL, NULL, &error)) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_update_one()", error.message);
+        query = BCON_NEW("$set", "{", "owner", BCON_UTF8(owner), "}");
+        if ((err_info = srpds_update(mdata.module, query_key, query, 0))) {
             goto cleanup;
         }
-        bson_destroy(bson_query);
+        bson_destroy(query);
     }
 
     /* set group */
     if (group) {
-        bson_query = BCON_NEW("$set", "{", "group", BCON_UTF8(group), "}");
-        if (!mongoc_collection_update_one(mdata.module, bson_query_key, bson_query, NULL, NULL, &error)) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_update_one()", error.message);
+        query = BCON_NEW("$set", "{", "group", BCON_UTF8(group), "}");
+        if ((err_info = srpds_update(mdata.module, query_key, query, 0))) {
             goto cleanup;
         }
-        bson_destroy(bson_query);
+        bson_destroy(query);
     }
 
     /* set permissions */
     if (perm) {
-        bson_query = BCON_NEW("$set", "{", "perm", BCON_INT32(perm), "}");
-        if (!mongoc_collection_update_one(mdata.module, bson_query_key, bson_query, NULL, NULL, &error)) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_update_one()", error.message);
+        query = BCON_NEW("$set", "{", "perm", BCON_INT32(perm), "}");
+        if ((err_info = srpds_update(mdata.module, query_key, query, 0))) {
             goto cleanup;
         }
     }
 
 cleanup:
-    bson_destroy(bson_query_key);
-    bson_destroy(bson_query);
+    bson_destroy(query_key);
+    bson_destroy(query);
     srpds_data_destroy(pdata, &mdata);
     return err_info;
 }
@@ -3971,7 +3928,8 @@ srpds_mongo_load(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, 
         goto cleanup;
     }
 
-    if ((err_info = srpds_process_load_paths(mod->ctx, xpaths, xpath_count, (ds == SR_DS_OPERATIONAL), &is_valid, &xpath_filter))) {
+    if ((err_info = srpds_process_load_paths(mod->ctx, xpaths, xpath_count, (ds == SR_DS_OPERATIONAL), &is_valid,
+            &xpath_filter))) {
         goto cleanup;
     }
 
@@ -4001,8 +3959,7 @@ srpds_mongo_last_modif(const struct lys_module *mod, sr_datastore_t ds, void *pl
     mongo_plg_conn_data_t *pdata = (mongo_plg_conn_data_t *)plg_data;
     sr_error_info_t *err_info = NULL;
     bson_error_t error;
-    bson_t *doc = NULL;
-    bson_t *doc2 = NULL;
+    bson_t *query = NULL, *query_opts = NULL, *query_iter = NULL;
     mongoc_cursor_t *cursor = NULL;
     bson_iter_t iter;
 
@@ -4012,26 +3969,22 @@ srpds_mongo_last_modif(const struct lys_module *mod, sr_datastore_t ds, void *pl
         goto cleanup;
     }
 
-    doc = BCON_NEW("_id", BCON_UTF8("0"));
-    cursor = mongoc_collection_find_with_opts(mdata.module, doc, NULL, NULL);
+    query = BCON_NEW("_id", BCON_UTF8("0"));
+    query_opts = BCON_NEW("projection", "{", "nsec", BCON_BOOL(1), "sec", BCON_BOOL(1), "_id", BCON_BOOL(0), "}");
+    cursor = mongoc_collection_find_with_opts(mdata.module, query, query_opts, NULL);
 
-    if (mongoc_cursor_next(cursor, (const bson_t **) &doc2)) {
-        if (!bson_iter_init(&iter, doc2)) {
+    if (mongoc_cursor_next(cursor, (const bson_t **) &query_iter)) {
+        if (!bson_iter_init(&iter, query_iter)) {
             ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_init()", "");
             goto cleanup;
         }
 
-        if (!bson_iter_next(&iter)) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
-            goto cleanup;
+        if (bson_iter_next(&iter)) {
+            mtime->tv_nsec = bson_iter_int64(&iter);
         }
 
         if (bson_iter_next(&iter)) {
             mtime->tv_sec = bson_iter_int64(&iter);
-        }
-
-        if (bson_iter_next(&iter)) {
-            mtime->tv_nsec = bson_iter_int64(&iter);
         }
     }
 
@@ -4041,7 +3994,8 @@ srpds_mongo_last_modif(const struct lys_module *mod, sr_datastore_t ds, void *pl
     }
 
 cleanup:
-    bson_destroy(doc);
+    bson_destroy(query);
+    bson_destroy(query_opts);
     mongoc_cursor_destroy(cursor);
     srpds_data_destroy(pdata, &mdata);
     return err_info;
