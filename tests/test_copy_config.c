@@ -1403,13 +1403,13 @@ replace_userord_thread(void *arg)
 
     str2 =
             "<cont xmlns=\"urn:test\">\n"
-            "  <dflt-leaf xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">default-value</dflt-leaf>\n"
+            "  <dflt-leaf xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">default-value</dflt-leaf>\n"
             "</cont>\n"
             "<l3 xmlns=\"urn:test\">\n"
             "  <k>k1</k>\n"
-            "  <ll3 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">5</ll3>\n"
-            "  <ll3 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">10</ll3>\n"
-            "  <ll3 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">15</ll3>\n"
+            "  <ll3 xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">5</ll3>\n"
+            "  <ll3 xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">10</ll3>\n"
+            "  <ll3 xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">15</ll3>\n"
             "  <l4>\n"
             "    <k>k1</k>\n"
             "  </l4>\n"

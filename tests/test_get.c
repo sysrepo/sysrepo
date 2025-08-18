@@ -501,9 +501,9 @@ test_union(void **state)
 
     str2 =
             "<ac1 xmlns=\"s\">\n"
-            "  <acd1 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">true</acd1>\n"
-            "  <bauga1 xmlns=\"sa\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\""
-            " ncwd:default=\"true\">true</bauga1>\n"
+            "  <acd1 xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">true</acd1>\n"
+            "  <bauga1 xmlns=\"sa\" xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\""
+            " dflt:default=\"true\">true</bauga1>\n"
             "  <bauga2 xmlns=\"sa\">val</bauga2>\n"
             "</ac1>\n";
 
@@ -519,7 +519,7 @@ test_union(void **state)
 
     str2 =
             "<bc1 xmlns=\"sa\">\n"
-            "  <bcd1 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">true</bcd1>\n"
+            "  <bcd1 xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">true</bcd1>\n"
             "  <bcl1>\n"
             "    <bcs1>key</bcs1>\n"
             "  </bcl1>\n"
@@ -538,13 +538,13 @@ test_union(void **state)
 
     str2 =
             "<ac1 xmlns=\"s\">\n"
-            "  <acd1 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">true</acd1>\n"
-            "  <bauga1 xmlns=\"sa\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\""
-            " ncwd:default=\"true\">true</bauga1>\n"
+            "  <acd1 xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">true</acd1>\n"
+            "  <bauga1 xmlns=\"sa\" xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\""
+            " dflt:default=\"true\">true</bauga1>\n"
             "  <bauga2 xmlns=\"sa\">val</bauga2>\n"
             "</ac1>\n"
             "<bc1 xmlns=\"sa\">\n"
-            "  <bcd1 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">true</bcd1>\n"
+            "  <bcd1 xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">true</bcd1>\n"
             "  <bcl1>\n"
             "    <bcs1>key</bcs1>\n"
             "  </bcl1>\n"

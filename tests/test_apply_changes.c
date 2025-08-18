@@ -284,13 +284,13 @@ module_change_done_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mo
                 "  <interface>\n"
                 "    <name>eth52</name>\n"
                 "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
-                "    <enabled xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\""
-                " ncwd:default=\"true\">true</enabled>\n"
+                "    <enabled xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\""
+                " dflt:default=\"true\">true</enabled>\n"
                 "    <ipv4 xmlns=\"urn:ietf:params:xml:ns:yang:ietf-ip\">\n"
-                "      <enabled xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\""
-                " ncwd:default=\"true\">true</enabled>\n"
-                "      <forwarding xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\""
-                " ncwd:default=\"true\">false</forwarding>\n"
+                "      <enabled xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\""
+                " dflt:default=\"true\">true</enabled>\n"
+                "      <forwarding xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\""
+                " dflt:default=\"true\">false</forwarding>\n"
                 "      <address>\n"
                 "        <ip>192.168.2.100</ip>\n"
                 "        <prefix-length>24</prefix-length>\n"
@@ -2481,17 +2481,17 @@ apply_no_changes_thread(void *arg)
 
     str2 =
             "<cont xmlns=\"urn:defaults\">\n"
-            "  <l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>\n"
-            "  <interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>\n"
+            "  <l xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">dflt</l>\n"
+            "  <interval xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">30</interval>\n"
             "</cont>\n"
             "<pcont xmlns=\"urn:defaults\">\n"
-            "  <ll xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">1</ll>\n"
-            "  <ll xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">2</ll>\n"
-            "  <ll xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">3</ll>\n"
-            "  <uni xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">some-ip</uni>\n"
-            "  <ll2 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">4</ll2>\n"
-            "  <ll2 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">5</ll2>\n"
-            "  <ll2 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">6</ll2>\n"
+            "  <ll xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">1</ll>\n"
+            "  <ll xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">2</ll>\n"
+            "  <ll xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">3</ll>\n"
+            "  <uni xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">some-ip</uni>\n"
+            "  <ll2 xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">4</ll2>\n"
+            "  <ll2 xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">5</ll2>\n"
+            "  <ll2 xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">6</ll2>\n"
             "</pcont>\n";
 
     assert_string_equal(str1, str2);
@@ -2530,8 +2530,8 @@ apply_no_changes_thread(void *arg)
 
     str2 =
             "<cont xmlns=\"urn:defaults\">\n"
-            "  <l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>\n"
-            "  <interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>\n"
+            "  <l xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">dflt</l>\n"
+            "  <interval xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">30</interval>\n"
             "</cont>\n"
             "<pcont xmlns=\"urn:defaults\">\n"
             "  <ll>1</ll>\n"
@@ -3322,17 +3322,17 @@ apply_change_dflt_leaf_thread(void *arg)
             "  <k>when-true</k>\n"
             "  <cont1>\n"
             "    <cont2>\n"
-            "      <dflt1 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">10</dflt1>\n"
+            "      <dflt1 xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">10</dflt1>\n"
             "    </cont2>\n"
             "    <ll>val</ll>\n"
             "  </cont1>\n"
             "</l1>\n"
-            "<dflt2 xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">"
+            "<dflt2 xmlns=\"urn:defaults\" xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">"
             "I exist!"
             "</dflt2>\n"
             "<cont xmlns=\"urn:defaults\">\n"
-            "  <l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>\n"
-            "  <interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>\n"
+            "  <l xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">dflt</l>\n"
+            "  <interval xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">30</interval>\n"
             "</cont>\n";
 
     assert_string_equal(str1, str2);
@@ -3364,7 +3364,7 @@ apply_change_dflt_leaf_thread(void *arg)
             "  <k>when-true</k>\n"
             "  <cont1>\n"
             "    <cont2>\n"
-            "      <dflt1 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">10</dflt1>\n"
+            "      <dflt1 xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">10</dflt1>\n"
             "    </cont2>\n"
             "  </cont1>\n"
             "</l1>\n"
@@ -3372,8 +3372,8 @@ apply_change_dflt_leaf_thread(void *arg)
             "explicit"
             "</dflt2>\n"
             "<cont xmlns=\"urn:defaults\">\n"
-            "  <l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>\n"
-            "  <interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>\n"
+            "  <l xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">dflt</l>\n"
+            "  <interval xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">30</interval>\n"
             "</cont>\n";
 
     assert_string_equal(str1, str2);
@@ -3409,12 +3409,12 @@ apply_change_dflt_leaf_thread(void *arg)
             "    </cont2>\n"
             "  </cont1>\n"
             "</l1>\n"
-            "<dflt2 xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">"
+            "<dflt2 xmlns=\"urn:defaults\" xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">"
             "I exist!"
             "</dflt2>\n"
             "<cont xmlns=\"urn:defaults\">\n"
-            "  <l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>\n"
-            "  <interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>\n"
+            "  <l xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">dflt</l>\n"
+            "  <interval xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">30</interval>\n"
             "</cont>\n";
 
     assert_string_equal(str1, str2);
@@ -3448,12 +3448,12 @@ apply_change_dflt_leaf_thread(void *arg)
             "    </cont2>\n"
             "  </cont1>\n"
             "</l1>\n"
-            "<dflt2 xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">"
+            "<dflt2 xmlns=\"urn:defaults\" xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">"
             "I exist!"
             "</dflt2>\n"
             "<cont xmlns=\"urn:defaults\">\n"
-            "  <l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>\n"
-            "  <interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>\n"
+            "  <l xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">dflt</l>\n"
+            "  <interval xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">30</interval>\n"
             "</cont>\n";
 
     assert_string_equal(str1, str2);
@@ -3483,16 +3483,16 @@ apply_change_dflt_leaf_thread(void *arg)
             "  <k>when-true</k>\n"
             "  <cont1>\n"
             "    <cont2>\n"
-            "      <dflt1 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">10</dflt1>\n"
+            "      <dflt1 xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">10</dflt1>\n"
             "    </cont2>\n"
             "  </cont1>\n"
             "</l1>\n"
-            "<dflt2 xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">"
+            "<dflt2 xmlns=\"urn:defaults\" xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">"
             "I exist!"
             "</dflt2>\n"
             "<cont xmlns=\"urn:defaults\">\n"
-            "  <l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>\n"
-            "  <interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>\n"
+            "  <l xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">dflt</l>\n"
+            "  <interval xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">30</interval>\n"
             "</cont>\n";
 
     assert_string_equal(str1, str2);
@@ -4578,7 +4578,7 @@ apply_change_dflt_create_thread(void *arg)
     str2 =
             "<cont xmlns=\"urn:defaults\">\n"
             "  <l>dflt</l>\n"
-            "  <interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>\n"
+            "  <interval xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">30</interval>\n"
             "</cont>\n";
 
     assert_string_equal(str1, str2);
@@ -4601,8 +4601,8 @@ apply_change_dflt_create_thread(void *arg)
 
     str2 =
             "<cont xmlns=\"urn:defaults\">\n"
-            "  <l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>\n"
-            "  <interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>\n"
+            "  <l xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">dflt</l>\n"
+            "  <interval xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">30</interval>\n"
             "</cont>\n";
 
     assert_string_equal(str1, str2);
