@@ -24,11 +24,13 @@
 
 #include "sysrepo.h"
 
-#define ERRINFO(err, plugin_name, type, func, message) srplg_log_errinfo(err, plugin_name, NULL, type, func " failed on %d in %s [%s].", __LINE__, __FILE__, message)
+#define ERRINFO(err, plugin_name, type, func, message) \
+        srplg_log_errinfo(err, plugin_name, NULL, type, func " failed on %d in %s [%s].", __LINE__, __FILE__, message)
 
 #define SRPDS_DB_LIST_KEY_LEN_BYTES 2 /* databases store the length of a list key in two bytes */
 #define SRPDS_DB_LIST_KEY_LEN_BITS 7 /* databases use only 7 bits in a byte to store the length of a list key */
-#define SRPDS_DB_LIST_KEY_GET_LEN(first_byte, second_byte) ((uint32_t)(first_byte) << SRPDS_DB_LIST_KEY_LEN_BITS) | second_byte /* get length of a list key */
+#define SRPDS_DB_LIST_KEY_GET_LEN(first_byte, second_byte) \
+        ((uint32_t)(first_byte) << SRPDS_DB_LIST_KEY_LEN_BITS) | second_byte /* get length of a list key */
 #define SRPDS_DB_UO_ELEMS_GAP_SIZE 1024 /* initial gap between elements in user-ordered lists and leaf-lists */
 
 enum srpds_db_ly_types {
@@ -39,9 +41,7 @@ enum srpds_db_ly_types {
     SRPDS_DB_LY_ANY,           /* anydata or anyxml */
     SRPDS_DB_LY_LIST_UO,       /* user-ordered list */
     SRPDS_DB_LY_LEAFLIST_UO,   /* user-ordered leaf-list */
-    SRPDS_DB_LY_OPAQUE,        /* opaque node */
-    SRPDS_DB_LY_META,          /* metadata */
-    SRPDS_DB_LY_ATTR           /* attribute */
+    SRPDS_DB_LY_OPAQUE         /* opaque node */
 };
 
 /* userordered element node with order */
@@ -73,7 +73,8 @@ typedef struct srpds_db_userordered_lists_s {
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
-sr_error_info_t *srpds_concat_key_values(const char *plg_name, const struct lyd_node *node, char **keys, uint32_t *keys_length);
+sr_error_info_t *srpds_concat_key_values(const char *plg_name, const struct lyd_node *node, char **keys,
+        uint32_t *keys_length);
 
 /**
  * @brief Goes through concatenated keys and separates them.
@@ -173,7 +174,8 @@ sr_error_info_t *srpds_gid2grp(const char *plg_name, gid_t gid, char **group);
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
-sr_error_info_t *srpds_escape_string(const char *plg_name, const char *string, char escape_character, char **escaped_string);
+sr_error_info_t *srpds_escape_string(const char *plg_name, const char *string, char escape_character,
+        char **escaped_string);
 
 /**
  * @brief Find the node @p node from one tree in another tree @p tree and store it in @p match .
@@ -185,7 +187,8 @@ sr_error_info_t *srpds_escape_string(const char *plg_name, const char *string, c
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
-sr_error_info_t *srpds_find_node(const char *plg_name, const struct lyd_node *node, const struct lyd_node *tree, struct lyd_node **match);
+sr_error_info_t *srpds_find_node(const char *plg_name, const struct lyd_node *node, const struct lyd_node *tree,
+        struct lyd_node **match);
 
 /**
  * @brief Compare function for qsort comparing elements of userordered lists and leaflists.
@@ -244,6 +247,9 @@ void srpds_cleanup_uo_lists(srpds_db_userordered_lists_t *uo_lists);
  * @param[in] lengths Array of the lengths of the @p keys .
  * @param[in] order Order of the node in the userordered list or leaflist.
  * @param[in] path_no_pred Path to the node without predicate.
+ * @param[in] meta_count Number of metadata stored.
+ * @param[in] meta_names Names of metadata.
+ * @param[in] meta_values Values of metadata.
  * @param[in,out] uo_lists Structure containing userordered lists and leaflists.
  * @param[in,out] parent_nodes Potential parent nodes of the new node.
  * @param[in,out] pnodes_size Size of the @p parent_nodes .
@@ -254,38 +260,50 @@ void srpds_cleanup_uo_lists(srpds_db_userordered_lists_t *uo_lists);
 sr_error_info_t *srpds_add_mod_data(const char *plg_name, const struct ly_ctx *ly_ctx, sr_datastore_t ds,
         const char *path, const char *name, enum srpds_db_ly_types type, const char *module_name, const char *value,
         int32_t valtype, int *dflt_flag, const char **keys, uint32_t *lengths, int64_t order, const char *path_no_pred,
-        srpds_db_userordered_lists_t *uo_lists, struct lyd_node ***parent_nodes, size_t *pnodes_size,
-        struct lyd_node **mod_data);
+        int32_t meta_count, const char *meta_name, const char *meta_value, srpds_db_userordered_lists_t *uo_lists,
+        struct lyd_node ***parent_nodes, size_t *pnodes_size, struct lyd_node **mod_data);
 
 /**
- * @brief Get all the values associated with the node.
+ * @brief Get standard values (value and any value).
  *
  * @param[in] plg_name Plugin name.
- * @param[in] node Data node for which to get the values.
- * @param[out] value Value of the node.
- * @param[out] prev Value of the node before this node.
- * @param[out] orig_prev Original value of the node before this node.
- * @param[out] prev_pred Value of the node before this node in predicate.
- * @param[out] orig_prev_pred Original value of the node before this node in predicate.
- * @param[out] any_value Value of the type 'any value'.
- * @param[out] valtype Type of the node's value (XML or JSON).
+ * @param[in] node Node to read.
+ * @param[out] value Value.
+ * @param[out] any_value Any value.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
-sr_error_info_t *srpds_get_values(const char *plg_name, const struct lyd_node *node, const char **value, const char **prev,
-        const char **orig_prev, char **prev_pred, char **orig_prev_pred, char **any_value, int32_t *valtype);
+sr_error_info_t *srpds_get_norm_values(const char *plg_name, const struct lyd_node *node, const char **value,
+        char **any_value);
 
 /**
- * @brief Free all the memory allocated in srpds_get_values().
+ * @brief Get key or value of the previous element in a list or a leaflist.
  *
- * @param[in] node Data node for which to free the values.
- * @param[in] prev Value of the node before this node.
- * @param[in] orig_prev Original value of the node before this node.
- * @param[in,out] prev_pred Value of the node before this node in predicate.
- * @param[in,out] orig_prev_pred Original value of the node before this node in predicate.
- * @param[in,out] any_value Value of the type 'any value'.
+ * @param[in] plg_name Plugin name.
+ * @param[in] node Node to read.
+ * @param[out] prev Allocated previous key/value.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
  */
-void srpds_cleanup_values(const struct lyd_node *node, const char *prev, const char *orig_prev, char **prev_pred,
-        char **orig_prev_pred, char **any_value);
+sr_error_info_t *srpds_get_prev_value(const char *plg_name, const struct lyd_node *node, char **prev);
+
+/**
+ * @brief Get key or value of the original previous element in a list or a leaflist.
+ *
+ * @param[in] plg_name Plugin name.
+ * @param[in] node Node to read.
+ * @param[out] orig_prev Allocated original previous key/value.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+sr_error_info_t *srpds_get_orig_prev_value(const char *plg_name, const struct lyd_node *node, char **orig_prev);
+
+/**
+ * @brief Get count of external metadata (origin).
+ *
+ * @param[in] meta Metadata to traverse.
+ * @return Number of external metadata.
+ */
+int32_t srpds_get_meta_count(const struct lyd_meta *meta);
 
 #endif /* _COMMON_DB_H */
