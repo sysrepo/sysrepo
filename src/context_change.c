@@ -210,7 +210,22 @@ sr_ly_ctx_init(struct ly_ctx *ly_ctx)
 static int
 context_is_up_to_date(sr_main_shm_t *main_shm, uint32_t content_id, uint32_t schema_mount_data_id)
 {
-    return (main_shm->content_id == content_id) && (main_shm->schema_mount_data_id == schema_mount_data_id);
+    if (main_shm->content_id != content_id) {
+        /* always a different context */
+        return 0;
+    }
+
+    if (!SR_PRINTED_LYCTX_ADDRESS || (ATOMIC_LOAD_RELAXED(sr_yang_ctx.sr_opts) & SR_CTX_NO_PRINTED)) {
+        /* only YANG modules matter, schema-mount contexts can be created as needed for dynamic contexts */
+        return 1;
+    }
+
+    if (main_shm->schema_mount_data_id != schema_mount_data_id) {
+        /* printed context needs its schema-mount shared contexts updated */
+        return 0;
+    }
+
+    return 1;
 }
 
 sr_error_info_t *
@@ -1364,13 +1379,10 @@ sr_lycc_store_context(sr_shm_t *shm, struct ly_ctx *ctx)
     void *mem = NULL, *mem_end;
     char *shm_name = NULL;
 
-    if (!SR_PRINTED_LYCTX_ADDRESS || (ATOMIC_LOAD_RELAXED(sr_yang_ctx.sr_opts) & SR_CTX_NO_PRINTED)) {
+    if (!SR_PRINTED_LYCTX_ADDRESS) {
         /* printed context not supported */
         return NULL;
     }
-
-    /* free the parsed modules */
-    ly_ctx_free_parsed(ctx);
 
     if ((err_info = sr_path_ctx_shm(&shm_name))) {
         goto cleanup;

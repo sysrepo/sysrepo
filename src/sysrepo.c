@@ -4371,24 +4371,31 @@ sr_schema_mount_data_update(sr_session_ctx_t *session)
     struct ly_ctx *new_ctx = NULL;
     struct sr_lycc_info_s cc_info = {0};
     sr_lock_mode_t ctx_mode = SR_LOCK_NONE;
+    int destroy_new_ctx = 0;
 
-    /* create a new temporary context */
-    if ((err_info = sr_ly_ctx_new(&new_ctx))) {
-        goto cleanup;
+    if (ly_ctx_is_printed(sr_yang_ctx.ly_ctx)) {
+        /* create a new temporary context */
+        if ((err_info = sr_ly_ctx_new(&new_ctx))) {
+            goto cleanup;
+        }
+        destroy_new_ctx = 1;
+
+        /* load all the current modules into the temporary context */
+        if ((err_info = sr_shmmod_ctx_load_modules(SR_CTX_MOD_SHM(sr_yang_ctx), new_ctx, NULL))) {
+            goto cleanup;
+        }
+
+        /* prepare datastore, SR, and schema-mount data for a context update */
+        if ((err_info = sr_lycc_prepare_data(session->conn, sr_yang_ctx.ly_ctx, new_ctx, NULL, NULL, 0, &cc_info))) {
+            goto cleanup;
+        }
+
+        /* SR mods are not changed so we can reuse them */
+        cc_info.sr_mods_new = cc_info.sr_mods_old;
+    } else {
+        /* we can use our context */
+        new_ctx = sr_yang_ctx.ly_ctx;
     }
-
-    /* load all the current modules into the temporary context */
-    if ((err_info = sr_shmmod_ctx_load_modules(SR_CTX_MOD_SHM(sr_yang_ctx), new_ctx, NULL))) {
-        goto cleanup;
-    }
-
-    /* prepare datastore, SR, and schema-mount data for a context update */
-    if ((err_info = sr_lycc_prepare_data(session->conn, sr_yang_ctx.ly_ctx, new_ctx, NULL, NULL, 0, &cc_info))) {
-        goto cleanup;
-    }
-
-    /* SR mods are not changed so we can reuse them */
-    cc_info.sr_mods_new = cc_info.sr_mods_old;
 
     /* CONTEXT UPGRADE */
     if ((err_info = sr_lycc_relock(session->conn, SR_LOCK_WRITE, __func__))) {
@@ -4396,9 +4403,11 @@ sr_schema_mount_data_update(sr_session_ctx_t *session)
     }
     ctx_mode = SR_LOCK_WRITE;
 
-    /* perform the update of datastore and SR data, update schema-mount contexts */
-    if ((err_info = sr_lycc_update_data(session->conn, &cc_info, NULL, &sr_run_cache, &sr_oper_cache))) {
-        goto cleanup;
+    if (ly_ctx_is_printed(sr_yang_ctx.ly_ctx)) {
+        /* perform the update of datastore and SR data, update schema-mount contexts */
+        if ((err_info = sr_lycc_update_data(session->conn, &cc_info, NULL, &sr_run_cache, &sr_oper_cache))) {
+            goto cleanup;
+        }
     }
 
     /* update the schema mount data ID, no need to update content_id because it didnt change */
@@ -4411,7 +4420,9 @@ sr_schema_mount_data_update(sr_session_ctx_t *session)
 
 cleanup:
     sr_lycc_clear_data(&cc_info);
-    ly_ctx_destroy(new_ctx);
+    if (destroy_new_ctx) {
+        ly_ctx_destroy(new_ctx);
+    }
 
     /* CONTEXT DOWNGRADE - leave the unlock to the caller */
     if (ctx_mode && (tmp_err = sr_lycc_relock(session->conn, SR_LOCK_READ_UPGR, __func__))) {
