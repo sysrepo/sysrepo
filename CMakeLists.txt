@@ -541,17 +541,9 @@ include_directories(${PROJECT_BINARY_DIR})
 
 # dependencies
 # libatomic
-check_library_exists(atomic __atomic_fetch_add_4 "" LIBATOMIC)
-if(LIBATOMIC)
-    target_link_libraries(sysrepo atomic)
-else()
-    # we may need to link it explicitly
-    list(APPEND CMAKE_REQUIRED_LIBRARIES atomic)
-    check_library_exists(atomic __atomic_fetch_add_4 "" LIBATOMIC)
-    list(REMOVE_ITEM CMAKE_REQUIRED_LIBRARIES atomic)
-    if(LIBATOMIC)
-        target_link_libraries(sysrepo atomic)
-    endif()
+find_library(LIBATOMIC_LIBRARIES NAMES libatomic.so libatomic.so.1)
+if(LIBATOMIC_LIBRARIES)
+    target_link_libraries(sysrepo ${LIBATOMIC_LIBRARIES})
 endif()
 
 # librt (shm_open, shm_unlink, not required on QNX or OSX)
