@@ -346,6 +346,7 @@ srpds_data_init(redis_plg_conn_data_t *pdata, redisContext **ctx)
 {
     sr_error_info_t *err_info = NULL;
     redisContext *rds_ctx = NULL;
+    redisOptions opts = {0};
     redisReply *reply = NULL;
     redis_thread_data_t *new_pool = NULL;
     int found = 0;
@@ -369,13 +370,18 @@ srpds_data_init(redis_plg_conn_data_t *pdata, redisContext **ctx)
 
     if (!found) {
         /* context not found, so create one */
-        rds_ctx = redisConnect(SR_DS_PLG_REDIS_HOST, SR_DS_PLG_REDIS_PORT);
+        if (!strcmp(SR_DS_PLG_REDIS_SOCKET, "")) {
+            REDIS_OPTIONS_SET_TCP(&opts, SR_DS_PLG_REDIS_HOST, SR_DS_PLG_REDIS_PORT);
+        } else {
+            REDIS_OPTIONS_SET_UNIX(&opts, SR_DS_PLG_REDIS_SOCKET);
+        }
+        rds_ctx = redisConnectWithOptions(&opts);
         if ((rds_ctx == NULL) || rds_ctx->err) {
             if (rds_ctx) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "redisConnect()", rds_ctx->errstr);
+                ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "redisConnectWithOptions()", rds_ctx->errstr);
                 goto cleanup;
             } else {
-                ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "redisConnect()",
+                ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "redisConnectWithOptions()",
                         "Could not allocate Redis context");
                 goto cleanup;
             }

@@ -135,12 +135,14 @@ set(MONGO_USERNAME "" CACHE STRING "Username for MongoDB administrator client, a
 set(MONGO_PASSWORD "" CACHE STRING "Password for all MongoDB clients in case MongoDB plugin is supported.")
 set(MONGO_HOST "127.0.0.1" CACHE STRING "Host for the MongoDB client to connect to.")
 set(MONGO_PORT 27017 CACHE STRING "Port for the MongoDB client to connect to.")
+set(MONGO_SOCKET "" CACHE STRING "Unix socket for the MongoDB client to connect to, this overrides MONGO_HOST and MONGO_PORT variables.")
 
 # Redis username, password, host and port for the client
 set(REDIS_USERNAME "" CACHE STRING "Username for Redis user, all operations are done via this client in case Redis plugin is supported. If not provided, no authentication is done.")
 set(REDIS_PASSWORD "" CACHE STRING "Password for Redis user in case Redis plugin is supported.")
 set(REDIS_HOST "127.0.0.1" CACHE STRING "Host for the Redis client to connect to.")
 set(REDIS_PORT 6379 CACHE STRING "Port for the Redis client to connect to.")
+set(REDIS_SOCKET "" CACHE STRING "Unix socket for the Redis client to connect to, this overrides REDIS_HOST and REDIS_PORT variables.")
 
 # ietf-yang-library revision
 set(YANGLIB_REVISION "2019-01-04" CACHE STRING
@@ -418,10 +420,12 @@ if(ENABLE_DS_MONGO)
         message(STATUS "Datastore plugin ds_mongo supported.")
 
         # try running a command in MongoDB database (should not be possible) and check authentication
-        execute_process(COMMAND ${MONGO_CLI_CMD} "--host" "${MONGO_HOST}" "--port" "${MONGO_PORT}" "--eval" "use sr_running" "--eval" "db.runCommand({usersInfo: 1})"
-                RESULT_VARIABLE MONGO_RETURN_CODE
-                ERROR_VARIABLE MONGO_STDERR
-                OUTPUT_QUIET)
+        if(MONGO_SOCKET)
+            set(MONGO_TMP_ARGS ${MONGO_CLI_CMD} "mongodb://${MONGO_SOCKET}" "--eval" "use sr_running" "--eval" "db.runCommand({usersInfo: 1})")
+        else()
+            set(MONGO_TMP_ARGS ${MONGO_CLI_CMD} "--host" "${MONGO_HOST}" "--port" "${MONGO_PORT}" "--eval" "use sr_running" "--eval" "db.runCommand({usersInfo: 1})")
+        endif()
+        execute_process(COMMAND ${MONGO_TMP_ARGS} RESULT_VARIABLE MONGO_RETURN_CODE ERROR_VARIABLE MONGO_STDERR OUTPUT_QUIET)
         if(${MONGO_RETURN_CODE} EQUAL 0)
             message(WARNING "MongoDB authentication is NOT supported! Data stored by sysrepo in MongoDB will be accessible by anyone.")
         else()
@@ -449,10 +453,12 @@ if(ENABLE_DS_REDIS)
         message(STATUS "Datastore plugin ds_redis supported.")
 
         # try running a command in Redis database and check authentication
-        execute_process(COMMAND ${REDIS_CLI_CMD} "-h" "${REDIS_HOST}" "-p" "${REDIS_PORT}" "ACL" "WHOAMI"
-                RESULT_VARIABLE REDIS_RETURN_CODE
-                OUTPUT_VARIABLE REDIS_STDOUT
-                ERROR_VARIABLE REDIS_STDERR)
+        if(REDIS_SOCKET)
+            set(REDIS_TMP_ARGS ${REDIS_CLI_CMD} "-s" "${REDIS_SOCKET}" "ACL" "WHOAMI")
+        else()
+            set(REDIS_TMP_ARGS ${REDIS_CLI_CMD} "-h" "${REDIS_HOST}" "-p" "${REDIS_PORT}" "ACL" "WHOAMI")
+        endif()
+        execute_process(COMMAND ${REDIS_TMP_ARGS} RESULT_VARIABLE REDIS_RETURN_CODE OUTPUT_VARIABLE REDIS_STDOUT ERROR_VARIABLE REDIS_STDERR)
         if (${REDIS_RETURN_CODE} GREATER 0)
             message(WARNING "Redis authentication cannot be checked - a request to Redis failed with: ${REDIS_STDERR}")
         else()
@@ -680,26 +686,30 @@ add_custom_target(sr_clean
 
 # flush all sysrepo related data from mongo
 if(SR_ENABLED_DS_PLG_MONGO)
-    add_custom_target(sr_mongo_clean
-        COMMAND ${MONGO_CLI_CMD} "--host" "${MONGO_HOST}" "--port" "${MONGO_PORT}"
-                        "--eval" "use sr_startup" "--eval" "\"db.dropDatabase()\""
-                        "--eval" "use sr_running" "--eval" "\"db.dropDatabase()\""
-                        "--eval" "use sr_candidate" "--eval" "\"db.dropDatabase()\""
-                        "--eval" "use sr_operational" "--eval" "\"db.dropDatabase()\""
-                        "--eval" "use sr_factory-default" "--eval" "\"db.dropDatabase()\""
-                        "1>" "/dev/null"
-    )
+    if (MONGO_SOCKET)
+        set(MONGO_TMP_ARGS ${MONGO_CLI_CMD} "mongodb://${MONGO_SOCKET}")
+    else()
+        set(MONGO_TMP_ARGS ${MONGO_CLI_CMD} "--host" "${MONGO_HOST}" "--port" "${MONGO_PORT}")
+    endif()
+    list(APPEND MONGO_TMP_ARGS "--eval" "use sr_startup" "--eval" "\"db.dropDatabase()\""
+                            "--eval" "use sr_running" "--eval" "\"db.dropDatabase()\""
+                            "--eval" "use sr_candidate" "--eval" "\"db.dropDatabase()\""
+                            "--eval" "use sr_operational" "--eval" "\"db.dropDatabase()\""
+                            "--eval" "use sr_factory-default" "--eval" "\"db.dropDatabase()\""
+                            "1>" "/dev/null")
+    add_custom_target(sr_mongo_clean COMMAND ${MONGO_CLI_CMD})
     add_dependencies(sr_clean sr_mongo_clean)
 endif()
 
 # flush all sysrepo related data from redis
 if(SR_ENABLED_DS_PLG_REDIS)
-    add_custom_target(sr_redis_clean
-        COMMAND ${REDIS_CLI_CMD} "-h" "${REDIS_HOST}" "-p" "${REDIS_PORT}" "EVAL"
-            "local reply = redis.pcall('FT._LIST'); if reply['err'] ~= nil then return reply['err']; end local n = table.getn(reply); local reply2; local index; for i=1,n do index = ''; for k,v in pairs(reply[i]) do index = index..v; end if string.sub(index,1,3) == 'sr:' then reply2 = redis.pcall('FT.DROPINDEX', index, 'DD'); if reply2['err'] ~= nil then return reply2['err']; end end end reply = redis.pcall('SCAN', '0', 'MATCH', 'sr:*', 'COUNT', '50000'); if reply['err'] ~= nil then return reply['err']; end while 1 do n = table.getn(reply[2]); for i=1,n do reply2 = redis.pcall('DEL', reply[2][i]); if reply2 ~= 1 then return reply2['err']; end end if reply[1] == '0' then break end reply = redis.pcall('SCAN', reply[1], 'MATCH', 'sr:*', 'COUNT', '50000'); if reply['err'] ~= nil then return reply['err']; end end return 0;"
-            "0" "1>" "/dev/null"
-        VERBATIM
-    )
+    set(REDIS_SCRIPT "local reply = redis.pcall('FT._LIST'); if reply['err'] ~= nil then return reply['err']; end local n = table.getn(reply); local reply2; local index; for i=1,n do index = ''; for k,v in pairs(reply[i]) do index = index..v; end if string.sub(index,1,3) == 'sr:' then reply2 = redis.pcall('FT.DROPINDEX', index, 'DD'); if reply2['err'] ~= nil then return reply2['err']; end end end reply = redis.pcall('SCAN', '0', 'MATCH', 'sr:*', 'COUNT', '50000'); if reply['err'] ~= nil then return reply['err']; end while 1 do n = table.getn(reply[2]); for i=1,n do reply2 = redis.pcall('DEL', reply[2][i]); if reply2 ~= 1 then return reply2['err']; end end if reply[1] == '0' then break end reply = redis.pcall('SCAN', reply[1], 'MATCH', 'sr:*', 'COUNT', '50000'); if reply['err'] ~= nil then return reply['err']; end end return 0;")
+    if(REDIS_SOCKET)
+        set(REDIS_TMP_ARGS ${REDIS_CLI_CMD} "-s" "${REDIS_SOCKET}" "EVAL" ${REDIS_SCRIPT} "0" "1>" "/dev/null")
+    else()
+        set(REDIS_TMP_ARGS ${REDIS_CLI_CMD} "-h" "${REDIS_HOST}" "-p" "${REDIS_PORT}" "EVAL" ${REDIS_SCRIPT} "0" "1>" "/dev/null")
+    endif()
+    add_custom_target(sr_redis_clean COMMAND ${REDIS_TMP_ARGS} VERBATIM)
     add_dependencies(sr_clean sr_redis_clean)
 endif()
 
