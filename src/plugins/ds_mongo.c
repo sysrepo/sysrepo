@@ -179,9 +179,15 @@ srpds_client_init(mongoc_client_pool_t **pool)
     mongoc_client_t *temp = NULL;
     int auth_prob;
 
-    uri = mongoc_uri_new("mongodb://" SR_DS_PLG_MONGO_HOST ":" SR_DS_PLG_MONGO_PORT
-            "/?authSource=" SR_DS_PLG_MONGO_AUTHSOURCE "&" MONGOC_URI_SOCKETTIMEOUTMS "=3600000&"
-            MONGOC_URI_CONNECTTIMEOUTMS "=3600000");
+    if (!strcmp(SR_DS_PLG_MONGO_SOCKET, "")) {
+        uri = mongoc_uri_new("mongodb://" SR_DS_PLG_MONGO_HOST ":" SR_DS_PLG_MONGO_PORT
+                "/?authSource=" SR_DS_PLG_MONGO_AUTHSOURCE "&" MONGOC_URI_SOCKETTIMEOUTMS "=3600000&"
+                MONGOC_URI_CONNECTTIMEOUTMS "=3600000");
+    } else {
+        uri = mongoc_uri_new("mongodb://" SR_DS_PLG_MONGO_SOCKET
+                "/?authSource=" SR_DS_PLG_MONGO_AUTHSOURCE "&" MONGOC_URI_SOCKETTIMEOUTMS "=3600000&"
+                MONGOC_URI_CONNECTTIMEOUTMS "=3600000");
+    }
     *pool = mongoc_client_pool_new(uri);
     temp = mongoc_client_pool_pop(*pool);
 
@@ -201,9 +207,15 @@ srpds_client_init(mongoc_client_pool_t **pool)
     mongoc_uri_destroy(uri);
 
     /* authenticate as a client based on the provided username and password */
-    uri = mongoc_uri_new("mongodb://" SR_DS_PLG_MONGO_USERNAME ":" SR_DS_PLG_MONGO_PASSWORD "@" SR_DS_PLG_MONGO_HOST ":" SR_DS_PLG_MONGO_PORT
-            "/?authSource=" SR_DS_PLG_MONGO_AUTHSOURCE "&" MONGOC_URI_SOCKETTIMEOUTMS "=3600000&"
-            MONGOC_URI_CONNECTTIMEOUTMS "=3600000");
+    if (!strcmp(SR_DS_PLG_MONGO_SOCKET, "")) {
+        uri = mongoc_uri_new("mongodb://" SR_DS_PLG_MONGO_USERNAME ":" SR_DS_PLG_MONGO_PASSWORD "@" SR_DS_PLG_MONGO_HOST ":" SR_DS_PLG_MONGO_PORT
+                "/?authSource=" SR_DS_PLG_MONGO_AUTHSOURCE "&" MONGOC_URI_SOCKETTIMEOUTMS "=3600000&"
+                MONGOC_URI_CONNECTTIMEOUTMS "=3600000");
+    } else {
+        uri = mongoc_uri_new("mongodb://" SR_DS_PLG_MONGO_USERNAME ":" SR_DS_PLG_MONGO_PASSWORD "@" SR_DS_PLG_MONGO_SOCKET
+                "/?authSource=" SR_DS_PLG_MONGO_AUTHSOURCE "&" MONGOC_URI_SOCKETTIMEOUTMS "=3600000&"
+                MONGOC_URI_CONNECTTIMEOUTMS "=3600000");
+    }
     *pool = mongoc_client_pool_new(uri);
     temp = mongoc_client_pool_pop(*pool);
 
