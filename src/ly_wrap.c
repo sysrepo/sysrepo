@@ -326,9 +326,13 @@ sr_error_info_t *
 sr_lys_find_xpath(const struct ly_ctx *ctx, const char *xpath, uint32_t options, int *valid, struct ly_set **set)
 {
     sr_error_info_t *err_info = NULL;
-    uint32_t temp_lo = LY_LOSTORE;
+    uint32_t temp_lo = LY_LOSTORE, *prev_lo;
 
-    ly_temp_log_options(&temp_lo);
+    prev_lo = ly_temp_log_options(&temp_lo);
+    if (prev_lo) {
+        /* nested call, keep the previous lo */
+        ly_temp_log_options(prev_lo);
+    }
 
     if (valid) {
         *valid = 1;
@@ -344,7 +348,9 @@ sr_lys_find_xpath(const struct ly_ctx *ctx, const char *xpath, uint32_t options,
     }
 
 cleanup:
-    ly_temp_log_options(NULL);
+    if (!prev_lo) {
+        ly_temp_log_options(NULL);
+    }
     return err_info;
 }
 
@@ -524,9 +530,13 @@ sr_error_info_t *
 sr_lyd_validate_module(struct lyd_node **data, const struct lys_module *mod, uint32_t options, struct lyd_node **diff)
 {
     sr_error_info_t *err_info = NULL;
-    uint32_t temp_lo = LY_LOSTORE;
+    uint32_t temp_lo = LY_LOSTORE, *prev_lo;
 
-    ly_temp_log_options(&temp_lo);
+    prev_lo = ly_temp_log_options(&temp_lo);
+    if (prev_lo) {
+        /* nested call, keep the previous lo */
+        ly_temp_log_options(prev_lo);
+    }
 
     if (lyd_validate_module(data, mod, options, diff)) {
         sr_errinfo_new_ly(&err_info, mod->ctx, SR_ERR_VALIDATION_FAILED);
@@ -534,7 +544,9 @@ sr_lyd_validate_module(struct lyd_node **data, const struct lys_module *mod, uin
     }
 
 cleanup:
-    ly_temp_log_options(NULL);
+    if (!prev_lo) {
+        ly_temp_log_options(NULL);
+    }
     return err_info;
 }
 
@@ -978,10 +990,14 @@ sr_lyd_merge_module(struct lyd_node **target, const struct lyd_node *source, con
         lyd_merge_cb merge_cb, void *cb_data, uint32_t options)
 {
     sr_error_info_t *err_info = NULL;
-    uint32_t temp_lo = LY_LOSTORE;
+    uint32_t temp_lo = LY_LOSTORE, *prev_lo;
     const struct ly_ctx *ly_ctx;
 
-    ly_temp_log_options(&temp_lo);
+    prev_lo = ly_temp_log_options(&temp_lo);
+    if (prev_lo) {
+        /* nested call, keep the previous lo */
+        ly_temp_log_options(prev_lo);
+    }
 
     if (mod) {
         ly_ctx = mod->ctx;
@@ -997,7 +1013,9 @@ sr_lyd_merge_module(struct lyd_node **target, const struct lyd_node *source, con
     }
 
 cleanup:
-    ly_temp_log_options(NULL);
+    if (!prev_lo) {
+        ly_temp_log_options(NULL);
+    }
     return err_info;
 }
 
@@ -1005,14 +1023,18 @@ sr_error_info_t *
 sr_lyd_find_xpath(const struct lyd_node *tree, const char *xpath, struct ly_set **set)
 {
     sr_error_info_t *err_info = NULL;
-    uint32_t temp_lo = LY_LOSTORE;
+    uint32_t temp_lo = LY_LOSTORE, *prev_lo;
 
     if (!tree) {
         /* return empty set */
         return sr_ly_set_new(set);
     }
 
-    ly_temp_log_options(&temp_lo);
+    prev_lo = ly_temp_log_options(&temp_lo);
+    if (prev_lo) {
+        /* nested call, keep the previous lo */
+        ly_temp_log_options(prev_lo);
+    }
 
     if (lyd_find_xpath(tree, xpath, set)) {
         sr_errinfo_new_ly(&err_info, LYD_CTX(tree), SR_ERR_LY);
@@ -1020,7 +1042,9 @@ sr_lyd_find_xpath(const struct lyd_node *tree, const char *xpath, struct ly_set 
     }
 
 cleanup:
-    ly_temp_log_options(NULL);
+    if (!prev_lo) {
+        ly_temp_log_options(NULL);
+    }
     return err_info;
 }
 
@@ -1028,11 +1052,15 @@ sr_error_info_t *
 sr_lyd_find_path(const struct lyd_node *tree, const char *path, int with_incomplete, struct lyd_node **match)
 {
     sr_error_info_t *err_info = NULL;
-    uint32_t temp_lo = LY_LOSTORE;
+    uint32_t temp_lo = LY_LOSTORE, *prev_lo;
     LY_ERR lyrc;
     const struct ly_ctx *ctx = tree ? LYD_CTX(tree) : NULL;
 
-    ly_temp_log_options(&temp_lo);
+    prev_lo = ly_temp_log_options(&temp_lo);
+    if (prev_lo) {
+        /* nested call, keep the previous lo */
+        ly_temp_log_options(prev_lo);
+    }
 
     lyrc = lyd_find_path(tree, path, 0, match);
     if (lyrc == LY_EINCOMPLETE) {
@@ -1050,7 +1078,9 @@ sr_lyd_find_path(const struct lyd_node *tree, const char *path, int with_incompl
     }
 
 cleanup:
-    ly_temp_log_options(NULL);
+    if (!prev_lo) {
+        ly_temp_log_options(NULL);
+    }
     return err_info;
 }
 
