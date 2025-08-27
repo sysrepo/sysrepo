@@ -1403,7 +1403,7 @@ size_t sr_xpath_len_no_predicates(const char *xpath);
  *
  * @param[in] xpath Current position in the XPath (`/` expected at the beginning).
  * @param[out] mod Module name, if any.
- * @param[out] mod_len Moduel name length.
+ * @param[out] mod_len Module name length.
  * @param[out] name Node name.
  * @param[out] len Node name length,
  * @return Pointer to the next XPath part (node name or predicate).
