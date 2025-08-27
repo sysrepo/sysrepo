@@ -107,8 +107,6 @@ sr_oper_cache_flush(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache)
 static void
 sr_ly_ctx_switch(sr_conn_ctx_t *conn, struct ly_ctx *new_ctx)
 {
-    assert(!sr_schema_mount_cache.data);
-
     /* update content ID */
     sr_yang_ctx.content_id = SR_CONN_MAIN_SHM(conn)->content_id;
 
@@ -117,56 +115,6 @@ sr_ly_ctx_switch(sr_conn_ctx_t *conn, struct ly_ctx *new_ctx)
 
     /* replace the global context */
     sr_yang_ctx.ly_ctx = new_ctx;
-}
-
-LY_ERR
-sr_ly_ext_data_clb(const struct lysc_ext_instance *ext, const struct lyd_node *UNUSED(parent), void *UNUSED(user_data),
-        void **ext_data, ly_bool *ext_data_free)
-{
-    sr_error_info_t *err_info = NULL;
-    struct lyd_node *ext_data_dup;
-    LY_ERR ret = LY_SUCCESS;
-
-    if (strcmp(ext->def->module->name, "ietf-yang-schema-mount") || strcmp(ext->def->name, "mount-point")) {
-        return LY_EINVAL;
-    }
-
-    /* SM DATA LOCK */
-    if ((err_info = sr_mlock(&sr_schema_mount_cache.lock, SR_SM_CTX_LOCK_TIMEOUT, __func__, NULL, NULL))) {
-        sr_errinfo_free(&err_info);
-        return LY_ESYS;
-    }
-
-    if (!sr_schema_mount_cache.data) {
-        /* data not cached, this happens because the user is trying to parse some data that requires it,
-         * but they should be stored in a file, so just parse it */
-        if ((err_info = sr_schema_mount_data_file_parse(&ext_data_dup))) {
-            sr_errinfo_free(&err_info);
-            ret = LY_ESYS;
-            goto cleanup;
-        }
-
-        if (!ext_data_dup) {
-            /* no sm data found */
-            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND,
-                    "No \"ietf-yang-schema-mount\" operational data set needed for parsing mounted data.");
-            sr_errinfo_free(&err_info);
-            ret = LY_ENOTFOUND;
-            goto cleanup;
-        }
-
-        *ext_data = ext_data_dup;
-        *ext_data_free = 1;
-    } else {
-        /* data cached, some data are being parsed internally, so just return the cached data */
-        *ext_data = sr_schema_mount_cache.data;
-        *ext_data_free = 0;
-    }
-
-cleanup:
-    /* SM DATA UNLOCK */
-    sr_munlock(&sr_schema_mount_cache.lock);
-    return ret;
 }
 
 /**
@@ -325,6 +273,8 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
     if (lydmods_lock && (err_info = sr_mlock(&main_shm->lydmods_lock, SR_CONTEXT_LOCK_TIMEOUT, func, NULL, NULL))) {
         goto cleanup_unlock;
     }
+
+    sr_available_conn = conn;
 
 cleanup_unlock:
     ly_ctx_destroy(new_ctx);
@@ -786,11 +736,6 @@ sr_lycc_prepare_data(sr_conn_ctx_t *conn, struct ly_ctx *ly_ctx_old, struct ly_c
         goto cleanup;
     }
 
-    /* get schema mount data for the new context, use the old context for possible oper_get subscription */
-    if ((err_info = sr_schema_mount_data_get(conn, cc_info->ly_ctx_old, cc_info->ly_ctx_new, &cc_info->sm_data_new))) {
-        goto cleanup;
-    }
-
 cleanup:
     return err_info;
 }
@@ -823,9 +768,6 @@ sr_lycc_clear_data(struct sr_lycc_info_s *cc_info)
         lyd_free_siblings(cc_info->sr_mods_new);
     }
     cc_info->sr_mods_new = NULL;
-
-    lyd_free_siblings(cc_info->sm_data_new);
-    cc_info->sm_data_new = NULL;
 }
 
 /**
@@ -975,19 +917,13 @@ sr_lycc_update_data(sr_conn_ctx_t *conn, struct sr_lycc_info_s *cc_info, sr_shm_
     sr_oper_cache_flush(conn, sr_oper_cache);
 
     /* destroy any current nested schema mount contexts */
-    if ((err_info = sr_destroy_schema_mount_contexts(cc_info->ly_ctx_old, cc_info->sr_mods_old))) {
+    if ((err_info = sr_schema_mount_destroy_contexts(cc_info->ly_ctx_old, cc_info->sr_mods_old))) {
         goto cleanup;
     }
 
-    if (cc_info->sm_data_new) {
-        if ((err_info = sr_schema_mount_data_file_write(cc_info->sm_data_new))) {
-            goto cleanup;
-        }
-
-        /* create new nested schema mount contexts so they can be printed */
-        if ((err_info = sr_create_schema_mount_contexts(cc_info->ly_ctx_new, cc_info->sr_mods_new, cc_info->sm_data_new))) {
-            goto cleanup;
-        }
+    /* create new nested schema mount contexts so they can be printed */
+    if ((err_info = sr_schema_mount_create_contexts(cc_info->ly_ctx_new, cc_info->sr_mods_new))) {
+        goto cleanup;
     }
 
     /* free the data trees */
@@ -996,7 +932,7 @@ sr_lycc_update_data(sr_conn_ctx_t *conn, struct sr_lycc_info_s *cc_info, sr_shm_
 cleanup:
     if (err_info) {
         /* revert SHM module changes */
-        if ((tmp_err = sr_shmmod_store_modules(mod_shm, cc_info->sr_mods_new))) {
+        if (mod_shm && (tmp_err = sr_shmmod_store_modules(mod_shm, cc_info->sr_mods_new))) {
             sr_errinfo_merge(&err_info, tmp_err);
         }
     }

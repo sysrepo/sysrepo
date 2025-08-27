@@ -228,22 +228,9 @@ struct sr_yang_ctx_s {
 extern struct sr_yang_ctx_s sr_yang_ctx;
 
 /**
- * @brief Schema mount data cache.
- *
- * Used to cache schema mount data (yang-library + mount points).
- * Schema mount data are stored in a file and are parsed and cached only when needed.
- * Default schema mount data (only yang-library) are never stored, so the file may not always exist.
+ * @brief Connection to use when getting schema-mount data in the ext_data callback.
  */
-struct sr_schema_mount_cache_s {
-    struct lyd_node *data;      /**< Cached schema mount data (yang-library + mount points). */
-    uint32_t refcount;          /**< Number of connections referencing this schema mount context. */
-    pthread_mutex_t lock;       /**< Lock for accessing members of the schema mount context. */
-};
-
-/**
- * @brief Schema mount data cache.
- */
-extern struct sr_schema_mount_cache_s sr_schema_mount_cache;
+extern THREAD sr_conn_ctx_t *sr_available_conn;
 
 /**
  * @brief Running data cache.
@@ -985,36 +972,18 @@ void sr_rwunlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, 
 int sr_conn_is_alive(sr_cid_t cid);
 
 /**
- * @brief Write schema mount data to a file.
- *
- * The file is used to cache the schema mount data so that it can be quickly accessed.
- *
- * @param[in] sm_data Schema mount data to write.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_schema_mount_data_file_write(const struct lyd_node *sm_data);
-
-/**
- * @brief Parse schema mount data from a file in which they are stored (cached).
- *
- * @param[out] sm_data Parsed schema mount data, should be freed by the caller.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_schema_mount_data_file_parse(struct lyd_node **sm_data);
-
-/**
- * @brief Get the current schema mount data.
+ * @brief Get the current ietf-yang-schema-mount operational data.
  *
  * @note The caller must hold the global libyang context READ lock.
  *
  * @param[in] conn Connection to use.
- * @param[in] sm_ctx Context to use for getting `ietf-yang-schema-mount` data (with possible oper get subscription
- * parsing LYB data).
- * @param[in] ly_ctx Context to use for generating `ietf-yang-library` data and for @p sm_data.
+ * @param[in] ly_ctx Context to use.
+ * @param[in] mp_path Path to the shared mount-point root node. NULL for inline mount point, the standard yang-library
+ * data are used.
  * @param[out] sm_data New schema mount data, should be freed by the caller.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_schema_mount_data_get(sr_conn_ctx_t *conn, const struct ly_ctx *sm_ctx, const struct ly_ctx *ly_ctx,
+sr_error_info_t *sr_schema_mount_data_get(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, const char *mp_path,
         struct lyd_node **sm_data);
 
 /**
@@ -1024,18 +993,32 @@ sr_error_info_t *sr_schema_mount_data_get(sr_conn_ctx_t *conn, const struct ly_c
  * @param[in] sr_data sysrepo module data.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_destroy_schema_mount_contexts(struct ly_ctx *ly_ctx, const struct lyd_node *sr_data);
+sr_error_info_t *sr_schema_mount_destroy_contexts(struct ly_ctx *ly_ctx, const struct lyd_node *sr_data);
 
 /**
  * @brief Create schema mount contexts in a libyang context based on the sysrepo data.
  *
  * @param[in] ly_ctx libyang context.
  * @param[in] sr_data sysrepo module data.
- * @param[in] sm_data ietf-schema-mount and ietf-yang-library YANG data.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_create_schema_mount_contexts(struct ly_ctx *ly_ctx, const struct lyd_node *sr_data,
-        const struct lyd_node *sm_data);
+sr_error_info_t *sr_schema_mount_create_contexts(struct ly_ctx *ly_ctx, const struct lyd_node *sr_data);
+
+/**
+ * @brief Ext data callback for providing the schema mount data.
+ */
+LY_ERR sr_ly_ext_data_clb(const struct lysc_ext_instance *ext, const struct lyd_node *parent, void *user_data,
+        void **ext_data, ly_bool *ext_data_free);
+
+/**
+ * @brief Check whether operational schema-mount data changed. That includes data of `ietf-yang-schema-mount` and
+ * `ietf-yang-library` data underneath a mount-point extension instance.
+ *
+ * @param[in] oper_data New pushed operational data.
+ * @return 0 if @p oper_data include no schema-mount data;
+ * @return non-zero otherwise.
+ */
+int sr_schema_mount_changed_oper_data(const struct lyd_node *oper_data);
 
 /**
  * @brief Add a new oper cache entry.
@@ -1443,6 +1426,15 @@ const char *sr_xpath_skip_predicate(const char *xpath);
  * @return Whether the module is referenced or not.
  */
 int sr_xpath_refs_mod(const char *xpath, const char *mod_name);
+
+/**
+ * @brief Get the first node prefix in an XPath.
+ *
+ * @param[in] xpath XPath to use.
+ * @param[out] prefix Found prefix.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_xpath_first_prefix(const char *xpath, char **prefix);
 
 /**
  * @brief Filter out the results that are descendants of another result. In case the results represent selected

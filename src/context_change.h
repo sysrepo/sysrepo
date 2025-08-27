@@ -41,14 +41,8 @@ struct sr_lycc_info_s {
     struct lyd_node *sr_mods_old;       /**< current internal SR data */
     struct ly_ctx *ly_ctx_new;          /**< updated libyang context */
     struct lyd_node *sr_mods_new;       /**< updated internal SR data */
-    struct lyd_node *sm_data_new;       /**< updated schema-mount operational data */
+    struct lyd_node *sm_data_new;       /**< updated ietf-yang-schema-mount data */
 };
-
-/**
- * @brief Ext data callback for providing the schema mount data.
- */
-LY_ERR sr_ly_ext_data_clb(const struct lysc_ext_instance *ext, const struct lyd_node *parent, void *user_data,
-        void **ext_data, ly_bool *ext_data_free);
 
 /**
  * @brief Lock context and update it if needed.

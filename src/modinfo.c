@@ -48,81 +48,6 @@
 #include "subscr.h"
 #include "utils/nacm.h"
 
-/**
- * @brief Acquire schema mount data from the cache and increment its reference count.
- *
- * The schema mount data is reference-counted and its life cycle is tied to mod_info.
- * The data is stored in sr_schema_mount_cache.
- *
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_modinfo_smdata_cache_acquire(void)
-{
-    sr_error_info_t *err_info = NULL;
-    struct lyd_node *schema_mount_data = NULL;
-
-    /* SM DATA LOCK */
-    if ((err_info = sr_mlock(&sr_schema_mount_cache.lock, SR_SM_CTX_LOCK_TIMEOUT, __func__, NULL, NULL))) {
-        return err_info;
-    }
-
-    if (sr_schema_mount_cache.refcount) {
-        /* already parsed */
-        sr_schema_mount_cache.refcount++;
-        goto cleanup;
-    }
-
-    /* parse schema mount data from a file where they are stored */
-    if ((err_info = sr_schema_mount_data_file_parse(&schema_mount_data))) {
-        goto cleanup;
-    }
-
-    if (!schema_mount_data) {
-        /* no schema mount data, nothing to cache */
-        goto cleanup;
-    }
-
-    sr_schema_mount_cache.data = schema_mount_data;
-    sr_schema_mount_cache.refcount = 1;
-
-cleanup:
-    /* SM DATA UNLOCK */
-    sr_munlock(&sr_schema_mount_cache.lock);
-    return err_info;
-}
-
-/**
- * @brief Release a reference to schema mount data.
- *
- * It should be called whenever mod_info that acquired a reference to the schema mount data is being destroyed.
- */
-static void
-sr_smdata_cache_release(void)
-{
-    sr_error_info_t *err_info = NULL;
-
-    /* SM DATA LOCK */
-    if ((err_info = sr_mlock(&sr_schema_mount_cache.lock, SR_SM_CTX_LOCK_TIMEOUT, __func__, NULL, NULL))) {
-        /* continue on error */
-        sr_errinfo_free(&err_info);
-    }
-
-    if (sr_schema_mount_cache.refcount > 1) {
-        /* just decrease the reference count */
-        sr_schema_mount_cache.refcount--;
-    } else if (sr_schema_mount_cache.refcount == 1) {
-        /* last reference, free the data */
-        assert(sr_schema_mount_cache.data);
-        lyd_free_siblings(sr_schema_mount_cache.data);
-        sr_schema_mount_cache.data = NULL;
-        sr_schema_mount_cache.refcount = 0;
-    }
-
-    /* SM DATA UNLOCK */
-    sr_munlock(&sr_schema_mount_cache.lock);
-}
-
 sr_error_info_t *
 sr_modinfo_init(struct sr_mod_info_s *mod_info, sr_conn_ctx_t *conn, sr_datastore_t ds, sr_datastore_t ds2, int init_sm,
         uint32_t op_id)
@@ -138,7 +63,6 @@ sr_modinfo_init(struct sr_mod_info_s *mod_info, sr_conn_ctx_t *conn, sr_datastor
 
     if (init_sm) {
         /* parse schema mount data, the data is usable until the end of the operation */
-        err_info = sr_modinfo_smdata_cache_acquire();
         mod_info->smdata_cached = 1;
     }
 
@@ -471,10 +395,10 @@ sr_modinfo_collect_ext_deps(const struct lysc_node *mp_node, struct sr_mod_info_
     struct lysc_ext_instance *sm_ext = NULL;
     struct ly_set *set = NULL;
     struct lyd_node_term *term;
+    struct lyd_node *sm_data = NULL;
     struct lyd_value_xpath10 *xp_val;
     const struct lys_module *mod;
     uint32_t i;
-    int sm_locked = 0;
 
     /* check there is a mount-point defined */
     LY_ARRAY_FOR(mp_node->exts, u) {
@@ -505,14 +429,8 @@ sr_modinfo_collect_ext_deps(const struct lysc_node *mp_node, struct sr_mod_info_
      * 2) collect all data in parent-references of the mount-point
      */
 
-    /* SM DATA LOCK */
-    if ((err_info = sr_mlock(&sr_schema_mount_cache.lock, SR_SM_CTX_LOCK_TIMEOUT, __func__, NULL, NULL))) {
-        goto cleanup;
-    }
-    sm_locked = 1;
-
-    if (!sr_schema_mount_cache.data) {
-        /* no parent references for sure */
+    /* get 'mount-points' data */
+    if ((err_info = sr_schema_mount_data_get(mod_info->conn, sr_yang_ctx.ly_ctx, NULL, &sm_data))) {
         goto cleanup;
     }
 
@@ -523,7 +441,7 @@ sr_modinfo_collect_ext_deps(const struct lysc_node *mp_node, struct sr_mod_info_
         SR_ERRINFO_MEM(&err_info);
         goto cleanup;
     }
-    if ((err_info = sr_lyd_find_xpath(sr_schema_mount_cache.data, path, &set))) {
+    if ((err_info = sr_lyd_find_xpath(sm_data, path, &set))) {
         goto cleanup;
     }
 
@@ -551,12 +469,9 @@ sr_modinfo_collect_ext_deps(const struct lysc_node *mp_node, struct sr_mod_info_
     }
 
 cleanup:
-    if (sm_locked) {
-        /* SM DATA UNLOCK */
-        sr_munlock(&sr_schema_mount_cache.lock);
-    }
     free(path);
     free(str_val);
+    lyd_free_siblings(sm_data);
     ly_set_free(set, NULL);
     return err_info;
 }
@@ -1508,6 +1423,10 @@ sr_modinfo_module_data_cache_get(sr_session_ctx_t *sess, const char *mod_name, i
     *mod_data = NULL;
     *has_data = 0;
 
+    if (!sess) {
+        return NULL;
+    }
+
     for (i = 0; i < sess->oper_push_mod_count; ++i) {
         if (!strcmp(sess->oper_push_mods[i].name, mod_name)) {
             break;
@@ -1540,16 +1459,7 @@ sr_modinfo_module_data_cache_get(sr_session_ctx_t *sess, const char *mod_name, i
     return NULL;
 }
 
-/**
- * @brief Load and merge/process all the oper push data stored for a module.
- *
- * @param[in] mod Mod info module.
- * @param[in] conn Connection to use.
- * @param[in] sess Session whose oper push data should be loaded, if NULL, load data of all sessions with oper push data for this module.
- * @param[in,out] data Operational data tree.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
+sr_error_info_t *
 sr_module_oper_data_load(struct sr_mod_info_mod_s *mod, sr_conn_ctx_t *conn, sr_session_ctx_t *sess,
         struct lyd_node **mod_oper_data, struct lyd_node **data)
 {
@@ -4365,7 +4275,6 @@ sr_modinfo_erase(struct sr_mod_info_s *mod_info)
 
     if (mod_info->smdata_cached) {
         /* release a reference to cached schema mount data */
-        sr_smdata_cache_release();
     }
 
     free(mod_info->mods);

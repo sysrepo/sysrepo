@@ -96,6 +96,14 @@
 # define htole64(x) (x)
 #endif
 
+#if __STDC_VERSION__ >= 201112L
+# define THREAD _Thread_local
+#elif defined (__GNUC__)
+# define THREAD __thread
+#else
+# error Cannot define thread_local
+#endif
+
 #cmakedefine HAVE_STDATOMIC
 
 #ifdef HAVE_STDATOMIC

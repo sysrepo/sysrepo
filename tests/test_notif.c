@@ -1841,7 +1841,7 @@ test_schema_mount(void **state)
 
     ATOMIC_STORE_RELAXED(st->cb_called, 0);
 
-    /* set oper ext data */
+    /* set schema-mount data */
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/ietf-yang-schema-mount:schema-mounts/namespace[prefix='ops']/uri", "urn:ops", NULL, 0);
@@ -1849,6 +1849,31 @@ test_schema_mount(void **state)
     ret = sr_set_item_str(st->sess,
             "/ietf-yang-schema-mount:schema-mounts/mount-point[module='sm'][label='root']/shared-schema/parent-reference",
             "/ops:cont", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set yang library data for this mount point */
+    ret = sr_set_item_str(st->sess, "/sm:root/ietf-yang-library:yang-library/module-set[name='root']/module[name='ietf-yang-library']"
+            "/namespace", "urn:ietf:params:xml:ns:yang:ietf-yang-library", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/sm:root/ietf-yang-library:yang-library/module-set[name='root']/module[name='sm']"
+            "/namespace", "urn:sm", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/sm:root/ietf-yang-library:yang-library/module-set[name='root']/module[name='ops-ref']"
+            "/namespace", "urn:ops-ref", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/sm:root/ietf-yang-library:yang-library/module-set[name='root']/module[name='ops-ref']"
+            "/feature", "feat1", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/sm:root/ietf-yang-library:yang-library/module-set[name='root']/module[name='ops']"
+            "/namespace", "urn:ops", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/sm:root/ietf-yang-library:yang-library/module-set[name='root']/module[name='ietf-origin']"
+            "/namespace", "urn:ietf:params:xml:ns:yang:ietf-origin", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/sm:root/ietf-yang-library:yang-library/content-id",
+            "14e2ab5dc325f6d86f743e8d3ade233f1a61a899", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);

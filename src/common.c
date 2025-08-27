@@ -125,13 +125,9 @@ struct sr_yang_ctx_s sr_yang_ctx = {
 };
 
 /**
- * @brief Schema mount data cache.
+ * @brief Connection to use when getting schema-mount data in the ext_data callback.
  */
-struct sr_schema_mount_cache_s sr_schema_mount_cache = {
-    .data = NULL,
-    .refcount = 0,
-    .lock = PTHREAD_MUTEX_INITIALIZER,
-};
+THREAD sr_conn_ctx_t *sr_available_conn;
 
 /**
  * @brief Running data cache.
@@ -1120,25 +1116,6 @@ sr_path_ctx_shm(char **path)
     sr_error_info_t *err_info = NULL;
 
     if (asprintf(path, "%s/%s_ctx", sr_get_shm_path(), sr_get_shm_prefix()) == -1) {
-        SR_ERRINFO_MEM(&err_info);
-        *path = NULL;
-    }
-
-    return err_info;
-}
-
-/**
- * @brief Get the path of the schema mount data SHM.
- *
- * @param[out] path Created path. Should be freed by the caller.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_path_smdata_shm(char **path)
-{
-    sr_error_info_t *err_info = NULL;
-
-    if (asprintf(path, "%s/%s_smdata", sr_get_shm_path(), sr_get_shm_prefix()) == -1) {
         SR_ERRINFO_MEM(&err_info);
         *path = NULL;
     }
@@ -3010,80 +2987,15 @@ sr_conn_is_alive(sr_cid_t cid)
 }
 
 sr_error_info_t *
-sr_schema_mount_data_file_write(const struct lyd_node *sm_data)
+sr_schema_mount_data_get(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, const char *mp_path, struct lyd_node **sm_data)
 {
     sr_error_info_t *err_info = NULL;
-    int fd = -1;
-    char *file_path = NULL;
-    uint32_t data_len;
-
-    if ((err_info = sr_path_smdata_shm(&file_path))) {
-        goto cleanup;
-    }
-
-    /* open the file */
-    fd = sr_open(file_path, O_RDWR | O_CREAT | O_TRUNC, SR_SHM_PERM);
-    if (fd == -1) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to open schema mount data shared memory (%s).", strerror(errno));
-        goto cleanup;
-    }
-
-    /* print the data to the file */
-    if ((err_info = sr_lyd_print_data(sm_data, LYD_JSON, LY_PRINT_SHRINK, fd, NULL, &data_len))) {
-        goto cleanup;
-    }
-
-    /* truncate the file to the actual data length */
-    if (ftruncate(fd, data_len)) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to truncate schema mount data shared memory (%s).", strerror(errno));
-        goto cleanup;
-    }
-
-cleanup:
-    if (fd > -1) {
-        close(fd);
-    }
-    free(file_path);
-    return err_info;
-}
-
-sr_error_info_t *
-sr_schema_mount_data_file_parse(struct lyd_node **sm_data)
-{
-    sr_error_info_t *err_info = NULL;
-    char *file_path = NULL;
-
-    *sm_data = NULL;
-
-    if ((err_info = sr_path_smdata_shm(&file_path))) {
-        return err_info;
-    }
-
-    /* check if the file exists */
-    if (!sr_file_exists(file_path)) {
-        /* no schema mount data, nothing to parse */
-        goto cleanup;
-    }
-
-    /* parse the lyb schema mount data and validate them to resolve the parent reference prefixes */
-    if ((err_info = sr_lyd_parse_data(sr_yang_ctx.ly_ctx, NULL, file_path, LYD_JSON, LYD_PARSE_STRICT,
-            LYD_VALIDATE_OPERATIONAL, sm_data))) {
-        goto cleanup;
-    }
-
-cleanup:
-    free(file_path);
-    return err_info;
-}
-
-sr_error_info_t *
-sr_schema_mount_data_get(sr_conn_ctx_t *conn, const struct ly_ctx *sm_ctx, const struct ly_ctx *ly_ctx,
-        struct lyd_node **sm_data)
-{
-    sr_error_info_t *err_info = NULL;
-    struct lyd_node *sm_root;
     struct sr_mod_info_s mod_info;
-    const struct lys_module *sm_mod, *yanglib_mod;
+    struct ly_set *set = NULL;
+    const struct lys_module *sm_mod, *yl_mod;
+    char *yl_mod_name = NULL;
+    struct lyd_node *root;
+    uint32_t i;
 
     *sm_data = NULL;
 
@@ -3092,88 +3004,106 @@ sr_schema_mount_data_get(sr_conn_ctx_t *conn, const struct ly_ctx *sm_ctx, const
         goto cleanup;
     }
 
-    /* get the schema mount module and ietf-yang-library module */
-    sm_mod = ly_ctx_get_module_implemented(sm_ctx, "ietf-yang-schema-mount");
-    yanglib_mod = ly_ctx_get_module_implemented(ly_ctx, "ietf-yang-library");
-    if (!sm_mod || !yanglib_mod) {
+    /* learn the module of the yang-library data */
+    if (mp_path) {
+        if ((err_info = sr_xpath_first_prefix(mp_path, &yl_mod_name))) {
+            goto cleanup;
+        }
+    }
+
+    /* get the modules */
+    yl_mod = ly_ctx_get_module_implemented(ly_ctx, yl_mod_name ? yl_mod_name : "ietf-yang-library");
+    sm_mod = ly_ctx_get_module_implemented(ly_ctx, "ietf-yang-schema-mount");
+    if (!yl_mod || !sm_mod) {
         /* modules not found, they were not loaded yet */
         goto cleanup;
     }
 
-    /* get SM data using mod_info, sm_ctx should be the current context so that any oper_get subscription successfully
-     * parses LYB data obtained from a subscriber that can only have the current context */
+    /* add modules into mod_info */
+    if ((err_info = sr_modinfo_add(yl_mod, mp_path, 0, 0, 1, &mod_info))) {
+        goto cleanup;
+    }
     if ((err_info = sr_modinfo_add(sm_mod, NULL, 0, 0, 1, &mod_info))) {
         goto cleanup;
     }
-    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_PERM_NO, NULL, SR_OPER_CB_TIMEOUT, 0, 0))) {
-        goto cleanup;
-    }
-    if ((err_info = sr_lyd_find_path(mod_info.data, "/ietf-yang-schema-mount:schema-mounts", 0, &sm_root))) {
+
+    /* consolidate without data */
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_PERM_NO | SR_MI_DATA_NO, NULL,
+            SR_OPER_CB_TIMEOUT, 0, 0))) {
         goto cleanup;
     }
 
-    if (!sm_root || (sm_root->flags & LYD_DEFAULT)) {
-        /* empty data, do not store */
+    /* get only push operational data to avoid reading running data with mounted data that cannot be parsed */
+    for (i = 0; i < mod_info.mod_count; ++i) {
+        if (!strcmp(mod_info.mods[i].ly_mod->name, "ietf-yang-library")) {
+            assert(!mp_path);
+
+            /* append parent context ietf-yang-library operational data for an inline schema */
+            if ((err_info = sr_module_data_append_yanglib(mod_info.mods[i].ly_mod, &mod_info.data))) {
+                return err_info;
+            }
+        } else if ((err_info = sr_module_oper_data_load(&mod_info.mods[i], conn, NULL, NULL, &mod_info.data))) {
+            goto cleanup;
+        }
+    }
+
+    /* check there are explicit required data */
+    if ((err_info = sr_lyd_find_xpath(mod_info.data, mp_path ? mp_path : "/ietf-yang-library:yang-library", &set))) {
+        goto cleanup;
+    }
+    root = set->count ? set->dnodes[0] : NULL;
+    if (!root || (root->flags & LYD_DEFAULT)) {
+        goto cleanup;
+    }
+    if ((err_info = sr_lyd_find_path(mod_info.data, "/ietf-yang-schema-mount:schema-mounts", 0, &root))) {
+        goto cleanup;
+    }
+    if (!root || (root->flags & LYD_DEFAULT)) {
         goto cleanup;
     }
 
-    /* validate the sm data to resolve the parent reference prefixes */
-    if ((err_info = sr_lyd_validate_module(&sm_root, sm_mod, LYD_VALIDATE_OPERATIONAL, NULL))) {
+    /* validate the schema-mounts data to resolve the parent reference prefixes */
+    if ((err_info = sr_lyd_validate_module(&mod_info.data, sm_mod, LYD_VALIDATE_OPERATIONAL, NULL))) {
         goto cleanup;
     }
 
-    /* move the data to the updated context */
-    if ((err_info = sr_lyd_dup_single_to_ctx(sm_root, ly_ctx, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, sm_data))) {
-        goto cleanup;
-    }
-
-    /* now append also the yang-library data of the updated context */
-    sr_module_data_append_yanglib(yanglib_mod, sm_data);
+    *sm_data = mod_info.data;
+    mod_info.data = NULL;
 
 cleanup:
     /* MODULES UNLOCK */
     sr_shmmod_modinfo_unlock(&mod_info);
     sr_modinfo_erase(&mod_info);
+
+    free(yl_mod_name);
+    ly_set_free(set, NULL);
     return err_info;
 }
 
 sr_error_info_t *
-sr_destroy_schema_mount_contexts(struct ly_ctx *ly_ctx, const struct lyd_node *sr_data)
+sr_schema_mount_destroy_contexts(struct ly_ctx *ly_ctx, const struct lyd_node *sr_data)
 {
     sr_error_info_t *err_info = NULL;
-    const struct lys_module *ly_mod;
-    struct lyd_node *sr_mod, *ext_instance_node;
-    const struct lysc_node *sm_ext_node;
+    struct ly_set *set = NULL;
+    const struct lysc_node *snode;
     struct lysc_ext_instance *ext;
     LY_ARRAY_COUNT_TYPE u;
+    uint32_t i;
 
-    LY_LIST_FOR(lyd_child(sr_data), sr_mod) {
-        if (strcmp(LYD_NAME(sr_mod), "module")) {
-            continue;
-        }
+    /* get all the extension instances */
+    if ((err_info = sr_lyd_find_xpath(sr_data, "module/schema-mount-ext-instance", &set))) {
+        goto cleanup;
+    }
 
-        ly_mod = ly_ctx_get_module_implemented(ly_ctx, lyd_get_value(lyd_child(sr_mod)));
-        if (!ly_mod || !ly_mod->implemented) {
-            continue;
-        }
-
-        /* try to find the first schema mount extension instance */
-        if ((err_info = sr_lyd_find_path(sr_mod, "schema-mount-ext-instance[1]", 0, &ext_instance_node))) {
-            goto cleanup;
-        }
-        if (!ext_instance_node) {
-            /* no schema mount extension instance in this module */
-            continue;
-        }
-
+    for (i = 0; i < set->count; ++i) {
         /* find the schema node based on the value of the extension instance */
-        if ((err_info = sr_lys_find_path(ly_ctx, lyd_get_value(ext_instance_node), NULL, &sm_ext_node))) {
+        if ((err_info = sr_lys_find_path(ly_ctx, lyd_get_value(set->dnodes[i]), NULL, &snode))) {
             goto cleanup;
         }
 
         /* find a schema mount extension of this node */
-        LY_ARRAY_FOR(sm_ext_node->exts, u) {
-            ext = &sm_ext_node->exts[u];
+        LY_ARRAY_FOR(snode->exts, u) {
+            ext = &snode->exts[u];
             if (strcmp(ext->def->module->name, "ietf-yang-schema-mount") || strcmp(ext->def->name, "mount-point")) {
                 /* not a mount point extension */
                 continue;
@@ -3188,69 +3118,154 @@ sr_destroy_schema_mount_contexts(struct ly_ctx *ly_ctx, const struct lyd_node *s
     }
 
 cleanup:
+    ly_set_free(set, NULL);
     return err_info;
 }
 
 sr_error_info_t *
-sr_create_schema_mount_contexts(struct ly_ctx *ly_ctx, const struct lyd_node *sr_data, const struct lyd_node *sm_data)
+sr_schema_mount_create_contexts(struct ly_ctx *ly_ctx, const struct lyd_node *sr_data)
 {
     sr_error_info_t *err_info = NULL;
-    const struct lys_module *ly_mod;
-    struct lyd_node *sr_mod, *ext_instance_node, *iter;
-    const struct lysc_node *sm_ext_node;
+    struct ly_set *set = NULL;
+    struct lyd_node *sm_data;
+    const struct lysc_node *snode;
     struct lysc_ext_instance *ext;
+    ly_bool sm_data_free;
     LY_ARRAY_COUNT_TYPE u;
+    uint32_t i;
 
-    LY_LIST_FOR(lyd_child(sr_data), sr_mod) {
-        if (strcmp(LYD_NAME(sr_mod), "module")) {
-            continue;
-        }
+    /* get all the extension instances */
+    if ((err_info = sr_lyd_find_xpath(sr_data, "module/schema-mount-ext-instance", &set))) {
+        goto cleanup;
+    }
 
-        ly_mod = ly_ctx_get_module_implemented(ly_ctx, lyd_get_value(lyd_child(sr_mod)));
-        if (!ly_mod || !ly_mod->implemented) {
-            continue;
-        }
-
-        /* find the first schema mount extension instance */
-        if ((err_info = sr_lyd_find_path(sr_mod, "schema-mount-ext-instance[1]", 0, &ext_instance_node))) {
+    for (i = 0; i < set->count; ++i) {
+        /* find the schema node based on the extension instance value */
+        if ((err_info = sr_lys_find_path(ly_ctx, lyd_get_value(set->dnodes[i]), NULL, &snode))) {
             goto cleanup;
         }
-        if (!ext_instance_node) {
-            /* no schema mount extension instance in this module */
-            continue;
-        }
 
-        /* iterate over all the schema mount ext instances of this module */
-        LY_LIST_FOR(ext_instance_node, iter) {
-            if (strcmp(LYD_NAME(iter), "schema-mount-ext-instance")) {
-                /* not a schema mount extension instance */
+        /* process all extensions of this node */
+        LY_ARRAY_FOR(snode->exts, u) {
+            ext = &snode->exts[u];
+            if (strcmp(ext->def->module->name, "ietf-yang-schema-mount") || strcmp(ext->def->name, "mount-point")) {
+                /* not a mount point extension */
                 continue;
             }
 
-            /* find the schema node based on the extension instance value */
-            if ((err_info = sr_lys_find_path(ly_ctx, lyd_get_value(iter), NULL, &sm_ext_node))) {
+            if (sr_ly_ext_data_clb(ext, NULL, NULL, (void **)&sm_data, &sm_data_free)) {
+                sr_errinfo_new(&err_info, SR_ERR_INTERNAL,
+                        "Failed to get schema mount data for extension \"%s\" in module \"%s\".",
+                        ext->def->name, ext->def->module->name);
                 goto cleanup;
             }
 
-            /* process all extensions of this node */
-            LY_ARRAY_FOR(sm_ext_node->exts, u) {
-                ext = &sm_ext_node->exts[u];
+            if (!sm_data) {
+                /* no ietf-yang-library or ietf-yang-schema-mount data set, wait with creating the shared sm contexts
+                 * until some data are set */
+                continue;
+            }
 
-                if (strcmp(ext->def->module->name, "ietf-yang-schema-mount") || strcmp(ext->def->name, "mount-point")) {
-                    /* not a mount point extension */
-                    continue;
-                }
-
-                /* create shared context for this mount point */
-                if ((err_info = sr_lyplg_ext_schema_mount_create_shared_context(ext, sm_data))) {
-                    goto cleanup;
-                }
+            /* create shared context for this mount point */
+            err_info = sr_lyplg_ext_schema_mount_create_shared_context(ext, sm_data);
+            if (sm_data_free) {
+                lyd_free_all(sm_data);
+            }
+            if (err_info) {
+                goto cleanup;
             }
         }
     }
 
 cleanup:
+    ly_set_free(set, NULL);
     return err_info;
+}
+
+LY_ERR
+sr_ly_ext_data_clb(const struct lysc_ext_instance *ext, const struct lyd_node *parent, void *UNUSED(user_data),
+        void **ext_data, ly_bool *ext_data_free)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *sm_data = NULL;
+    LY_ERR rc = LY_SUCCESS;
+    char *mp_path = NULL, *parent_path = NULL;
+    static THREAD int sr_schema_mount_cb_r = 0;
+
+    *ext_data = NULL;
+    *ext_data_free = 0;
+
+    if (sr_schema_mount_cb_r) {
+        /* recursive call, return no data */
+        goto cleanup;
+    } else if (strcmp(ext->def->module->name, "ietf-yang-schema-mount") || strcmp(ext->def->name, "mount-point")) {
+        rc = LY_EINVAL;
+        goto cleanup;
+    }
+
+    /* a connection must be set by any means prior to this call */
+    assert(sr_available_conn);
+
+    if (parent) {
+        /* parsing data, use the data node */
+        parent_path = lyd_path(parent, LYD_PATH_STD, NULL, 0);
+    } else {
+        /* creating shared contexts or another use-case of working only with schema, use the ext schema parent node */
+        assert((ext->parent_stmt == LY_STMT_CONTAINER) || (ext->parent_stmt == LY_STMT_LIST));
+        parent_path = lysc_path(ext->parent, LYSC_PATH_DATA, NULL, 0);
+    }
+    if (!parent_path) {
+        rc = LY_EMEM;
+        goto cleanup;
+    }
+
+    /* create the path to the mount point's yang-library data */
+    if (asprintf(&mp_path, "%s/ietf-yang-library:yang-library", parent_path) == -1) {
+        SR_ERRINFO_MEM(&err_info);
+        rc = LY_EMEM;
+        goto cleanup;
+    }
+
+    /* get yang-library and schema-mounts from the operational ds */
+    sr_schema_mount_cb_r = 1;
+    err_info = sr_schema_mount_data_get(sr_available_conn, ext->module->ctx, mp_path, &sm_data);
+    sr_schema_mount_cb_r = 0;
+    if (err_info) {
+        rc = LY_EOTHER;
+        goto cleanup;
+    }
+
+    *ext_data = sm_data;
+    *ext_data_free = 1;
+
+cleanup:
+    free(parent_path);
+    free(mp_path);
+    sr_errinfo_free(&err_info);
+    return rc;
+}
+
+int
+sr_schema_mount_changed_oper_data(const struct lyd_node *oper_data)
+{
+    const struct lyd_node *root, *iter;
+
+    LY_LIST_FOR(oper_data, root) {
+        if (!strcmp(lyd_node_module(root)->name, "ietf-yang-schema-mount")) {
+            return 1;
+        }
+
+        /* check for mounted ietf-yang-library data */
+        LYD_TREE_DFS_BEGIN(root, iter) {
+            if ((iter->flags & LYD_EXT) && !strcmp(lyd_node_module(iter)->name, "ietf-yang-library")) {
+                return 1;
+            }
+
+            LYD_TREE_DFS_END(root, iter);
+        }
+    }
+
+    return 0;
 }
 
 sr_error_info_t *
@@ -5069,6 +5084,28 @@ sr_xpath_refs_mod(const char *xpath, const char *mod_name)
     }
 
     return found;
+}
+
+sr_error_info_t *
+sr_xpath_first_prefix(const char *xpath, char **prefix)
+{
+    sr_error_info_t *err_info = NULL;
+    const char *ptr1, *ptr2;
+
+    *prefix = NULL;
+
+    ptr1 = (xpath[0] == '/') ? xpath + 1 : xpath;
+    ptr2 = sr_xpath_next_identifier(ptr1, 0);
+
+    if (ptr2[0] != ':') {
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Failed to get the first prefix in XPath \"%s\".", xpath);
+        return err_info;
+    }
+
+    *prefix = strndup(ptr1, ptr2 - ptr1);
+    SR_CHECK_MEM_RET(!*prefix, err_info);
+
+    return NULL;
 }
 
 /**

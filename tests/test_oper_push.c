@@ -2368,15 +2368,58 @@ test_schema_mount(void **state)
     char *str1;
     const char *str2;
     int ret;
+    struct lyd_node *edit;
+    const struct ly_ctx *ly_ctx;
 
     /* switch to operational DS */
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* set oper ext data */
-    ret = sr_set_item_str(st->sess,
-            "/ietf-yang-schema-mount:schema-mounts/mount-point[module='sm'][label='root']/shared-schema", NULL, NULL, 0);
+    /* set schema-mount and yang-library push oper data */
+    str2 =
+            "<schema-mounts xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-schema-mount\">"
+            "  <mount-point>\n"
+            "    <module>sm</module>\n"
+            "    <label>root</label>\n"
+            "    <shared-schema/>\n"
+            "  </mount-point>\n"
+            "</schema-mounts>\n"
+            "<root xmlns=\"urn:sm\">\n"
+            "  <yang-library xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-library\">\n"
+            "    <module-set>\n"
+            "    <name>root</name>\n"
+            "      <module>\n"
+            "        <name>ietf-yang-library</name>\n"
+            "        <namespace>urn:ietf:params:xml:ns:yang:ietf-yang-library</namespace>\n"
+            "      </module>\n"
+            "      <module>\n"
+            "        <name>sm</name>\n"
+            "        <namespace>urn:sm</namespace>\n"
+            "      </module>\n"
+            "      <module>\n"
+            "        <name>ietf-interfaces</name>\n"
+            "        <namespace>urn:ietf:params:xml:ns:yang:ietf-interfaces</namespace>\n"
+            "      </module>\n"
+            "      <module>\n"
+            "        <name>iana-if-type</name>\n"
+            "        <namespace>urn:ietf:params:xml:ns:yang:iana-if-type</namespace>\n"
+            "      </module>\n"
+            "      <module>\n"
+            "        <name>ietf-origin</name>\n"
+            "        <namespace>urn:ietf:params:xml:ns:yang:ietf-origin</namespace>\n"
+            "      </module>\n"
+            "    </module-set>\n"
+            "    <content-id>14e2ab5dc325f6d86f743e8d3ade233f1a61a899</content-id>\n"
+            "  </yang-library>\n"
+            "</root>\n";
+    ly_ctx = sr_acquire_context(st->conn);
+    ret = lyd_parse_data_mem(ly_ctx, str2, LYD_XML, LYD_PARSE_ONLY, 0, &edit);
+    assert_int_equal(ret, LY_SUCCESS);
+    ret = sr_edit_batch(st->sess, edit, "merge");
     assert_int_equal(ret, SR_ERR_OK);
+    lyd_free_siblings(edit);
+    sr_release_context(st->conn);
+
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -2398,8 +2441,34 @@ test_schema_mount(void **state)
     sr_release_data(data);
 
     str2 =
-            "<root xmlns=\"urn:sm\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
-            "  <interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
+            "<root xmlns=\"urn:sm\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
+            "  <yang-library xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-library\">\n"
+            "    <module-set>\n"
+            "      <name>root</name>\n"
+            "      <module>\n"
+            "        <name>ietf-yang-library</name>\n"
+            "        <namespace>urn:ietf:params:xml:ns:yang:ietf-yang-library</namespace>\n"
+            "      </module>\n"
+            "      <module>\n"
+            "        <name>sm</name>\n"
+            "        <namespace>urn:sm</namespace>\n"
+            "      </module>\n"
+            "      <module>\n"
+            "        <name>ietf-interfaces</name>\n"
+            "        <namespace>urn:ietf:params:xml:ns:yang:ietf-interfaces</namespace>\n"
+            "      </module>\n"
+            "      <module>\n"
+            "        <name>iana-if-type</name>\n"
+            "        <namespace>urn:ietf:params:xml:ns:yang:iana-if-type</namespace>\n"
+            "      </module>\n"
+            "      <module>\n"
+            "        <name>ietf-origin</name>\n"
+            "        <namespace>urn:ietf:params:xml:ns:yang:ietf-origin</namespace>\n"
+            "      </module>\n"
+            "    </module-set>\n"
+            "    <content-id>14e2ab5dc325f6d86f743e8d3ade233f1a61a899</content-id>\n"
+            "  </yang-library>\n"
+            "  <interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\" or:origin=\"or:intended\">\n"
             "    <interface>\n"
             "      <name>eth1</name>\n"
             "      <description or:origin=\"or:unknown\">config-description</description>\n"

@@ -3926,81 +3926,6 @@ test_cache_nested(void **state)
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
 }
 
-/* TEST */
-static int
-schema_mount_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
-        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
-{
-    struct state *st = private_data;
-    const struct ly_ctx *ly_ctx;
-
-    (void)session;
-    (void)sub_id;
-    (void)xpath;
-    (void)request_xpath;
-    (void)request_id;
-    (void)private_data;
-
-    assert_string_equal(module_name, "ietf-yang-schema-mount");
-
-    ly_ctx = sr_acquire_context(st->conn);
-    sr_release_context(st->conn);
-    assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, ly_ctx, "/ietf-yang-schema-mount:schema-mounts/"
-            "mount-point[module='sm'][label='root']/shared-schema", NULL, 0, parent));
-
-    return SR_ERR_OK;
-}
-
-static void
-test_schema_mount(void **state)
-{
-    struct state *st = (struct state *)*state;
-    sr_data_t *data;
-    sr_subscription_ctx_t *subscr = NULL;
-    char *str1;
-    const char *str2;
-    int ret;
-
-    sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
-
-    /* subscribe as state data provider */
-    ret = sr_oper_get_subscribe(st->sess, "ietf-yang-schema-mount", "/ietf-yang-schema-mount:schema-mounts",
-            schema_mount_oper_cb, st, 0, &subscr);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* set some data */
-    ret = sr_set_item_str(st->sess, "/sm:root/ietf-interfaces:interfaces/interface[name='eth1']/type",
-            "iana-if-type:ethernetCsmacd", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/sm:root/ietf-interfaces:interfaces/interface[name='eth1']/description",
-            "config-description", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* read the operational data */
-    ret = sr_get_data(st->sess, "/sm:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
-    assert_int_equal(ret, 0);
-    sr_release_data(data);
-
-    str2 =
-            "<root xmlns=\"urn:sm\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
-            "  <interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
-            "    <interface>\n"
-            "      <name>eth1</name>\n"
-            "      <description or:origin=\"or:unknown\">config-description</description>\n"
-            "      <type or:origin=\"or:unknown\" xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
-            "    </interface>\n"
-            "  </interfaces>\n"
-            "</root>\n";
-    assert_string_equal(str1, str2);
-    free(str1);
-
-    sr_unsubscribe(subscr);
-}
-
 int
 main(void)
 {
@@ -4032,7 +3957,6 @@ main(void)
         cmocka_unit_test_teardown(test_cache_no_sub, clear_up),
         cmocka_unit_test_teardown(test_cache_diff, clear_up),
         cmocka_unit_test_teardown(test_cache_nested, clear_up),
-        cmocka_unit_test_teardown(test_schema_mount, clear_up),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

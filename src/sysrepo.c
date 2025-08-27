@@ -407,6 +407,11 @@ sr_disconnect(sr_conn_ctx_t *conn)
 
     SR_LOG_INF("Connection %" PRIu32 " destroyed.", conn->cid);
 
+    if (conn == sr_available_conn) {
+        /* we are the available connection, clear it */
+        sr_available_conn = NULL;
+    }
+
     /* free members */
     sr_conn_free(conn);
 
@@ -1862,16 +1867,17 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
         goto cleanup;
     }
 
-    /* delete operational data of the modules that will be deleted */
+    /* prepare datastore, SR, and schema-mount data for a context update */
+    if ((err_info = sr_lycc_prepare_data(conn, sr_yang_ctx.ly_ctx, new_ctx, NULL, NULL, 0, &cc_info))) {
+        goto cleanup;
+    }
+
+    /* delete operational data of the modules that will be deleted (only after preparing data update, to have
+     * schema-mount oper data) */
     for (i = 0; i < mod_set.count; ++i) {
         if ((err_info = sr_shmmod_del_module_oper_data(conn, mod_set.objs[i], &mod_state, NULL, 0))) {
             goto cleanup;
         }
-    }
-
-    /* prepare datastore, SR, and schema-mount data for a context update */
-    if ((err_info = sr_lycc_prepare_data(conn, sr_yang_ctx.ly_ctx, new_ctx, NULL, NULL, 0, &cc_info))) {
-        goto cleanup;
     }
 
     /* update lydmods data */
@@ -4634,7 +4640,7 @@ sr_apply_oper_changes(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
     sr_error_info_t *err_info = NULL;
     struct lyd_node *data_diff = NULL, *old_oper_ds = NULL, *new_oper_data = NULL;
     const struct lyd_node *oper_edit;
-    uint32_t mi_opts, i;
+    uint32_t mi_opts;
     sr_lock_mode_t change_sub_lock = SR_LOCK_NONE;
 
     assert(session && (session->ds == SR_DS_OPERATIONAL));
@@ -4693,11 +4699,8 @@ sr_apply_oper_changes(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
     new_oper_data = NULL;
 
     /* check for oper changes in schema-mount data */
-    for (i = 0; i < mod_info->mod_count; ++i) {
-        if (!strcmp(mod_info->mods[i].ly_mod->name, "ietf-yang-schema-mount")) {
-            *update_sm_data = 1;
-            break;
-        }
+    if (sr_schema_mount_changed_oper_data(mod_info->data)) {
+        *update_sm_data = 1;
     }
 
     /* notify all the subscribers and store the changes */
@@ -7999,12 +8002,11 @@ sr_notif_send_tree_internal(sr_session_ctx_t *session, struct lyd_node *notif, u
         }
     }
 
-    /* collect all required modules for OP validation */
-    if (LYD_CTX(notif_top) != LYD_CTX(notif_op)) {
-        /* different contexts if these are data of an extension (schema-mount) */
-        for (parent = notif_op; parent && !(parent->flags & LYD_EXT); parent = lyd_parent(parent)) {}
-        SR_CHECK_INT_GOTO(!parent, err_info, cleanup);
+    /* check for extension (schema-mount) data */
+    for (parent = notif_op; parent && !(parent->flags & LYD_EXT); parent = lyd_parent(parent)) {}
 
+    /* collect all required modules for OP validation */
+    if (parent) {
         /* collect all mounted data and data mentioned in the parent-references */
         if ((err_info = sr_modinfo_collect_ext_deps(lyd_parent(parent)->schema, &mod_info))) {
             goto cleanup;
@@ -8326,6 +8328,12 @@ sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const 
     SR_CHECK_ARG_APIRET(!session || SR_IS_EVENT_SESS(session) || !module_name || !path || !callback || !subscription,
             session, err_info);
 
+    if (!strcmp(module_name, "ietf-yang-schema-mount")) {
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Operational data for the schema-mount extension must be provided "
+                "using the push method.");
+        return sr_api_ret(session, err_info);
+    }
+
     conn = session->conn;
     /* only these options are relevant outside this function and will be stored */
     sub_opts = opts & SR_SUBSCR_OPER_MERGE;
@@ -8403,20 +8411,7 @@ sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const 
         goto error3;
     }
 
-    /* SUBS WRITE UNLOCK */
-    sr_rwunlock(&(*subscription)->subs_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
-
-    /* OPER GET SUB WRITE UNLOCK */
-    sr_rwunlock(&shm_mod->oper_get_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
-
-    if (!strcmp(module_name, "ietf-yang-schema-mount")) {
-        /* oper schema-mount data were changed, prepare a new context to be able to use them (only CTX UPGRADE lock is expected) */
-        if ((err_info = sr_schema_mount_data_update(session))) {
-            goto cleanup;
-        }
-    }
-
-    goto cleanup;
+    goto cleanup_unlock2;
 
 error3:
     if ((tmp_err = sr_ptr_del(&session->ptr_lock, (void ***)&session->subscriptions, &session->subscription_count,

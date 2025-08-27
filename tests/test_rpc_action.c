@@ -4,8 +4,8 @@
  * @brief test for sending/receiving RPCs/actions
  *
  * @copyright
- * Copyright (c) 2018 - 2023 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2023 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2025 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2025 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -1761,6 +1761,27 @@ test_schema_mount(void **state)
     ret = sr_set_item_str(st->sess,
             "/ietf-yang-schema-mount:schema-mounts/mount-point[module='sm'][label='root']/shared-schema/parent-reference",
             "/ops:cont", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess,
+            "/sm:root/ietf-yang-library:yang-library/module-set[name='mp']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess,
+            "/sm:root/ietf-yang-library:yang-library/module-set[name='mp']/module[name='ietf-yang-library']/namespace",
+            "urn:ietf:params:xml:ns:yang:ietf-yang-library", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess,
+            "/sm:root/ietf-yang-library:yang-library/module-set[name='mp']/module[name='ietf-netconf']/namespace",
+            "urn:ietf:params:xml:ns:netconf:base:1.0", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess,
+            "/sm:root/ietf-yang-library:yang-library/module-set[name='mp']/module[name='ietf-origin']/namespace",
+            "urn:ietf:params:xml:ns:yang:ietf-origin", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess,
+            "/sm:root/ietf-yang-library:yang-library/module-set[name='mp']/module[name='ops']/namespace",
+            "urn:ops", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/sm:root/ietf-yang-library:yang-library/content-id", "1", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);

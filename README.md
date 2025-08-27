@@ -295,8 +295,14 @@ managed YANG modules and stored YANG data, respectively. Full CLI is available o
 Full support of this extension is provided by *libyang*. But for mounted data trees to be parsed successfully, the
 extension needs state data of [ietf-yang-schema-mount](https://datatracker.ietf.org/doc/html/rfc8528#section-3.3)
 describing the supported mount points and `ietf-yang-library` defining the mounted YANG schema (context). These data
-should be provided as standard *sysrepo* `operational` data and will automatically be used when parsing YANG data
-with mounted data.
+must be provided as standard *sysrepo* **push** `operational` data and will automatically be used when parsing YANG data
+with mounted data. No pull data will be used for this purpose.
+
+Note that different `ietf-yang-library` data are expected for *inline* and *shared* mount points. For the former,
+standard top-level `yang-library` data subtree is expected, which is actually describing the parent context but
+having a different inline mounted context is not supported. For a *shared* mount point, however, the `yang-library` data
+are expected to be present as a child of the node in the parent context with the `mount-point` extension instance. These
+data describe a set of YANG modules independent of the YANG modules in the parent context.
 
 ## Factory Default
 

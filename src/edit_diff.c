@@ -278,7 +278,11 @@ sr_edit_create_meta_attr(struct lyd_node *edit_node, const char *mod_name, const
 
     /* get the module */
     mod = ly_ctx_get_module_implemented(LYD_CTX(edit_node), mod_name);
-    SR_CHECK_INT_RET(!mod, err_info);
+    if (!mod) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Cannot create metadata \"%s\", module \"%s\" not found.", name,
+                mod_name);
+        return err_info;
+    }
 
     if (edit_node->schema) {
         /* create a new meta */

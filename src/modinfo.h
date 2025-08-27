@@ -248,6 +248,20 @@ sr_error_info_t *sr_modinfo_changesub_rdlock(struct sr_mod_info_s *mod_info);
 void sr_modinfo_changesub_rdunlock(struct sr_mod_info_s *mod_info);
 
 /**
+ * @brief Load and merge/process all the oper push data stored for a module.
+ *
+ * @param[in] mod Mod info module.
+ * @param[in] conn Connection to use.
+ * @param[in] sess Session whose oper push data should be loaded, if NULL, load data of all sessions with oper push data
+ * for this module.
+ * @param[in,out] mod_oper_data Optional module operational data to use.
+ * @param[in,out] data Operational data tree.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_module_oper_data_load(struct sr_mod_info_mod_s *mod, sr_conn_ctx_t *conn, sr_session_ctx_t *sess,
+        struct lyd_node **mod_oper_data, struct lyd_node **data);
+
+/**
  * @brief Get specific oper DS data based on the params.
  *
  * @param[in] mod_info Mod info to use.
