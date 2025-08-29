@@ -1024,6 +1024,11 @@ sr_module_has_data(const struct lys_module *ly_mod, int state_data)
 {
     const struct lysc_node *root;
 
+    if (!strcmp(ly_mod->name, "ietf-netconf")) {
+        /* only internal data */
+        return 0;
+    }
+
     LY_LIST_FOR(ly_mod->compiled->data, root) {
         if (!(root->nodetype & (LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA | LYS_CHOICE))) {
             continue;
