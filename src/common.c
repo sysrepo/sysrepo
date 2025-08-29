@@ -48,6 +48,7 @@
 #include "common_types.h"
 #include "compat.h"
 #include "config.h"
+#include "context_change.h"
 #include "edit_diff.h"
 #include "log.h"
 #include "ly_wrap.h"
@@ -3275,6 +3276,84 @@ sr_schema_mount_changed_oper_data(const struct lyd_node *oper_data)
     }
 
     return 0;
+}
+
+sr_error_info_t *
+sr_schema_mount_ds_data_update(sr_conn_ctx_t *conn, struct sr_lycc_ds_data_set_s *data_old)
+{
+    sr_error_info_t *err_info = NULL, *tmp_err;
+    struct ly_ctx *new_ctx = NULL;
+    struct sr_lycc_info_s cc_info = {0};
+    sr_lock_mode_t ctx_mode = SR_LOCK_NONE;
+    int destroy_new_ctx = 0;
+
+    /* use and spend the old data */
+    cc_info.data_info.old = *data_old;
+    memset(data_old, 0, sizeof *data_old);
+
+    if (ly_ctx_is_printed(sr_yang_ctx.ly_ctx)) {
+        /* create a new temporary context */
+        if ((err_info = sr_ly_ctx_new(&new_ctx))) {
+            goto cleanup;
+        }
+        destroy_new_ctx = 1;
+
+        /* load all the current modules into the temporary context */
+        if ((err_info = sr_shmmod_ctx_load_modules(SR_CTX_MOD_SHM(sr_yang_ctx), new_ctx, NULL))) {
+            goto cleanup;
+        }
+    } else {
+        /* we can use our context */
+        new_ctx = sr_yang_ctx.ly_ctx;
+    }
+
+    /* parse current (old) module information, needed for schema mount data update */
+    if ((err_info = sr_lydmods_parse(sr_yang_ctx.ly_ctx, conn, NULL, &cc_info.sr_mods_old))) {
+        goto cleanup;
+    }
+
+    /* prepare DS data for a context update */
+    if ((err_info = sr_lycc_update_ds_data(new_ctx, NULL, 0, cc_info.sr_mods_old, &cc_info.data_info.old, NULL,
+            &cc_info.data_info.new))) {
+        goto cleanup;
+    }
+
+    /* SR mods are not changed so we can reuse them */
+    cc_info.sr_mods_new = cc_info.sr_mods_old;
+
+    /* CONTEXT UPGRADE */
+    if ((err_info = sr_lycc_relock(conn, SR_LOCK_WRITE, __func__))) {
+        goto cleanup;
+    }
+    ctx_mode = SR_LOCK_WRITE;
+
+    /* perform the update of datastore and SR data, update schema-mount contexts */
+    cc_info.ly_ctx_old = sr_yang_ctx.ly_ctx;
+    cc_info.ly_ctx_new = new_ctx;
+    if ((err_info = sr_lycc_update_data(conn, &cc_info, NULL, &sr_run_cache, &sr_oper_cache))) {
+        goto cleanup;
+    }
+
+    /* update the schema mount data ID, no need to update content_id because it didnt change */
+    SR_CONN_MAIN_SHM(conn)->schema_mount_data_id++;
+
+    /* print the new context - new schema mount data will be obtained next time context is locked */
+    if ((err_info = sr_lycc_store_context(conn, &sr_yang_ctx.ly_ctx_shm, new_ctx))) {
+        goto cleanup;
+    }
+
+cleanup:
+    sr_lycc_clear_data(&cc_info);
+    if (destroy_new_ctx) {
+        ly_ctx_destroy(new_ctx);
+    }
+
+    /* CONTEXT DOWNGRADE - leave the unlock to the caller */
+    if (ctx_mode && (tmp_err = sr_lycc_relock(conn, SR_LOCK_READ_UPGR, __func__))) {
+        sr_errinfo_merge(&err_info, tmp_err);
+    }
+
+    return err_info;
 }
 
 sr_error_info_t *

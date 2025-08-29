@@ -1107,7 +1107,8 @@ sr_lydmods_create(sr_conn_ctx_t *conn, struct ly_ctx *ly_ctx, struct lyd_node **
 cleanup:
     free(new_mods);
     lyd_free_tree(init_data);
-    sr_lycc_ds_data_clear(&data_info);
+    sr_lycc_ds_data_set_clear(&data_info.old);
+    sr_lycc_ds_data_set_clear(&data_info.new);
     if (err_info) {
         lyd_free_all(sr_mods);
     } else {

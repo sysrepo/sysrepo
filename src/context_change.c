@@ -324,15 +324,7 @@ sr_lycc_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const
     sr_rwunlock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, mode, conn->cid, func);
 }
 
-/**
- * @brief Append all stored DS data by implemented modules from context.
- *
- * @param[in] conn Connection to use.
- * @param[in] ctx Context to use.
- * @param[out] data Data of each datastore.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
+sr_error_info_t *
 sr_lycc_append_data(sr_conn_ctx_t *conn, const struct ly_ctx *ctx, struct sr_lycc_ds_data_set_s *data)
 {
     sr_error_info_t *err_info = NULL;
@@ -603,74 +595,32 @@ sr_lycc_update_data_is_enabled(const struct lys_module *ly_mod, sr_datastore_t d
     }
 }
 
-/**
- * @brief Update SR data for use with the changed context.
- *
- * @param[in] conn Connection to use.
- * @param[in] new_ctx New context.
- * @param[in] init_data Optional initial data for the new modules, are spent.
- * @param[in] new_mods Optional new modules with DS plugins to use for loading initial data if @p mod_data is not set.
- * @param[in] new_mod_count Count of @p new_mods.
- * @param[in] sr_mods_old SR mods with the current modules.
- * @param[in,out] data_info Old (current) data in @p conn context and new data in @p new_ctx.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_lycc_update_ds_data(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx, struct lyd_node *init_data,
-        sr_int_install_mod_t *new_mods, uint32_t new_mod_count, const struct lyd_node *sr_mods_old,
-        struct sr_lycc_ds_data_s *data_info)
+sr_error_info_t *
+sr_lycc_update_ds_data(const struct ly_ctx *new_ctx, sr_int_install_mod_t *new_mods, uint32_t new_mod_count,
+        const struct lyd_node *sr_mods_old, struct sr_lycc_ds_data_set_s *data_old,
+        struct sr_lycc_ds_data_set_s *data_init, struct sr_lycc_ds_data_set_s *data_new)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *start_init_data = NULL, *run_init_data = NULL, *fdflt_init_data = NULL;
     const struct lys_module *ly_mod;
     uint32_t parse_opts, idx;
 
-    memset(data_info, 0, sizeof *data_info);
-
-    /* parse all the startup/running/operational/factory-default data using the old context (that must succeed) */
-    if ((err_info = sr_lycc_append_data(conn, sr_yang_ctx.ly_ctx, &data_info->old))) {
-        goto cleanup;
-    }
-
-    /* prepare initial data for each relevant datastore */
-    if (init_data) {
-        if ((err_info = sr_lyd_dup(init_data, NULL, LYD_DUP_RECURSIVE, 1, &start_init_data))) {
-            goto cleanup;
-        }
-    } else if ((err_info = sr_lycc_update_data_init_ds_load(conn, new_mods, new_mod_count, SR_DS_STARTUP,
-            &start_init_data, &data_info->old.start))) {
-        goto cleanup;
-    }
-    if (init_data) {
-        if ((err_info = sr_lyd_dup(init_data, NULL, LYD_DUP_RECURSIVE, 1, &run_init_data))) {
-            goto cleanup;
-        }
-    } else if ((err_info = sr_lycc_update_data_init_ds_load(conn, new_mods, new_mod_count, SR_DS_RUNNING,
-            &run_init_data, &data_info->old.run))) {
-        goto cleanup;
-    }
-    if (init_data) {
-        fdflt_init_data = init_data;
-        init_data = NULL;
-    } else if ((err_info = sr_lycc_update_data_init_ds_load(conn, new_mods, new_mod_count, SR_DS_FACTORY_DEFAULT,
-            &fdflt_init_data, &data_info->old.fdflt))) {
-        goto cleanup;
-    }
-
     /* update data for the new context */
     parse_opts = LYD_PARSE_NO_STATE | LYD_PARSE_STORE_ONLY | LYD_PARSE_ORDERED;
-    if ((err_info = sr_lycc_update_data_tree(data_info->old.start, parse_opts, new_ctx, &start_init_data, &data_info->new.start))) {
+    if ((err_info = sr_lycc_update_data_tree(data_old->start, parse_opts, new_ctx, data_init ? &data_init->start : NULL,
+            &data_new->start))) {
         goto cleanup;
     }
-    if ((err_info = sr_lycc_update_data_tree(data_info->old.run, parse_opts, new_ctx, &run_init_data, &data_info->new.run))) {
+    if ((err_info = sr_lycc_update_data_tree(data_old->run, parse_opts, new_ctx, data_init ? &data_init->run : NULL,
+            &data_new->run))) {
         goto cleanup;
     }
-    if ((err_info = sr_lycc_update_data_tree(data_info->old.fdflt, parse_opts, new_ctx, &fdflt_init_data, &data_info->new.fdflt))) {
+    if ((err_info = sr_lycc_update_data_tree(data_old->fdflt, parse_opts, new_ctx, data_init ? &data_init->fdflt : NULL,
+            &data_new->fdflt))) {
         goto cleanup;
     }
 
     /* fully validate complete startup, running (what is enabled), and factory-default datastore */
-    if ((err_info = sr_lyd_validate_all(&data_info->new.start, new_ctx, LYD_VALIDATE_NO_STATE))) {
+    if ((err_info = sr_lyd_validate_all(&data_new->start, new_ctx, LYD_VALIDATE_NO_STATE))) {
         sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, "Invalid startup datastore data.");
         goto cleanup;
     }
@@ -681,7 +631,7 @@ sr_lycc_update_ds_data(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx, struct
             continue;
         }
 
-        if ((err_info = sr_lyd_validate_module(&data_info->new.run, ly_mod, LYD_VALIDATE_NO_STATE | LYD_VALIDATE_NOT_FINAL,
+        if ((err_info = sr_lyd_validate_module(&data_new->run, ly_mod, LYD_VALIDATE_NO_STATE | LYD_VALIDATE_NOT_FINAL,
                 NULL))) {
             sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, "Invalid running datastore data.");
             goto cleanup;
@@ -694,21 +644,17 @@ sr_lycc_update_ds_data(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx, struct
             continue;
         }
 
-        if ((err_info = sr_lyd_validate_module_final(data_info->new.run, ly_mod, LYD_VALIDATE_NO_STATE))) {
+        if ((err_info = sr_lyd_validate_module_final(data_new->run, ly_mod, LYD_VALIDATE_NO_STATE))) {
             sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, "Invalid running datastore data.");
             goto cleanup;
         }
     }
-    if ((err_info = sr_lyd_validate_all(&data_info->new.fdflt, new_ctx, LYD_VALIDATE_NO_STATE))) {
+    if ((err_info = sr_lyd_validate_all(&data_new->fdflt, new_ctx, LYD_VALIDATE_NO_STATE))) {
         sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, "Invalid factory-default datastore data.");
         goto cleanup;
     }
 
 cleanup:
-    lyd_free_siblings(init_data);
-    lyd_free_siblings(start_init_data);
-    lyd_free_siblings(run_init_data);
-    lyd_free_siblings(fdflt_init_data);
     return err_info;
 }
 
@@ -717,6 +663,7 @@ sr_lycc_prepare_data(sr_conn_ctx_t *conn, struct ly_ctx *ly_ctx_old, struct ly_c
         struct lyd_node **init_data, sr_int_install_mod_t *new_mods, uint32_t new_mod_count, struct sr_lycc_info_s *cc_info)
 {
     sr_error_info_t *err_info = NULL;
+    struct sr_lycc_ds_data_set_s data_init = {0};
 
     cc_info->ly_ctx_old = ly_ctx_old;
     cc_info->ly_ctx_new = ly_ctx_new;
@@ -726,32 +673,55 @@ sr_lycc_prepare_data(sr_conn_ctx_t *conn, struct ly_ctx *ly_ctx_old, struct ly_c
         goto cleanup;
     }
 
-    /* load all data and prepare their update, initial data are spent */
-    err_info = sr_lycc_update_ds_data(conn, cc_info->ly_ctx_new, init_data ? *init_data : NULL, new_mods, new_mod_count,
-            cc_info->sr_mods_old, &cc_info->data_info);
-    if (init_data) {
-        *init_data = NULL;
+    /* parse all the startup/running/operational/factory-default data using the old context (that must succeed) */
+    if ((err_info = sr_lycc_append_data(conn, sr_yang_ctx.ly_ctx, &cc_info->data_info.old))) {
+        goto cleanup;
     }
-    if (err_info) {
+
+    /* prepare initial data for each relevant datastore */
+    if (init_data && *init_data) {
+        if ((err_info = sr_lyd_dup(*init_data, NULL, LYD_DUP_RECURSIVE, 1, &data_init.start))) {
+            goto cleanup;
+        }
+    } else if ((err_info = sr_lycc_update_data_init_ds_load(conn, new_mods, new_mod_count, SR_DS_STARTUP,
+            &data_init.start, &cc_info->data_info.old.start))) {
+        goto cleanup;
+    }
+    if (init_data && *init_data) {
+        if ((err_info = sr_lyd_dup(*init_data, NULL, LYD_DUP_RECURSIVE, 1, &data_init.run))) {
+            goto cleanup;
+        }
+    } else if ((err_info = sr_lycc_update_data_init_ds_load(conn, new_mods, new_mod_count, SR_DS_RUNNING,
+            &data_init.run, &cc_info->data_info.old.run))) {
+        goto cleanup;
+    }
+    if (init_data && *init_data) {
+        data_init.fdflt = *init_data;
+        *init_data = NULL;
+    } else if ((err_info = sr_lycc_update_data_init_ds_load(conn, new_mods, new_mod_count, SR_DS_FACTORY_DEFAULT,
+            &data_init.fdflt, &cc_info->data_info.old.fdflt))) {
+        goto cleanup;
+    }
+
+    /* load all data and prepare their update */
+    if ((err_info = sr_lycc_update_ds_data(cc_info->ly_ctx_new, new_mods, new_mod_count, cc_info->sr_mods_old,
+            &cc_info->data_info.old, &data_init, &cc_info->data_info.new))) {
         goto cleanup;
     }
 
 cleanup:
+    sr_lycc_ds_data_set_clear(&data_init);
     return err_info;
 }
 
 void
-sr_lycc_ds_data_clear(struct sr_lycc_ds_data_s *data_info)
+sr_lycc_ds_data_set_clear(struct sr_lycc_ds_data_set_s *data)
 {
-    lyd_free_siblings(data_info->old.start);
-    lyd_free_siblings(data_info->old.run);
-    lyd_free_siblings(data_info->old.fdflt);
+    lyd_free_siblings(data->start);
+    lyd_free_siblings(data->run);
+    lyd_free_siblings(data->fdflt);
 
-    lyd_free_siblings(data_info->new.start);
-    lyd_free_siblings(data_info->new.run);
-    lyd_free_siblings(data_info->new.fdflt);
-
-    memset(data_info, 0, sizeof *data_info);
+    memset(data, 0, sizeof *data);
 }
 
 void
@@ -759,15 +729,15 @@ sr_lycc_clear_data(struct sr_lycc_info_s *cc_info)
 {
     int sr_mods_equal = (cc_info->sr_mods_old == cc_info->sr_mods_new);
 
-    sr_lycc_ds_data_clear(&cc_info->data_info);
+    sr_lycc_ds_data_set_clear(&cc_info->data_info.old);
+    sr_lycc_ds_data_set_clear(&cc_info->data_info.new);
 
     lyd_free_siblings(cc_info->sr_mods_old);
-    cc_info->sr_mods_old = NULL;
-
     if (!sr_mods_equal) {
         lyd_free_siblings(cc_info->sr_mods_new);
     }
-    cc_info->sr_mods_new = NULL;
+
+    memset(cc_info, 0, sizeof *cc_info);
 }
 
 /**
@@ -1308,7 +1278,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_lycc_store_context(sr_shm_t *shm, struct ly_ctx *ctx)
+sr_lycc_store_context(sr_conn_ctx_t *conn, sr_shm_t *shm, struct ly_ctx *ctx)
 {
     sr_error_info_t *err_info = NULL;
     int ctx_size, fd = -1;
@@ -1319,6 +1289,10 @@ sr_lycc_store_context(sr_shm_t *shm, struct ly_ctx *ctx)
         /* printed context not supported */
         return NULL;
     }
+
+    /* flush caches */
+    sr_run_cache_flush(conn, &sr_run_cache);
+    sr_oper_cache_flush(conn, &sr_oper_cache);
 
     if ((err_info = sr_path_ctx_shm(&shm_name))) {
         goto cleanup;
@@ -1361,7 +1335,7 @@ sr_lycc_store_context(sr_shm_t *shm, struct ly_ctx *ctx)
     }
     assert(((char *)mem_end - (char *)mem) == ctx_size);
 
-    /* destroy the old printed context, it is now unmapped anyways,
+    /* destroy the old printed context, it will be unmapped anyways,
      * doing it now avoids a context data collision with the new context */
     sr_yang_ctx.content_id = 0;
     sr_yang_ctx.sm_data_id = 0;

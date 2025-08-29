@@ -28,6 +28,7 @@
 
 struct lysp_submodule;
 struct sr_ds_handle;
+struct sr_lycc_ds_data_set_s;
 struct sr_mod_info_s;
 struct sr_mod_info_mod_s;
 struct sr_mod_info_xpath_s;
@@ -1013,6 +1014,19 @@ sr_error_info_t *sr_schema_mount_create_contexts(struct ly_ctx *ly_ctx, const st
  * @return non-zero otherwise.
  */
 int sr_schema_mount_changed_oper_data(const struct lyd_node *oper_data);
+
+/**
+ * @brief Handle the update of the operational schema mount data.
+ *
+ * This function prints a new libyang context to memory, which is prepared to use the new schema mount data.
+ *
+ * @note Context READ-UPGRADE lock needs to be held by the caller.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] data_old Current data loaded with the old SM push oper data, are spent.
+ * @return err_info on error, NULL on success.
+ */
+sr_error_info_t *sr_schema_mount_ds_data_update(sr_conn_ctx_t *conn, struct sr_lycc_ds_data_set_s *data_old);
 
 /**
  * @brief Add a new oper cache entry.

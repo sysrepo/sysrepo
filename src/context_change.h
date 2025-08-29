@@ -41,7 +41,6 @@ struct sr_lycc_info_s {
     struct lyd_node *sr_mods_old;       /**< current internal SR data */
     struct ly_ctx *ly_ctx_new;          /**< updated libyang context */
     struct lyd_node *sr_mods_new;       /**< updated internal SR data */
-    struct lyd_node *sm_data_new;       /**< updated ietf-yang-schema-mount data */
 };
 
 /**
@@ -76,6 +75,32 @@ sr_error_info_t *sr_lycc_relock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, const 
 void sr_lycc_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const char *func);
 
 /**
+ * @brief Append all stored DS data by implemented modules from context.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] ctx Context to use.
+ * @param[out] data Data of each datastore.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lycc_append_data(sr_conn_ctx_t *conn, const struct ly_ctx *ctx, struct sr_lycc_ds_data_set_s *data);
+
+/**
+ * @brief Update SR data for use with the changed context.
+ *
+ * @param[in] new_ctx New context.
+ * @param[in] new_mods Optional new modules with DS plugins to use for loading initial data if @p mod_data is not set.
+ * @param[in] new_mod_count Count of @p new_mods.
+ * @param[in] sr_mods_old SR mods with the current modules.
+ * @param[in] data_old Old (current) data in @p conn context.
+ * @param[in] data_init Optional initial data for the new modules.
+ * @param[out] data_new New (updated) data in @p new_ctx.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lycc_update_ds_data(const struct ly_ctx *new_ctx, sr_int_install_mod_t *new_mods,
+        uint32_t new_mod_count, const struct lyd_node *sr_mods_old, struct sr_lycc_ds_data_set_s *data_old,
+        struct sr_lycc_ds_data_set_s *data_init, struct sr_lycc_ds_data_set_s *data_new);
+
+/**
  * @brief Prepare lycc structure for a context change.
  *
  * Expected READ_UPGR CONTEXT lock.
@@ -93,11 +118,11 @@ sr_error_info_t *sr_lycc_prepare_data(sr_conn_ctx_t *conn, struct ly_ctx *ly_ctx
         struct lyd_node **init_data, sr_int_install_mod_t *new_mods, uint32_t new_mod_count, struct sr_lycc_info_s *cc_info);
 
 /**
- * @brief Free all the members of a DS data info structure.
+ * @brief Free all the members of a DS data set structure.
  *
- * @param[in] data_info Data info to clear.
+ * @param[in] data Data set to clear.
  */
-void sr_lycc_ds_data_clear(struct sr_lycc_ds_data_s *data_info);
+void sr_lycc_ds_data_set_clear(struct sr_lycc_ds_data_set_s *data);
 
 /**
  * @brief Clear lycc structure.
@@ -234,11 +259,12 @@ sr_error_info_t *sr_lycc_set_replay_support(sr_conn_ctx_t *conn, const struct ly
  *
  * Does nothing if printed context is disabled.
  *
+ * @param[in] conn Connection to use for flushing the caches.
  * @param[in,out] shm Shared memory to use. Any existing mapping is removed.
  * @param[in,out] ctx Libyang context to store, parsed modules are freed first.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lycc_store_context(sr_shm_t *shm, struct ly_ctx *ctx);
+sr_error_info_t *sr_lycc_store_context(sr_conn_ctx_t *conn, sr_shm_t *shm, struct ly_ctx *ctx);
 
 /**
  * @brief Load a libyang context from shared memory.
