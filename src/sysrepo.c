@@ -159,20 +159,8 @@ sr_conn_free(sr_conn_ctx_t *conn)
     if (!sr_yang_ctx.refcount) {
         /* check for failed connection */
         if (conn->cid) {
-            /* YANG CTX LOCK - just to get the most recent lyctx */
-            if ((err_info = sr_lycc_lock(conn, SR_LOCK_WRITE, 0, __func__))) {
-                /* should not happen when there are no other connections */
-                sr_errinfo_free(&err_info);
-                assert(0);
-            }
-
-            /* YANG CTX UNLOCK */
-            sr_lycc_unlock(conn, SR_LOCK_WRITE, 0, __func__);
-
-            /* free running cache */
+            /* flush caches */
             sr_run_cache_flush(conn, &sr_run_cache);
-
-            /* free oper cache */
             for (i = 0; i < sr_oper_cache.sub_count; ++i) {
                 lyd_free_siblings(sr_oper_cache.subs[i].data);
             }
