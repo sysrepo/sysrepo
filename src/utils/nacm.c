@@ -1021,6 +1021,8 @@ sr_nacm_init(sr_session_ctx_t *session, uint32_t opts, sr_subscription_ctx_t **s
     pthread_mutex_init(&nacm.lock, NULL);
 
     /* subscribe to all the relevant config data */
+    sr_session_switch_ds(session, SR_DS_RUNNING);
+
     mod_name = "ietf-netconf-acm";
     xpath = "/ietf-netconf-acm:nacm";
     SR_CONFIG_SUBSCR(session, sub, mod_name, xpath, opts, sr_nacm_nacm_params_cb);
