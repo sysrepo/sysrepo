@@ -773,7 +773,7 @@ srpds_load_all(redisContext *ctx, const struct lys_module *mod, sr_datastore_t d
     enum srpds_db_ly_types type;
     int dflt_flag = 0;
     char **keys = NULL;
-    uint32_t *lengths = NULL;
+    uint32_t *bit_lengths = NULL;
     int32_t meta_count = 0;
     const char *meta_name = NULL, *meta_value = NULL;
     srpds_db_userordered_lists_t uo_lists = {0};
@@ -896,7 +896,7 @@ srpds_load_all(redisContext *ctx, const struct lys_module *mod, sr_datastore_t d
                 case 'f':
                     /* get keys */
                     value = partial->element[j + 1]->str;
-                    if ((err_info = srpds_parse_keys(plugin_name, value, &keys, &lengths))) {
+                    if ((err_info = srpds_parse_keys(plugin_name, value, &keys, &bit_lengths))) {
                         goto cleanup;
                     }
                     break;
@@ -938,14 +938,14 @@ srpds_load_all(redisContext *ctx, const struct lys_module *mod, sr_datastore_t d
 
             /* add a new node to mod_data */
             if ((err_info = srpds_add_mod_data(plugin_name, mod->ctx, ds, path, name, type, module_name, value,
-                    valtype, &dflt_flag, (const char **)keys, lengths, order, path_no_pred, meta_count, meta_name,
+                    valtype, &dflt_flag, (const char **)keys, bit_lengths, order, path_no_pred, meta_count, meta_name,
                     meta_value, &uo_lists, &parent_nodes, &pnodes_size, mod_data))) {
                 goto cleanup;
             }
             free(keys);
-            free(lengths);
+            free(bit_lengths);
             keys = NULL;
-            lengths = NULL;
+            bit_lengths = NULL;
         }
 
         cursor = reply->element[1]->integer;
@@ -970,7 +970,7 @@ srpds_load_all(redisContext *ctx, const struct lys_module *mod, sr_datastore_t d
 
 cleanup:
     free(keys);
-    free(lengths);
+    free(bit_lengths);
     free(parent_nodes);
     srpds_cleanup_uo_lists(&uo_lists);
     srpds_argv_destroy(&argv);

@@ -547,7 +547,7 @@ srpds_load_all(mongoc_collection_t *module, const struct lys_module *mod, sr_dat
     bson_error_t error;
     const char *path, *name, *module_name = NULL, *value = NULL, *path_no_pred = NULL;
     char **keys = NULL;
-    uint32_t *lengths = NULL;
+    uint32_t *bit_lengths = NULL;
     enum srpds_db_ly_types type;
     int32_t valtype = 0;
     int64_t order = 0;
@@ -702,7 +702,7 @@ srpds_load_all(mongoc_collection_t *module, const struct lys_module *mod, sr_dat
                 goto cleanup;
             }
             value = bson_iter_utf8(&iter, NULL);
-            if ((err_info = srpds_parse_keys(plugin_name, value, &keys, &lengths))) {
+            if ((err_info = srpds_parse_keys(plugin_name, value, &keys, &bit_lengths))) {
                 goto cleanup;
             }
             break;
@@ -821,14 +821,14 @@ srpds_load_all(mongoc_collection_t *module, const struct lys_module *mod, sr_dat
 
         /* add a new node to mod_data */
         if ((err_info = srpds_add_mod_data(plugin_name, mod->ctx, ds, path, name, type, module_name, value, valtype,
-                &dflt_flag, (const char **)keys, lengths, order, path_no_pred, meta_count, meta_name, meta_value,
+                &dflt_flag, (const char **)keys, bit_lengths, order, path_no_pred, meta_count, meta_name, meta_value,
                 &uo_lists, &parent_nodes, &pnodes_size, mod_data))) {
             goto cleanup;
         }
         free(keys);
-        free(lengths);
+        free(bit_lengths);
         keys = NULL;
-        lengths = NULL;
+        bit_lengths = NULL;
     }
 
     if (mongoc_cursor_error(cursor, &error)) {
@@ -845,7 +845,7 @@ srpds_load_all(mongoc_collection_t *module, const struct lys_module *mod, sr_dat
 
 cleanup:
     free(keys);
-    free(lengths);
+    free(bit_lengths);
     free(parent_nodes);
     srpds_cleanup_uo_lists(&uo_lists);
     bson_destroy(query_opts);

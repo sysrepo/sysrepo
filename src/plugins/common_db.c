@@ -117,7 +117,7 @@ cleanup:
 }
 
 sr_error_info_t *
-srpds_parse_keys(const char *plg_name, const char *keys, char ***parsed, uint32_t **lengths)
+srpds_parse_keys(const char *plg_name, const char *keys, char ***parsed, uint32_t **bit_lengths)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
@@ -130,8 +130,8 @@ srpds_parse_keys(const char *plg_name, const char *keys, char ***parsed, uint32_
         goto cleanup;
     }
 
-    *lengths = malloc(num_of_keys * sizeof **lengths);
-    if (!*lengths) {
+    *bit_lengths = malloc(num_of_keys * sizeof **bit_lengths);
+    if (!*bit_lengths) {
         ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "malloc()", "");
         goto cleanup;
     }
@@ -141,11 +141,11 @@ srpds_parse_keys(const char *plg_name, const char *keys, char ***parsed, uint32_
         /* get key (do not forget to skip length) */
         (*parsed)[i] = ((char *)key) + SRPDS_DB_LIST_KEY_LEN_BYTES;
 
-        /* get length of the key from the first two bytes */
-        (*lengths)[i] = SRPDS_DB_LIST_KEY_GET_LEN(key[0], key[1]);
+        /* get length of the key from the first two bytes, then transform to bits */
+        (*bit_lengths)[i] = SRPDS_DB_LIST_KEY_GET_LEN(key[0], key[1]) * 8;
 
         /* move onto the next key */
-        key += SRPDS_DB_LIST_KEY_LEN_BYTES + (*lengths)[i];
+        key += SRPDS_DB_LIST_KEY_LEN_BYTES + (*bit_lengths)[i];
     }
 
 cleanup:
@@ -543,7 +543,7 @@ srpds_cleanup_uo_lists(srpds_db_userordered_lists_t *uo_lists)
 sr_error_info_t *
 srpds_add_mod_data(const char *plg_name, const struct ly_ctx *ly_ctx, sr_datastore_t ds, const char *path,
         const char *name, enum srpds_db_ly_types type, const char *module_name, const char *value, int32_t valtype,
-        int *dflt_flag, const char **keys, uint32_t *lengths, int64_t order, const char *path_no_pred,
+        int *dflt_flag, const char **keys, uint32_t *bit_lengths, int64_t order, const char *path_no_pred,
         int32_t meta_count, const char *meta_name, const char *meta_value, srpds_db_userordered_lists_t *uo_lists,
         struct lyd_node ***parent_nodes, size_t *pnodes_size, struct lyd_node **mod_data)
 {
@@ -579,7 +579,7 @@ srpds_add_mod_data(const char *plg_name, const struct ly_ctx *ly_ctx, sr_datasto
         break;
     case SRPDS_DB_LY_LIST:     /* lists */
     case SRPDS_DB_LY_LIST_UO:  /* user-ordered lists */
-        lerr = lyd_new_list3(parent_node, node_module, name, (const char **)keys, lengths * 8, LYD_NEW_VAL_STORE_ONLY,
+        lerr = lyd_new_list3(parent_node, node_module, name, (const char **)keys, bit_lengths, LYD_NEW_VAL_STORE_ONLY,
                 &new_node);
         if ((lerr != LY_SUCCESS) && (lerr != LY_ENOTFOUND)) {
             ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_list3()", ly_last_logmsg());
