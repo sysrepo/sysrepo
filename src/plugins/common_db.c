@@ -579,7 +579,7 @@ srpds_add_mod_data(const char *plg_name, const struct ly_ctx *ly_ctx, sr_datasto
         break;
     case SRPDS_DB_LY_LIST:     /* lists */
     case SRPDS_DB_LY_LIST_UO:  /* user-ordered lists */
-        lerr = lyd_new_list3(parent_node, node_module, name, (const char **)keys, lengths, LYD_NEW_VAL_STORE_ONLY,
+        lerr = lyd_new_list3(parent_node, node_module, name, (const char **)keys, lengths * 8, LYD_NEW_VAL_STORE_ONLY,
                 &new_node);
         if ((lerr != LY_SUCCESS) && (lerr != LY_ENOTFOUND)) {
             ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_list3()", ly_last_logmsg());
