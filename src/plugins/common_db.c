@@ -141,11 +141,14 @@ srpds_parse_keys(const char *plg_name, const char *keys, char ***parsed, uint32_
         /* get key (do not forget to skip length) */
         (*parsed)[i] = ((char *)key) + SRPDS_DB_LIST_KEY_LEN_BYTES;
 
-        /* get length of the key from the first two bytes, then transform to bits */
-        (*bit_lengths)[i] = SRPDS_DB_LIST_KEY_GET_LEN(key[0], key[1]) * 8;
+        /* get length of the key from the first two bytes */
+        (*bit_lengths)[i] = SRPDS_DB_LIST_KEY_GET_LEN(key[0], key[1]);
 
         /* move onto the next key */
         key += SRPDS_DB_LIST_KEY_LEN_BYTES + (*bit_lengths)[i];
+
+        /* transform to bits */
+        (*bit_lengths)[i] *= 8;
     }
 
 cleanup:
@@ -579,7 +582,7 @@ srpds_add_mod_data(const char *plg_name, const struct ly_ctx *ly_ctx, sr_datasto
         break;
     case SRPDS_DB_LY_LIST:     /* lists */
     case SRPDS_DB_LY_LIST_UO:  /* user-ordered lists */
-        lerr = lyd_new_list3(parent_node, node_module, name, (const char **)keys, bit_lengths, LYD_NEW_VAL_STORE_ONLY,
+        lerr = lyd_new_list3(parent_node, node_module, name, (const void **)keys, bit_lengths, LYD_NEW_VAL_STORE_ONLY,
                 &new_node);
         if ((lerr != LY_SUCCESS) && (lerr != LY_ENOTFOUND)) {
             ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_list3()", ly_last_logmsg());
