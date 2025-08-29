@@ -1005,12 +1005,6 @@ sr_error_info_t *sr_schema_mount_destroy_contexts(struct ly_ctx *ly_ctx, const s
 sr_error_info_t *sr_schema_mount_create_contexts(struct ly_ctx *ly_ctx, const struct lyd_node *sr_data);
 
 /**
- * @brief Ext data callback for providing the schema mount data.
- */
-LY_ERR sr_ly_ext_data_clb(const struct lysc_ext_instance *ext, const struct lyd_node *parent, void *user_data,
-        void **ext_data, ly_bool *ext_data_free);
-
-/**
  * @brief Check whether operational schema-mount data changed. That includes data of `ietf-yang-schema-mount` and
  * `ietf-yang-library` data underneath a mount-point extension instance.
  *

@@ -204,6 +204,13 @@ void sr_release_context(sr_conn_ctx_t *conn);
 void sr_session_release_context(sr_session_ctx_t *session);
 
 /**
+ * @brief Ext data callback for _libyang_ context that can be used by applications for their own context to get the same
+ * schema-mount functionality.
+ */
+LY_ERR sr_ly_ext_data_clb(const struct lysc_ext_instance *ext, const struct lyd_node *parent, void *user_data,
+        void **ext_data, ly_bool *ext_data_free);
+
+/**
  * @brief Get content ID of the current YANG module set. It conforms to the requirements for ietf-yang-library
  * "content-id" node value.
  *

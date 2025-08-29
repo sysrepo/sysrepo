@@ -3187,7 +3187,7 @@ cleanup:
     return err_info;
 }
 
-LY_ERR
+API LY_ERR
 sr_ly_ext_data_clb(const struct lysc_ext_instance *ext, const struct lyd_node *parent, void *UNUSED(user_data),
         void **ext_data, ly_bool *ext_data_free)
 {
@@ -3209,7 +3209,11 @@ sr_ly_ext_data_clb(const struct lysc_ext_instance *ext, const struct lyd_node *p
     }
 
     /* a connection must be set by any means prior to this call */
-    assert(sr_available_conn);
+    if (!sr_available_conn) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "No SR connection available.");
+        rc = LY_EINVAL;
+        goto cleanup;
+    }
 
     if (parent) {
         /* parsing data, use the data node */
