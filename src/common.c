@@ -4096,6 +4096,11 @@ sr_sizedarray2nullarray(const char **sa, const char ***na)
     sr_error_info_t *err_info = NULL;
     LY_ARRAY_COUNT_TYPE c = LY_ARRAY_COUNT(sa);
 
+    if (!sa) {
+        *na = NULL;
+        return NULL;
+    }
+
     *na = malloc((c + 1) * sizeof **na);
     SR_CHECK_MEM_RET(!*na, err_info);
 
