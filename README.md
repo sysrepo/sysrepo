@@ -392,15 +392,7 @@ $ make test
 
 ### Perf
 
-There is a performance measurement tool included that prints information about
+There is a performance measurement tool `sr_perf` included that prints information about
 the time required to execute common use-cases of working with large YANG instance data.
 
-To enable this test, use an option and to get representative results, enable Release build type:
-```
-$ cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_PERF_TESTS=ON ..
-```
-and to run the test with seeing its output run:
-```
-$ make
-$ ctest -V -R sr_perf
-```
+It is compiled with other tests but must be run manually.

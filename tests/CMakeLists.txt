@@ -95,24 +95,11 @@ if(ENABLE_TESTS)
 endif()
 
 # sr_perf benchmark binary
-if(ENABLE_PERF_TESTS)
-    add_executable(sr_perf ${CMAKE_CURRENT_SOURCE_DIR}/perf.c)
+add_executable(sr_perf ${CMAKE_CURRENT_SOURCE_DIR}/perf.c)
 
-    # link srobj to get the number of DS plugins available
-    # this number can fluctuate depending on the presence of optional libraries
-    target_link_libraries(sr_perf sysrepo srobj)
-
-    add_test(NAME sr_perf_1000_10 COMMAND sr_perf 1000 10)
-    set_property(TEST sr_perf_1000_10 APPEND PROPERTY ENVIRONMENT
-        "SYSREPO_REPOSITORY_PATH=${PROJECT_BINARY_DIR}/test_repositories/sr_perf"
-        "SYSREPO_SHM_PREFIX=_tests_sr_sr_perf"
-        "SR_ENV_RUN_TESTS=1"
-    )
-
-    if(${CMAKE_VERSION} VERSION_GREATER "3.7")
-        set_tests_properties(sr_perf_1000_10 PROPERTIES FIXTURES_REQUIRED tests_cleanup)
-    endif()
-endif()
+# link srobj to get the number of DS plugins available
+# this number can fluctuate depending on the presence of optional libraries
+target_link_libraries(sr_perf sysrepo srobj)
 
 # valgrind tests
 if(ENABLE_VALGRIND_TESTS)

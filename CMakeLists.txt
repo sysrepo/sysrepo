@@ -349,22 +349,20 @@ if(ENABLE_TESTS)
     endif()
 endif()
 
-if(ENABLE_PERF_TESTS)
-    find_path(VALGRIND_INCLUDE_DIR
-        NAMES
-        valgrind/callgrind.h
-        PATHS
-        /usr/include
-        /usr/local/include
-        /opt/local/include
-        /sw/include
-        ${CMAKE_INCLUDE_PATH}
-        ${CMAKE_INSTALL_PREFIX}/include)
-    if(VALGRIND_INCLUDE_DIR)
-        set(SR_HAVE_CALLGRIND 1)
-    else()
-        message(STATUS "Disabling callgrind macros in performance tests because of missing valgrind headers")
-    endif()
+find_path(VALGRIND_INCLUDE_DIR
+    NAMES
+    valgrind/callgrind.h
+    PATHS
+    /usr/include
+    /usr/local/include
+    /opt/local/include
+    /sw/include
+    ${CMAKE_INCLUDE_PATH}
+    ${CMAKE_INSTALL_PREFIX}/include)
+if(VALGRIND_INCLUDE_DIR)
+    set(SR_HAVE_CALLGRIND 1)
+else()
+    message(STATUS "Disabling callgrind macros in performance tests because of missing valgrind headers")
 endif()
 
 if(ENABLE_COVERAGE)
@@ -642,7 +640,7 @@ if(INSTALL_SYSCTL_CONF)
 endif()
 
 # tests
-if(ENABLE_TESTS OR ENABLE_PERF_TESTS)
+if(ENABLE_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
