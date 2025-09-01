@@ -1391,7 +1391,7 @@ sr_lycc_load_context(sr_shm_t *shm, struct ly_ctx **ctx)
 
     /* read the new shm size if not set */
     if ((err_info = sr_file_get_size(shm->fd, &shm_file_size))) {
-        return err_info;
+        goto cleanup;
     }
 
     if (shm_file_size != shm->size) {

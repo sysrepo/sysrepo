@@ -2037,6 +2037,7 @@ sr_edit_apply_remove_diff_subtree_add(struct lyd_node *data_del, struct lyd_node
     }
 
 cleanup:
+    free(sibling_before_val);
     return err_info;
 }
 
