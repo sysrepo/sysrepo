@@ -1491,9 +1491,10 @@ sr_error_info_t *sr_ly_find_last_parent(struct lyd_node **parent, int nodetype);
  * @brief Get metadata name of the anchor value of user-ordered nodes.
  *
  * @param[in] schema Schema node of the anchor.
+ * @param[in] old_inst If set, return the metadata of previous (old) instances prefixed with "orig-".
  * @return Metadata name (with module name as prefix).
  */
-const char *sr_userord_anchor_meta_name(const struct lysc_node *schema);
+const char *sr_userord_anchor_meta_name(const struct lysc_node *schema, int old_inst);
 
 /**
  * @brief Unlink data of a specific module from a data tree.

@@ -5666,17 +5666,17 @@ sr_ly_find_last_parent(struct lyd_node **parent, int nodetype)
 }
 
 const char *
-sr_userord_anchor_meta_name(const struct lysc_node *schema)
+sr_userord_anchor_meta_name(const struct lysc_node *schema, int old_inst)
 {
     assert(lysc_is_userordered(schema));
 
     if (lysc_is_dup_inst_list(schema)) {
-        return "yang:position";
+        return old_inst ? "yang:orig-position" : "yang:position";
     } else if (schema->nodetype == LYS_LEAFLIST) {
-        return "yang:value";
+        return old_inst ? "yang:orig-value" : "yang:value";
     } else {
         assert(schema->nodetype == LYS_LIST);
-        return "yang:key";
+        return old_inst ? "yang:orig-key" : "yang:key";
     }
 }
 

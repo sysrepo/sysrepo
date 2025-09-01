@@ -6850,7 +6850,7 @@ sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_
     /* fallthrough */
     case SR_OP_MOVED:
         /* attribute contains the value of the node before in the order */
-        meta = lyd_find_meta(node->meta, NULL, sr_userord_anchor_meta_name(node->schema));
+        meta = lyd_find_meta(node->meta, NULL, sr_userord_anchor_meta_name(node->schema, 0));
         if (!meta) {
             SR_ERRINFO_INT(&err_info);
             return sr_api_ret(session, err_info);
@@ -6917,20 +6917,23 @@ sr_get_change_tree_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_ch
         break;
     case SR_OP_MODIFIED:
         /* "orig-value" metadata contains the previous value */
-        meta = lyd_find_meta((*node)->meta, NULL, "yang:orig-value");
-
-        /* "orig-default" holds the previous default flag value */
-        meta2 = lyd_find_meta((*node)->meta, NULL, "yang:orig-default");
-
-        if (!meta || !meta2) {
+        if (!(meta = lyd_find_meta((*node)->meta, NULL, "yang:orig-value"))) {
             SR_ERRINFO_INT(&err_info);
             return sr_api_ret(session, err_info);
         }
         if (prev_value) {
             *prev_value = lyd_get_meta_value(meta);
         }
-        if (prev_dflt && meta2->value.boolean) {
-            *prev_dflt = 1;
+
+        if ((*node)->schema->nodetype == LYS_LEAF) {
+            /* "orig-default" holds the previous default flag value */
+            if (!(meta2 = lyd_find_meta((*node)->meta, NULL, "yang:orig-default"))) {
+                SR_ERRINFO_INT(&err_info);
+                return sr_api_ret(session, err_info);
+            }
+            if (prev_dflt && meta2->value.boolean) {
+                *prev_dflt = 1;
+            }
         }
         break;
     case SR_OP_CREATED:
@@ -6941,7 +6944,7 @@ sr_get_change_tree_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_ch
     /* fallthrough */
     case SR_OP_MOVED:
         /* attribute contains the value of the node before in the order */
-        meta = lyd_find_meta((*node)->meta, NULL, sr_userord_anchor_meta_name((*node)->schema));
+        meta = lyd_find_meta((*node)->meta, NULL, sr_userord_anchor_meta_name((*node)->schema, 0));
         if (!meta) {
             SR_ERRINFO_INT(&err_info);
             return sr_api_ret(session, err_info);
