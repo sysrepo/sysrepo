@@ -1114,9 +1114,6 @@ main(int argc, char **argv)
     int64_t *times = NULL, time;
     struct test_state state = {0};
 
-    /* change print color */
-    printf("\033[0;37;1m");
-
     /* handle arguments */
     if (argc < 3) {
         fprintf(stderr, "Usage:\n%s list-instance-count test-tries\n\n", argv[0]);
@@ -1145,6 +1142,9 @@ main(int argc, char **argv)
         fprintf(stderr, "Out of memory.\n");
         return SR_ERR_NO_MEMORY;
     }
+
+    /* change print color */
+    printf("\033[0;37;1m");
 
     printf("\n| Options\n\n  Data set size      : %" PRIu32 "\n  Each test executed : %" PRIu32 " %s\n\n", count, tries,
             (tries > 1) ? "times" : "time");
@@ -1187,10 +1187,10 @@ main(int argc, char **argv)
 
     printf("\nAll comparisons refer to how many times faster (green) or slower (red) the current plugin is compared to the first plugin.\n\n");
 
-    /* change print color */
+cleanup:
+    /* change print color back */
     printf(" \033[0;37m");
 
-cleanup:
     free(times);
     return ret;
 }
