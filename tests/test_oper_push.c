@@ -2442,6 +2442,13 @@ test_schema_mount(void **state)
 
     str2 =
             "<root xmlns=\"urn:sm\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
+            "  <interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\" or:origin=\"or:intended\">\n"
+            "    <interface>\n"
+            "      <name>eth1</name>\n"
+            "      <description or:origin=\"or:unknown\">config-description</description>\n"
+            "      <type or:origin=\"or:unknown\" xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    </interface>\n"
+            "  </interfaces>\n"
             "  <yang-library xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-library\">\n"
             "    <module-set>\n"
             "      <name>root</name>\n"
@@ -2468,13 +2475,6 @@ test_schema_mount(void **state)
             "    </module-set>\n"
             "    <content-id>14e2ab5dc325f6d86f743e8d3ade233f1a61a899</content-id>\n"
             "  </yang-library>\n"
-            "  <interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\" or:origin=\"or:intended\">\n"
-            "    <interface>\n"
-            "      <name>eth1</name>\n"
-            "      <description or:origin=\"or:unknown\">config-description</description>\n"
-            "      <type or:origin=\"or:unknown\" xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
-            "    </interface>\n"
-            "  </interfaces>\n"
             "</root>\n";
     assert_string_equal(str1, str2);
     free(str1);
