@@ -331,7 +331,9 @@ setup_running_cached(struct test_state *state)
     int r;
     struct lyd_node *data;
 
-    if ((r = sr_connect(SR_CONN_CACHE_RUNNING, &state->conn))) {
+    sr_cache_running(1);
+
+    if ((r = sr_connect(0, &state->conn))) {
         return r;
     }
     if ((r = sr_session_start(state->conn, SR_DS_RUNNING, &state->sess))) {
@@ -990,7 +992,6 @@ struct test tests[] = {
     {"get tree", setup_running, test_get_tree, teardown_running},
     {"get item", setup_running, test_get_item, teardown_running},
     {"get tree hash", setup_running, test_get_tree_hash, teardown_running},
-    {"get tree hash cached", setup_running_cached, test_get_tree_hash, teardown_running},
     {"get user ordered tree", setup_userordered_running, test_get_user_order_tree, teardown_running},
     {"get oper tree", setup_subscribe_oper, test_get_oper_tree, teardown_subscribe_oper},
     {"create batch", setup_empty, test_batch_create, teardown_empty},
@@ -999,15 +1000,16 @@ struct test tests[] = {
     {"create all items oper", setup_empty_oper, test_items_create_oper, teardown_empty},
     {"many oper change_subs", setup_empty_oper, test_many_oper_change_subs, teardown_empty},
     {"remove all items", setup_running, test_items_remove, teardown_empty},
-    {"remove all items cached", setup_running_cached, test_items_remove, teardown_empty},
     {"remove whole subtree", setup_running, test_items_remove_subtree, teardown_empty},
-    {"remove whole subtree cached", setup_running_cached, test_items_remove_subtree, teardown_empty},
     {"create an item", setup_running, test_item_create, teardown_running},
-    {"create an item cached", setup_running_cached, test_item_create, teardown_running},
     {"create an item oper", setup_oper, test_item_create_oper, teardown_oper},
     {"modify an item", setup_running, test_item_modify, teardown_running},
-    {"modify an item cached", setup_running_cached, test_item_modify, teardown_running},
     {"remove an item", setup_running, test_item_remove, teardown_running},
+    {"get tree hash cached", setup_running_cached, test_get_tree_hash, teardown_running},
+    {"remove all items cached", setup_running_cached, test_items_remove, teardown_empty},
+    {"remove whole subtree cached", setup_running_cached, test_items_remove_subtree, teardown_empty},
+    {"create an item cached", setup_running_cached, test_item_create, teardown_running},
+    {"modify an item cached", setup_running_cached, test_item_modify, teardown_running},
     {"remove an item cached", setup_running_cached, test_item_remove, teardown_running},
 };
 
