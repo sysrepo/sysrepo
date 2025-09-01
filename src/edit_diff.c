@@ -2570,9 +2570,7 @@ sr_oper_edit_mod_apply(const struct lyd_node *tree, const struct lys_module *ly_
     enum edit_op op = 0;
     const char *xpath;
 
-    if (change) {
-        *change = 0;
-    }
+    *change = 0;
 
     if (!tree) {
         /* discarding the data by replacing them with empty data */
