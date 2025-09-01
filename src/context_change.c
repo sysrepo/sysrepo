@@ -257,7 +257,7 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
         /* context successfully switched */
         new_ctx = NULL;
 
-        /* initialize new DS plugins */
+        /* initialize new DS plugins not used by any modules before */
         if ((err_info = sr_conn_ds_init(conn))) {
             goto cleanup_unlock;
         }

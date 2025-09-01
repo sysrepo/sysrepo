@@ -294,17 +294,24 @@ sr_connect(const uint32_t opts, sr_conn_ctx_t **conn_p)
         if (err_info) {
             goto cleanup_unlock;
         }
+    }
 
-        /* CONTEXT LOCK */
-        if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
-            goto cleanup_unlock;
-        }
+    /* CONTEXT LOCK */
+    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
+        goto cleanup_unlock;
+    }
 
-        /* context was updated */
+    /* context was updated if first conn after reboot, initialize used DS plugins */
+    err_info = sr_conn_ds_init(conn);
 
-        /* CONTEXT UNLOCK */
-        sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
+    /* CONTEXT UNLOCK */
+    sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
 
+    if (err_info) {
+        goto cleanup_unlock;
+    }
+
+    if (created) {
         /* initialize the datastores */
         if ((err_info = sr_shmmod_reboot_init(conn, initialized))) {
             goto cleanup_unlock;
