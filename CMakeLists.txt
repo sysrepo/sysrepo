@@ -427,11 +427,11 @@ if(ENABLE_DS_MONGO)
 
         # try running a command in MongoDB database (should not be possible) and check authentication
         if(MONGO_SOCKET)
-            set(MONGO_TMP_ARGS ${MONGO_CLI_CMD} "mongodb://${MONGO_SOCKET}" "--eval" "use sr_running" "--eval" "db.runCommand({usersInfo: 1})")
+            set(MONGO_TMP_ARGS "mongodb://${MONGO_SOCKET}")
         else()
-            set(MONGO_TMP_ARGS ${MONGO_CLI_CMD} "--host" "${MONGO_HOST}" "--port" "${MONGO_PORT}" "--eval" "use sr_running" "--eval" "db.runCommand({usersInfo: 1})")
+            set(MONGO_TMP_ARGS "--host" "${MONGO_HOST}" "--port" "${MONGO_PORT}")
         endif()
-        execute_process(COMMAND ${MONGO_TMP_ARGS} RESULT_VARIABLE MONGO_RETURN_CODE ERROR_VARIABLE MONGO_STDERR OUTPUT_QUIET)
+        execute_process(COMMAND ${MONGO_CLI_CMD} ${MONGO_TMP_ARGS} "--eval" "use sr_running" "--eval" "db.runCommand({usersInfo: 1})" RESULT_VARIABLE MONGO_RETURN_CODE ERROR_VARIABLE MONGO_STDERR OUTPUT_QUIET)
         if(${MONGO_RETURN_CODE} EQUAL 0)
             message(WARNING "MongoDB authentication is NOT supported! Data stored by sysrepo in MongoDB will be accessible by anyone.")
         else()
@@ -460,11 +460,11 @@ if(ENABLE_DS_REDIS)
 
         # try running a command in Redis database and check authentication
         if(REDIS_SOCKET)
-            set(REDIS_TMP_ARGS ${REDIS_CLI_CMD} "-s" "${REDIS_SOCKET}" "ACL" "WHOAMI")
+            set(REDIS_TMP_ARGS "-s" "${REDIS_SOCKET}")
         else()
-            set(REDIS_TMP_ARGS ${REDIS_CLI_CMD} "-h" "${REDIS_HOST}" "-p" "${REDIS_PORT}" "ACL" "WHOAMI")
+            set(REDIS_TMP_ARGS "-h" "${REDIS_HOST}" "-p" "${REDIS_PORT}")
         endif()
-        execute_process(COMMAND ${REDIS_TMP_ARGS} RESULT_VARIABLE REDIS_RETURN_CODE OUTPUT_VARIABLE REDIS_STDOUT ERROR_VARIABLE REDIS_STDERR)
+        execute_process(COMMAND ${REDIS_CLI_CMD} ${REDIS_TMP_ARGS} "ACL" "WHOAMI" RESULT_VARIABLE REDIS_RETURN_CODE OUTPUT_VARIABLE REDIS_STDOUT ERROR_VARIABLE REDIS_STDERR)
         if (${REDIS_RETURN_CODE} GREATER 0)
             message(WARNING "Redis authentication cannot be checked - a request to Redis failed with: ${REDIS_STDERR}")
         else()
@@ -685,17 +685,18 @@ add_custom_target(sr_clean
 # flush all sysrepo related data from mongo
 if(SR_ENABLED_DS_PLG_MONGO)
     if (MONGO_SOCKET)
-        set(MONGO_TMP_ARGS ${MONGO_CLI_CMD} "mongodb://${MONGO_SOCKET}")
+        set(MONGO_TMP_ARGS "mongodb://${MONGO_SOCKET}")
     else()
-        set(MONGO_TMP_ARGS ${MONGO_CLI_CMD} "--host" "${MONGO_HOST}" "--port" "${MONGO_PORT}")
+        set(MONGO_TMP_ARGS "--host" "${MONGO_HOST}" "--port" "${MONGO_PORT}")
     endif()
-    list(APPEND MONGO_TMP_ARGS "--eval" "use sr_startup" "--eval" "\"db.dropDatabase()\""
+    list(APPEND MONGO_TMP_ARGS )
+    add_custom_target(sr_mongo_clean COMMAND ${MONGO_CLI_CMD} ${MONGO_TMP_ARGS}
+                            "--eval" "use sr_startup" "--eval" "\"db.dropDatabase()\""
                             "--eval" "use sr_running" "--eval" "\"db.dropDatabase()\""
                             "--eval" "use sr_candidate" "--eval" "\"db.dropDatabase()\""
                             "--eval" "use sr_operational" "--eval" "\"db.dropDatabase()\""
                             "--eval" "use sr_factory-default" "--eval" "\"db.dropDatabase()\""
                             "1>" "/dev/null")
-    add_custom_target(sr_mongo_clean COMMAND ${MONGO_CLI_CMD})
     add_dependencies(sr_clean sr_mongo_clean)
 endif()
 
