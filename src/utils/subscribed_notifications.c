@@ -884,7 +884,7 @@ srsn_read_notif(int fd, const struct ly_ctx *ly_ctx, struct timespec *timestamp,
     int rc = SR_ERR_OK;
     uint32_t size;
     char *buf = NULL;
-    ssize_t r;
+    ssize_t r, rr;
 
     SR_CHECK_ARG_APIRET(!ly_ctx || !timestamp || !notif, NULL, err_info);
 
@@ -913,11 +913,27 @@ srsn_read_notif(int fd, const struct ly_ctx *ly_ctx, struct timespec *timestamp,
     buf = malloc(size + 1);
     SR_CHECK_MEM_GOTO(!buf, err_info, cleanup);
 
-    /* 3) read the notification LYB */
-    if (read(fd, buf, size) != (signed)size) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to read a notification (%s).", strerror(errno));
-        goto cleanup;
-    }
+    /* 3) read the notification LYB, handle large notifications */
+    rr = 0;
+    do {
+        r = read(fd, buf + rr, size - rr);
+        if ((r == -1) && ((errno == EAGAIN) || (errno == EWOULDBLOCK))) {
+            /* busy */
+            usleep(100);
+            continue;
+        } else if (r == -1) {
+            /* error */
+            sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to read a notification (%s).", strerror(errno));
+            goto cleanup;
+        } else if (!r) {
+            /* end-of-file */
+            r = SR_ERR_UNSUPPORTED;
+            goto cleanup;
+        }
+
+        rr += r;
+    } while (rr < size);
+    buf[size] = '\0';
 
     /* parse the notification */
     if ((err_info = sr_lyd_parse_op(ly_ctx, buf, LYD_LYB, LYD_TYPE_NOTIF_YANG, notif))) {
