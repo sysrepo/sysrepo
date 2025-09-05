@@ -9,6 +9,8 @@ Source3: sysrepo-plugind.sysusers
 Source4: sysrepo-plugind.service
 License: BSD
 
+Provides: group(sysrepo)
+
 BuildRequires:  cmake
 BuildRequires:  gcc
 BuildRequires:  gcc-c++
@@ -29,6 +31,7 @@ Requires:  pkgconfig
 %package plugind
 Summary:   sysrepo plugin daemon
 Requires:  %{name}%{?_isa} = %{version}-%{release}
+Provides:  user(sysrepo-plugind)
 
 %package tools
 Summary:   sysrepo executable tools
