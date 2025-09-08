@@ -1,4 +1,4 @@
 usr/lib/*/*.so.*
 usr/share/yang/modules/sysrepo
-usr/lib/x86_64-linux-gnu/sysrepo/plugins
+usr/lib/*/sysrepo/plugins
 etc/sysrepo
