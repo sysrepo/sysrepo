@@ -2385,6 +2385,11 @@ sr_get_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_ds
     SR_CHECK_ARG_APIRET(!conn || !module_name || (mod_ds >= SR_MOD_DS_PLUGIN_COUNT) || (mod_ds < 0) ||
             (!owner && !group && !perm), NULL, err_info);
 
+    /* CONTEXT LOCK */
+    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
+        return sr_api_ret(NULL, err_info);
+    }
+
     /* find the module in SHM */
     shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), module_name);
     if (!shm_mod) {
@@ -2419,6 +2424,9 @@ sr_get_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_ds
     }
 
 cleanup:
+    /* CONTEXT UNLOCK */
+    sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
+
     return sr_api_ret(NULL, err_info);
 }
 
@@ -2433,6 +2441,11 @@ sr_check_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_
 
     SR_CHECK_ARG_APIRET(!conn || !module_name || (mod_ds >= SR_MOD_DS_PLUGIN_COUNT) || (mod_ds < 0) || (!read && !write),
             NULL, err_info);
+
+    /* CONTEXT LOCK */
+    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
+        return sr_api_ret(NULL, err_info);
+    }
 
     /* find the module in SHM */
     shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), module_name);
@@ -2468,6 +2481,9 @@ sr_check_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_
     }
 
 cleanup:
+    /* CONTEXT UNLOCK */
+    sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
+
     return sr_api_ret(NULL, err_info);
 }
 
