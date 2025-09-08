@@ -3091,7 +3091,7 @@ sr_schema_mount_destroy_contexts(struct ly_ctx *ly_ctx, const struct lyd_node *s
 {
     sr_error_info_t *err_info = NULL;
     struct ly_set *set = NULL;
-    const struct lysc_node *snode;
+    const struct lysc_node *snode = NULL;
     struct lysc_ext_instance *ext;
     LY_ARRAY_COUNT_TYPE u;
     uint32_t i;
@@ -3134,7 +3134,7 @@ sr_schema_mount_create_contexts(struct ly_ctx *ly_ctx, const struct lyd_node *sr
     sr_error_info_t *err_info = NULL;
     struct ly_set *set = NULL;
     struct lyd_node *sm_data;
-    const struct lysc_node *snode;
+    const struct lysc_node *snode = NULL;
     struct lysc_ext_instance *ext;
     ly_bool sm_data_free;
     LY_ARRAY_COUNT_TYPE u;

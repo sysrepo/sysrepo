@@ -7010,7 +7010,7 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     sr_conn_ctx_t *conn;
     sr_rpc_t *shm_rpc = NULL;
     sr_mod_t *shm_mod = NULL;
-    int is_ext;
+    int is_ext = 0;
 
     SR_CHECK_ARG_APIRET(!session || SR_IS_EVENT_SESS(session) || !xpath || (!callback && !tree_callback) || !subscription,
             session, err_info);
