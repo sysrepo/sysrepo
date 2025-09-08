@@ -134,7 +134,7 @@ THREAD sr_conn_ctx_t *sr_available_conn;
  * @brief Running data cache.
  */
 sr_run_cache_t sr_run_cache = {
-    .enabled = 0,
+    .enabled = 1,
     .data = NULL,
     .mods = NULL,
     .mod_count = 0,
