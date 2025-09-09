@@ -3720,14 +3720,17 @@ sr_run_cache_update_mod(sr_conn_ctx_t *conn, sr_run_cache_t *run_cache, const st
         return err_info;
     }
 
-    /* find the cache mod, it must have been cached for this operation, if not before */
+    /* find the cache mod */
     for (i = 0; i < run_cache->mod_count; ++i) {
         if (ly_mod == run_cache->mods[i].mod) {
             cmod = &run_cache->mods[i];
             break;
         }
     }
-    assert(cmod);
+    if (!cmod) {
+        /* this can only mean that the cache was flushed for a CONTEXT UPGR READ LOCK */
+        goto cleanup;
+    }
 
     /* the data are expected to be just modified, cannot yet be cached */
     assert(cmod->id != mod_cache_id);
@@ -3739,6 +3742,7 @@ sr_run_cache_update_mod(sr_conn_ctx_t *conn, sr_run_cache_t *run_cache, const st
     /* replace with current data */
     if (mod_data) {
         lyd_insert_sibling(run_cache->data, mod_data, &run_cache->data);
+        mod_data = NULL;
     }
 
     /* update the cached data ID */
@@ -3753,6 +3757,7 @@ cleanup:
     /* CACHE WRITE UNLOCK */
     sr_rwunlock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
 
+    lyd_free_siblings(mod_data);
     return err_info;
 }
 

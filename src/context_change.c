@@ -139,6 +139,12 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
     }
     remap_mode = SR_LOCK_READ_UPGR;
 
+    if (mode == SR_LOCK_READ_UPGR) {
+        /* flush caches so that the lock can actually be upgraded */
+        sr_run_cache_flush(conn, &sr_run_cache);
+        sr_oper_cache_flush(conn, &sr_oper_cache);
+    }
+
     /* check whether the context is current and does not need to be updated */
     if (!context_is_up_to_date(main_shm, sr_yang_ctx.content_id, sr_yang_ctx.sm_data_id)) {
         /* MOD REMAP UPGRADE */
@@ -259,6 +265,12 @@ sr_lycc_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const
     /* LYDMODS UNLOCK */
     if (lydmods_lock) {
         sr_munlock(&main_shm->lydmods_lock);
+    }
+
+    if ((mode == SR_LOCK_READ) && main_shm->context_lock.upgr) {
+        /* flush caches so that the lock can actually be upgraded */
+        sr_run_cache_flush(conn, &sr_run_cache);
+        sr_oper_cache_flush(conn, &sr_oper_cache);
     }
 
     /* MOD REMAP UNLOCK */
