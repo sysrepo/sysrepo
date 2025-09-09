@@ -3357,8 +3357,43 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_oper_cache_add(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache, uint32_t sub_id,
-        const char *module_name, const char *path)
+sr_oper_cache_ctx_lock_update(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_main_shm_t *main_shm = SR_CONN_MAIN_SHM(conn);
+    int has_data = 0;
+    uint32_t i;
+
+    for (i = 0; i < oper_cache->sub_count; ++i) {
+        if (oper_cache->subs[i].data) {
+            has_data = 1;
+            break;
+        }
+    }
+
+    if (!oper_cache->ctx_lock && has_data) {
+        /* CONTEXT LOCK */
+        if ((err_info = sr_rwlock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__,
+                NULL, NULL))) {
+            goto cleanup;
+        }
+
+        /* store the lock connection CID so the cache can be flushed by any connection */
+        oper_cache->ctx_lock = conn->cid;
+    } else if (oper_cache->ctx_lock && !has_data) {
+        /* CONTEXT UNLOCK */
+        sr_rwunlock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, SR_LOCK_READ, oper_cache->ctx_lock, __func__);
+
+        oper_cache->ctx_lock = 0;
+    }
+
+cleanup:
+    return err_info;
+}
+
+sr_error_info_t *
+sr_oper_cache_add(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache, uint32_t sub_id, const char *module_name,
+        const char *path)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
@@ -3446,13 +3481,104 @@ sr_oper_cache_del(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache, uint32_t sub
         oper_cache->subs = NULL;
     }
 
+    /* update ctx lock */
+    if ((err_info = sr_oper_cache_ctx_lock_update(conn, oper_cache))) {
+        sr_errinfo_free(&err_info);
+    }
+
     /* OPER CACHE UNLOCK */
     sr_rwunlock(&oper_cache->lock, SR_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
 }
 
+void
+sr_oper_cache_flush(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t i, j;
+    struct sr_oper_cache_sub_s *cache;
+
+    /* OPER CACHE READ LOCK */
+    if ((err_info = sr_rwlock(&oper_cache->lock, SR_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__, NULL,
+            NULL))) {
+        /* should never happen */
+        sr_errinfo_free(&err_info);
+    }
+
+    for (i = 0; i < oper_cache->sub_count; ++i) {
+        cache = &oper_cache->subs[i];
+
+        /* CACHE DATA WRITE LOCK */
+        if ((err_info = sr_rwlock(&cache->data_lock, SR_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
+                __func__, NULL, NULL))) {
+            /* should never happen */
+            sr_errinfo_free(&err_info);
+        }
+
+        /* flush data */
+        lyd_free_siblings(cache->data);
+        cache->data = NULL;
+        memset(&cache->timestamp, 0, sizeof cache->timestamp);
+
+        /* CACHE DATA UNLOCK */
+        sr_rwunlock(&cache->data_lock, SR_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    }
+
+    /* update ctx lock */
+    if ((err_info = sr_oper_cache_ctx_lock_update(conn, oper_cache))) {
+        sr_errinfo_free(&err_info);
+    }
+
+    /* OPER CACHE UNLOCK */
+    sr_rwunlock(&oper_cache->lock, SR_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+
+    /* remove oper push data cache from all sessions */
+
+    /* safe because context_lock or conn->mod_remap_lock is WRITE locked, preventing all other operations */
+    /* conn->ptr_lock is always acquired after sr_lycc_lock, so conn->session_count cannot change */
+    for (i = 0; i < conn->session_count; i++) {
+        for (j = 0; j < conn->sessions[i]->oper_push_mod_count; j++) {
+            lyd_free_siblings(conn->sessions[i]->oper_push_mods[j].cache);
+            conn->sessions[i]->oper_push_mods[j].cache = NULL;
+        }
+    }
+}
+
+/**
+ * @brief Update CONTEXT READ LOCK of the running cache data.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] run_cache Running data cache.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_run_cache_ctx_lock_update(sr_conn_ctx_t *conn, sr_run_cache_t *run_cache)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_main_shm_t *main_shm = SR_CONN_MAIN_SHM(conn);
+
+    if (!run_cache->ctx_lock && run_cache->data) {
+        /* CONTEXT LOCK */
+        if ((err_info = sr_rwlock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__,
+                NULL, NULL))) {
+            goto cleanup;
+        }
+
+        /* store the lock connection CID so the cache can be flushed by any connection */
+        run_cache->ctx_lock = conn->cid;
+    } else if (run_cache->ctx_lock && !run_cache->data) {
+        /* CONTEXT UNLOCK */
+        sr_rwunlock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, SR_LOCK_READ, run_cache->ctx_lock, __func__);
+
+        run_cache->ctx_lock = 0;
+    }
+
+cleanup:
+    return err_info;
+}
+
 sr_error_info_t *
-sr_run_cache_update(sr_conn_ctx_t *conn, sr_run_cache_t *run_cache,
-        const struct sr_mod_info_s *mod_info, sr_lock_mode_t has_lock)
+sr_run_cache_update(sr_conn_ctx_t *conn, sr_run_cache_t *run_cache, const struct sr_mod_info_s *mod_info,
+        sr_lock_mode_t has_lock)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     struct sr_mod_info_mod_s *mod;
@@ -3555,6 +3681,13 @@ sr_run_cache_update(sr_conn_ctx_t *conn, sr_run_cache_t *run_cache,
         cmod->id = cur_id;
     }
 
+    /* update context lock if there were any changes */
+    if (has_lock == SR_LOCK_WRITE) {
+        if ((err_info = sr_run_cache_ctx_lock_update(conn, run_cache))) {
+            goto cleanup;
+        }
+    }
+
 cleanup:
     if (has_lock == SR_LOCK_WRITE) {
         /* CACHE READ RELOCK */
@@ -3611,6 +3744,12 @@ sr_run_cache_update_mod(sr_conn_ctx_t *conn, sr_run_cache_t *run_cache, const st
     /* update the cached data ID */
     cmod->id = mod_cache_id;
 
+    /* update context lock */
+    if ((err_info = sr_run_cache_ctx_lock_update(conn, run_cache))) {
+        goto cleanup;
+    }
+
+cleanup:
     /* CACHE WRITE UNLOCK */
     sr_rwunlock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
 
@@ -3620,7 +3759,7 @@ sr_run_cache_update_mod(sr_conn_ctx_t *conn, sr_run_cache_t *run_cache, const st
 void
 sr_run_cache_flush(sr_conn_ctx_t *conn, sr_run_cache_t *run_cache)
 {
-    sr_error_info_t *err_info = NULL;
+    sr_error_info_t *err_info = NULL, *tmp_err;
 
     /* CACHE WRITE LOCK */
     err_info = sr_rwlock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE,
@@ -3634,6 +3773,11 @@ sr_run_cache_flush(sr_conn_ctx_t *conn, sr_run_cache_t *run_cache)
     free(run_cache->mods);
     run_cache->mods = NULL;
     run_cache->mod_count = 0;
+
+    if ((tmp_err = sr_run_cache_ctx_lock_update(conn, run_cache))) {
+        /* cannot happen, the lock can only be unlocked */
+        sr_errinfo_free(&tmp_err);
+    }
 
     if (!err_info) {
         /* CACHE WRITE UNLOCK */

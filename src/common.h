@@ -244,6 +244,7 @@ struct sr_run_cache_s {
         uint32_t id;                    /**< Cached module data ID. */
     } *mods;                            /**< Cached modules. */
     uint32_t mod_count;                 /**< Cached module count. */
+    sr_cid_t ctx_lock;                  /**< Set if CTX READ LOCK is being held, always if there are any data. */
     sr_rwlock_t lock;                   /**< Lock for accessing the cache. */
 };
 
@@ -268,6 +269,7 @@ struct sr_oper_cache_s {
         struct timespec timestamp;  /**< Timestamp of the cached operational data. */
     } *subs;                        /**< Operational subscription data caches. */
     uint32_t sub_count;             /**< Operational subscription data cache count. */
+    sr_cid_t ctx_lock;              /**< Set if CTX READ LOCK is being held, always if there are any data. */
     sr_rwlock_t lock;               /**< Operational subscription data cache lock. */
 };
 
@@ -1029,6 +1031,15 @@ int sr_schema_mount_changed_oper_data(const struct lyd_node *oper_data);
 sr_error_info_t *sr_schema_mount_ds_data_update(sr_conn_ctx_t *conn, struct sr_lycc_ds_data_set_s *data_old);
 
 /**
+ * @brief Update CONTEXT READ LOCK of the operational cache data.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] oper_cache Operational data cache.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_oper_cache_ctx_lock_update(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache);
+
+/**
  * @brief Add a new oper cache entry.
  *
  * @param[in] conn Connection to use.
@@ -1049,6 +1060,16 @@ sr_error_info_t *sr_oper_cache_add(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_ca
  * @param[in] sub_id Subscription ID to delete.
  */
 void sr_oper_cache_del(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache, uint32_t sub_id);
+
+/**
+ * @brief Flush all cached operational data.
+ *
+ * Must be called only with WRITE mode context lock or mod_remap_lock.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in,out] oper_cache Oper cache to flush.
+ */
+void sr_oper_cache_flush(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache);
 
 /**
  * @brief Update cached running data.

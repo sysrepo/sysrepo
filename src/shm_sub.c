@@ -4145,6 +4145,11 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
         sr_release_data(data);
         sr_realtime_get(&cache->timestamp);
 
+        /* update context lock */
+        if ((err_info = sr_oper_cache_ctx_lock_update(conn, &sr_oper_cache))) {
+            goto finish_iter;
+        }
+
         /* update when to wake up */
         invalid_in = sr_time_ts_add(NULL, oper_poll_sub->valid_ms);
         if (wake_up_in && (!wake_up_in->tv_sec || (sr_time_cmp(&invalid_in, wake_up_in) < 0))) {

@@ -43,62 +43,6 @@
 #include "sysrepo_types.h"
 
 /**
- * @brief Flush all cached operational data.
- *
- * Must be called only with WRITE mode context lock or mod_remap_lock.
- *
- * @param[in] conn Connection to use.
- * @param[in,out] oper_cache Oper cache to flush.
- */
-static void
-sr_oper_cache_flush(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache)
-{
-    sr_error_info_t *err_info = NULL;
-    uint32_t i, j;
-    struct sr_oper_cache_sub_s *cache;
-
-    /* OPER CACHE READ LOCK */
-    if ((err_info = sr_rwlock(&oper_cache->lock, SR_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ,
-            conn->cid, __func__, NULL, NULL))) {
-        /* should never happen */
-        sr_errinfo_free(&err_info);
-    }
-
-    for (i = 0; i < oper_cache->sub_count; ++i) {
-        cache = &oper_cache->subs[i];
-
-        /* CACHE DATA WRITE LOCK */
-        if ((err_info = sr_rwlock(&cache->data_lock, SR_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE,
-                conn->cid, __func__, NULL, NULL))) {
-            /* should never happen */
-            sr_errinfo_free(&err_info);
-        }
-
-        /* flush data */
-        lyd_free_siblings(cache->data);
-        cache->data = NULL;
-        memset(&cache->timestamp, 0, sizeof cache->timestamp);
-
-        /* CACHE DATA UNLOCK */
-        sr_rwunlock(&cache->data_lock, SR_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
-    }
-
-    /* OPER CACHE UNLOCK */
-    sr_rwunlock(&oper_cache->lock, SR_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
-
-    /* remove oper push data cache from all sessions */
-
-    /* safe because context_lock or conn->mod_remap_lock is WRITE locked, preventing all other operations */
-    /* conn->ptr_lock is always acquired after sr_lycc_lock, so conn->session_count cannot change */
-    for (i = 0; i < conn->session_count; i++) {
-        for (j = 0; j < conn->sessions[i]->oper_push_mod_count; j++) {
-            lyd_free_siblings(conn->sessions[i]->oper_push_mods[j].cache);
-            conn->sessions[i]->oper_push_mods[j].cache = NULL;
-        }
-    }
-}
-
-/**
  * @brief Replace the current global libyang context with a new one.
  *
  * @param[in] conn Connection to use.

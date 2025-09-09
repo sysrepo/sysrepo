@@ -139,7 +139,6 @@ error1:
 static void
 sr_conn_free(sr_conn_ctx_t *conn)
 {
-    uint32_t i;
     sr_error_info_t *err_info = NULL;
 
     if (!conn) {
@@ -161,9 +160,7 @@ sr_conn_free(sr_conn_ctx_t *conn)
         if (conn->cid) {
             /* flush caches */
             sr_run_cache_flush(conn, &sr_run_cache);
-            for (i = 0; i < sr_oper_cache.sub_count; ++i) {
-                lyd_free_siblings(sr_oper_cache.subs[i].data);
-            }
+            sr_oper_cache_flush(conn, &sr_oper_cache);
         }
 
         /* destroy lyctx */
