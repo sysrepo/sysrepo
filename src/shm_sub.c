@@ -2462,7 +2462,7 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
     }
 
     /* init modinfo and parse schema mount data, requires ctx read lock */
-    if ((err_info = sr_modinfo_init(&mod_info, conn, SR_DS_FACTORY_DEFAULT, SR_DS_FACTORY_DEFAULT, 1, operation_id))) {
+    if ((err_info = sr_modinfo_init(&mod_info, conn, SR_DS_FACTORY_DEFAULT, SR_DS_FACTORY_DEFAULT, operation_id))) {
         goto cleanup;
     }
 
@@ -4040,7 +4040,7 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
     SR_CHECK_INT_RET(!ly_mod, err_info);
 
     /* init modinfo */
-    sr_modinfo_init(&mod_info, conn, SR_DS_OPERATIONAL, SR_DS_OPERATIONAL, 0, 0);
+    sr_modinfo_init(&mod_info, conn, SR_DS_OPERATIONAL, SR_DS_OPERATIONAL, 0);
 
     if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, 0, &mod_info))) {
         goto cleanup;

@@ -49,8 +49,7 @@
 #include "utils/nacm.h"
 
 sr_error_info_t *
-sr_modinfo_init(struct sr_mod_info_s *mod_info, sr_conn_ctx_t *conn, sr_datastore_t ds, sr_datastore_t ds2, int init_sm,
-        uint32_t op_id)
+sr_modinfo_init(struct sr_mod_info_s *mod_info, sr_conn_ctx_t *conn, sr_datastore_t ds, sr_datastore_t ds2, uint32_t op_id)
 {
     sr_error_info_t *err_info = NULL;
 
@@ -60,11 +59,6 @@ sr_modinfo_init(struct sr_mod_info_s *mod_info, sr_conn_ctx_t *conn, sr_datastor
     mod_info->ds2 = ds2;
     mod_info->conn = conn;
     mod_info->operation_id = op_id ? op_id : ATOMIC_INC_RELAXED(SR_CONN_MAIN_SHM(conn)->new_operation_id);
-
-    if (init_sm) {
-        /* parse schema mount data, the data is usable until the end of the operation */
-        mod_info->smdata_cached = 1;
-    }
 
     return err_info;
 }
@@ -4272,10 +4266,6 @@ sr_modinfo_erase(struct sr_mod_info_s *mod_info)
             }
         }
         free(mod->xpaths);
-    }
-
-    if (mod_info->smdata_cached) {
-        /* release a reference to cached schema mount data */
     }
 
     free(mod_info->mods);
