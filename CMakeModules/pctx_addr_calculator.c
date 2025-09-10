@@ -43,7 +43,6 @@ calculate_mid_stack_heap_address(void)
     void *heap_base, *stack_base;
     struct rlimit stack_limits;
     uintptr_t midpoint_address;
-    const int page_size = getpagesize();
 
     /* get the current heap break address and page align it */
     heap_base = sbrk(0);
