@@ -3371,7 +3371,8 @@ sr_oper_cache_ctx_lock_update(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache)
         }
     }
 
-    if (!oper_cache->ctx_lock && has_data) {
+    /* lock required only if using printed context, which is overwritten on change */
+    if (!oper_cache->ctx_lock && has_data && ly_ctx_is_printed(sr_yang_ctx.ly_ctx)) {
         /* CONTEXT LOCK */
         if ((err_info = sr_rwlock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__,
                 NULL, NULL))) {
@@ -3556,7 +3557,8 @@ sr_run_cache_ctx_lock_update(sr_conn_ctx_t *conn, sr_run_cache_t *run_cache)
     sr_error_info_t *err_info = NULL;
     sr_main_shm_t *main_shm = SR_CONN_MAIN_SHM(conn);
 
-    if (!run_cache->ctx_lock && run_cache->data) {
+    /* lock required only if using printed context, which is overwritten on change */
+    if (!run_cache->ctx_lock && run_cache->data && ly_ctx_is_printed(sr_yang_ctx.ly_ctx)) {
         /* CONTEXT LOCK */
         if ((err_info = sr_rwlock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__,
                 NULL, NULL))) {
