@@ -4,8 +4,8 @@
  * @brief header for all SHM types
  *
  * @copyright
- * Copyright (c) 2018 - 2024 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2024 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2025 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2025 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@
 #include "common_types.h"
 #include "sysrepo_types.h"
 
-#define SR_SHM_VER 21   /**< Main, mod, and ext SHM version of their expected content structures. */
+#define SR_SHM_VER 22   /**< Main, mod, and ext SHM version of their expected content structures. */
 #define SR_MAIN_SHM_LOCK "sr_main_lock"     /**< Main SHM file lock name. */
 
 /**
@@ -190,6 +190,11 @@ typedef struct {
 } sr_mod_shm_t;
 
 /**
+ * @brief Maximum number of processes having running or operational data cache and using a printed context.
+ */
+#define SR_MAIN_SHM_CACHE_PID_SIZE 64
+
+/**
  * @brief Main SHM structure.
  */
 typedef struct {
@@ -198,11 +203,13 @@ typedef struct {
     pthread_mutex_t ext_lock;   /**< Process-shared lock for accessing holes and truncating ext SHM. Accessing ext SHM
                                      structures requires another dedicated lock. */
 
-    sr_rwlock_t context_lock;   /**< Process-shared lock for accessing connection LY context, lydmods data,
-                                     and SHM mod modules. */
+    sr_rwlock_t context_lock;       /**< Process-shared lock for accessing connection LY context, lydmods data,
+                                         and SHM mod modules. */
     pthread_mutex_t lydmods_lock;   /**< Process-shared lock for modifying SR internal module data. */
-    uint32_t content_id;        /**< Context content ID of the latest context. */
-    uint32_t schema_mount_data_id; /**< ID of the latest schema mount data change. */
+    pid_t run_cache_pids[SR_MAIN_SHM_CACHE_PID_SIZE];   /**< PIDs of processes with data in runnning data cache. */
+    pid_t oper_cache_pids[SR_MAIN_SHM_CACHE_PID_SIZE];  /**< PIDs of processes with data in operational data cache. */
+    uint32_t content_id;            /**< Context content ID of the latest context. */
+    uint32_t schema_mount_data_id;  /**< ID of the latest schema mount data change. */
 
     ATOMIC_T new_sr_cid;        /**< Connection ID for a new connection. */
     ATOMIC_T new_sr_sid;        /**< SID for a new session. */

@@ -244,6 +244,59 @@ sr_lycc_relock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, const char *func)
 {
     sr_error_info_t *err_info = NULL;
     sr_main_shm_t *main_shm = SR_CONN_MAIN_SHM(conn);
+    sr_rwlock_t *rwlock = &main_shm->context_lock;
+    struct timespec timeout_abs;
+    int rc, r;
+
+    /* when upgrading the context lock (changing the context), make sure there are no cached data left in any process */
+    if (mode == SR_LOCK_WRITE) {
+        sr_timeouttime_get(&timeout_abs, SR_CONTEXT_LOCK_TIMEOUT);
+
+        /* CONTEXT MUTEX LOCK */
+        rc = pthread_mutex_clocklock(&rwlock->mutex, COMPAT_CLOCK_ID, &timeout_abs);
+        if (rc == EOWNERDEAD) {
+            /* make it consistent */
+            rc = pthread_mutex_consistent(&rwlock->mutex);
+            SR_CHECK_INT_RET(rc, err_info);
+        } else if (rc) {
+            sr_errinfo_new_lock(&err_info, func, rc, rwlock);
+            return err_info;
+        }
+
+        if (main_shm->run_cache_pids[0] || main_shm->oper_cache_pids[0]) {
+            /* instead of waiting, try to recover the PIDs immediately */
+            sr_pid_array_recover(main_shm->run_cache_pids, SR_MAIN_SHM_CACHE_PID_SIZE);
+            sr_pid_array_recover(main_shm->oper_cache_pids, SR_MAIN_SHM_CACHE_PID_SIZE);
+        }
+
+        /* wait until there are no cached data stored */
+        rc = 0;
+        while (!rc && (main_shm->run_cache_pids[0] || main_shm->oper_cache_pids[0])) {
+            /* COND WAIT */
+            rc = sr_cond_clockwait(&rwlock->cond, &rwlock->mutex, COMPAT_CLOCK_ID, &timeout_abs);
+        }
+        if (rc == ETIMEDOUT) {
+            /* recover the PIDs again, the owners may have died while processing */
+            sr_pid_array_recover(main_shm->run_cache_pids, SR_MAIN_SHM_CACHE_PID_SIZE);
+            sr_pid_array_recover(main_shm->oper_cache_pids, SR_MAIN_SHM_CACHE_PID_SIZE);
+            if (!main_shm->run_cache_pids[0] && !main_shm->oper_cache_pids[0]) {
+                /* recovered */
+                rc = 0;
+            }
+        }
+
+        /* CONTEXT MUTEX UNLOCK */
+        r = pthread_mutex_unlock(&rwlock->mutex);
+        if (r) {
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unlocking a mutex in %s() failed (%s).", func, strerror(r));
+            sr_errinfo_free(&err_info);
+        }
+
+        if (rc) {
+            sr_errinfo_new_lock(&err_info, func, rc, rwlock);
+            return err_info;
+        }
+    }
 
     /* RELOCK */
     if ((err_info = sr_rwrelock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, mode, conn->cid, func, NULL, NULL))) {

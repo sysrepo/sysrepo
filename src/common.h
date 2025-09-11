@@ -244,7 +244,7 @@ struct sr_run_cache_s {
         uint32_t id;                    /**< Cached module data ID. */
     } *mods;                            /**< Cached modules. */
     uint32_t mod_count;                 /**< Cached module count. */
-    sr_cid_t ctx_lock;                  /**< Set if CTX READ LOCK is being held, always if there are any data. */
+    pid_t shm_pid;                      /**< Set if present in main SHM running cache pids, always if there are any data. */
     sr_rwlock_t lock;                   /**< Lock for accessing the cache. */
 };
 
@@ -269,7 +269,7 @@ struct sr_oper_cache_s {
         struct timespec timestamp;  /**< Timestamp of the cached operational data. */
     } *subs;                        /**< Operational subscription data caches. */
     uint32_t sub_count;             /**< Operational subscription data cache count. */
-    sr_cid_t ctx_lock;              /**< Set if CTX READ LOCK is being held, always if there are any data. */
+    pid_t shm_pid;                  /**< Set if present in main SHM operational cache pids, always if there are any data. */
     sr_rwlock_t lock;               /**< Operational subscription data cache lock. */
 };
 
@@ -1029,6 +1029,14 @@ int sr_schema_mount_changed_oper_data(const struct lyd_node *oper_data);
  * @return err_info on error, NULL on success.
  */
 sr_error_info_t *sr_schema_mount_ds_data_update(sr_conn_ctx_t *conn, struct sr_lycc_ds_data_set_s *data_old);
+
+/**
+ * @brief Check the existence of all processes in the array removing any dead ones.
+ *
+ * @param[in] pids Array of PIDs.
+ * @param[in] pid_size Size of @p pids array.
+ */
+void sr_pid_array_recover(pid_t *pids, uint32_t pid_size);
 
 /**
  * @brief Update CONTEXT READ LOCK of the operational cache data.

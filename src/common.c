@@ -3356,6 +3356,135 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Add the current process PID to an array, holding a lock.
+ *
+ * @param[in] pids Array of PIDs.
+ * @param[in] pid_size Size of @p pids array.
+ * @param[in] rwlock Lock to WRITE lock.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_pid_array_add_locked(pid_t *pids, uint32_t pid_size, sr_rwlock_t *rwlock)
+{
+    sr_error_info_t *err_info = NULL, *tmp_err = NULL;
+    struct timespec timeout_abs;
+    uint32_t i;
+    int rc, r;
+
+    sr_timeouttime_get(&timeout_abs, SR_CONTEXT_LOCK_TIMEOUT);
+
+    /* CONTEXT MUTEX LOCK */
+    rc = pthread_mutex_clocklock(&rwlock->mutex, COMPAT_CLOCK_ID, &timeout_abs);
+    if (rc == EOWNERDEAD) {
+        rc = pthread_mutex_consistent(&rwlock->mutex);
+        SR_CHECK_INT_GOTO(rc, err_info, cleanup);
+    } else if (rc) {
+        sr_errinfo_new_lock(&err_info, __func__, rc, rwlock);
+        goto cleanup;
+    }
+
+    /* find the first free pid */
+    for (i = 0; (i < pid_size) && pids[i]; ++i) {
+        assert(pids[i] != getpid());
+    }
+
+    if (i == pid_size) {
+        sr_errinfo_new(&err_info, SR_ERR_LOCKED, "Maximum number %" PRIu32 " of processes with cached data reached.",
+                pid_size);
+    } else {
+        pids[i] = getpid();
+    }
+
+    /* CONTEXT MUTEX UNLOCK */
+    r = pthread_mutex_unlock(&rwlock->mutex);
+    if (r) {
+        sr_errinfo_new(&tmp_err, SR_ERR_INTERNAL, "Unlocking a mutex in %s() failed (%s).", __func__, strerror(r));
+        sr_errinfo_free(&tmp_err);
+    }
+
+cleanup:
+    return err_info;
+}
+
+/**
+ * @brief Delete the current process PID from an array, holding a lock.
+ *
+ * @param[in] pids Array of PIDs.
+ * @param[in] pid_size Size of @p pids array.
+ * @param[in] rwlock Lock to WRITE lock.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_pid_array_del_locked(pid_t *pids, uint32_t pid_size, sr_rwlock_t *rwlock)
+{
+    sr_error_info_t *err_info = NULL, *tmp_err = NULL;
+    struct timespec timeout_abs;
+    uint32_t i;
+    int rc, r;
+
+    sr_timeouttime_get(&timeout_abs, SR_CONTEXT_LOCK_TIMEOUT);
+
+    /* CONTEXT MUTEX LOCK */
+    rc = pthread_mutex_clocklock(&rwlock->mutex, COMPAT_CLOCK_ID, &timeout_abs);
+    if (rc == EOWNERDEAD) {
+        rc = pthread_mutex_consistent(&rwlock->mutex);
+        SR_CHECK_INT_GOTO(rc, err_info, cleanup);
+    } else if (rc) {
+        sr_errinfo_new_lock(&err_info, __func__, rc, rwlock);
+        goto cleanup;
+    }
+
+    /* find the pid */
+    for (i = 0; i < pid_size; ++i) {
+        if (pids[i] == getpid()) {
+            break;
+        }
+    }
+
+    if (i == pid_size) {
+        SR_ERRINFO_INT(&err_info);
+    } else {
+        if (i + 1 < pid_size) {
+            /* clear the PID by moving the following ones */
+            memmove(&pids[i], &pids[i + 1], ((pid_size - 1) - i) * sizeof *pids);
+        } else {
+            /* remove the PID */
+            pids[i] = 0;
+        }
+    }
+
+    /* CONTEXT MUTEX UNLOCK */
+    r = pthread_mutex_unlock(&rwlock->mutex);
+    if (r) {
+        sr_errinfo_new(&tmp_err, SR_ERR_INTERNAL, "Unlocking a mutex in %s() failed (%s).", __func__, strerror(r));
+        sr_errinfo_free(&tmp_err);
+    }
+
+cleanup:
+    return err_info;
+}
+
+void
+sr_pid_array_recover(pid_t *pids, uint32_t pid_size)
+{
+    uint32_t i = 0;
+
+    while ((i < pid_size) && pids[i]) {
+        /* check the process exists */
+        if ((kill(pids[i], 0) == -1) && (errno = ESRCH)) {
+            /* dead process */
+            if (i + 1 < pid_size) {
+                memmove(&pids[i], &pids[i + 1], ((pid_size - 1) - i) * sizeof *pids);
+            } else {
+                pids[i] = 0;
+            }
+        } else {
+            ++i;
+        }
+    }
+}
+
 sr_error_info_t *
 sr_oper_cache_ctx_lock_update(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache)
 {
@@ -3372,20 +3501,24 @@ sr_oper_cache_ctx_lock_update(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache)
     }
 
     /* lock required only if using printed context, which is overwritten on change */
-    if (!oper_cache->ctx_lock && has_data && ly_ctx_is_printed(sr_yang_ctx.ly_ctx)) {
-        /* CONTEXT LOCK */
-        if ((err_info = sr_rwlock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__,
-                NULL, NULL))) {
+    if (!oper_cache->shm_pid && has_data && ly_ctx_is_printed(sr_yang_ctx.ly_ctx)) {
+        /* add our PID to the main SHM */
+        if ((err_info = sr_pid_array_add_locked(main_shm->oper_cache_pids, SR_MAIN_SHM_CACHE_PID_SIZE,
+                &main_shm->context_lock))) {
             goto cleanup;
         }
 
-        /* store the lock connection CID so the cache can be flushed by any connection */
-        oper_cache->ctx_lock = conn->cid;
-    } else if (oper_cache->ctx_lock && !has_data) {
-        /* CONTEXT UNLOCK */
-        sr_rwunlock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, SR_LOCK_READ, oper_cache->ctx_lock, __func__);
+        /* store the PID */
+        oper_cache->shm_pid = getpid();
+    } else if (oper_cache->shm_pid && !has_data) {
+        /* delete our PID from the main SHM */
+        if ((err_info = sr_pid_array_del_locked(main_shm->oper_cache_pids, SR_MAIN_SHM_CACHE_PID_SIZE,
+                &main_shm->context_lock))) {
+            goto cleanup;
+        }
 
-        oper_cache->ctx_lock = 0;
+        /* clear the PID */
+        oper_cache->shm_pid = 0;
     }
 
 cleanup:
@@ -3558,20 +3691,24 @@ sr_run_cache_ctx_lock_update(sr_conn_ctx_t *conn, sr_run_cache_t *run_cache)
     sr_main_shm_t *main_shm = SR_CONN_MAIN_SHM(conn);
 
     /* lock required only if using printed context, which is overwritten on change */
-    if (!run_cache->ctx_lock && run_cache->data && ly_ctx_is_printed(sr_yang_ctx.ly_ctx)) {
-        /* CONTEXT LOCK */
-        if ((err_info = sr_rwlock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__,
-                NULL, NULL))) {
+    if (!run_cache->shm_pid && run_cache->data && ly_ctx_is_printed(sr_yang_ctx.ly_ctx)) {
+        /* add our PID to the main SHM */
+        if ((err_info = sr_pid_array_add_locked(main_shm->run_cache_pids, SR_MAIN_SHM_CACHE_PID_SIZE,
+                &main_shm->context_lock))) {
             goto cleanup;
         }
 
-        /* store the lock connection CID so the cache can be flushed by any connection */
-        run_cache->ctx_lock = conn->cid;
-    } else if (run_cache->ctx_lock && !run_cache->data) {
-        /* CONTEXT UNLOCK */
-        sr_rwunlock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, SR_LOCK_READ, run_cache->ctx_lock, __func__);
+        /* store the PID */
+        run_cache->shm_pid = getpid();
+    } else if (run_cache->shm_pid && !run_cache->data) {
+        /* delete our PID from the main SHM */
+        if ((err_info = sr_pid_array_del_locked(main_shm->run_cache_pids, SR_MAIN_SHM_CACHE_PID_SIZE,
+                &main_shm->context_lock))) {
+            goto cleanup;
+        }
 
-        run_cache->ctx_lock = 0;
+        /* clear the PID */
+        run_cache->shm_pid = 0;
     }
 
 cleanup:
