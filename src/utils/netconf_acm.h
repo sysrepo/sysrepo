@@ -95,6 +95,15 @@ const char *sr_nacm_get_recovery_user(void);
  */
 int sr_nacm_check_operation(sr_session_ctx_t *session, const struct lyd_node *op);
 
+/**
+ * @brief Explicitly filter data and remove any that the NACM user has no read access for.
+ *
+ * @param[in] session Session to use, must have NACM username set for the filtering to be performed.
+ * @param[in,out] data Data tree to filter.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_nacm_filter_data_read(sr_session_ctx_t *session, struct lyd_node **data);
+
 #ifdef __cplusplus
 }
 #endif

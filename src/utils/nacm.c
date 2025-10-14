@@ -2121,6 +2121,57 @@ cleanup:
     return err_info;
 }
 
+API int
+sr_nacm_filter_data_read(sr_session_ctx_t *session, struct lyd_node **data)
+{
+    sr_error_info_t *err_info = NULL;
+    char **groups = NULL;
+    uint32_t group_count = 0;
+    struct ly_set denied_set = {0};
+    struct lyd_node *root;
+    uint32_t i;
+
+    SR_CHECK_ARG_APIRET(!session || !data, session, err_info);
+
+    if (!session->nacm_user || !*data) {
+        goto cleanup;
+    }
+
+    /* NACM LOCK */
+    pthread_mutex_lock(&nacm.lock);
+
+    /* collect groups */
+    if ((err_info = sr_nacm_collect_groups(session->nacm_user, &groups, &group_count))) {
+        goto cleanup_unlock;
+    }
+
+    /* apply NACM on all the subtrees */
+    LY_LIST_FOR(*data, root) {
+        if ((err_info = sr_nacm_check_data_read_filter(root, session->nacm_user, groups, group_count, &denied_set))) {
+            goto cleanup_unlock;
+        }
+    }
+
+    /* NACM UNLOCK */
+    pthread_mutex_unlock(&nacm.lock);
+
+    for (i = 0; i < denied_set.count; ++i) {
+        /* free the denied nodes while adjusting the first node pointer */
+        sr_lyd_free_tree_safe(denied_set.dnodes[i], data);
+    }
+
+    goto cleanup;
+
+cleanup_unlock:
+    /* NACM UNLOCK */
+    pthread_mutex_unlock(&nacm.lock);
+
+cleanup:
+    sr_nacm_free_groups(groups, group_count);
+    ly_set_erase(&denied_set, NULL);
+    return sr_api_ret(session, err_info);
+}
+
 /**
  * @brief Check whether diff node siblings can be applied by a user, recursively with children.
  *
