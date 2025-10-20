@@ -1093,8 +1093,8 @@ print_test_results(const char *test_name, int64_t time, int64_t dflt_time)
     printf("|\n");
 }
 
-void
-print_bottom_table_boundary()
+static void
+print_bottom_table_boundary(void)
 {
     uint32_t i;
 
