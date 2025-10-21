@@ -55,7 +55,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 # micro version is changed with a set of small changes or bugfixes anywhere in the project.
 set(SYSREPO_MAJOR_VERSION 4)
 set(SYSREPO_MINOR_VERSION 1)
-set(SYSREPO_MICRO_VERSION 1)
+set(SYSREPO_MICRO_VERSION 2)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
 
 # Version of the library
