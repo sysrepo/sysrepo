@@ -2215,7 +2215,7 @@ sr_mlock(pthread_mutex_t *lock, int timeout_ms, const char *func, sr_lock_recove
         SR_LOG_WRN("Recovered a lock with a dead owner (%s).", func);
     } else if (ret) {
         sr_errinfo_new(&err_info, (ret == ETIMEDOUT) ? SR_ERR_TIME_OUT : SR_ERR_INTERNAL, "Locking a mutex failed (%s: %s).",
-                __func__, strerror(ret));
+                func, strerror(ret));
         return err_info;
     }
 
@@ -2629,7 +2629,7 @@ sr_sub_rwlock(sr_rwlock_t *rwlock, struct timespec *timeout_abs, sr_lock_mode_t 
         /* MUTEX UNLOCK */
         r = pthread_mutex_unlock(&rwlock->mutex);
         if (r) {
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unlocking a mutex in %s() failed (%s).", __func__, strerror(r));
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unlocking a mutex failed (%s: %s).", func, strerror(r));
         }
 
     } else {
@@ -2663,7 +2663,7 @@ sr_sub_rwlock(sr_rwlock_t *rwlock, struct timespec *timeout_abs, sr_lock_mode_t 
         /* MUTEX UNLOCK */
         r = pthread_mutex_unlock(&rwlock->mutex);
         if (r) {
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unlocking a mutex in %s() failed (%s).", __func__, strerror(r));
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unlocking a mutex failed (%s: %s).", func, strerror(r));
         }
     }
 
@@ -2971,7 +2971,7 @@ sr_rwunlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
     /* MUTEX UNLOCK */
     ret = pthread_mutex_unlock(&rwlock->mutex);
     if (ret) {
-        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unlocking a mutex in %s() failed (%s).", __func__, strerror(ret));
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unlocking a mutex failed (%s: %s).", func, strerror(ret));
         sr_errinfo_free(&err_info);
     }
 }
