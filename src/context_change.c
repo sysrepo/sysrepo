@@ -263,15 +263,16 @@ sr_lycc_relock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, const char *func)
             return err_info;
         }
 
-        if (main_shm->run_cache_pids[0] || main_shm->oper_cache_pids[0]) {
+        if (main_shm->run_cache_pids[0] || main_shm->oper_cache_pids[0] || main_shm->oper_push_cache_cids[0]) {
             /* instead of waiting, try to recover the PIDs immediately */
             sr_pid_array_recover(main_shm->run_cache_pids, SR_MAIN_SHM_CACHE_PID_SIZE);
             sr_pid_array_recover(main_shm->oper_cache_pids, SR_MAIN_SHM_CACHE_PID_SIZE);
+            sr_cid_array_recover(main_shm->oper_push_cache_cids, SR_MAIN_SHM_CACHE_PID_SIZE);
         }
 
         /* wait until there are no cached data stored */
         rc = 0;
-        while (!rc && (main_shm->run_cache_pids[0] || main_shm->oper_cache_pids[0])) {
+        while (!rc && (main_shm->run_cache_pids[0] || main_shm->oper_cache_pids[0] || main_shm->oper_push_cache_cids[0])) {
             /* COND WAIT */
             rc = sr_cond_clockwait(&rwlock->cond, &rwlock->mutex, COMPAT_CLOCK_ID, &timeout_abs);
         }
@@ -279,7 +280,8 @@ sr_lycc_relock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, const char *func)
             /* recover the PIDs again, the owners may have died while processing */
             sr_pid_array_recover(main_shm->run_cache_pids, SR_MAIN_SHM_CACHE_PID_SIZE);
             sr_pid_array_recover(main_shm->oper_cache_pids, SR_MAIN_SHM_CACHE_PID_SIZE);
-            if (!main_shm->run_cache_pids[0] && !main_shm->oper_cache_pids[0]) {
+            sr_cid_array_recover(main_shm->oper_push_cache_cids, SR_MAIN_SHM_CACHE_PID_SIZE);
+            if (!main_shm->run_cache_pids[0] && !main_shm->oper_cache_pids[0] && !main_shm->oper_push_cache_cids[0]) {
                 /* recovered */
                 rc = 0;
             }

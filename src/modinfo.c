@@ -1409,7 +1409,8 @@ sr_oper_data_merge_cb(struct lyd_node *trg_node, const struct lyd_node *src_node
  * @return err_info if an error occurs during duplication, NULL otherwise.
  */
 static sr_error_info_t *
-sr_modinfo_module_data_cache_get(sr_session_ctx_t *sess, const char *mod_name, int dup, int *has_data, struct lyd_node **mod_data)
+sr_modinfo_module_data_cache_get(sr_session_ctx_t *sess, const char *mod_name, int dup, int *has_data,
+        struct lyd_node **mod_data)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
@@ -1448,6 +1449,13 @@ sr_modinfo_module_data_cache_get(sr_session_ctx_t *sess, const char *mod_name, i
         /* consume the cache */
         *mod_data = sess->oper_push_mods[i].cache;
         sess->oper_push_mods[i].cache = NULL;
+
+        /* update ctx lock */
+        if ((err_info = sr_oper_push_cache_ctx_lock_update(sess->conn))) {
+            lyd_free_siblings(*mod_data);
+            *mod_data = NULL;
+            return err_info;
+        }
     }
 
     return NULL;
@@ -4070,6 +4078,11 @@ sr_modinfo_push_oper_mod_update_cache(sr_session_ctx_t *sess, const char *mod_na
 
     sess->oper_push_mods[i].has_data = !!data;
     sess->oper_push_mods[i].cache = data;
+
+    /* update ctx lock */
+    if (data && (err_info = sr_oper_push_cache_ctx_lock_update(sess->conn))) {
+        goto cleanup;
+    }
 
 cleanup:
     return err_info;

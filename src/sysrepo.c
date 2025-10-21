@@ -803,6 +803,7 @@ _sr_session_stop(sr_session_ctx_t *session)
 
     /* free any push oper module names */
     for (i = 0; i < session->oper_push_mod_count; ++i) {
+        assert(!session->oper_push_mods[i].cache && !session->oper_push_mods[i].shm_cid);
         free(session->oper_push_mods[i].name);
     }
     free(session->oper_push_mods);

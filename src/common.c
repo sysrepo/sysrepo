@@ -3525,6 +3525,196 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Add the CID to an array, holding a lock.
+ *
+ * @param[in] cids Array of CIDs.
+ * @param[in] cid_size Size of @p cids array.
+ * @param[in] cid CID to add.
+ * @param[in] rwlock Lock to WRITE lock.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_cid_array_add_locked(sr_cid_t *cids, uint32_t cid_size, sr_cid_t cid, sr_rwlock_t *rwlock)
+{
+    sr_error_info_t *err_info = NULL, *tmp_err = NULL;
+    struct timespec timeout_abs;
+    uint32_t i;
+    int rc, r;
+
+    sr_timeouttime_get(&timeout_abs, SR_CONTEXT_LOCK_TIMEOUT);
+
+    /* CONTEXT MUTEX LOCK */
+    rc = pthread_mutex_clocklock(&rwlock->mutex, COMPAT_CLOCK_ID, &timeout_abs);
+    if (rc == EOWNERDEAD) {
+        rc = pthread_mutex_consistent(&rwlock->mutex);
+        SR_CHECK_INT_GOTO(rc, err_info, cleanup);
+    } else if (rc) {
+        sr_errinfo_new_lock(&err_info, __func__, rc, rwlock);
+        goto cleanup;
+    }
+
+    /* find the first free cid */
+    for (i = 0; (i < cid_size) && cids[i]; ++i) {
+        assert(cids[i] != cid);
+    }
+
+    if (i == cid_size) {
+        sr_errinfo_new(&err_info, SR_ERR_LOCKED, "Maximum number %" PRIu32 " of connections with cached data reached.",
+                cid_size);
+    } else {
+        cids[i] = cid;
+    }
+
+    /* CONTEXT MUTEX UNLOCK */
+    r = pthread_mutex_unlock(&rwlock->mutex);
+    if (r) {
+        sr_errinfo_new(&tmp_err, SR_ERR_INTERNAL, "Unlocking a mutex in %s() failed (%s).", __func__, strerror(r));
+        sr_errinfo_free(&tmp_err);
+    }
+
+cleanup:
+    return err_info;
+}
+
+/**
+ * @brief Delete a CID from an array, holding a lock.
+ *
+ * @param[in] cids Array of CIDs.
+ * @param[in] cid_size Size of @p cids array.
+ * @param[in] cid CID to delete.
+ * @param[in] rwlock Lock to WRITE lock.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_cid_array_del_locked(sr_cid_t *cids, uint32_t cid_size, sr_cid_t cid, sr_rwlock_t *rwlock)
+{
+    sr_error_info_t *err_info = NULL, *tmp_err = NULL;
+    struct timespec timeout_abs;
+    uint32_t i;
+    int rc, r;
+
+    sr_timeouttime_get(&timeout_abs, SR_CONTEXT_LOCK_TIMEOUT);
+
+    /* CONTEXT MUTEX LOCK */
+    rc = pthread_mutex_clocklock(&rwlock->mutex, COMPAT_CLOCK_ID, &timeout_abs);
+    if (rc == EOWNERDEAD) {
+        rc = pthread_mutex_consistent(&rwlock->mutex);
+        SR_CHECK_INT_GOTO(rc, err_info, cleanup);
+    } else if (rc) {
+        sr_errinfo_new_lock(&err_info, __func__, rc, rwlock);
+        goto cleanup;
+    }
+
+    /* find the cid */
+    for (i = 0; i < cid_size; ++i) {
+        if (cids[i] == cid) {
+            break;
+        }
+    }
+
+    if (i == cid_size) {
+        SR_ERRINFO_INT(&err_info);
+    } else {
+        if (i + 1 < cid_size) {
+            /* clear the CID by moving the following ones */
+            memmove(&cids[i], &cids[i + 1], ((cid_size - 1) - i) * sizeof *cids);
+        } else {
+            /* remove the CID */
+            cids[i] = 0;
+        }
+    }
+
+    /* CONTEXT MUTEX UNLOCK */
+    r = pthread_mutex_unlock(&rwlock->mutex);
+    if (r) {
+        sr_errinfo_new(&tmp_err, SR_ERR_INTERNAL, "Unlocking a mutex in %s() failed (%s).", __func__, strerror(r));
+        sr_errinfo_free(&tmp_err);
+    }
+
+cleanup:
+    return err_info;
+}
+
+void
+sr_cid_array_recover(sr_cid_t *cids, uint32_t cid_size)
+{
+    uint32_t i = 0;
+
+    while ((i < cid_size) && cids[i]) {
+        /* check the connection is alive */
+        if (!sr_conn_is_alive(cids[i])) {
+            /* dead connection */
+            if (i + 1 < cid_size) {
+                memmove(&cids[i], &cids[i + 1], ((cid_size - 1) - i) * sizeof *cids);
+            } else {
+                cids[i] = 0;
+            }
+        } else {
+            ++i;
+        }
+    }
+}
+
+sr_error_info_t *
+sr_oper_push_cache_ctx_lock_update(sr_conn_ctx_t *conn)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_main_shm_t *main_shm = SR_CONN_MAIN_SHM(conn);
+    struct sr_oper_push_cache_s *op_mod;
+    int add_cid = 0, del_cid = 0, has_cid = 0;
+    uint32_t i, j;
+
+    for (i = 0; i < conn->session_count; i++) {
+        for (j = 0; j < conn->sessions[i]->oper_push_mod_count; j++) {
+            op_mod = &conn->sessions[i]->oper_push_mods[j];
+
+            if (op_mod->cache && !op_mod->shm_cid) {
+                /* add CID */
+                op_mod->shm_cid = conn->cid;
+                add_cid = 1;
+            } else if (!op_mod->cache && op_mod->shm_cid) {
+                /* del CID */
+                op_mod->shm_cid = 0;
+                del_cid = 1;
+            } else if (op_mod->shm_cid) {
+                /* CID currently added and needed */
+                has_cid = 1;
+            }
+        }
+    }
+
+    if (add_cid && del_cid) {
+        /* added for some data, removed for other */
+        add_cid = 0;
+        del_cid = 0;
+    } else if (add_cid && has_cid) {
+        /* CID already added */
+        add_cid = 0;
+    } else if (del_cid && has_cid) {
+        /* CID still needed for some data */
+        del_cid = 0;
+    }
+
+    /* lock required only if using printed context, which is overwritten on change */
+    if (add_cid && ly_ctx_is_printed(sr_yang_ctx.ly_ctx)) {
+        /* add our CID to the main SHM */
+        if ((err_info = sr_cid_array_add_locked(main_shm->oper_push_cache_cids, SR_MAIN_SHM_CACHE_PID_SIZE, conn->cid,
+                &main_shm->context_lock))) {
+            goto cleanup;
+        }
+    } else if (del_cid) {
+        /* delete our CID from the main SHM */
+        if ((err_info = sr_cid_array_del_locked(main_shm->oper_push_cache_cids, SR_MAIN_SHM_CACHE_PID_SIZE, conn->cid,
+                &main_shm->context_lock))) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    return err_info;
+}
+
 sr_error_info_t *
 sr_oper_cache_add(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache, uint32_t sub_id, const char *module_name,
         const char *path)
@@ -3674,6 +3864,11 @@ sr_oper_cache_flush(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache)
             lyd_free_siblings(conn->sessions[i]->oper_push_mods[j].cache);
             conn->sessions[i]->oper_push_mods[j].cache = NULL;
         }
+    }
+
+    /* update ctx lock */
+    if ((err_info = sr_oper_push_cache_ctx_lock_update(conn))) {
+        sr_errinfo_free(&err_info);
     }
 }
 

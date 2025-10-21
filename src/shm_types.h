@@ -25,7 +25,7 @@
 #include "common_types.h"
 #include "sysrepo_types.h"
 
-#define SR_SHM_VER 22   /**< Main, mod, and ext SHM version of their expected content structures. */
+#define SR_SHM_VER 23   /**< Main, mod, and ext SHM version of their expected content structures. */
 #define SR_MAIN_SHM_LOCK "sr_main_lock"     /**< Main SHM file lock name. */
 
 /**
@@ -208,6 +208,7 @@ typedef struct {
     pthread_mutex_t lydmods_lock;   /**< Process-shared lock for modifying SR internal module data. */
     pid_t run_cache_pids[SR_MAIN_SHM_CACHE_PID_SIZE];   /**< PIDs of processes with data in runnning data cache. */
     pid_t oper_cache_pids[SR_MAIN_SHM_CACHE_PID_SIZE];  /**< PIDs of processes with data in operational data cache. */
+    sr_cid_t oper_push_cache_cids[SR_MAIN_SHM_CACHE_PID_SIZE];  /**< CIDs of connections with sessions with data in oper push cache. */
     uint32_t content_id;            /**< Context content ID of the latest context. */
     uint32_t schema_mount_data_id;  /**< ID of the latest schema mount data change. */
 
