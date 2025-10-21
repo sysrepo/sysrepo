@@ -3696,8 +3696,8 @@ sr_oper_push_cache_ctx_lock_update(sr_conn_ctx_t *conn)
         del_cid = 0;
     }
 
-    /* lock required only if using printed context, which is overwritten on change */
-    if (add_cid && ly_ctx_is_printed(sr_yang_ctx.ly_ctx)) {
+    /* even local context is shared between the connections */
+    if (add_cid) {
         /* add our CID to the main SHM */
         if ((err_info = sr_cid_array_add_locked(main_shm->oper_push_cache_cids, SR_MAIN_SHM_CACHE_PID_SIZE, conn->cid,
                 &main_shm->context_lock))) {
