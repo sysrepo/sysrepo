@@ -990,15 +990,6 @@ sr_error_info_t *sr_schema_mount_data_get(sr_conn_ctx_t *conn, const struct ly_c
         struct lyd_node **sm_data);
 
 /**
- * @brief Destroy schema mount contexts in a libyang context based on the sysrepo data.
- *
- * @param[in] ly_ctx libyang context.
- * @param[in] sr_data sysrepo module data.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_schema_mount_destroy_contexts(struct ly_ctx *ly_ctx, const struct lyd_node *sr_data);
-
-/**
  * @brief Create schema mount contexts in a libyang context based on the sysrepo data.
  *
  * @param[in] ly_ctx libyang context.

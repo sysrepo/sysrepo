@@ -3087,48 +3087,6 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_schema_mount_destroy_contexts(struct ly_ctx *ly_ctx, const struct lyd_node *sr_data)
-{
-    sr_error_info_t *err_info = NULL;
-    struct ly_set *set = NULL;
-    const struct lysc_node *snode = NULL;
-    struct lysc_ext_instance *ext;
-    LY_ARRAY_COUNT_TYPE u;
-    uint32_t i;
-
-    /* get all the extension instances */
-    if ((err_info = sr_lyd_find_xpath(sr_data, "module/schema-mount-ext-instance", &set))) {
-        goto cleanup;
-    }
-
-    for (i = 0; i < set->count; ++i) {
-        /* find the schema node based on the value of the extension instance */
-        if ((err_info = sr_lys_find_path(ly_ctx, lyd_get_value(set->dnodes[i]), NULL, &snode))) {
-            goto cleanup;
-        }
-
-        /* find a schema mount extension of this node */
-        LY_ARRAY_FOR(snode->exts, u) {
-            ext = &snode->exts[u];
-            if (strcmp(ext->def->module->name, "ietf-yang-schema-mount") || strcmp(ext->def->name, "mount-point")) {
-                /* not a mount point extension */
-                continue;
-            }
-
-            /* destroy the shared contexts */
-            lyplg_ext_schema_mount_destroy_shared_contexts(ext);
-
-            /* all schema mount contexts for this ly_ctx were destroyed */
-            goto cleanup;
-        }
-    }
-
-cleanup:
-    ly_set_free(set, NULL);
-    return err_info;
-}
-
-sr_error_info_t *
 sr_schema_mount_create_contexts(struct ly_ctx *ly_ctx, const struct lyd_node *sr_data)
 {
     sr_error_info_t *err_info = NULL;

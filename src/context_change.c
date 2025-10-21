@@ -897,11 +897,6 @@ sr_lycc_update_data(sr_conn_ctx_t *conn, struct sr_lycc_info_s *cc_info, sr_shm_
     sr_run_cache_flush(conn, sr_run_cache);
     sr_oper_cache_flush(conn, sr_oper_cache);
 
-    /* destroy any current nested schema mount contexts */
-    if ((err_info = sr_schema_mount_destroy_contexts(cc_info->ly_ctx_old, cc_info->sr_mods_old))) {
-        goto cleanup;
-    }
-
     /* create new nested schema mount contexts so they can be printed */
     if ((err_info = sr_schema_mount_create_contexts(cc_info->ly_ctx_new, cc_info->sr_mods_new))) {
         goto cleanup;
