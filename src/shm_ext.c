@@ -1306,7 +1306,7 @@ sr_shmext_notif_sub_remove_dead(sr_conn_ctx_t *conn, sr_mod_t *shm_mod)
 {
     uint32_t i = 0;
     sr_error_info_t *err_info = NULL;
-    sr_mod_notif_sub_t *notif_subs = (sr_mod_notif_sub_t *)(conn->ext_shm.addr + shm_mod->notif_subs);
+    sr_mod_notif_sub_t *notif_subs = NULL;
 
     /* EXT READ LOCK */
     if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 1, __func__))) {
@@ -1314,6 +1314,7 @@ sr_shmext_notif_sub_remove_dead(sr_conn_ctx_t *conn, sr_mod_t *shm_mod)
         return;
     }
 
+    notif_subs = (sr_mod_notif_sub_t *)(conn->ext_shm.addr + shm_mod->notif_subs);
     while (i < shm_mod->notif_sub_count) {
         if (sr_conn_is_alive(notif_subs[i].cid)) {
             i++;
