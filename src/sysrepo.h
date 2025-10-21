@@ -153,13 +153,13 @@ void sr_cache_running(int enable);
  *
  * Any options set will override the previous ones.
  *
- * The context options are not applied immediately, they are only applied when the
- * current YANG context is altered (e.g. a new module is installed by ::sr_install_modules()).
- *
  * @param[in] opts New options to use, it is a bitwise OR of ::sr_context_flag_t flags.
+ * @param[in] conn Optional connection to use to rebuild the context and apply @p opts immediately. If not set,
+ * the context options are applied the next time a context is updated (YANG modules added or removed, features
+ * changed, ...).
  * @return Previous options.
  */
-uint32_t sr_context_options(uint32_t opts);
+uint32_t sr_context_options(uint32_t opts, sr_conn_ctx_t *conn);
 
 /**
  * @brief Get the _libyang_ context used by a connection. Can be used in an application for working with data

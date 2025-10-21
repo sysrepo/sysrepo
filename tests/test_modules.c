@@ -113,6 +113,28 @@ cmp_int_data(sr_conn_ctx_t *conn, const char *module_name, const char *expected)
 }
 
 static void
+test_context_options(void **state)
+{
+    struct state *st = (struct state *)*state;
+    const struct ly_ctx *ly_ctx;
+    const struct lysc_node *snode;
+
+    /* no parsed nodes */
+    ly_ctx = sr_acquire_context(st->conn);
+    snode = lys_find_path(ly_ctx, NULL, "/ietf-yang-library:yang-library", 0);
+    assert_true(snode && !snode->priv);
+    sr_release_context(st->conn);
+
+    sr_context_options(SR_CTX_NO_PRINTED | SR_CTX_SET_PRIV_PARSED, st->conn);
+
+    /* pointer to parsed nodes */
+    ly_ctx = sr_acquire_context(st->conn);
+    snode = lys_find_path(ly_ctx, NULL, "/ietf-yang-library:yang-library", 0);
+    assert_true(snode && snode->priv);
+    sr_release_context(st->conn);
+}
+
+static void
 test_install_module(void **state)
 {
     struct state *st = (struct state *)*state;
@@ -1619,6 +1641,7 @@ int
 main(void)
 {
     const struct CMUnitTest tests[] = {
+        cmocka_unit_test_setup_teardown(test_context_options, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_install_module, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_data_deps, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_op_deps, setup_f, teardown_f),

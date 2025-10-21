@@ -420,13 +420,43 @@ sr_cache_running(int enable)
 }
 
 API uint32_t
-sr_context_options(uint32_t opts)
+sr_context_options(uint32_t opts, sr_conn_ctx_t *conn)
 {
+    sr_error_info_t *err_info = NULL;
     uint32_t cur_opts = ATOMIC_LOAD_RELAXED(sr_yang_ctx.sr_opts);
+    sr_main_shm_t *main_shm;
 
     /* override the current options */
     ATOMIC_STORE_RELAXED(sr_yang_ctx.sr_opts, opts);
 
+    if (conn) {
+        main_shm = SR_CONN_MAIN_SHM(conn);
+
+        /* CONTEXT WRITE LOCK */
+        if ((err_info = sr_rwlock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
+                NULL, NULL))) {
+            goto cleanup;
+        }
+
+        /* zero the content_id, causes context rebuild */
+        sr_yang_ctx.content_id = 0;
+
+        /* CONTEXT WRITE UNLOCK */
+        sr_rwunlock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+
+        /* rebuild the context by locking it */
+
+        /* CONTEXT LOCK */
+        if ((err_info = sr_lycc_lock(conn, SR_LOCK_WRITE, 0, __func__))) {
+            goto cleanup;
+        }
+
+        /* CONTEXT UNLOCK */
+        sr_lycc_unlock(conn, SR_LOCK_WRITE, 0, __func__);
+    }
+
+cleanup:
+    sr_errinfo_free(&err_info);
     return cur_opts;
 }
 
