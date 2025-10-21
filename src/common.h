@@ -105,7 +105,7 @@ struct srplg_ntf_s;
 #define SR_SM_CTX_LOCK_TIMEOUT 2000
 
 /** timeout for locking global YANG context create mutex; held only on connection creation and deletion (ms) */
-#define SR_YANG_CTX_LOCK_TIMEOUT 1000
+#define SR_YANG_CTX_LOCK_TIMEOUT 10000
 
 /** timeout for locking (data of) a module; maximum time a module write lock is expected to be held (ms) */
 #define SR_MOD_LOCK_TIMEOUT 5000
