@@ -8278,7 +8278,7 @@ sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const 
     sub_opts = opts & SR_SUBSCR_OPER_MERGE;
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ_UPGR, 0, __func__))) {
+    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -8376,7 +8376,7 @@ cleanup_unlock1:
 
 cleanup:
     /* CONTEXT UNLOCK */
-    sr_lycc_unlock(conn, SR_LOCK_READ_UPGR, 0, __func__);
+    sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
     return sr_api_ret(session, err_info);
 }
 
