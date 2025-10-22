@@ -149,9 +149,10 @@ int sr_disconnect(sr_conn_ctx_t *conn);
 void sr_cache_running(int enable);
 
 /**
- * @brief Set options for the sysrepo context.
+ * @brief Set global options for the sysrepo context.
  *
- * Any options set will override the previous ones.
+ * These options affect the global context, which is used by all the connections of this process. The set options will
+ * overwrite the previous ones.
  *
  * @param[in] opts New options to use, it is a bitwise OR of ::sr_context_flag_t flags.
  * @param[in] conn Optional connection to use to rebuild the context and apply @p opts immediately. If not set,
