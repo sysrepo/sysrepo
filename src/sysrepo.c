@@ -5142,7 +5142,7 @@ _sr_discard_oper_changes(sr_session_ctx_t *session, const char *module_name, int
     }
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ_UPGR, 0, __func__))) {
+    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -5171,15 +5171,26 @@ _sr_discard_oper_changes(sr_session_ctx_t *session, const char *module_name, int
     }
 
     if (data_old.run) {
+        /* CONTEXT READ UPGR LOCK - sm data changed, new context will be created */
+        if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ_UPGR, 0, __func__))) {
+            goto cleanup;
+        }
+
+        /* CONTEXT READ UNLOCK to allow upgrade */
+        sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
+
         /* MODULES UNLOCK, free modinfo before a new context is printed */
         sr_shmmod_modinfo_unlock(&mod_info);
         sr_modinfo_erase(&mod_info);
         memset(&mod_info, 0, sizeof mod_info);
 
         /* operational schema-mount data were changed, prepare a new context to be able to use them */
-        if ((err_info = sr_schema_mount_ds_data_update(session->conn, &data_old))) {
-            goto cleanup;
-        }
+        err_info = sr_schema_mount_ds_data_update(session->conn, &data_old);
+
+        /* CONTEXT READ_UPGR UNLOCK  */
+        sr_lycc_unlock(session->conn, SR_LOCK_READ_UPGR, 0, __func__);
+
+        return sr_api_ret(NULL, err_info);
     }
 
 cleanup:
@@ -5189,8 +5200,8 @@ cleanup:
     sr_shmmod_modinfo_unlock(&mod_info);
     sr_modinfo_erase(&mod_info);
 
-    /* CONTEXT UNLOCK */
-    sr_lycc_unlock(session->conn, SR_LOCK_READ_UPGR, 0, __func__);
+    /* CONTEXT READ UNLOCK */
+    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
 
     if (cb_err_info) {
         /* return callback error if some was generated */
@@ -8309,7 +8320,7 @@ sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const 
     sub_opts = opts & SR_SUBSCR_OPER_MERGE;
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ_UPGR, 0, __func__))) {
+    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -8407,7 +8418,7 @@ cleanup_unlock1:
 
 cleanup:
     /* CONTEXT UNLOCK */
-    sr_lycc_unlock(conn, SR_LOCK_READ_UPGR, 0, __func__);
+    sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
     return sr_api_ret(session, err_info);
 }
 
