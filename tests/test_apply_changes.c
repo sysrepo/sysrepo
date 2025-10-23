@@ -8269,7 +8269,7 @@ unlocked_write_thread(void *arg)
                 break;
             }
 
-            usleep(10000);
+            usleep(20000);
         }
         assert_int_equal(ret, SR_ERR_OK);
     }
