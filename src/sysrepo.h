@@ -149,18 +149,17 @@ int sr_disconnect(sr_conn_ctx_t *conn);
 void sr_cache_running(int enable);
 
 /**
- * @brief Set global options for the sysrepo context.
+ * @brief Set options for the YANG context.
  *
- * These options affect the global context, which is used by all the connections of this process. The set options will
- * overwrite the previous ones.
+ * These options affect the global context, which is used and shared by all the connections of this process. The set
+ * options will overwrite the previous ones.
  *
  * @param[in] opts New options to use, it is a bitwise OR of ::sr_context_flag_t flags.
- * @param[in] conn Optional connection to use to rebuild the context and apply @p opts immediately. If not set,
- * the context options are applied the next time a context is updated (YANG modules added or removed, features
- * changed, ...).
+ * @param[in] apply Set to rebuild the context and apply @p opts immediately. If not set, the context options are
+ * applied the next time the context is changed (YANG modules added or removed, features changed, ...).
  * @return Previous options.
  */
-uint32_t sr_context_options(uint32_t opts, sr_conn_ctx_t *conn);
+uint32_t sr_context_options(uint32_t opts, int apply);
 
 /**
  * @brief Get the _libyang_ context used by a connection. Can be used in an application for working with data
