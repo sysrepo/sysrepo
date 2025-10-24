@@ -310,6 +310,9 @@ void
 sr_lycc_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const char *func)
 {
     sr_main_shm_t *main_shm = SR_CONN_MAIN_SHM(conn);
+    struct timespec timeout_abs;
+    sr_cid_t upgr_lock_waiting = 0;
+    int r;
 
     if (mode == SR_LOCK_NONE) {
         return;
@@ -320,7 +323,25 @@ sr_lycc_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const
         sr_munlock(&main_shm->lydmods_lock);
     }
 
-    if ((mode == SR_LOCK_READ) && main_shm->context_lock.upgr) {
+    /* on other modes there can be no READ UPGR lock waiting */
+    if (mode == SR_LOCK_READ) {
+        sr_timeouttime_get(&timeout_abs, SR_CONTEXT_LOCK_TIMEOUT);
+
+        /* MUTEX LOCK */
+        r = pthread_mutex_clocklock(&main_shm->context_lock.mutex, COMPAT_CLOCK_ID, &timeout_abs);
+        if (r == EOWNERDEAD) {
+            pthread_mutex_consistent(&main_shm->context_lock.mutex);
+        }
+
+        if (!r) {
+            upgr_lock_waiting = main_shm->context_lock.upgr;
+
+            /* MUTEX UNLOCK */
+            pthread_mutex_unlock(&main_shm->context_lock.mutex);
+        }
+    }
+
+    if (upgr_lock_waiting) {
         /* flush caches so that the lock can actually be upgraded */
         sr_run_cache_flush(conn, &sr_run_cache);
         sr_oper_cache_flush(conn, &sr_oper_cache);
