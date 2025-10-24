@@ -262,9 +262,8 @@ sr_error_info_t *sr_lycc_set_replay_support(sr_conn_ctx_t *conn, const struct ly
  * @param[in] conn Connection to use for flushing the caches.
  * @param[in,out] shm Shared memory to use. Any existing mapping is removed.
  * @param[in,out] ctx Libyang context to store, parsed modules are freed first.
- * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lycc_store_context(sr_conn_ctx_t *conn, sr_shm_t *shm, struct ly_ctx *ctx);
+void sr_lycc_store_context(sr_conn_ctx_t *conn, sr_shm_t *shm, struct ly_ctx *ctx);
 
 /**
  * @brief Load a libyang context from shared memory.
@@ -276,12 +275,11 @@ sr_error_info_t *sr_lycc_store_context(sr_conn_ctx_t *conn, sr_shm_t *shm, struc
  *
  * The context is mapped as read-only, so it cannot be modified.
  *
- * Only sets @p *ctx to NULL if printed context is disabled.
+ * If the context is disabled or failes to be mapped, @p ctx is set to NULL.
  *
  * @param[in,out] shm Shared memory to use. Updated with the new mapping.
- * @param[out] ctx Pointer to the loaded libyang context. Should be freed by the caller.
- * @return err_info, NULL on success (including when no context is stored in the shared memory).
+ * @param[out] ctx Loaded libyang context. Should be freed by the caller.
  */
-sr_error_info_t *sr_lycc_load_context(sr_shm_t *shm, struct ly_ctx **ctx);
+void sr_lycc_load_context(sr_shm_t *shm, struct ly_ctx **ctx);
 
 #endif

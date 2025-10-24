@@ -183,9 +183,7 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
         sr_yang_ctx.ly_ctx = NULL;
 
         /* get the printed context from the SHM if it is supported/available */
-        if ((err_info = sr_lycc_load_context(&sr_yang_ctx.ly_ctx_shm, &new_ctx))) {
-            goto cleanup_unlock;
-        }
+        sr_lycc_load_context(&sr_yang_ctx.ly_ctx_shm, &new_ctx);
         if (!new_ctx) {
             /* failed to get the printed context, create a new non-printed one */
             if ((err_info = sr_ly_ctx_new(&new_ctx))) {
@@ -1283,7 +1281,7 @@ cleanup:
     return err_info;
 }
 
-sr_error_info_t *
+void
 sr_lycc_store_context(sr_conn_ctx_t *conn, sr_shm_t *shm, struct ly_ctx *ctx)
 {
     sr_error_info_t *err_info = NULL;
@@ -1293,7 +1291,7 @@ sr_lycc_store_context(sr_conn_ctx_t *conn, sr_shm_t *shm, struct ly_ctx *ctx)
 
     if (!SR_PRINTED_LYCTX_ADDRESS) {
         /* printed context not supported */
-        return NULL;
+        goto cleanup;
     }
 
     /* flush caches */
@@ -1359,13 +1357,13 @@ cleanup:
     if (mem) {
         munmap(mem, ctx_size);
     }
-    return err_info;
+    sr_errinfo_free(&err_info);
 }
 
-sr_error_info_t *
+void
 sr_lycc_load_context(sr_shm_t *shm, struct ly_ctx **ctx)
 {
-    sr_error_info_t *err_info;
+    sr_error_info_t *err_info = NULL;
     size_t shm_file_size = 0;
     char *shm_name = NULL;
 
@@ -1373,7 +1371,7 @@ sr_lycc_load_context(sr_shm_t *shm, struct ly_ctx **ctx)
 
     if (!SR_PRINTED_LYCTX_ADDRESS || (ATOMIC_LOAD_RELAXED(sr_yang_ctx.sr_opts) & SR_CTX_NO_PRINTED)) {
         /* printed context not supported */
-        return NULL;
+        goto cleanup;
     }
 
     if ((err_info = sr_path_ctx_shm(&shm_name))) {
@@ -1427,5 +1425,5 @@ sr_lycc_load_context(sr_shm_t *shm, struct ly_ctx **ctx)
 
 cleanup:
     free(shm_name);
-    return err_info;
+    sr_errinfo_free(&err_info);
 }

@@ -3296,9 +3296,7 @@ sr_schema_mount_ds_data_update(sr_conn_ctx_t *conn, struct sr_lycc_ds_data_set_s
     SR_CONN_MAIN_SHM(conn)->schema_mount_data_id++;
 
     /* print the new context - new schema mount data will be obtained next time context is locked */
-    if ((err_info = sr_lycc_store_context(conn, &sr_yang_ctx.ly_ctx_shm, new_ctx))) {
-        goto cleanup;
-    }
+    sr_lycc_store_context(conn, &sr_yang_ctx.ly_ctx_shm, new_ctx);
 
 cleanup:
     sr_lycc_clear_data(&cc_info);
