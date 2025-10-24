@@ -150,7 +150,7 @@ clear_up(void **state)
 {
     struct state *st = (struct state *)*state;
 
-    sr_discard_oper_changes(NULL, st->sess, NULL, 0);
+    sr_discard_oper_changes(st->sess, NULL, 0);
 
     sr_session_switch_ds(st->sess, SR_DS_STARTUP);
     sr_delete_item(st->sess, "/ietf-interfaces:interfaces", 0);

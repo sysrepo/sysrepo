@@ -1257,13 +1257,12 @@ int sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datast
  *
  * If working with schema-mount data, requires CONTEXT WRITE LOCK.
  *
- * @param[in] conn Unused.
  * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] module_name Optional module name that limits the operation only to this module.
  * @param[in] timeout_ms Module change callback timeout in millisecond. If 0, default is used.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_discard_oper_changes(sr_conn_ctx_t *conn, sr_session_ctx_t *session, const char *module_name, uint32_t timeout_ms);
+int sr_discard_oper_changes(sr_session_ctx_t *session, const char *module_name, uint32_t timeout_ms);
 
 /**
  * @brief Get stored push operational changes of a session.

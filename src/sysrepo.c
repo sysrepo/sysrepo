@@ -5220,8 +5220,7 @@ cleanup:
 }
 
 API int
-sr_discard_oper_changes(sr_conn_ctx_t *UNUSED(conn), sr_session_ctx_t *session, const char *module_name,
-        uint32_t timeout_ms)
+sr_discard_oper_changes(sr_session_ctx_t *session, const char *module_name, uint32_t timeout_ms)
 {
     sr_error_info_t *err_info = NULL;
 

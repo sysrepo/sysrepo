@@ -879,8 +879,8 @@ teardown_store_oper(void **state)
         return 1;
     }
 
-    // delete all datastore data
-    rc = sr_discard_oper_changes(NULL, tdata->sess, "plugin", 0);
+    /* delete all datastore data */
+    rc = sr_discard_oper_changes(tdata->sess, "plugin", 0);
     if (rc != SR_ERR_OK) {
         return 1;
     }

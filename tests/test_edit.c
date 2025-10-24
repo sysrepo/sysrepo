@@ -107,7 +107,7 @@ clear_interfaces(void **state)
     sr_delete_item(st->sess, "/ietf-interfaces:interfaces", 0);
     sr_apply_changes(st->sess, 0);
 
-    sr_discard_oper_changes(st->conn, st->sess, NULL, 0);
+    sr_discard_oper_changes(st->sess, NULL, 0);
     return 0;
 }
 

@@ -144,7 +144,7 @@ clear_up(void **state)
 {
     struct state *st = (struct state *)*state;
 
-    sr_discard_oper_changes(NULL, st->sess, NULL, 0);
+    sr_discard_oper_changes(st->sess, NULL, 0);
 
     sr_session_switch_ds(st->sess, SR_DS_STARTUP);
     sr_delete_item(st->sess, "/ietf-interfaces:interfaces", 0);
@@ -1030,7 +1030,7 @@ test_state_list(void **state)
     free(str1);
 
     /* discard everything */
-    ret = sr_discard_oper_changes(NULL, st->sess, "mixed-config", 0);
+    ret = sr_discard_oper_changes(st->sess, "mixed-config", 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* callback called */
@@ -1403,7 +1403,7 @@ test_state_leaflist(void **state)
     free(str1);
 
     /* delete oper data */
-    ret = sr_discard_oper_changes(NULL, st->sess, NULL, 0);
+    ret = sr_discard_oper_changes(st->sess, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
 
@@ -1814,7 +1814,7 @@ test_top_leaf(void **state)
     free(str1);
 
     /* discard the oper change */
-    ret = sr_discard_oper_changes(NULL, st->sess, "test", 0);
+    ret = sr_discard_oper_changes(st->sess, "test", 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the operational data */
@@ -3184,7 +3184,7 @@ test_oper_order(void **state)
     assert_int_equal(ret, SR_ERR_UNSUPPORTED);
 
     /* discard pushed operational data */
-    ret = sr_discard_oper_changes(NULL, st->sess, NULL, 0);
+    ret = sr_discard_oper_changes(st->sess, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* it should be possible again to set oper changes order */
@@ -3294,7 +3294,7 @@ test_oper_cache(void **state)
     sr_unsubscribe(subscr);
     subscr = NULL;
 
-    ret = sr_discard_oper_changes(NULL, st->sess, NULL, 0);
+    ret = sr_discard_oper_changes(st->sess, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* build a new oper_push_cache, one module at a time */
