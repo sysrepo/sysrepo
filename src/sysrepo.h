@@ -159,9 +159,10 @@ void sr_cache_running(int enable);
  * @param[in] opts New options to use, it is a bitwise OR of ::sr_context_flag_t flags.
  * @param[in] apply Set to rebuild the context and apply @p opts immediately. If not set, the context options are
  * applied the next time the context is changed (YANG modules added or removed, features changed, ...).
- * @return Previous options.
+ * @param[out] prev_opts Optional previous context options.
+ * @return Error code (::SR_ERR_OK on success).
  */
-uint32_t sr_context_options(uint32_t opts, int apply);
+int sr_context_options(uint32_t opts, int apply, uint32_t *prev_opts);
 
 /**
  * @brief Get the _libyang_ context used by a connection. Can be used in an application for working with data

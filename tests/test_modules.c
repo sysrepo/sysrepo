@@ -125,7 +125,7 @@ test_context_options(void **state)
     assert_true(snode && !snode->priv);
     sr_release_context(st->conn);
 
-    sr_context_options(SR_CTX_NO_PRINTED | SR_CTX_SET_PRIV_PARSED, 1);
+    sr_context_options(SR_CTX_NO_PRINTED | SR_CTX_SET_PRIV_PARSED, 1, NULL);
 
     /* pointer to parsed nodes */
     ly_ctx = sr_acquire_context(st->conn);
