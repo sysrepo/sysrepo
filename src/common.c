@@ -3621,6 +3621,11 @@ sr_oper_push_cache_ctx_lock_update(sr_conn_ctx_t *conn)
     int add_cid = 0, del_cid = 0, has_cid = 0;
     uint32_t i, j;
 
+    /* PTR LOCK */
+    if ((err_info = sr_mlock(&conn->ptr_lock, -1, __func__, NULL, NULL))) {
+        goto cleanup;
+    }
+
     for (i = 0; i < conn->session_count; i++) {
         for (j = 0; j < conn->sessions[i]->oper_push_mod_count; j++) {
             op_mod = &conn->sessions[i]->oper_push_mods[j];
@@ -3639,6 +3644,9 @@ sr_oper_push_cache_ctx_lock_update(sr_conn_ctx_t *conn)
             }
         }
     }
+
+    /* PTR UNLOCK */
+    sr_munlock(&conn->ptr_lock);
 
     if (add_cid && del_cid) {
         /* added for some data, removed for other */
@@ -3813,13 +3821,22 @@ sr_oper_cache_flush(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache)
 
     /* remove oper push data cache from all sessions */
 
+    /* PTR LOCK */
+    err_info = sr_mlock(&conn->ptr_lock, -1, __func__, NULL, NULL);
+
     /* safe because context_lock or conn->mod_remap_lock is WRITE locked, preventing all other operations */
-    /* conn->ptr_lock is always acquired after sr_lycc_lock, so conn->session_count cannot change */
     for (i = 0; i < conn->session_count; i++) {
         for (j = 0; j < conn->sessions[i]->oper_push_mod_count; j++) {
             lyd_free_siblings(conn->sessions[i]->oper_push_mods[j].cache);
             conn->sessions[i]->oper_push_mods[j].cache = NULL;
         }
+    }
+
+    if (err_info) {
+        sr_errinfo_free(&err_info);
+    } else {
+        /* PTR UNLOCK */
+        sr_munlock(&conn->ptr_lock);
     }
 
     /* update ctx lock */
