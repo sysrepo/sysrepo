@@ -931,7 +931,7 @@ sr_lydmods_print(struct lyd_node **sr_mods)
         return err_info;
     }
     hash = ly_ctx_get_modules_hash(sr_ly_mod->ctx);
-    lyd_change_term_bin(node, &hash, sizeof hash);
+    lyd_change_term_bin(node, &hash, sizeof hash * 8);
 
     /* store the data using the internal JSON plugin */
     if ((err_info = srpds_json.store_prepare_cb(sr_ly_mod, SR_DS_STARTUP, 0, 0, NULL, *sr_mods, NULL))) {
