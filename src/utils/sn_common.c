@@ -1334,7 +1334,7 @@ srsn_ntf_send_terminated(struct srsn_sub *sub, const char *reason)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *ly_ntf = NULL;
-    sr_conn_ctx_t *conn = NULL;
+    sr_conn_ctx_t *conn;
     const struct ly_ctx *ly_ctx;
     char buf[26];
     struct timespec ts;
@@ -1358,9 +1358,7 @@ srsn_ntf_send_terminated(struct srsn_sub *sub, const char *reason)
 
 cleanup:
     lyd_free_tree(ly_ntf);
-    if (conn) {
-        sr_release_context(conn);
-    }
+    sr_release_context(conn);
     return err_info;
 }
 
