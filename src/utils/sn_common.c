@@ -1357,10 +1357,10 @@ srsn_ntf_send_terminated(struct srsn_sub *sub, const char *reason)
     }
 
 cleanup:
+    lyd_free_tree(ly_ntf);
     if (conn) {
         sr_release_context(conn);
     }
-    lyd_free_tree(ly_ntf);
     return err_info;
 }
 
