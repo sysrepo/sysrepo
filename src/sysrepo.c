@@ -423,11 +423,6 @@ sr_context_options(uint32_t opts, int apply, uint32_t *prev_opts)
     sr_error_info_t *err_info = NULL;
     sr_main_shm_t *main_shm;
 
-    if (apply && !sr_available_conn) {
-        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "There must be a connection created to apply context options.");
-        goto cleanup;
-    }
-
     if (prev_opts) {
         *prev_opts = ATOMIC_LOAD_RELAXED(sr_yang_ctx.sr_opts);
     }
@@ -435,7 +430,8 @@ sr_context_options(uint32_t opts, int apply, uint32_t *prev_opts)
     /* override the current options */
     ATOMIC_STORE_RELAXED(sr_yang_ctx.sr_opts, opts);
 
-    if (apply) {
+    /* if there is no connection, it is technically applied as soon as a connection is created */
+    if (apply && sr_available_conn) {
         main_shm = SR_CONN_MAIN_SHM(sr_available_conn);
 
         /* CONTEXT WRITE LOCK */
@@ -462,7 +458,6 @@ sr_context_options(uint32_t opts, int apply, uint32_t *prev_opts)
     }
 
 cleanup:
-    sr_errinfo_free(&err_info);
     return sr_api_ret(NULL, err_info);
 }
 

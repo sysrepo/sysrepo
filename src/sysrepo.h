@@ -158,7 +158,8 @@ void sr_cache_running(int enable);
  *
  * @param[in] opts New options to use, it is a bitwise OR of ::sr_context_flag_t flags.
  * @param[in] apply Set to rebuild the context and apply @p opts immediately. If not set, the context options are
- * applied the next time the context is changed (YANG modules added or removed, features changed, ...).
+ * applied the next time the context is changed (YANG modules added or removed, features changed, ...). If there is
+ * no connection created yet, the options are applied immediately disregarding the value of this flag.
  * @param[out] prev_opts Optional previous context options.
  * @return Error code (::SR_ERR_OK on success).
  */
