@@ -2796,6 +2796,7 @@ sr_shmext_oper_push_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *UNUS
     sr_mod_oper_push_t *oper_push;
     uint32_t i;
 
+    assert(shm_mod->data_lock_info[SR_DS_OPERATIONAL].data_lock.writer == conn->cid);
     assert(has_mod_locks == SR_LOCK_WRITE);
     (void)has_mod_locks;
 

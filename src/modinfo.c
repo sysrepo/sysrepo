@@ -323,7 +323,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_modinfo_collect_oper_sess(sr_session_ctx_t *sess, const struct lys_module *ly_mod, struct sr_mod_info_s *mod_info)
+sr_modinfo_collect_oper_sess(sr_session_ctx_t *sess, const struct lys_module *ly_mod, int session_del, struct sr_mod_info_s *mod_info)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod2;
@@ -335,7 +335,8 @@ sr_modinfo_collect_oper_sess(sr_session_ctx_t *sess, const struct lys_module *ly
             continue;
         }
 
-        if (!sess->oper_push_mods[i].has_data) {
+        if (!sess->oper_push_mods[i].has_data && !session_del) {
+            /* when session is being stopped, we need to remove the entry from ext_shm, even if no data exists now. */
             continue;
         }
 
@@ -4097,8 +4098,6 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
     sr_datastore_t store_ds;
     uint32_t i, sid;
     int create, change;
-    const char *mod_name = NULL;
-    sr_mod_t *shm_mod;
 
     assert(!mod_info->data_cached);
 
@@ -4188,21 +4187,6 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
             }
             if (mod_data) {
                 lyd_insert_sibling(mod_info->data, mod_data, &mod_info->data);
-            }
-        }
-    }
-
-    if (commit && shmmod_session_del && !mod_info->mod_count && session->oper_push_mod_count) {
-        /* we are stopping a session, we had pushed some data in the past, but no current data, so mod_info->count is zero */
-        for (i = 0; i < session->oper_push_mod_count; ++i) {
-            mod_name = session->oper_push_mods[i].name;
-            shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), mod_name);
-            if (!shm_mod) {
-                /* module was removed, sr_remove_module should have removed Ext SHM data for it as well */
-                continue;
-            }
-            if ((err_info = sr_shmext_oper_push_del(mod_info->conn, shm_mod, mod_name, sid, SR_LOCK_WRITE))) {
-                goto cleanup;
             }
         }
     }
