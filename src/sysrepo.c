@@ -4603,7 +4603,7 @@ sr_apply_oper_changes(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
     oper_edit = session->dt[session->ds].edit ? session->dt[session->ds].edit->tree : NULL;
 
     /* collect all the modules with push oper data */
-    if ((err_info = sr_modinfo_collect_oper_sess(session, ly_mod, mod_info))) {
+    if ((err_info = sr_modinfo_collect_oper_sess(session, ly_mod, shmmod_session_del, mod_info))) {
         goto cleanup;
     }
     if (oper_edit && (err_info = sr_modinfo_collect_edit(oper_edit, mod_info))) {
@@ -5261,7 +5261,7 @@ sr_get_oper_changes(sr_session_ctx_t *session, const char *module_name, sr_data_
     }
 
     /* add only modules that this session has push oper data for */
-    if ((err_info = sr_modinfo_collect_oper_sess(session, ly_mod, &mod_info))) {
+    if ((err_info = sr_modinfo_collect_oper_sess(session, ly_mod, 0, &mod_info))) {
         goto cleanup;
     }
 

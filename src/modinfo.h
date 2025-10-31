@@ -139,13 +139,15 @@ sr_error_info_t *sr_modinfo_collect_xpath(const struct ly_ctx *ly_ctx, const cha
 /**
  * @brief Collect modules with oper push data of a session.
  *
+ * @details If the session is being stopped, get all modules if data was pushed in the past, even if no data exists now.
  * @param[in] sess Session to use.
  * @param[in] ly_mod Optional module to check and and add.
+ * @param[in] session_del Flag whether session is being stopped.
  * @param[in,out] mod_info Mod info to add to.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_modinfo_collect_oper_sess(sr_session_ctx_t *sess, const struct lys_module *ly_mod,
-        struct sr_mod_info_s *mod_info);
+        int session_del, struct sr_mod_info_s *mod_info);
 
 /**
  * @brief Collect required modules of (MOD_INFO_REQ & MOD_INFO_CHANGED) | MOD_INFO_INV_DEP modules in mod info.
