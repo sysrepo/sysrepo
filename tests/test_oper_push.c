@@ -3325,6 +3325,48 @@ test_oper_cache(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 }
 
+static void
+test_session_stop(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_session_ctx_t *sess = NULL;
+    int i, ret;
+
+    for (i = 0; i < 2; i++) {
+        ret = sr_session_start(st->conn, SR_DS_OPERATIONAL, &sess);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* set some operational data of first module */
+        ret = sr_set_item_str(sess, "/mixed-config:test-state/ll[1]", "x1", NULL, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* set some operational data of second module */
+        ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth0']/type",
+                "iana-if-type:ethernetCsmacd", NULL, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        ret = sr_apply_changes(st->sess, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        if (i) {
+            /* delete only the first module */
+            ret = sr_delete_item(sess, "/mixed-config:test-state", SR_EDIT_STRICT);
+            assert_int_equal(ret, SR_ERR_OK);
+
+            ret = sr_apply_changes(sess, 0);
+            assert_int_equal(ret, SR_ERR_OK);
+        } else {
+            /* delete all oper push data */
+            ret = sr_discard_oper_changes(st->sess, NULL, 0);
+            assert_int_equal(ret, SR_ERR_OK);
+        }
+
+        ret = sr_session_stop(sess);
+        assert_int_equal(ret, SR_ERR_OK);
+    }
+
+}
+
 int
 main(void)
 {
@@ -3350,6 +3392,7 @@ main(void)
         cmocka_unit_test_teardown(test_oper_delete, clear_up),
         cmocka_unit_test_teardown(test_oper_order, clear_up),
         cmocka_unit_test_teardown(test_oper_cache, clear_up),
+        cmocka_unit_test_teardown(test_session_stop, clear_up),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
