@@ -1033,39 +1033,6 @@ sr_error_info_t *sr_schema_mount_ds_data_update(sr_conn_ctx_t *conn, struct sr_l
 int sr_schema_mount_session_have_oper_data_for_ctx_update(sr_session_ctx_t *sess, const char *mod_name);
 
 /**
- * @brief Check the existence of all processes in the array removing any dead ones.
- *
- * @param[in] pids Array of PIDs.
- * @param[in] pid_size Size of @p pids array.
- */
-void sr_pid_array_recover(pid_t *pids, uint32_t pid_size);
-
-/**
- * @brief Update CONTEXT READ LOCK (SHM PIDs) of the operational cache data.
- *
- * @param[in] conn Connection to use.
- * @param[in] oper_cache Operational data cache.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_oper_cache_ctx_lock_update(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache);
-
-/**
- * @brief Check the existence of all connections in the array removing any dead ones.
- *
- * @param[in] cids Array of CIDs.
- * @param[in] cid_size Size of @p cids array.
- */
-void sr_cid_array_recover(sr_cid_t *cids, uint32_t cid_size);
-
-/**
- * @brief Update CONTEXT READ LOCK (SHM CIDs) of the operational push cached data.
- *
- * @param[in] conn Connection to use.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_oper_push_cache_ctx_lock_update(sr_conn_ctx_t *conn);
-
-/**
  * @brief Add a new oper cache entry.
  *
  * @param[in] conn Connection to use.
