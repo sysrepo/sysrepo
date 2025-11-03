@@ -4145,7 +4145,7 @@ sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char
         }
     }
 
-    if (session->dt[session->ds].edit) {
+    if (session->dt[session->ds].edit || (session->oper_edit_fetched && (session->ds == SR_DS_OPERATIONAL))) {
         /* do not allow merging NETCONF edits into sysrepo ones, it can cause some unexpected results */
         sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "There are already some session changes.");
         goto cleanup;
@@ -5211,7 +5211,7 @@ sr_discard_oper_changes(sr_session_ctx_t *session, const char *module_name, uint
 
     SR_CHECK_ARG_APIRET(!session, NULL, err_info);
 
-    if (session->dt[SR_DS_OPERATIONAL].edit) {
+    if (session->oper_edit_fetched) {
         sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "There are already staged changes. Call sr_discard_changes() to "
                 "remove them first.");
         return sr_api_ret(session, err_info);
