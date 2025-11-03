@@ -248,7 +248,7 @@ sr_connect(const uint32_t opts, sr_conn_ctx_t **conn_p)
     conn->cid = ATOMIC_INC_RELAXED(main_shm->new_sr_cid);
 
     /* track our connection */
-    if ((err_info = sr_shmmain_conn_list_add(conn->cid))) {
+    if ((err_info = sr_shmmain_conn_list_add(conn))) {
         goto cleanup_unlock;
     }
 

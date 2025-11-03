@@ -62,7 +62,7 @@ static struct {
     pthread_mutex_t list_lock;          /**< lock for accessing the connection list */
     struct sr_conn_list_s {
         struct sr_conn_list_s *_next;   /**< pointer to the next connection in the list */
-        sr_cid_t cid;                   /**< CID of a connection in this process */
+        sr_conn_ctx_t *conn;            /**< pointer to the connection */
         int lock_fd;                    /**< locked fd of a connection in this process */
     } *list_head;                       /**< process connection list head */
 
@@ -198,7 +198,7 @@ sr_shmmain_conn_check(sr_cid_t cid, int *conn_alive, pid_t *pid)
      */
     if (conn_proc.list_head) {
         for (ptr = conn_proc.list_head; ptr; ptr = ptr->_next) {
-            if (cid == ptr->cid) {
+            if (cid == ptr->conn->cid) {
                 /* alive connection of this process */
                 *conn_alive = 1;
                 if (pid) {
@@ -344,14 +344,14 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_shmmain_conn_list_add(sr_cid_t cid)
+sr_shmmain_conn_list_add(sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_conn_list_s *conn_item = NULL;
     int lock_fd = -1;
 
     /* open and lock the connection lockfile */
-    if ((err_info = sr_shmmain_conn_new_lockfile(cid, &lock_fd))) {
+    if ((err_info = sr_shmmain_conn_new_lockfile(conn->cid, &lock_fd))) {
         goto error;
     }
 
@@ -361,7 +361,7 @@ sr_shmmain_conn_list_add(sr_cid_t cid)
         SR_ERRINFO_MEM(&err_info);
         goto error;
     }
-    conn_item->cid = cid;
+    conn_item->conn = conn;
     conn_item->lock_fd = lock_fd;
 
     /* CONN LIST LOCK */
@@ -384,7 +384,7 @@ error:
         sr_error_info_t *err_info_2 = NULL;
 
         close(lock_fd);
-        if ((err_info_2 = sr_path_conn_lockfile(cid, 0, &path))) {
+        if ((err_info_2 = sr_path_conn_lockfile(conn->cid, 0, &path))) {
             sr_errinfo_free(&err_info_2);
         } else {
             unlink(path);
@@ -411,7 +411,7 @@ sr_shmmain_conn_list_del(sr_cid_t cid)
     ptr = conn_proc.list_head;
     prev = NULL;
     while (ptr) {
-        if (cid == ptr->cid) {
+        if (cid == ptr->conn->cid) {
             /* remove the entry from the list */
             if (!prev) {
                 conn_proc.list_head = ptr->_next;
@@ -551,4 +551,33 @@ cleanup:
     free(shm_name);
     free(shm_dir);
     return err_info;
+}
+
+sr_error_info_t *
+sr_shmmain_oper_push_cache_flush(void)
+{
+    sr_conn_ctx_t *conn;
+    struct sr_conn_list_s *ptr;
+    uint32_t i, j;
+    sr_error_info_t *err_info = NULL;
+
+    /* CONN LIST LOCK */
+    if ((err_info = sr_mlock(&conn_proc.list_lock, SR_CONN_LIST_LOCK_TIMEOUT, __func__, NULL, NULL))) {
+        return err_info;
+    }
+
+    for (ptr = conn_proc.list_head; ptr; ptr = ptr->_next) {
+        conn = ptr->conn;
+        for (i = 0; i < conn->session_count; i++) {
+            for (j = 0; j < conn->sessions[i]->oper_push_mod_count; j++) {
+                lyd_free_siblings(conn->sessions[i]->oper_push_mods[j].cache);
+                conn->sessions[i]->oper_push_mods[j].cache = NULL;
+            }
+        }
+    }
+
+    /* CONN LIST UNLOCK */
+    sr_munlock(&conn_proc.list_lock);
+
+    return NULL;
 }

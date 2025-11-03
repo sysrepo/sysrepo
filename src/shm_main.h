@@ -64,10 +64,10 @@ sr_error_info_t *sr_shmmain_conn_check(sr_cid_t cid, int *conn_alive, pid_t *pid
 /**
  * @brief Add a connection into the process connection list.
  *
- * @param[in] cid Connection ID of the connection to add.
+ * @param[in] conn Connection to add.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_conn_list_add(sr_cid_t cid);
+sr_error_info_t *sr_shmmain_conn_list_add(sr_conn_ctx_t *conn);
 
 /**
  * @brief Remove a connection from the process connection list.
@@ -85,5 +85,10 @@ sr_error_info_t *sr_shmmain_conn_list_del(sr_cid_t cid);
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmmain_open(sr_shm_t *shm, int *created);
+
+/**
+ * @brief Flush oper push data cache from all sessions of all connections of this process.
+ */
+sr_error_info_t *sr_shmmain_oper_push_cache_flush(void);
 
 #endif /* _SHM_MAIN_H */
