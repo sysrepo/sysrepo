@@ -538,10 +538,11 @@ sr_error_info_t *sr_path_mod_shm(char **path);
 /**
  * @brief Get the path of the ctx SHM.
  *
+ * @param[in] tmp if a temporary filename should be created.
  * @param[out] path Created path. Should be freed by the caller.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_path_ctx_shm(char **path);
+sr_error_info_t *sr_path_ctx_shm(int tmp, char **path);
 
 /**
  * @brief Get the path of the external SHM.

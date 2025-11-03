@@ -1117,11 +1117,11 @@ sr_path_mod_shm(char **path)
 }
 
 sr_error_info_t *
-sr_path_ctx_shm(char **path)
+sr_path_ctx_shm(int tmp, char **path)
 {
     sr_error_info_t *err_info = NULL;
 
-    if (asprintf(path, "%s/%s_ctx", sr_get_shm_path(), sr_get_shm_prefix()) == -1) {
+    if (asprintf(path, "%s/%s_ctx%s", sr_get_shm_path(), sr_get_shm_prefix(), tmp ? ".tmp" : "") == -1) {
         SR_ERRINFO_MEM(&err_info);
         *path = NULL;
     }
@@ -3286,7 +3286,7 @@ sr_schema_mount_ds_data_update(sr_conn_ctx_t *conn, struct sr_lycc_ds_data_set_s
     /* perform the update of datastore and SR data, update schema-mount contexts */
     cc_info.ly_ctx_old = sr_yang_ctx.ly_ctx;
     cc_info.ly_ctx_new = new_ctx;
-    if ((err_info = sr_lycc_update_data(conn, &cc_info, NULL, &sr_run_cache, &sr_oper_cache))) {
+    if ((err_info = sr_lycc_update_data(conn, &cc_info, NULL))) {
         goto cleanup;
     }
 
@@ -3294,7 +3294,7 @@ sr_schema_mount_ds_data_update(sr_conn_ctx_t *conn, struct sr_lycc_ds_data_set_s
     SR_CONN_MAIN_SHM(conn)->schema_mount_data_id++;
 
     /* print the new context - new schema mount data will be obtained next time context is locked */
-    sr_lycc_store_context(conn, &sr_yang_ctx.ly_ctx_shm, new_ctx);
+    sr_lycc_store_context(&sr_yang_ctx.ly_ctx_shm, new_ctx);
 
 cleanup:
     sr_lycc_clear_data(&cc_info);
