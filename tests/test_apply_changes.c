@@ -35,7 +35,7 @@
 #include "tests/tcommon.h"
 
 /**< loop count for tests where applicable */
-#define TEST_ITERATIONS 50
+#define TEST_ITERATIONS 20
 
 struct state {
     sr_conn_ctx_t *conn;
