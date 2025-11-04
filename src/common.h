@@ -1022,6 +1022,17 @@ int sr_schema_mount_changed_oper_data(const struct lyd_node *oper_data);
 sr_error_info_t *sr_schema_mount_ds_data_update(sr_conn_ctx_t *conn, struct sr_lycc_ds_data_set_s *data_old);
 
 /**
+ * @brief Check whether discarding some operational data of a session can cause the schema-mount context to be
+ * updated.
+ *
+ * @param[in] sess Session to use.
+ * @param[in] mod_name Optional module name to use.
+ * @return 0 if no schema-mount data can have been stored by this session;
+ * @return non-zero otherwise.
+ */
+int sr_schema_mount_session_have_oper_data_for_ctx_update(sr_session_ctx_t *sess, const char *mod_name);
+
+/**
  * @brief Check the existence of all processes in the array removing any dead ones.
  *
  * @param[in] pids Array of PIDs.

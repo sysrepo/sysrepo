@@ -3310,6 +3310,45 @@ cleanup:
     return err_info;
 }
 
+int
+sr_schema_mount_session_have_oper_data_for_ctx_update(sr_session_ctx_t *sess, const char *mod_name)
+{
+    sr_mod_t *shm_mod;
+    uint32_t i;
+
+    for (i = 0; i < sess->oper_push_mod_count; ++i) {
+        if (!sess->oper_push_mods[i].has_data) {
+            /* no data to discard */
+            continue;
+        }
+
+        if (!strcmp(sess->oper_push_mods[i].name, "ietf-yang-schema-mount")) {
+            /* will always affect the schema-mount contexts */
+            return 1;
+        }
+
+        if (mod_name && strcmp(sess->oper_push_mods[i].name, mod_name)) {
+            /* data of this module will not be discarded */
+            continue;
+        }
+
+        /* find the SHM module */
+        shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), sess->oper_push_mods[i].name);
+        if (!shm_mod) {
+            /* module was removed but remained in the session, just skip */
+            continue;
+        }
+
+        if (shm_mod->sm_ext_path_count) {
+            /* there is a mount-point extension in the module */
+            return 1;
+        }
+
+    }
+
+    return 0;
+}
+
 /**
  * @brief Add the current process PID to an array, holding a lock.
  *
