@@ -48,19 +48,15 @@
 #include "subscr.h"
 #include "utils/nacm.h"
 
-sr_error_info_t *
+void
 sr_modinfo_init(struct sr_mod_info_s *mod_info, sr_conn_ctx_t *conn, sr_datastore_t ds, sr_datastore_t ds2, uint32_t op_id)
 {
-    sr_error_info_t *err_info = NULL;
-
-    /* init mod info */
     memset(mod_info, 0, sizeof *mod_info);
+
     mod_info->ds = ds;
     mod_info->ds2 = ds2;
     mod_info->conn = conn;
     mod_info->operation_id = op_id ? op_id : ATOMIC_INC_RELAXED(SR_CONN_MAIN_SHM(conn)->new_operation_id);
-
-    return err_info;
 }
 
 sr_error_info_t *

@@ -2461,10 +2461,8 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
         return err_info;
     }
 
-    /* init modinfo and parse schema mount data, requires ctx read lock */
-    if ((err_info = sr_modinfo_init(&mod_info, conn, SR_DS_FACTORY_DEFAULT, SR_DS_FACTORY_DEFAULT, operation_id))) {
-        goto cleanup;
-    }
+    /* init modinfo */
+    sr_modinfo_init(&mod_info, conn, SR_DS_FACTORY_DEFAULT, SR_DS_FACTORY_DEFAULT, operation_id);
 
     /* get modules which should be reset (NP container, must exist) */
     if ((err_info = sr_lyd_find_path(input, "sysrepo-factory-default:modules", 0, &child))) {

@@ -3005,10 +3005,8 @@ sr_schema_mount_data_get(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, const
 
     *sm_data = NULL;
 
-    /* init modinfo and parse schema mount data, requires ctx read lock */
-    if ((err_info = sr_modinfo_init(&mod_info, conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, 0))) {
-        goto cleanup;
-    }
+    /* init modinfo */
+    sr_modinfo_init(&mod_info, conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, 0);
 
     /* learn the module of the yang-library data */
     if (mp_path) {
