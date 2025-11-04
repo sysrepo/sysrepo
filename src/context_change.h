@@ -150,12 +150,9 @@ sr_error_info_t *sr_lycc_store_ds_data_if_differ(sr_conn_ctx_t *conn, const stru
  * @param[in] conn Connection to use.
  * @param[in,out] cc_info Context-change info, its data are freed once not needed.
  * @param[in] mod_shm Mod SHM to use for storing the updated SHM modules, skipped if NULL.
- * @param[in] sr_run_cache Running cache to free.
- * @param[in] sr_oper_cache Operational cache to free.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lycc_update_data(sr_conn_ctx_t *conn, struct sr_lycc_info_s *cc_info, sr_shm_t *mod_shm,
-        sr_run_cache_t *sr_run_cache, sr_oper_cache_t *sr_oper_cache);
+sr_error_info_t *sr_lycc_update_data(sr_conn_ctx_t *conn, struct sr_lycc_info_s *cc_info, sr_shm_t *mod_shm);
 
 /**
  * @brief Check that modules can be added.
@@ -259,11 +256,10 @@ sr_error_info_t *sr_lycc_set_replay_support(sr_conn_ctx_t *conn, const struct ly
  *
  * Does nothing if printed context is disabled.
  *
- * @param[in] conn Connection to use for flushing the caches.
  * @param[in,out] shm Shared memory to use. Any existing mapping is removed.
  * @param[in,out] ctx Libyang context to store, parsed modules are freed first.
  */
-void sr_lycc_store_context(sr_conn_ctx_t *conn, sr_shm_t *shm, struct ly_ctx *ctx);
+void sr_lycc_store_context(sr_shm_t *shm, struct ly_ctx *ctx);
 
 /**
  * @brief Load a libyang context from shared memory.

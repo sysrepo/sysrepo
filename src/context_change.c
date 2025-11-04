@@ -139,12 +139,6 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
     }
     remap_mode = SR_LOCK_READ_UPGR;
 
-    if (mode == SR_LOCK_READ_UPGR) {
-        /* flush caches so that the lock can actually be upgraded */
-        sr_run_cache_flush(conn, &sr_run_cache);
-        sr_oper_cache_flush(conn, &sr_oper_cache);
-    }
-
     /* check whether the context is current and does not need to be updated */
     if (!context_is_up_to_date(main_shm, sr_yang_ctx.content_id, sr_yang_ctx.sm_data_id)) {
         /* MOD REMAP UPGRADE */
@@ -153,26 +147,14 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
         }
         remap_mode = SR_LOCK_WRITE;
 
-        /* check the context again, another thread may have already updated it */
-        if (context_is_up_to_date(main_shm, sr_yang_ctx.content_id, sr_yang_ctx.sm_data_id)) {
-            /* context is current, abort the switch */
-
-            /* MOD REMAP DOWNGRADE */
-            if ((err_info = sr_rwrelock(&sr_yang_ctx.remap_lock, SR_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, func, NULL, NULL))) {
-                goto cleanup_unlock;
-            }
-            remap_mode = SR_LOCK_READ;
-            goto cleanup_unlock;
-        }
+        /* flush caches before switching to the new context */
+        sr_run_cache_flush(conn, &sr_run_cache);
+        sr_oper_cache_flush(conn, &sr_oper_cache);
 
         /* remap mod SHM */
         if ((err_info = sr_shm_remap(&sr_yang_ctx.mod_shm, 0))) {
             goto cleanup_unlock;
         }
-
-        /* flush caches */
-        sr_run_cache_flush(conn, &sr_run_cache);
-        sr_oper_cache_flush(conn, &sr_oper_cache);
 
         /* destroy the old context, because if it was printed then another process could have
          * been the one that printed it = this process did not destroy the old context while printing the new one,
@@ -234,6 +216,7 @@ cleanup_unlock:
         /* CONTEXT UNLOCK */
         sr_rwunlock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, mode, conn->cid, func);
     }
+
     return err_info;
 }
 
@@ -242,65 +225,16 @@ sr_lycc_relock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, const char *func)
 {
     sr_error_info_t *err_info = NULL;
     sr_main_shm_t *main_shm = SR_CONN_MAIN_SHM(conn);
-    sr_rwlock_t *rwlock = &main_shm->context_lock;
-    struct timespec timeout_abs;
-    int rc, r;
 
-    /* when upgrading the context lock (changing the context), make sure there are no cached data left in any process */
-    if (mode == SR_LOCK_WRITE) {
-        sr_timeouttime_get(&timeout_abs, SR_CONTEXT_LOCK_TIMEOUT);
-
-        /* CONTEXT MUTEX LOCK */
-        rc = pthread_mutex_clocklock(&rwlock->mutex, COMPAT_CLOCK_ID, &timeout_abs);
-        if (rc == EOWNERDEAD) {
-            /* make it consistent */
-            rc = pthread_mutex_consistent(&rwlock->mutex);
-            SR_CHECK_INT_RET(rc, err_info);
-        } else if (rc) {
-            sr_errinfo_new_lock(&err_info, func, rc, rwlock);
-            return err_info;
-        }
-
-        if (main_shm->run_cache_pids[0] || main_shm->oper_cache_pids[0] || main_shm->oper_push_cache_cids[0]) {
-            /* instead of waiting, try to recover the PIDs immediately */
-            sr_pid_array_recover(main_shm->run_cache_pids, SR_MAIN_SHM_CACHE_PID_SIZE);
-            sr_pid_array_recover(main_shm->oper_cache_pids, SR_MAIN_SHM_CACHE_PID_SIZE);
-            sr_cid_array_recover(main_shm->oper_push_cache_cids, SR_MAIN_SHM_CACHE_PID_SIZE);
-        }
-
-        /* wait until there are no cached data stored */
-        rc = 0;
-        while (!rc && (main_shm->run_cache_pids[0] || main_shm->oper_cache_pids[0] || main_shm->oper_push_cache_cids[0])) {
-            /* COND WAIT */
-            rc = sr_cond_clockwait(&rwlock->cond, &rwlock->mutex, COMPAT_CLOCK_ID, &timeout_abs);
-        }
-        if (rc == ETIMEDOUT) {
-            /* recover the PIDs again, the owners may have died while processing */
-            sr_pid_array_recover(main_shm->run_cache_pids, SR_MAIN_SHM_CACHE_PID_SIZE);
-            sr_pid_array_recover(main_shm->oper_cache_pids, SR_MAIN_SHM_CACHE_PID_SIZE);
-            sr_cid_array_recover(main_shm->oper_push_cache_cids, SR_MAIN_SHM_CACHE_PID_SIZE);
-            if (!main_shm->run_cache_pids[0] && !main_shm->oper_cache_pids[0] && !main_shm->oper_push_cache_cids[0]) {
-                /* recovered */
-                rc = 0;
-            }
-        }
-
-        /* CONTEXT MUTEX UNLOCK */
-        r = pthread_mutex_unlock(&rwlock->mutex);
-        if (r) {
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unlocking a mutex in %s() failed (%s).", func, strerror(r));
-            sr_errinfo_free(&err_info);
-        }
-
-        if (rc) {
-            sr_errinfo_new_lock(&err_info, func, rc, rwlock);
-            return err_info;
-        }
-    }
-
-    /* RELOCK */
+    /* RELOCK context lock */
     if ((err_info = sr_rwrelock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, mode, conn->cid, func, NULL, NULL))) {
         return err_info;
+    }
+
+    /* when upgrading the context lock (changing the context), flush all caches */
+    if (mode == SR_LOCK_WRITE) {
+        sr_run_cache_flush(conn, &sr_run_cache);
+        sr_oper_cache_flush(conn, &sr_oper_cache);
     }
 
     return NULL;
@@ -310,9 +244,6 @@ void
 sr_lycc_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const char *func)
 {
     sr_main_shm_t *main_shm = SR_CONN_MAIN_SHM(conn);
-    struct timespec timeout_abs;
-    sr_cid_t upgr_lock_waiting = 0;
-    int r;
 
     if (mode == SR_LOCK_NONE) {
         return;
@@ -321,30 +252,6 @@ sr_lycc_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const
     /* LYDMODS UNLOCK */
     if (lydmods_lock) {
         sr_munlock(&main_shm->lydmods_lock);
-    }
-
-    /* on other modes there can be no READ UPGR lock waiting */
-    if (mode == SR_LOCK_READ) {
-        sr_timeouttime_get(&timeout_abs, SR_CONTEXT_LOCK_TIMEOUT);
-
-        /* MUTEX LOCK */
-        r = pthread_mutex_clocklock(&main_shm->context_lock.mutex, COMPAT_CLOCK_ID, &timeout_abs);
-        if (r == EOWNERDEAD) {
-            pthread_mutex_consistent(&main_shm->context_lock.mutex);
-        }
-
-        if (!r) {
-            upgr_lock_waiting = main_shm->context_lock.upgr;
-
-            /* MUTEX UNLOCK */
-            pthread_mutex_unlock(&main_shm->context_lock.mutex);
-        }
-    }
-
-    if (upgr_lock_waiting) {
-        /* flush caches so that the lock can actually be upgraded */
-        sr_run_cache_flush(conn, &sr_run_cache);
-        sr_oper_cache_flush(conn, &sr_oper_cache);
     }
 
     /* MOD REMAP UNLOCK */
@@ -895,8 +802,7 @@ sr_lycc_store_ds_data_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *new_ct
 }
 
 sr_error_info_t *
-sr_lycc_update_data(sr_conn_ctx_t *conn, struct sr_lycc_info_s *cc_info, sr_shm_t *mod_shm,
-        sr_run_cache_t *sr_run_cache, sr_oper_cache_t *sr_oper_cache)
+sr_lycc_update_data(sr_conn_ctx_t *conn, struct sr_lycc_info_s *cc_info, sr_shm_t *mod_shm)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
 
@@ -911,10 +817,6 @@ sr_lycc_update_data(sr_conn_ctx_t *conn, struct sr_lycc_info_s *cc_info, sr_shm_
     if ((err_info = sr_lycc_store_ds_data_if_differ(conn, cc_info->ly_ctx_new, cc_info->sr_mods_new, &cc_info->data_info))) {
         goto cleanup;
     }
-
-    /* flush caches */
-    sr_run_cache_flush(conn, sr_run_cache);
-    sr_oper_cache_flush(conn, sr_oper_cache);
 
     /* create new nested schema mount contexts so they can be printed */
     if ((err_info = sr_schema_mount_create_contexts(cc_info->ly_ctx_new, cc_info->sr_mods_new))) {
@@ -1303,27 +1205,27 @@ cleanup:
 }
 
 void
-sr_lycc_store_context(sr_conn_ctx_t *conn, sr_shm_t *shm, struct ly_ctx *ctx)
+sr_lycc_store_context(sr_shm_t *shm, struct ly_ctx *ctx)
 {
     sr_error_info_t *err_info = NULL;
     int ctx_size, fd = -1;
     void *mem = NULL, *mem_end;
-    char *shm_name = NULL;
+    char *shm_name_tmp = NULL, *shm_name = NULL;
 
     if (!SR_PRINTED_LYCTX_ADDRESS) {
         /* printed context not supported */
         goto cleanup;
     }
 
-    /* flush caches */
-    sr_run_cache_flush(conn, &sr_run_cache);
-    sr_oper_cache_flush(conn, &sr_oper_cache);
-
-    if ((err_info = sr_path_ctx_shm(&shm_name))) {
+    if ((err_info = sr_path_ctx_shm(1, &shm_name_tmp))) {
         goto cleanup;
     }
 
-    fd = sr_open(shm_name, O_RDWR | O_CREAT | O_TRUNC, SR_SHM_PERM);
+    if ((err_info = sr_path_ctx_shm(0, &shm_name))) {
+        goto cleanup;
+    }
+
+    fd = sr_open(shm_name_tmp, O_RDWR | O_CREAT | O_TRUNC, SR_SHM_PERM);
     if (fd == -1) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to open ctx shared memory (%s).", strerror(errno));
         goto cleanup;
@@ -1358,6 +1260,13 @@ sr_lycc_store_context(sr_conn_ctx_t *conn, sr_shm_t *shm, struct ly_ctx *ctx)
     if ((err_info = sr_ly_ctx_compiled_print(ctx, mem, &mem_end))) {
         goto cleanup;
     }
+
+    /* rename so that existing maps can still access the old content */
+    if (rename(shm_name_tmp, shm_name) == -1) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to rename %s to %s (%s)", shm_name_tmp, shm_name, strerror(errno));
+        goto cleanup;
+    }
+
     assert(((char *)mem_end - (char *)mem) == ctx_size);
 
     /* destroy the old printed context, it will be unmapped anyways,
@@ -1368,9 +1277,10 @@ sr_lycc_store_context(sr_conn_ctx_t *conn, sr_shm_t *shm, struct ly_ctx *ctx)
     sr_yang_ctx.ly_ctx = NULL;
 
 cleanup:
-    if (err_info && shm_name) {
-        unlink(shm_name);
+    if (err_info && shm_name_tmp) {
+        unlink(shm_name_tmp);
     }
+    free(shm_name_tmp);
     free(shm_name);
     if (fd > -1) {
         close(fd);
@@ -1395,7 +1305,7 @@ sr_lycc_load_context(sr_shm_t *shm, struct ly_ctx **ctx)
         goto cleanup;
     }
 
-    if ((err_info = sr_path_ctx_shm(&shm_name))) {
+    if ((err_info = sr_path_ctx_shm(0, &shm_name))) {
         goto cleanup;
     }
 
@@ -1405,13 +1315,15 @@ sr_lycc_load_context(sr_shm_t *shm, struct ly_ctx **ctx)
         goto cleanup;
     }
 
-    /* open the shared memory if not open */
+    /* close any previously opened fd */
+    if (shm->fd != -1) {
+        close(shm->fd);
+    }
+
+    shm->fd = sr_open(shm_name, O_RDONLY, SR_SHM_PERM);
     if (shm->fd == -1) {
-        shm->fd = sr_open(shm_name, O_RDONLY, SR_SHM_PERM);
-        if (shm->fd == -1) {
-            sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to open context shared memory (%s).", strerror(errno));
-            goto cleanup;
-        }
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to open context shared memory (%s).", strerror(errno));
+        goto cleanup;
     }
 
     /* read the new shm size if not set */

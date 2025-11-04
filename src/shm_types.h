@@ -206,9 +206,6 @@ typedef struct {
     sr_rwlock_t context_lock;       /**< Process-shared lock for accessing connection LY context, lydmods data,
                                          and SHM mod modules. */
     pthread_mutex_t lydmods_lock;   /**< Process-shared lock for modifying SR internal module data. */
-    pid_t run_cache_pids[SR_MAIN_SHM_CACHE_PID_SIZE];   /**< PIDs of processes with data in runnning data cache. */
-    pid_t oper_cache_pids[SR_MAIN_SHM_CACHE_PID_SIZE];  /**< PIDs of processes with data in operational data cache. */
-    sr_cid_t oper_push_cache_cids[SR_MAIN_SHM_CACHE_PID_SIZE];  /**< CIDs of connections with sessions with data in oper push cache. */
     uint32_t content_id;            /**< Context content ID of the latest context. */
     uint32_t schema_mount_data_id;  /**< ID of the latest schema mount data change. */
 

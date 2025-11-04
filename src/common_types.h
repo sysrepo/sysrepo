@@ -158,7 +158,6 @@ struct sr_session_ctx_s {
     struct sr_oper_push_cache_s {
         char *name;                 /**< Module name whose push oper data were ever modified by this session. */
         int has_data;               /**< Flag if there is any data from this session in the module datastore. */
-        sr_cid_t shm_cid;           /**< Stored CID in case these cached data are tracked in main SHM oper push cache CIDs. */
         struct lyd_node *cache;     /**< Cached operational push data from the last push.
                                          Can be NULL even if has_data is true, for example,
                                          after apply_changes failure or after a context change.

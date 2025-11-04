@@ -524,10 +524,105 @@ test_run_change_oper_get(void **state)
     pthread_barrier_destroy(&st->barrier);
 }
 
+/* TEST */
+static void *
+test_cache_user(void *state)
+{
+    struct state *st = (struct state *)state;
+    sr_conn_ctx_t *conn;
+    sr_session_ctx_t *sess;
+    int i = 0, ret;
+    static ATOMIC_T thread_id = 0;
+    char xpath[32] = "";
+
+    snprintf(xpath, sizeof(xpath), "/test:l1[k='key%lu']/v", ATOMIC_INC_RELAXED(thread_id));
+
+    ret = sr_connect(0, &conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* enable the running cache, all other caches are always enabled */
+    sr_cache_running(1);
+
+    ret = sr_session_start(conn, SR_DS_OPERATIONAL, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* signal parent that we are ready */
+    pthread_barrier_wait(&st->barrier);
+
+    for (i = 0; i < 100; i++) {
+        sched_yield();
+        ret = sr_set_item_str(sess, xpath, "1", NULL, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        ret = sr_apply_changes(sess, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        sched_yield();
+
+        if (i % 2) {
+            ret = sr_discard_oper_changes(sess, NULL, 0);
+        } else {
+            ret = sr_delete_item(sess, xpath, 0);
+            assert_int_equal(ret, SR_ERR_OK);
+            ret = sr_apply_changes(sess, 0);
+        }
+        assert_int_equal(ret, SR_ERR_OK);
+
+        ret = sr_session_switch_ds(sess,  (i % 2) ? SR_DS_RUNNING : SR_DS_OPERATIONAL);
+        assert_int_equal(ret, SR_ERR_OK);
+    }
+
+    sr_disconnect(conn);
+
+    return NULL;
+}
+
+static void
+test_ctx_change_with_cache(void **state)
+{
+    struct state *st = (struct state *)*state;
+    const int thread_count = 3;
+    int i, ret = 0;
+    pthread_t tid[thread_count];
+    const char *module_names[] = {
+        "ietf-interfaces",
+        NULL
+    };
+    const char *schema_paths[] = {
+        TESTS_SRC_DIR "/files/ietf-interfaces.yang",
+        NULL
+    };
+
+    pthread_barrier_init(&st->barrier, NULL, thread_count + 1);
+
+    for (i = 0; i < thread_count; ++i) {
+        pthread_create(&tid[i], NULL, test_cache_user, st);
+    }
+
+    /* wait for threads to connect to sysrepo */
+    pthread_barrier_wait(&st->barrier);
+
+    /* change the context many times */
+    for (i = 0; i < 10; i++) {
+        ret = sr_remove_modules(st->conn1, module_names, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        ret = sr_install_modules(st->conn1, schema_paths, TESTS_SRC_DIR "/files", NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+    }
+
+    for (i = 0; i < thread_count; ++i) {
+        pthread_join(tid[i], NULL);
+    }
+
+    pthread_barrier_destroy(&st->barrier);
+}
+
 int
 main(void)
 {
     const struct CMUnitTest tests[] = {
+        cmocka_unit_test_teardown(test_ctx_change_with_cache, clear_interfaces),
         cmocka_unit_test_teardown(test_create1, clear_interfaces),
         cmocka_unit_test(test_new_conn),
         cmocka_unit_test_teardown(test_sub_suspend, clear_interfaces),
