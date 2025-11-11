@@ -3745,6 +3745,8 @@ sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, 
 {
     sr_error_info_t *err_info = NULL;
     char str[22], *str_val;
+    /* lock context if not already locked when edit was created */
+    int lock_context = !session->dt[session->ds].edit;
 
     SR_CHECK_ARG_APIRET(!session || (!path && (!value || !value->xpath)) || SR_EDIT_DS_API_CHECK(session->ds, opts),
             session, err_info);
@@ -3754,14 +3756,16 @@ sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, 
     }
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
+    if (lock_context && (err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
         return sr_api_ret(session, err_info);
     }
 
     str_val = sr_val_sr2ly_str(sr_yang_ctx.ly_ctx, value, path, str, 0);
 
     /* CONTEXT UNLOCK */
-    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
+    if (lock_context) {
+        sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
+    }
 
     /* API function */
     return sr_set_item_str(session, path, str_val, value ? value->origin : NULL, opts);
@@ -3871,6 +3875,11 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const uint32_t opts)
         }
     }
     if (!session->dt[session->ds].edit) {
+        if (session->ds == SR_DS_OPERATIONAL) {
+            /* nothing left to delete */
+            goto cleanup;
+        }
+
         /* CONTEXT LOCK */
         if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
             goto cleanup;
