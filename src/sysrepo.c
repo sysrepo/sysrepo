@@ -232,12 +232,13 @@ sr_connect(const uint32_t opts, sr_conn_ctx_t **conn_p)
     }
 
     if (sr_yang_ctx.refcount == 1) {
-        /* currently the only connection, open mod_shm and create ly_ctx */
+        /* currently the only connection, open mod_shm */
         if ((err_info = sr_shmmod_open(&sr_yang_ctx.mod_shm, created))) {
             goto cleanup_unlock;
         }
 
-        if ((err_info = sr_ly_ctx_new(&sr_yang_ctx.ly_ctx))) {
+        /* create new context if main_shm was just created */
+        if (created && (err_info = sr_ly_ctx_new(&sr_yang_ctx.ly_ctx))) {
             goto cleanup_unlock;
         }
     }
