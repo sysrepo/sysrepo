@@ -66,6 +66,8 @@
 
 #define SR_IS_YANG_ID_CHAR(c) (isalpha(c) || isdigit(c) || ((c) == '_') || ((c) == '-') || ((c) == '.'))
 
+static sr_error_info_t *sr_xpath_get_text_pred_atoms(const char *xpath, char ***xp_atoms, uint32_t *xp_atom_count);
+
 /**
  * @brief Internal datastore plugin array.
  */
@@ -5310,6 +5312,122 @@ cleanup:
 }
 
 /**
+ * @brief Merge all subtrees in a set into a diff with 'none' operation, if did not exist before.
+ *
+ * @param[in] set Subtrees to merge.
+ * @param[in,out] diff Diff to merge into.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_xpath_merge_pred_diff_path(const struct ly_set *set, struct lyd_node **diff)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *top_parent, *node_parent, *match;
+    uint32_t i;
+
+    for (i = 0; i < set->count; ++i) {
+        /* create parents and/or find the subtree parent */
+        if ((err_info = sr_edit_diff_create_parents(set->dnodes[i], diff, &top_parent, &node_parent))) {
+            goto cleanup;
+        }
+
+        if (top_parent) {
+            /* first created parent, set 'none' operation */
+            if ((err_info = sr_diff_set_oper(top_parent, "none"))) {
+                goto cleanup;
+            }
+        }
+
+        /* try to find the node */
+        if ((err_info = sr_lyd_find_sibling_first(node_parent ? lyd_child(node_parent) : *diff, set->dnodes[i], &match))) {
+            goto cleanup;
+        }
+
+        if (match) {
+            /* already exists */
+            continue;
+        }
+
+        /* create the node, the subtree (if any) is not needed */
+        if ((err_info = sr_lyd_dup(set->dnodes[i], node_parent, 0, 0, &match))) {
+            goto cleanup;
+        }
+        if (!node_parent) {
+            if ((err_info = sr_lyd_insert_sibling(*diff, match, diff))) {
+                goto cleanup;
+            }
+        }
+
+        if (!top_parent) {
+            /* first created node, set 'none' operation */
+            if ((err_info = sr_diff_set_oper(match, "none"))) {
+                goto cleanup;
+            }
+        }
+
+        /* set 'orig-default' if a term node */
+        if (match->schema->nodetype & LYD_NODE_TERM) {
+            if ((err_info = sr_lyd_new_meta(match, NULL, "yang:orig-default", (match->flags & LYD_DEFAULT) ? "true" : "false"))) {
+                goto cleanup;
+            }
+        }
+    }
+
+cleanup:
+    return err_info;
+}
+
+sr_error_info_t *
+sr_xpath_merge_pred_diff(const struct lyd_node *mod_data, const char **xpaths, struct lyd_node **diff)
+{
+    sr_error_info_t *err_info = NULL;
+    char **atoms = NULL;
+    struct ly_set *set = NULL;
+    uint32_t atom_count = 0, i, j;
+
+    if (!mod_data || !xpaths) {
+        /* nothing to merge */
+        goto cleanup;
+    }
+
+    for (i = 0; xpaths[i]; ++i) {
+        /* free previous atoms */
+        for (j = 0; j < atom_count; ++j) {
+            free(atoms[j]);
+        }
+        free(atoms);
+        atoms = NULL;
+        atom_count = 0;
+
+        /* get text predicate atoms of the xpath */
+        if ((err_info = sr_xpath_get_text_pred_atoms(xpaths[i], &atoms, &atom_count))) {
+            goto cleanup;
+        }
+
+        for (j = 0; j < atom_count; ++j) {
+            /* get the data required to evaluate this atom */
+            ly_set_free(set, NULL);
+            if ((err_info = sr_lyd_find_xpath(mod_data, atoms[j], &set))) {
+                goto cleanup;
+            }
+
+            /* merge the required data into diff */
+            if ((err_info = sr_xpath_merge_pred_diff_path(set, diff))) {
+                goto cleanup;
+            }
+        }
+    }
+
+cleanup:
+    for (j = 0; j < atom_count; ++j) {
+        free(atoms[j]);
+    }
+    free(atoms);
+    ly_set_free(set, NULL);
+    return err_info;
+}
+
+/**
  * @brief Add a new atom if not present.
  *
  * @param[in,out] atom Atom to add, is spent and set to NULL.
@@ -5362,6 +5480,7 @@ static const char *xpath_ops[] = {"or ", "and ", "=", "!=", "<", ">", "<=", ">="
  * @param[in] xpath XPath to parse.
  * @param[in] prev_atom Atom of the previous expression (context node as a text atom).
  * @param[in] end_chars Array of chars ending this expression, NULL if only terminating zero is expected.
+ * @param[in] pred_only Whether to store only the nodes in the predicates.
  * @param[out] atoms Collected text atoms.
  * @param[out] atom_count Count of @p atoms.
  * @param[out] xpath_next Pointer to one of @p end_chars if found (optionall to '|' if @p end_chars is NULL),
@@ -5369,8 +5488,8 @@ static const char *xpath_ops[] = {"or ", "and ", "=", "!=", "<", ">", "<=", ">="
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_xpath_text_atoms_expr(const char *xpath, const char *prev_atom, const char *end_chars, sr_xp_atoms_atom_t **atoms,
-        uint32_t *atom_count, const char **xpath_next)
+sr_xpath_text_atoms_expr(const char *xpath, const char *prev_atom, const char *end_chars, int pred_only,
+        sr_xp_atoms_atom_t **atoms, uint32_t *atom_count, const char **xpath_next)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, prev_atom_count;
@@ -5449,7 +5568,7 @@ parse_name:
         /* function call, get atoms from subexpressions */
         do {
             next2 = next + 1;
-            if ((err_info = sr_xpath_text_atoms_expr(next2, cur_atom, ",)", atoms, atom_count, &next))) {
+            if ((err_info = sr_xpath_text_atoms_expr(next2, cur_atom, ",)", pred_only, atoms, atom_count, &next))) {
                 goto cleanup;
             } else if ((next2 == next) && !strchr(",)", next[0])) {
                 /* unknown expr */
@@ -5464,7 +5583,7 @@ parse_name:
         prev_atom_count = *atom_count;
         do {
             next2 = next + 1;
-            if ((err_info = sr_xpath_text_atoms_expr(next2, cur_atom, "]", atoms, atom_count, &next))) {
+            if ((err_info = sr_xpath_text_atoms_expr(next2, cur_atom, "]", 0, atoms, atom_count, &next))) {
                 goto cleanup;
             } else if ((next2 == next) && (next[0] != ']')) {
                 /* unknown expr */
@@ -5495,7 +5614,7 @@ parse_name:
     if ((!end_chars && (!next[0] || (next[0] == '|'))) || (end_chars && next[0] && strchr(end_chars, next[0]))) {
         /* finished with this (sub)expression, add new atom if any found (parsed) */
         parsed = 1;
-        if (!atom_stored && (strlen(prev_atom) < strlen(cur_atom)) &&
+        if (!pred_only && !atom_stored && (strlen(prev_atom) < strlen(cur_atom)) &&
                 (err_info = sr_xpath_text_atom_add(&cur_atom, !end_chars ? 1 : 0, atoms, atom_count))) {
             goto cleanup;
         }
@@ -5520,9 +5639,16 @@ parse_name:
                     /* parse and store the literal */
                     assert(strlen(prev_atom) < strlen(cur_atom));
                     len = (strchr(next2 + 1, next2[0]) - next2) + 1;
-                    if (asprintf(&tmp, "%s[%s=%.*s]", prev_atom, cur_atom + strlen(prev_atom) + 1, len, next2) == -1) {
-                        SR_ERRINFO_MEM(&err_info);
-                        goto cleanup;
+                    if (pred_only) {
+                        if (asprintf(&tmp, "%s/%s", prev_atom, cur_atom + strlen(prev_atom) + 1) == -1) {
+                            SR_ERRINFO_MEM(&err_info);
+                            goto cleanup;
+                        }
+                    } else {
+                        if (asprintf(&tmp, "%s[%s=%.*s]", prev_atom, cur_atom + strlen(prev_atom) + 1, len, next2) == -1) {
+                            SR_ERRINFO_MEM(&err_info);
+                            goto cleanup;
+                        }
                     }
                     next2 += len;
 
@@ -5543,7 +5669,7 @@ parse_name:
                     }
                     next2 += op_len;
                 }
-            } else if (!atom_stored && (strlen(prev_atom) < strlen(cur_atom))) {
+            } else if (!pred_only && !atom_stored && (strlen(prev_atom) < strlen(cur_atom))) {
                 /* add a new atom if a new one */
                 if ((err_info = sr_xpath_text_atom_add(&cur_atom, 0, atoms, atom_count))) {
                     goto cleanup;
@@ -5551,7 +5677,7 @@ parse_name:
             }
 
             /* parse the following expression */
-            if ((err_info = sr_xpath_text_atoms_expr(next2, prev_atom, end_chars, atoms, atom_count, &next))) {
+            if ((err_info = sr_xpath_text_atoms_expr(next2, prev_atom, end_chars, pred_only, atoms, atom_count, &next))) {
                 goto cleanup;
             }
             parsed = 1;
@@ -5581,7 +5707,7 @@ sr_xpath_get_text_atoms(const char *xpath, sr_xp_atoms_t **xp_atoms)
         /* get atoms for the expression, for relative paths we can use '/' because the context node is root node */
         atoms = NULL;
         atom_count = 0;
-        err_info = sr_xpath_text_atoms_expr(xpath, "/", NULL, &atoms, &atom_count, &next);
+        err_info = sr_xpath_text_atoms_expr(xpath, "/", NULL, 0, &atoms, &atom_count, &next);
 
         if (err_info || (xpath == next)) {
             /* error or unknown expr */
@@ -5613,6 +5739,71 @@ cleanup:
     if (err_info) {
         sr_xpath_atoms_free(*xp_atoms);
         *xp_atoms = NULL;
+    }
+    return err_info;
+}
+
+/**
+ * @brief Get all text atoms (simple paths) for all XPath predicate nodes.
+ *
+ * @param[in] xpath XPath to parse.
+ * @param[out] xp_atoms Array of collected text predicate atoms.
+ * @param[out] xp_atom_count Count of @p xp_atoms.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_xpath_get_text_pred_atoms(const char *xpath, char ***xp_atoms, uint32_t *xp_atom_count)
+{
+    sr_error_info_t *err_info = NULL;
+    const char *next;
+    sr_xp_atoms_atom_t *atoms;
+    uint32_t i, atom_count;
+    void *mem;
+
+    assert(xpath);
+
+    *xp_atoms = NULL;
+    *xp_atom_count = 0;
+
+    do {
+        /* get atoms for the expression, for relative paths we can use '/' because the context node is root node */
+        atoms = NULL;
+        atom_count = 0;
+        err_info = sr_xpath_text_atoms_expr(xpath, "/", NULL, 1, &atoms, &atom_count, &next);
+
+        if (err_info || (xpath == next)) {
+            /* error or unknown expr */
+            for (i = 0; i < atom_count; ++i) {
+                free(atoms[i].atom);
+            }
+            free(atoms);
+            goto cleanup;
+        }
+
+        /* add a new atom */
+        mem = realloc(*xp_atoms, (*xp_atom_count + atom_count) * sizeof **xp_atoms);
+        SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
+        *xp_atoms = mem;
+
+        for (i = 0; i < atom_count; ++i) {
+            (*xp_atoms)[*xp_atom_count] = atoms[i].atom;
+            ++(*xp_atom_count);
+            atoms[i].atom = NULL;
+        }
+        free(atoms);
+
+        /* move to expr after the union */
+        xpath = next + 1;
+    } while (next[0] == '|');
+
+cleanup:
+    if (err_info) {
+        for (i = 0; i < *xp_atom_count; ++i) {
+            free((*xp_atoms)[i]);
+        }
+        free(*xp_atoms);
+        *xp_atoms = NULL;
+        *xp_atom_count = 0;
     }
     return err_info;
 }

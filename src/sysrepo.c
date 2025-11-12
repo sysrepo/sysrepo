@@ -4500,6 +4500,11 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
         change_sub_lock = SR_LOCK_READ;
     }
 
+    /* merge any data referenced from module change subscriptions predicates into the diff for filters to work */
+    if ((err_info = sr_modinfo_change_diff_merge_pred_data(mod_info))) {
+        goto cleanup;
+    }
+
     /* first publish "update" event for the diff to be updated */
     if ((err_info = sr_modinfo_change_notify_update(mod_info, session, timeout_ms, &change_sub_lock, err_info2)) ||
             *err_info2) {
@@ -6270,6 +6275,7 @@ sr_module_change_subscribe_enable(sr_session_ctx_t *session, struct sr_mod_info_
     struct lyd_node *enabled_data = NULL, *node;
     sr_session_ctx_t *ev_sess = NULL;
     sr_error_t err_code;
+    const char *xpaths[2];
 
     /* create mod_info structure with this module only, do not use cache to allow reading data in the callback
      * (avoid dead-lock) */
@@ -6289,6 +6295,13 @@ sr_module_change_subscribe_enable(sr_session_ctx_t *session, struct sr_mod_info_
     if (mod_info->data) {
         if (xpath) {
             if ((err_info = sr_lyd_get_enabled_xpath(&mod_info->data, (char **)&xpath, 1, 1, &enabled_data))) {
+                goto cleanup;
+            }
+
+            /* make sure the filters work correctly */
+            xpaths[0] = xpath;
+            xpaths[1] = NULL;
+            if ((err_info = sr_xpath_merge_pred_diff(mod_info->data, xpaths, &enabled_data))) {
                 goto cleanup;
             }
         } else {

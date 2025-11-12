@@ -334,6 +334,16 @@ sr_error_info_t *sr_modinfo_check_state_data(struct sr_mod_info_s *mod_info, sr_
 sr_error_info_t *sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, int output);
 
 /**
+ * @brief Merge data referenced in predicates in module change subscriptions of the relevant datastore to the notify diff.
+ *
+ * CHANGE SUB READ lock expected to be held.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_modinfo_change_diff_merge_pred_data(struct sr_mod_info_s *mod_info);
+
+/**
  * @brief Filter data from mod info.
  *
  * @param[in] mod_info Mod info to use.

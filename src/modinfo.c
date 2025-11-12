@@ -747,138 +747,14 @@ sr_modinfo_replace(struct sr_mod_info_s *mod_info, struct lyd_node **src_data)
     return NULL;
 }
 
-/**
- * @brief Merge all subtrees in a set into a diff with 'none' operation, if did not exist before.
- *
- * @param[in] set Subtrees to merge.
- * @param[in,out] diff Diff to merge into.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_modinfo_merge_xpath_pred_diff_path(const struct ly_set *set, struct lyd_node **diff)
-{
-    sr_error_info_t *err_info = NULL;
-    struct lyd_node *top_parent, *node_parent, *match;
-    uint32_t i;
-
-    for (i = 0; i < set->count; ++i) {
-        /* create parents and/or find the subtree parent */
-        if ((err_info = sr_edit_diff_create_parents(set->dnodes[i], diff, &top_parent, &node_parent))) {
-            goto cleanup;
-        }
-
-        if (top_parent) {
-            /* first created parent, set 'none' operation */
-            if ((err_info = sr_diff_set_oper(top_parent, "none"))) {
-                goto cleanup;
-            }
-        }
-
-        /* try to find the node */
-        if ((err_info = sr_lyd_find_sibling_first(node_parent ? lyd_child(node_parent) : *diff, set->dnodes[i], &match))) {
-            goto cleanup;
-        }
-
-        if (match) {
-            /* already exists */
-            continue;
-        }
-
-        /* create the node, the subtree (if any) is not needed */
-        if ((err_info = sr_lyd_dup(set->dnodes[i], node_parent, 0, 0, &match))) {
-            goto cleanup;
-        }
-        if (!node_parent) {
-            if ((err_info = sr_lyd_insert_sibling(*diff, match, diff))) {
-                goto cleanup;
-            }
-        }
-
-        if (!top_parent) {
-            /* first created node, set 'none' operation */
-            if ((err_info = sr_diff_set_oper(match, "none"))) {
-                goto cleanup;
-            }
-        }
-
-        /* set 'orig-default' if a term node */
-        if (match->schema->nodetype & LYD_NODE_TERM) {
-            if ((err_info = sr_lyd_new_meta(match, NULL, "yang:orig-default", (match->flags & LYD_DEFAULT) ? "true" : "false"))) {
-                goto cleanup;
-            }
-        }
-    }
-
-cleanup:
-    return err_info;
-}
-
-/**
- * @brief Merge all data subtrees required for evaluating predicates in XPaths into a diff with 'none' operation.
- *
- * @param[in] mod_data All data of a module.
- * @param[in] xpaths Array of XPaths terminated by NULL.
- * @param[in,out] diff Diff to merge into.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_modinfo_merge_xpath_pred_diff(const struct lyd_node *mod_data, const char **xpaths, struct lyd_node **diff)
-{
-    sr_error_info_t *err_info = NULL;
-    sr_xp_atoms_t *xp_atoms = NULL;
-    struct ly_set *set = NULL;
-    uint32_t i, j, k;
-
-    if (!mod_data || !xpaths) {
-        /* nothing to merge */
-        goto cleanup;
-    }
-
-    for (i = 0; xpaths[i]; ++i) {
-        /* free previous atoms */
-        sr_xpath_atoms_free(xp_atoms);
-        xp_atoms = NULL;
-
-        /* get text atoms of the xpath */
-        if ((err_info = sr_xpath_get_text_atoms(xpaths[i], &xp_atoms))) {
-            goto cleanup;
-        }
-
-        for (j = 0; j < xp_atoms->union_count; ++j) {
-            for (k = 0; k < xp_atoms->unions[j].atom_count; ++k) {
-                if (xp_atoms->unions[j].atoms[k].selected) {
-                    /* skip */
-                    continue;
-                }
-
-                /* get the data required to evaluate this atom */
-                ly_set_free(set, NULL);
-                if ((err_info = sr_lyd_find_xpath(mod_data, xp_atoms->unions[j].atoms[k].atom, &set))) {
-                    goto cleanup;
-                }
-
-                /* merge the required data into diff */
-                if ((err_info = sr_modinfo_merge_xpath_pred_diff_path(set, diff))) {
-                    goto cleanup;
-                }
-            }
-        }
-    }
-
-cleanup:
-    sr_xpath_atoms_free(xp_atoms);
-    ly_set_free(set, NULL);
-    return err_info;
-}
-
 sr_error_info_t *
 sr_modinfo_oper_notify_diff(struct sr_mod_info_s *mod_info, struct lyd_node **old_data)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
     struct lyd_node *new_mod_data = NULL, *old_mod_data = NULL, *diff;
-    uint32_t i, j;
-    char **xpaths = NULL;
+    uint32_t i;
+    const char **xpaths = NULL;
 
     assert(!mod_info->notify_diff && !mod_info->data_cached);
 
@@ -902,18 +778,14 @@ sr_modinfo_oper_notify_diff(struct sr_mod_info_s *mod_info, struct lyd_node **ol
             lyd_insert_sibling(mod_info->notify_diff, diff, &mod_info->notify_diff);
 
             /* free previous xpaths */
-            if (xpaths) {
-                for (j = 0; xpaths[j]; ++j) {
-                    free(xpaths[j]);
-                }
-                free(xpaths);
-            }
+            free(xpaths);
+            xpaths = NULL;
 
             /* merge also any stored data used in change subscription xpath filters so they can be correctly evaluated */
-            if ((err_info = sr_shmsub_change_notify_collect_xpaths(mod_info->conn, mod, SR_DS_OPERATIONAL, &xpaths))) {
+            if ((err_info = sr_shmsub_change_collect_xpath(mod_info->conn, mod->shm_mod, SR_DS_OPERATIONAL, &xpaths))) {
                 goto cleanup;
             }
-            if ((err_info = sr_modinfo_merge_xpath_pred_diff(new_mod_data, (const char **)xpaths, &mod_info->notify_diff))) {
+            if ((err_info = sr_xpath_merge_pred_diff(new_mod_data, (const char **)xpaths, &mod_info->notify_diff))) {
                 goto cleanup;
             }
         }
@@ -932,12 +804,7 @@ sr_modinfo_oper_notify_diff(struct sr_mod_info_s *mod_info, struct lyd_node **ol
 cleanup:
     lyd_free_all(new_mod_data);
     lyd_free_all(old_mod_data);
-    if (xpaths) {
-        for (j = 0; xpaths[j]; ++j) {
-            free(xpaths[j]);
-        }
-        free(xpaths);
-    }
+    free(xpaths);
     return err_info;
 }
 
@@ -3620,6 +3487,30 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
     }
 
 cleanup:
+    return err_info;
+}
+
+sr_error_info_t *
+sr_modinfo_change_diff_merge_pred_data(struct sr_mod_info_s *mod_info)
+{
+    sr_error_info_t *err_info = NULL;
+    const char **xpaths = NULL;
+    uint32_t i;
+
+    /* collect all the xpaths of the subscriptions */
+    for (i = 0; i < mod_info->mod_count; ++i) {
+        if ((err_info = sr_shmsub_change_collect_xpath(mod_info->conn, mod_info->mods[i].shm_mod, mod_info->ds, &xpaths))) {
+            goto cleanup;
+        }
+    }
+
+    /* merge all the required data into the diff */
+    if ((err_info = sr_xpath_merge_pred_diff(mod_info->data, xpaths, &mod_info->notify_diff))) {
+        goto cleanup;
+    }
+
+cleanup:
+    free(xpaths);
     return err_info;
 }
 

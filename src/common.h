@@ -1469,6 +1469,16 @@ sr_error_info_t *sr_xpath_first_prefix(const char *xpath, char **prefix);
 sr_error_info_t *sr_xpath_set_filter_subtrees(struct ly_set *set);
 
 /**
+ * @brief Merge all data subtrees required for evaluating predicates in XPaths into a diff with 'none' operation.
+ *
+ * @param[in] mod_data All data of a module.
+ * @param[in] xpaths Array of XPaths terminated by NULL.
+ * @param[in,out] diff Diff to merge into.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_xpath_merge_pred_diff(const struct lyd_node *mod_data, const char **xpaths, struct lyd_node **diff);
+
+/**
  * @brief Get all text atoms (simple paths) for an XPath.
  *
  * @param[in] xpath XPath to parse.
