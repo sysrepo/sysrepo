@@ -59,6 +59,7 @@ setup(void **state)
         TESTS_SRC_DIR "/files/defaults.yang",
         TESTS_SRC_DIR "/files/sm.yang",
         TESTS_SRC_DIR "/files/ops.yang",
+        TESTS_SRC_DIR "/files/simple.yang",
         NULL
     };
 
@@ -141,6 +142,7 @@ teardown(void **state)
         "ietf-interfaces",
         "test",
         "ops",
+        "simple",
         NULL
     };
 
@@ -6080,6 +6082,68 @@ test_filter_orig(void **state)
 
 /* TEST */
 static int
+module_sub_xpath_data_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+
+    (void)session;
+    (void)sub_id;
+    (void)xpath;
+    (void)event;
+    (void)request_id;
+
+    assert_string_equal(module_name, "simple");
+
+    ATOMIC_INC_RELAXED(st->cb_called);
+    return SR_ERR_OK;
+}
+
+static void
+test_sub_xpath_data(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *sub = NULL;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set some data */
+    ret = sr_set_item_str(sess, "/simple:ac1/acl1[acs1='item1key']/l1", "item1leaf1", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/simple:ac1/acl1[acs1='item1key']/l2", "item1leaf2", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe */
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 0);
+    ret = sr_module_change_subscribe(sess, "simple", "/simple:ac1/acl1[l1='item1leaf1']/l2", module_sub_xpath_data_cb,
+            st, 0, SR_SUBSCR_ENABLED | SR_SUBSCR_DONE_ONLY, &sub);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
+
+    /* perform changes */
+    ret = sr_set_item_str(sess, "/simple:ac1/acl1[acs1='item1key']/l2", "changed leaf", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
+
+    /* cleanup */
+    ret = sr_delete_item(sess, "/simple:ac1", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_unsubscribe(sub);
+    sr_session_stop(sess);
+}
+
+/* TEST */
+static int
 module_change_order_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
         sr_event_t event, uint32_t request_id, void *private_data)
 {
@@ -8319,6 +8383,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_change_timeout, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_done_timeout, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_filter_orig, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_sub_xpath_data, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_diff_reuse, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_order, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_userord, setup_f, teardown_f),

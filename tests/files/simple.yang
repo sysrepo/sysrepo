@@ -12,6 +12,12 @@ module simple {
             leaf acs1 {
                 type string;
             }
+            leaf l1 {
+                type string;
+            }
+            leaf l2 {
+                type string;
+            }
         }
     }
 }

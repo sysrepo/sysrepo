@@ -5481,14 +5481,15 @@ static const char *xpath_ops[] = {"or ", "and ", "=", "!=", "<", ">", "<=", ">="
  * @param[in] prev_atom Atom of the previous expression (context node as a text atom).
  * @param[in] end_chars Array of chars ending this expression, NULL if only terminating zero is expected.
  * @param[in] pred_only Whether to store only the nodes in the predicates.
+ * @param[in] pred_atom Whether to generate atoms with predicates or as simple paths for nodes in predicates.
  * @param[out] atoms Collected text atoms.
  * @param[out] atom_count Count of @p atoms.
- * @param[out] xpath_next Pointer to one of @p end_chars if found (optionall to '|' if @p end_chars is NULL),
+ * @param[out] xpath_next Pointer to one of @p end_chars if found (optionally to '|' if @p end_chars is NULL),
  * @p xpath if some unknown construct was encountered.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_xpath_text_atoms_expr(const char *xpath, const char *prev_atom, const char *end_chars, int pred_only,
+sr_xpath_text_atoms_expr(const char *xpath, const char *prev_atom, const char *end_chars, int pred_only, int pred_atom,
         sr_xp_atoms_atom_t **atoms, uint32_t *atom_count, const char **xpath_next)
 {
     sr_error_info_t *err_info = NULL;
@@ -5568,7 +5569,7 @@ parse_name:
         /* function call, get atoms from subexpressions */
         do {
             next2 = next + 1;
-            if ((err_info = sr_xpath_text_atoms_expr(next2, cur_atom, ",)", pred_only, atoms, atom_count, &next))) {
+            if ((err_info = sr_xpath_text_atoms_expr(next2, cur_atom, ",)", pred_only, pred_atom, atoms, atom_count, &next))) {
                 goto cleanup;
             } else if ((next2 == next) && !strchr(",)", next[0])) {
                 /* unknown expr */
@@ -5583,7 +5584,7 @@ parse_name:
         prev_atom_count = *atom_count;
         do {
             next2 = next + 1;
-            if ((err_info = sr_xpath_text_atoms_expr(next2, cur_atom, "]", 0, atoms, atom_count, &next))) {
+            if ((err_info = sr_xpath_text_atoms_expr(next2, cur_atom, "]", 0, pred_atom, atoms, atom_count, &next))) {
                 goto cleanup;
             } else if ((next2 == next) && (next[0] != ']')) {
                 /* unknown expr */
@@ -5639,13 +5640,13 @@ parse_name:
                     /* parse and store the literal */
                     assert(strlen(prev_atom) < strlen(cur_atom));
                     len = (strchr(next2 + 1, next2[0]) - next2) + 1;
-                    if (pred_only) {
-                        if (asprintf(&tmp, "%s/%s", prev_atom, cur_atom + strlen(prev_atom) + 1) == -1) {
+                    if (pred_atom) {
+                        if (asprintf(&tmp, "%s[%s=%.*s]", prev_atom, cur_atom + strlen(prev_atom) + 1, len, next2) == -1) {
                             SR_ERRINFO_MEM(&err_info);
                             goto cleanup;
                         }
                     } else {
-                        if (asprintf(&tmp, "%s[%s=%.*s]", prev_atom, cur_atom + strlen(prev_atom) + 1, len, next2) == -1) {
+                        if (asprintf(&tmp, "%s/%s", prev_atom, cur_atom + strlen(prev_atom) + 1) == -1) {
                             SR_ERRINFO_MEM(&err_info);
                             goto cleanup;
                         }
@@ -5677,7 +5678,8 @@ parse_name:
             }
 
             /* parse the following expression */
-            if ((err_info = sr_xpath_text_atoms_expr(next2, prev_atom, end_chars, pred_only, atoms, atom_count, &next))) {
+            if ((err_info = sr_xpath_text_atoms_expr(next2, prev_atom, end_chars, pred_only, pred_atom, atoms,
+                    atom_count, &next))) {
                 goto cleanup;
             }
             parsed = 1;
@@ -5707,7 +5709,7 @@ sr_xpath_get_text_atoms(const char *xpath, sr_xp_atoms_t **xp_atoms)
         /* get atoms for the expression, for relative paths we can use '/' because the context node is root node */
         atoms = NULL;
         atom_count = 0;
-        err_info = sr_xpath_text_atoms_expr(xpath, "/", NULL, 0, &atoms, &atom_count, &next);
+        err_info = sr_xpath_text_atoms_expr(xpath, "/", NULL, 0, 1, &atoms, &atom_count, &next);
 
         if (err_info || (xpath == next)) {
             /* error or unknown expr */
@@ -5769,7 +5771,7 @@ sr_xpath_get_text_pred_atoms(const char *xpath, char ***xp_atoms, uint32_t *xp_a
         /* get atoms for the expression, for relative paths we can use '/' because the context node is root node */
         atoms = NULL;
         atom_count = 0;
-        err_info = sr_xpath_text_atoms_expr(xpath, "/", NULL, 1, &atoms, &atom_count, &next);
+        err_info = sr_xpath_text_atoms_expr(xpath, "/", NULL, 1, 0, &atoms, &atom_count, &next);
 
         if (err_info || (xpath == next)) {
             /* error or unknown expr */
