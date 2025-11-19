@@ -6569,9 +6569,9 @@ error2:
 
 error1:
     /* CHANGE SUB WRITE lock - and remove the newly added sub from Ext SHM */
-    if ((err_info = sr_rwlock(&shm_mod->change_sub[session->ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE,
+    if ((tmp_err = sr_rwlock(&shm_mod->change_sub[session->ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE,
             conn->cid, __func__, NULL, NULL))) {
-        goto cleanup;
+        sr_errinfo_merge(&err_info, tmp_err);
     }
     change_sub_mode = SR_LOCK_WRITE;
 
