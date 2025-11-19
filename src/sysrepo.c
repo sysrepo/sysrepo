@@ -6257,7 +6257,6 @@ cleanup:
  * @brief Perform enabled event on a subscription.
  *
  * @param[in] session Session to use.
- * @param[in,out] mod_info Empty mod info structure to use. If any modules were locked, they are kept that way.
  * @param[in] ly_mod Specific module.
  * @param[in] xpath Optional subscription xpath.
  * @param[in] callback Callback to call.
@@ -6267,45 +6266,48 @@ cleanup:
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_module_change_subscribe_enable(sr_session_ctx_t *session, struct sr_mod_info_s *mod_info,
-        const struct lys_module *ly_mod, const char *xpath, sr_module_change_cb callback, void *private_data,
-        uint32_t sub_id, int opts)
+sr_module_change_subscribe_enable(sr_session_ctx_t *session, const struct lys_module *ly_mod,
+        const char *xpath, sr_module_change_cb callback, void *private_data, uint32_t sub_id, int opts)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *enabled_data = NULL, *node;
     sr_session_ctx_t *ev_sess = NULL;
     sr_error_t err_code;
     const char *xpaths[2];
+    struct sr_mod_info_s mod_info;
+
+    /* init modinfo */
+    sr_modinfo_init(&mod_info, session->conn, session->ds, (session->ds == SR_DS_OPERATIONAL) ? SR_DS_RUNNING : session->ds, 0);
 
     /* create mod_info structure with this module only, do not use cache to allow reading data in the callback
      * (avoid dead-lock) */
-    if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, 0, mod_info))) {
+    if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, 0, &mod_info))) {
         goto cleanup;
     }
-    if ((err_info = sr_modinfo_consolidate(mod_info, SR_LOCK_READ, SR_MI_PERM_NO, session, 0, 0, SR_OPER_NO_SUBS))) {
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_PERM_NO, session, 0, 0, SR_OPER_NO_SUBS))) {
         goto cleanup;
     }
 
     /* start with any existing config NP containers */
-    if ((err_info = sr_lyd_dup_module_np_cont(mod_info->data, ly_mod, 0, &enabled_data))) {
+    if ((err_info = sr_lyd_dup_module_np_cont(mod_info.data, ly_mod, 0, &enabled_data))) {
         goto cleanup;
     }
 
     /* select only the subscribed-to subtree */
-    if (mod_info->data) {
+    if (mod_info.data) {
         if (xpath) {
-            if ((err_info = sr_lyd_get_enabled_xpath(&mod_info->data, (char **)&xpath, 1, 1, &enabled_data))) {
+            if ((err_info = sr_lyd_get_enabled_xpath(&mod_info.data, (char **)&xpath, 1, 1, &enabled_data))) {
                 goto cleanup;
             }
 
             /* make sure the filters work correctly */
             xpaths[0] = xpath;
             xpaths[1] = NULL;
-            if ((err_info = sr_xpath_merge_pred_diff(mod_info->data, xpaths, &enabled_data))) {
+            if ((err_info = sr_xpath_merge_pred_diff(mod_info.data, xpaths, &enabled_data))) {
                 goto cleanup;
             }
         } else {
-            if ((err_info = sr_lyd_get_module_data(&mod_info->data, ly_mod, 0, 1, &enabled_data))) {
+            if ((err_info = sr_lyd_get_module_data(&mod_info.data, ly_mod, 0, 1, &enabled_data))) {
                 goto cleanup;
             }
         }
@@ -6335,7 +6337,7 @@ sr_module_change_subscribe_enable(sr_session_ctx_t *session, struct sr_mod_info_
         SR_LOG_INF("Triggering \"%s\" \"%s\" event on enabled data.", ly_mod->name, sr_ev2str(ev_sess->ev));
 
         /* present all changes in an "enabled" event */
-        err_code = callback(ev_sess, sub_id, ly_mod->name, xpath, sr_ev2api(ev_sess->ev), mod_info->operation_id,
+        err_code = callback(ev_sess, sub_id, ly_mod->name, xpath, sr_ev2api(ev_sess->ev), mod_info.operation_id,
                 private_data);
         if (err_code != SR_ERR_OK) {
             /* callback failed but it is the only one so no "abort" event is necessary */
@@ -6356,6 +6358,11 @@ sr_module_change_subscribe_enable(sr_session_ctx_t *session, struct sr_mod_info_
 
 cleanup:
     sr_session_stop(ev_sess);
+
+    /* MODULES UNLOCK */
+    sr_shmmod_modinfo_unlock(&mod_info);
+    sr_modinfo_erase(&mod_info);
+
     lyd_free_all(enabled_data);
     return err_info;
 }
@@ -6444,7 +6451,6 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     const struct lys_module *ly_mod;
-    struct sr_mod_info_s mod_info;
     sr_conn_ctx_t *conn;
     uint32_t sub_id;
     uint32_t sub_opts;
@@ -6458,15 +6464,12 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     conn = session->conn;
     /* only these options are relevant outside this function and will be stored */
     sub_opts = opts & (SR_SUBSCR_DONE_ONLY | SR_SUBSCR_PASSIVE | SR_SUBSCR_UPDATE | SR_SUBSCR_FILTER_ORIG |
-            SR_SUBSCR_CHANGE_ALL_MODULES);
+            SR_SUBSCR_ENABLED | SR_SUBSCR_CHANGE_ALL_MODULES);
 
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
         return sr_api_ret(session, err_info);
     }
-
-    /* init modinfo */
-    sr_modinfo_init(&mod_info, session->conn, session->ds, (session->ds == SR_DS_OPERATIONAL) ? SR_DS_RUNNING : session->ds, 0);
 
     /* check module name and xpath */
     ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, module_name);
@@ -6508,29 +6511,12 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
         _sr_subscription_thread_suspend(*subscription);
     }
 
-    /* keep lock order: CHANGE SUB, MODULES and CHANGE SUB, SUBS - for applying changes and processing events */
-
-    /* CHANGE SUB WRITE LOCK */
+    /* CHANGE SUB WRITE LOCK - also prevents events from being published */
     if ((err_info = sr_rwlock(&shm_mod->change_sub[session->ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE,
             conn->cid, __func__, NULL, NULL))) {
         goto cleanup;
     }
     change_sub_mode = SR_LOCK_WRITE;
-
-    if (opts & SR_SUBSCR_ENABLED) {
-        /* call the callback with the current configuration, keep any used modules locked in mod_info */
-        if ((err_info = sr_module_change_subscribe_enable(session, &mod_info, ly_mod, xpath, callback, private_data,
-                sub_id, opts))) {
-            goto cleanup;
-        }
-    }
-
-    /* SUBS WRITE LOCK */
-    if ((err_info = sr_rwlock(&(*subscription)->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
-            __func__, NULL, NULL))) {
-        goto cleanup;
-    }
-    subs_mode = SR_LOCK_WRITE;
 
     /* add module subscription into ext SHM and create separate specific SHM segment */
     if ((err_info = sr_shmext_change_sub_add(conn, shm_mod, session->ds, sub_id, xpath, priority, sub_opts,
@@ -6538,24 +6524,57 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
         goto cleanup;
     }
 
-    /* add subscription into structure */
+    /* CHANGE SUB WRITE UNLOCK to allow events to be published or other subscriptions to be added */
+    sr_rwunlock(&shm_mod->change_sub[session->ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, change_sub_mode, conn->cid, __func__);
+    change_sub_mode = SR_LOCK_NONE;
+    /* events published from now on are expected to be processed
+     * as this subscription is now in Ext SHM and visible to publishers */
+
+    if (opts & SR_SUBSCR_ENABLED) {
+        /* call the callback with the current data (ENABLED event) - module READ locks are released immediately */
+        if ((err_info = sr_module_change_subscribe_enable(session, ly_mod, xpath, callback, private_data,
+                sub_id, opts))) {
+            goto error1;
+        }
+    }
+
+    /* SUBS WRITE LOCK - also prevents callback handler thread from processing events */
+    if ((err_info = sr_rwlock(&(*subscription)->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
+            __func__, NULL, NULL))) {
+        goto error1;
+    }
+    subs_mode = SR_LOCK_WRITE;
+
+    /* add subscription into structure and notify evpipe if any event is pending */
     if ((err_info = sr_subscr_change_sub_add(*subscription, sub_id, session, module_name, xpath, callback, private_data,
             priority, sub_opts, SR_LOCK_WRITE))) {
-        goto error1;
+        goto error2;
     }
 
     /* add the subscription into session */
     if ((err_info = sr_ptr_add(&session->ptr_lock, (void ***)&session->subscriptions, &session->subscription_count,
             *subscription))) {
-        goto error2;
+        goto error3;
     }
 
     goto cleanup;
 
-error2:
+error3:
     sr_subscr_change_sub_del(*subscription, sub_id);
 
+error2:
+    /* SUBS WRITE UNLOCK */
+    sr_rwunlock(&(*subscription)->subs_lock, 0, subs_mode, conn->cid, __func__);
+    subs_mode = SR_LOCK_NONE;
+
 error1:
+    /* CHANGE SUB WRITE lock - and remove the newly added sub from Ext SHM */
+    if ((err_info = sr_rwlock(&shm_mod->change_sub[session->ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE,
+            conn->cid, __func__, NULL, NULL))) {
+        goto cleanup;
+    }
+    change_sub_mode = SR_LOCK_WRITE;
+
     if ((tmp_err = sr_shmext_change_sub_del(conn, shm_mod, session->ds, sub_id))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
@@ -6571,16 +6590,9 @@ cleanup:
         sr_rwunlock(&shm_mod->change_sub[session->ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, change_sub_mode, conn->cid, __func__);
     }
 
-    /* if there are any modules, unlock them after the enabled event was handled and the subscription was added
-     * to avoid losing any changes */
-
-    /* MODULES UNLOCK */
-    sr_shmmod_modinfo_unlock(&mod_info);
-
-    sr_modinfo_erase(&mod_info);
-
     /* CONTEXT UNLOCK */
     sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
+
     return sr_api_ret(session, err_info);
 }
 

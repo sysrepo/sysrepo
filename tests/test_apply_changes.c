@@ -42,6 +42,7 @@ struct state {
     sr_session_ctx_t *sm_sess;
     ATOMIC_T cb_called, cb_called2, cb_called3;
     pthread_barrier_t barrier, barrier2, barrier4;
+    ATOMIC_T running;
 };
 
 static int
@@ -165,6 +166,7 @@ setup_f(void **state)
     pthread_barrier_init(&st->barrier, NULL, 2);
     pthread_barrier_init(&st->barrier2, NULL, 2);
     pthread_barrier_init(&st->barrier4, NULL, 4);
+    ATOMIC_STORE_RELAXED(st->running, 1);
     return 0;
 }
 
@@ -6791,6 +6793,8 @@ apply_change_enabled_thread(void *arg)
 
     /* subscription can start */
     pthread_barrier_wait(&st->barrier);
+    /* subscription created */
+    pthread_barrier_wait(&st->barrier);
 
     /* perform the changes in a loop */
     for (i = 1; i < 20; ++i) {
@@ -6835,6 +6839,8 @@ subscribe_change_enabled_thread(void *arg)
     ret = sr_module_change_subscribe(sess, "test", NULL, module_change_enabled_cb, st, 0,
             SR_SUBSCR_DONE_ONLY | SR_SUBSCR_ENABLED, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
+    /* signal subscription created */
+    pthread_barrier_wait(&st->barrier);
 
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
@@ -8358,6 +8364,101 @@ test_lock_write(void **state)
     pthread_join(tid[1], NULL);
 }
 
+/* TEST */
+
+static int
+dummy_slow_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath, sr_event_t event,
+        uint32_t request_id, void *private_data)
+{
+    (void)session;
+    (void)sub_id;
+    (void)module_name;
+    (void)xpath;
+    (void)event;
+    (void)request_id;
+    (void)private_data;
+
+    usleep(10000);
+
+    return SR_ERR_OK;
+}
+
+static void *
+apply_changes_enabled_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* signal that thread was started */
+    pthread_barrier_wait(&st->barrier);
+
+    while (ATOMIC_LOAD_RELAXED(st->running)) {
+        ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+        ret = sr_apply_changes(sess, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        ret = sr_delete_item(sess, "/ietf-interfaces:interfaces/interface[name='eth1']", 0);
+        assert_int_equal(ret, SR_ERR_OK);
+        ret = sr_apply_changes(sess, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+    }
+
+    ret = sr_session_stop(sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    return NULL;
+}
+
+static void *
+subscribe_change_enabled_race_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *subscr = NULL;
+    int ret, i, j;
+    uint32_t opts = SR_SUBSCR_ENABLED;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+    /* signal that thread was started */
+    pthread_barrier_wait(&st->barrier);
+
+    for (i = 0; i < TEST_ITERATIONS; i++) {
+        for (j = 0; j < 4; j++) {
+            ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, dummy_slow_change_cb,
+                    st, 0, opts, &subscr);
+            assert_int_equal(ret, SR_ERR_OK);
+            ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, dummy_slow_change_cb,
+                    st, 0, opts | SR_SUBSCR_DONE_ONLY, &subscr);
+            assert_int_equal(ret, SR_ERR_OK);
+        }
+        ret = sr_unsubscribe(subscr);
+        subscr = NULL;
+        assert_int_equal(ret, SR_ERR_OK);
+    }
+    /* signal other thread to stop */
+    ATOMIC_STORE_RELAXED(st->running, 0);
+
+    return NULL;
+}
+
+static void
+test_change_enabled_race(void **state)
+{
+    pthread_t tid[2];
+
+    pthread_create(&tid[0], NULL, apply_changes_enabled_thread, *state);
+    pthread_create(&tid[1], NULL, subscribe_change_enabled_race_thread, *state);
+
+    pthread_join(tid[0], NULL);
+    pthread_join(tid[1], NULL);
+}
+
 /* MAIN */
 int
 main(void)
@@ -8395,6 +8496,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_done_timeout_priority, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_list_replace, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_lock_write, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_change_enabled_race, setup_f, teardown_f),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

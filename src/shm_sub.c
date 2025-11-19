@@ -3639,8 +3639,14 @@ process_event:
         /* call callback if there are some changes */
         filter_valid = sr_shmsub_change_filter_is_valid(change_sub->xpath, diff);
         if (filter_valid) {
-            ret = change_sub->cb(ev_sess, change_sub->sub_id, change_subs->module_name, change_sub->xpath,
-                    sr_ev2api(sub_info.event), sub_info.operation_id, change_sub->private_data);
+            /* skip DONE event generated before we processed the ENABLED event */
+            if (!change_sub->event && change_sub->request_id && (sub_info.request_id == change_sub->request_id)) {
+                assert(sub_info.event == SR_SUB_EV_DONE);
+                assert(change_sub->sub_opts & SR_SUBSCR_ENABLED);
+            } else {
+                ret = change_sub->cb(ev_sess, change_sub->sub_id, change_subs->module_name, change_sub->xpath,
+                        sr_ev2api(sub_info.event), sub_info.operation_id, change_sub->private_data);
+            }
         } else if (!(change_sub->sub_opts & SR_SUBSCR_FILTER_ORIG)) {
             /* filtered out (not by originator) */
             ATOMIC_INC_RELAXED(change_sub->filtered_out);

@@ -43,6 +43,7 @@ sr_subscr_change_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_sess
 {
     sr_error_info_t *err_info = NULL;
     struct modsub_change_s *change_sub = NULL;
+    sr_sub_shm_t *sub_shm;
     uint32_t i;
     void *mem[4] = {NULL};
     int new_sub = 0;
@@ -104,6 +105,17 @@ sr_subscr_change_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_sess
     change_sub->subs[change_sub->sub_count].cb = change_cb;
     change_sub->subs[change_sub->sub_count].private_data = private_data;
     change_sub->subs[change_sub->sub_count].sess = sess;
+
+    sub_shm = (sr_sub_shm_t *)(change_sub->sub_shm.addr);
+
+    /* notify event pipe again, if there is an ongoing event to be processed, the originator expects it */
+    if (ATOMIC_LOAD_RELAXED(sub_shm->subscriber_count)) {
+        if ((sub_opts & SR_SUBSCR_ENABLED) && (ATOMIC_LOAD_RELAXED(sub_shm->event) == SR_SUB_EV_DONE)) {
+            /* ENABLED event already contains the data of this DONE event, remember to skip callback. */
+            change_sub->subs[change_sub->sub_count].request_id = ATOMIC_LOAD_RELAXED(sub_shm->request_id);
+        }
+        sr_shmsub_notify_evpipe(subscr->evpipe_num, 0, NULL);
+    }
 
     ++change_sub->sub_count;
 
