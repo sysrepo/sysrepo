@@ -6288,6 +6288,9 @@ sr_module_change_subscribe_enable(sr_session_ctx_t *session, const struct lys_mo
         goto cleanup;
     }
 
+    /* MODULES UNLOCK - module READ locks are not required any longer */
+    sr_shmmod_modinfo_unlock(&mod_info);
+
     /* start with any existing config NP containers */
     if ((err_info = sr_lyd_dup_module_np_cont(mod_info.data, ly_mod, 0, &enabled_data))) {
         goto cleanup;
