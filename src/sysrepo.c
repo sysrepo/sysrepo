@@ -6514,8 +6514,8 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
         _sr_subscription_thread_suspend(*subscription);
     }
 
-    /* CHANGE SUB WRITE LOCK - also prevents events from being published */
-    if ((err_info = sr_rwlock(&shm_mod->change_sub[session->ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE,
+    /* CHANGE SUB WRITE URGE LOCK - also prevents events from being published */
+    if ((err_info = sr_rwlock(&shm_mod->change_sub[session->ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE_URGE,
             conn->cid, __func__, NULL, NULL))) {
         goto cleanup;
     }
@@ -6571,8 +6571,8 @@ error2:
     subs_mode = SR_LOCK_NONE;
 
 error1:
-    /* CHANGE SUB WRITE lock - and remove the newly added sub from Ext SHM */
-    if ((tmp_err = sr_rwlock(&shm_mod->change_sub[session->ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE,
+    /* CHANGE SUB WRITE URGE lock - and remove the newly added sub from Ext SHM */
+    if ((tmp_err = sr_rwlock(&shm_mod->change_sub[session->ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE_URGE,
             conn->cid, __func__, NULL, NULL))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
