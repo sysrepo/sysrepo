@@ -179,7 +179,7 @@ rpc_fail_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *xpath, const
     assert_string_equal(xpath, "/ops:rpc1");
 
     /* check input data tree */
-    ret = lyd_print_mem(&str1, input, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, input, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_SHRINK);
     assert_int_equal(ret, 0);
 
     str2 = "<rpc1 xmlns=\"urn:ops\"/>";
@@ -461,7 +461,7 @@ rpc_action_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_path, c
 
     if (!strcmp(op_path, "/ops:cont/list1/cont2/act1")) {
         /* check input data */
-        ret = lyd_print_mem(&str1, input, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+        ret = lyd_print_mem(&str1, input, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_SHRINK);
         assert_int_equal(ret, LY_SUCCESS);
         str2 = "<act1 xmlns=\"urn:ops\"><l6>val</l6><l7>val</l7></act1>";
         assert_string_equal(str1, str2);
@@ -471,7 +471,7 @@ rpc_action_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_path, c
         assert_int_equal(LY_SUCCESS, lyd_new_path(output, NULL, "l9", "l12-val", LYD_NEW_VAL_OUTPUT, &node));
     } else if (!strcmp(op_path, "/ops:cont/list1/act2")) {
         /* check input data */
-        ret = lyd_print_mem(&str1, input, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+        ret = lyd_print_mem(&str1, input, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_SHRINK);
         assert_int_equal(ret, LY_SUCCESS);
         str2 = "<act2 xmlns=\"urn:ops\"><l10>e3</l10></act2>";
         assert_string_equal(str1, str2);
@@ -535,7 +535,7 @@ test_action(void **state)
 
     /* check output data tree */
     assert_non_null(output_op);
-    ret = lyd_print_mem(&str1, output_op->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, output_op->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_SHRINK);
     sr_release_data(output_op);
     assert_int_equal(ret, 0);
     str2 = "<act1 xmlns=\"urn:ops\"><l9>l12-val</l9></act1>";
@@ -556,7 +556,7 @@ test_action(void **state)
 
     /* check output data tree */
     assert_non_null(output_op);
-    ret = lyd_print_mem(&str1, output_op->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, output_op->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_SHRINK);
     sr_release_data(output_op);
     assert_int_equal(ret, 0);
     str2 = "<act2 xmlns=\"urn:ops\"><l11>-65536</l11></act2>";
@@ -586,14 +586,14 @@ rpc_action_pred_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_pa
 
     if (!strcmp(op_path, "/ops:cont/list1[k='one' or k='two']/cont2/act1")) {
         /* check input data */
-        ret = lyd_print_mem(&str1, input, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+        ret = lyd_print_mem(&str1, input, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_SHRINK);
         assert_int_equal(ret, 0);
         str2 = "<act1 xmlns=\"urn:ops\"><l6>val2</l6><l7>val2</l7></act1>";
         assert_string_equal(str1, str2);
         free(str1);
     } else if (!strcmp(op_path, "/ops:cont/list1[k='three' or k='four']/cont2/act1")) {
         /* check input data */
-        ret = lyd_print_mem(&str1, input, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+        ret = lyd_print_mem(&str1, input, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_SHRINK);
         assert_int_equal(ret, 0);
         str2 = "<act1 xmlns=\"urn:ops\"><l6>val3</l6><l7>val3</l7></act1>";
         assert_string_equal(str1, str2);
@@ -2038,7 +2038,7 @@ test_factory_reset(void **state)
     ret = sr_get_data(st->sess, "/*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     assert_non_null(data);
-    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_SHRINK);
     sr_release_data(data);
     assert_int_equal(ret, LY_SUCCESS);
     assert_null(str);
@@ -2047,7 +2047,7 @@ test_factory_reset(void **state)
     ret = sr_get_data(st->sess, "/*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     assert_non_null(data);
-    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_SHRINK);
     sr_release_data(data);
     assert_int_equal(ret, LY_SUCCESS);
     assert_null(str);
@@ -2056,7 +2056,7 @@ test_factory_reset(void **state)
     ret = sr_get_data(st->sess, "/*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     assert_non_null(data);
-    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_SHRINK);
     sr_release_data(data);
     assert_int_equal(ret, LY_SUCCESS);
     assert_string_equal(str,
@@ -2103,7 +2103,7 @@ test_factory_reset(void **state)
     ret = sr_get_data(st->sess, "/*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     assert_non_null(data);
-    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_SHRINK);
     sr_release_data(data);
     assert_int_equal(ret, LY_SUCCESS);
     assert_string_equal(str, xml);
@@ -2113,7 +2113,7 @@ test_factory_reset(void **state)
     ret = sr_get_data(st->sess, "/*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     assert_non_null(data);
-    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_SHRINK);
     sr_release_data(data);
     assert_int_equal(ret, LY_SUCCESS);
     assert_string_equal(str, xml);
@@ -2123,7 +2123,7 @@ test_factory_reset(void **state)
     ret = sr_get_data(st->sess, "/*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     assert_non_null(data);
-    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_SHRINK);
     sr_release_data(data);
     assert_int_equal(ret, LY_SUCCESS);
     assert_string_equal(str, xml);
@@ -2165,7 +2165,7 @@ test_factory_reset(void **state)
     ret = sr_get_data(st->sess, "/*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     assert_non_null(data);
-    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_SHRINK);
     sr_release_data(data);
     assert_int_equal(ret, LY_SUCCESS);
     assert_string_equal(str, xml);
@@ -2181,7 +2181,7 @@ test_factory_reset(void **state)
     ret = sr_get_data(st->sess, "/*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     assert_non_null(data);
-    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_SHRINK);
     sr_release_data(data);
     assert_int_equal(ret, LY_SUCCESS);
     assert_string_equal(str, xml);

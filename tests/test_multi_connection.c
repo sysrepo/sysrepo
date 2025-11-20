@@ -149,7 +149,7 @@ test_create1(void **state)
 
     ret = sr_get_subtree(st->sess3, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_SHRINK);
     sr_release_data(subtree);
 
     const char *ptr = strstr(str, "ethS1");

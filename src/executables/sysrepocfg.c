@@ -396,7 +396,7 @@ op_export(sr_session_ctx_t *sess, const char *file_path, const char *module_name
     }
 
     /* print exported data */
-    lyd_print_file(file ? file : stdout, data ? data->tree : NULL, format, LYD_PRINT_WITHSIBLINGS | wd_opt);
+    lyd_print_file(file ? file : stdout, data ? data->tree : NULL, format, LYD_PRINT_SIBLINGS | wd_opt);
     sr_release_data(data);
 
     /* cleanup */

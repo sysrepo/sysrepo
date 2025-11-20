@@ -295,7 +295,7 @@ load_empty_ds(test_data_t *tdata)
     rc = sr_get_data(tdata->sess, "/plugin:*", 0, 0, 0, &data);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_ALL_TAG | LYD_PRINT_KEEPEMPTYCONT);
+    rc = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_ALL_TAG | LYD_PRINT_EMPTY_CONT);
     assert_int_equal(rc, LY_SUCCESS);
     sr_release_data(data);
 
@@ -445,7 +445,7 @@ store_and_load_example(test_data_t *tdata)
     rc = sr_get_data(tdata->sess, "/plugin:*", 0, 0, 0, &data);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_ALL_TAG);
+    rc = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_ALL_TAG);
     assert_int_equal(rc, LY_SUCCESS);
     sr_release_data(data);
 
@@ -814,7 +814,7 @@ store_and_load_complex(test_data_t *tdata)
     rc = sr_get_data(tdata->sess, "/plugin:*", 0, 0, 0, &data);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_ALL_TAG);
+    rc = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_ALL_TAG);
     assert_int_equal(rc, LY_SUCCESS);
     sr_release_data(data);
 
@@ -835,7 +835,7 @@ store_and_load_complex(test_data_t *tdata)
     rc = sr_get_data(tdata->sess, "/plugin:*", 0, 0, 0, &data);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_ALL_TAG);
+    rc = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_ALL_TAG);
     assert_int_equal(rc, LY_SUCCESS);
     sr_release_data(data);
 
@@ -948,7 +948,7 @@ test_store_oper(void **state)
     rc = sr_get_data(tdata->sess, "/plugin:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_ALL_TAG);
+    rc = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_ALL_TAG);
     assert_int_equal(rc, LY_SUCCESS);
     sr_release_data(data);
 
@@ -997,7 +997,7 @@ store_and_load_prefix(test_data_t *tdata, const char *first_store, const char *s
     rc = sr_get_data(tdata->sess, "/plugin:*", 0, 0, 0, &data);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_ALL_TAG);
+    rc = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_ALL_TAG);
     assert_int_equal(rc, LY_SUCCESS);
     sr_release_data(data);
 
@@ -1023,7 +1023,7 @@ store_and_load_prefix(test_data_t *tdata, const char *first_store, const char *s
     rc = sr_get_data(tdata->sess, "/plugin:*", 0, 0, 0, &data);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_ALL_TAG);
+    rc = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_ALL_TAG);
     assert_int_equal(rc, LY_SUCCESS);
     sr_release_data(data);
 
@@ -1408,7 +1408,7 @@ test_copy(void **state)
     rc = sr_get_data(tdata->sess, "/plugin:*", 0, 0, 0, &data);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_ALL_TAG);
+    rc = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_ALL_TAG);
     assert_int_equal(rc, LY_SUCCESS);
     sr_release_data(data);
 
@@ -1424,7 +1424,7 @@ test_copy(void **state)
     rc = sr_get_data(tdata->sess, "/plugin:*", 0, 0, 0, &data);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_ALL_TAG);
+    rc = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_ALL_TAG);
     assert_int_equal(rc, LY_SUCCESS);
     sr_release_data(data);
 

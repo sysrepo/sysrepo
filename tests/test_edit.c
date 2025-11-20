@@ -254,7 +254,7 @@ test_delete(void **state)
     ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_null(str);
     sr_release_data(subtree);
 }
@@ -280,7 +280,7 @@ test_create1(void **state)
     ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     sr_release_data(subtree);
 
     str2 =
@@ -337,7 +337,7 @@ test_create2(void **state)
     ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     sr_release_data(subtree);
 
     str2 =
@@ -359,7 +359,7 @@ test_create2(void **state)
     ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_null(str);
     sr_release_data(subtree);
 }
@@ -443,7 +443,7 @@ test_move(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* should be in reversed order */
-    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
 
     str2 =
             "<l1 xmlns=\"urn:test\">\n"
@@ -556,7 +556,7 @@ test_replace(void **state)
     ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     sr_release_data(subtree);
 
     str2 =
@@ -606,7 +606,7 @@ test_replace_userord(void **state)
     ret = sr_get_data(st->sess, "/test:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     sr_release_data(data);
 
     str2 =
@@ -649,7 +649,7 @@ test_replace_userord(void **state)
     ret = sr_get_data(st->sess, "/test:l1", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     sr_release_data(data);
 
     assert_string_equal(str, str2);
@@ -700,7 +700,7 @@ test_none(void **state)
     ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     sr_release_data(subtree);
 
     str2 =
@@ -754,7 +754,7 @@ test_isolate(void **state)
     ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     sr_release_data(subtree);
 
     str2 =
@@ -788,7 +788,7 @@ test_isolate(void **state)
     ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     sr_release_data(subtree);
 
     str2 =
@@ -1009,7 +1009,7 @@ test_union(void **state)
     ret = sr_get_subtree(st->sess, "/test:cont", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     sr_release_data(subtree);
 
     str2 =
@@ -1386,7 +1386,7 @@ test_edit_forbid_node_types(void **state)
     /* not throw away the whole edit, the successfully created node still exists */
     ret = sr_get_subtree(st->sess, "/ops:cont", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
 
     str2 =
             "<cont xmlns=\"urn:ops\">\n"
@@ -1429,7 +1429,7 @@ test_anyxml(void **state)
 
     ret = sr_get_data(st->sess, "/test-module:main/xml-data", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    lyd_print_mem(&str, data->tree, LYD_JSON, LYD_PRINT_WITHSIBLINGS);
+    lyd_print_mem(&str, data->tree, LYD_JSON, LYD_PRINT_SIBLINGS);
 
     assert_string_equal(str, str2);
     sr_release_data(data);
@@ -1453,7 +1453,7 @@ test_anyxml(void **state)
 
     ret = sr_get_data(st->sess, "/test-module:main/xml-data", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    lyd_print_mem(&str, data->tree, LYD_JSON, LYD_PRINT_WITHSIBLINGS);
+    lyd_print_mem(&str, data->tree, LYD_JSON, LYD_PRINT_SIBLINGS);
 
     assert_string_equal(str, str2);
     sr_release_data(data);

@@ -317,7 +317,7 @@ module_change_done_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mo
         ret = sr_get_subtree(session, "/ietf-interfaces:interfaces", 0, &subtree);
         assert_int_equal(ret, SR_ERR_OK);
 
-        ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
+        ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_IMPL_TAG);
         assert_int_equal(ret, 0);
         sr_release_data(subtree);
 
@@ -453,7 +453,7 @@ module_change_done_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mo
         ret = sr_get_subtree(session, "/ietf-interfaces:interfaces", 0, &subtree);
         assert_int_equal(ret, SR_ERR_OK);
 
-        ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+        ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
         assert_int_equal(ret, 0);
         sr_release_data(subtree);
 
@@ -506,7 +506,7 @@ apply_change_done_thread(void *arg)
     ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(subtree);
 
@@ -539,7 +539,7 @@ apply_change_done_thread(void *arg)
     /* check current data tree */
     ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_SHRINK);
     assert_int_equal(ret, 0);
     assert_null(str1);
     sr_release_data(subtree);
@@ -716,7 +716,7 @@ module_update_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_
         ret = sr_get_subtree(session, "/ietf-interfaces:interfaces", 0, &subtree);
         assert_int_equal(ret, SR_ERR_OK);
 
-        ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+        ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
         assert_int_equal(ret, 0);
         sr_release_data(subtree);
 
@@ -848,7 +848,7 @@ apply_update_thread(void *arg)
     ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(subtree);
 
@@ -879,7 +879,7 @@ apply_update_thread(void *arg)
     ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_SHRINK);
     assert_int_equal(ret, 0);
 
     assert_null(str1);
@@ -1408,7 +1408,7 @@ apply_update_fail_thread(void *arg)
     ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
 
     assert_null(str1);
@@ -1523,7 +1523,7 @@ test_update_foreign(void **state)
     /* check current data tree */
     ret = sr_get_data(sess, "/when1:* | /when2:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
@@ -1950,7 +1950,7 @@ apply_change_fail_thread(void *arg)
     ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
 
     assert_null(str1);
@@ -1975,7 +1975,7 @@ apply_change_fail_thread(void *arg)
     ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
 
     assert_null(str1);
@@ -2516,7 +2516,7 @@ apply_no_changes_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
@@ -2565,7 +2565,7 @@ apply_no_changes_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
@@ -2700,7 +2700,7 @@ module_change_any_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mod
         ret = sr_get_subtree(session, "/test:cont", 0, &subtree);
         assert_int_equal(ret, SR_ERR_OK);
 
-        ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+        ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
         assert_int_equal(ret, 0);
         sr_release_data(subtree);
 
@@ -2760,7 +2760,7 @@ module_change_any_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mod
         ret = sr_get_subtree(session, "/test:cont", 0, &subtree);
         assert_int_equal(ret, SR_ERR_OK);
 
-        ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+        ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
         assert_int_equal(ret, 0);
         sr_release_data(subtree);
 
@@ -2856,7 +2856,7 @@ apply_change_any_thread(void *arg)
     ret = sr_get_subtree(sess, "/test:cont", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(subtree);
 
@@ -2887,7 +2887,7 @@ apply_change_any_thread(void *arg)
     ret = sr_get_subtree(sess, "/test:cont", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(subtree);
 
@@ -3354,7 +3354,7 @@ apply_change_dflt_leaf_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
@@ -3396,7 +3396,7 @@ apply_change_dflt_leaf_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
@@ -3437,7 +3437,7 @@ apply_change_dflt_leaf_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
@@ -3476,7 +3476,7 @@ apply_change_dflt_leaf_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
@@ -3515,7 +3515,7 @@ apply_change_dflt_leaf_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
@@ -4612,7 +4612,7 @@ apply_change_dflt_create_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
@@ -4636,7 +4636,7 @@ apply_change_dflt_create_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
@@ -7094,7 +7094,7 @@ test_change_schema_mount_data_autodel(void **arg)
     ret = sr_get_data(sess, "/sm:root/ops:cont", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_SHRINK);
     sr_release_data(data);
     assert_int_equal(ret, LY_SUCCESS);
     assert_null(str1);
@@ -7505,7 +7505,7 @@ module_diff_reuse_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mod
     const size_t NUM_SUBS = 7;
 
     diff = sr_get_change_diff(session);
-    ret = lyd_print_mem(&diff_str, diff, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&diff_str, diff, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, SR_ERR_OK);
 
     if (cb_called < NUM_SUBS) {
@@ -8202,7 +8202,7 @@ apply_list_replace_thread(void *arg)
     /* check current data tree */
     ret = sr_get_data(sess, "/ietf-interfaces:interfaces", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_SHRINK);
     sr_release_data(data);
     assert_int_equal(ret, LY_SUCCESS);
 

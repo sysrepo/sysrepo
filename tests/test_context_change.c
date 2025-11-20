@@ -494,7 +494,7 @@ test_push_oper(void **state)
     /* read the data back */
     ret = sr_get_data(sess, "/mod1:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_SHRINK);
     sr_release_data(data);
 
     assert_string_equal(str,
@@ -511,7 +511,7 @@ test_push_oper(void **state)
     /* check push oper data now, l2 leaf was disabled */
     ret = sr_get_data(sess, "/mod1:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_SHRINK);
     sr_release_data(data);
 
     assert_string_equal(str,
@@ -537,7 +537,7 @@ test_push_oper(void **state)
 
     ret = sr_get_data(sess, "/mod1:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_SHRINK);
     sr_release_data(data);
 
     assert_string_equal(str,

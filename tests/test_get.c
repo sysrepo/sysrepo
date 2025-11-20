@@ -495,7 +495,7 @@ test_union(void **state)
     ret = sr_get_data(st->sess, "/simple:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
@@ -513,7 +513,7 @@ test_union(void **state)
     ret = sr_get_data(st->sess, "/simple-aug:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
@@ -532,7 +532,7 @@ test_union(void **state)
     ret = sr_get_data(st->sess, "/simple-aug:* | /simple:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
@@ -557,7 +557,7 @@ test_union(void **state)
     ret = sr_get_data(st->sess, "/simple-aug:bc1/bcl1 | /simple:ac1/simple-aug:bauga2", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
@@ -599,7 +599,7 @@ test_key(void **state)
     ret = sr_get_data(st->sess, "/defaults:l1[k='val']/k", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
@@ -653,7 +653,7 @@ test_factory_default(void **state)
     sr_session_switch_ds(st->sess, SR_DS_FACTORY_DEFAULT);
     ret = sr_get_data(st->sess, "/example-module:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
     str2 = init_data;
@@ -664,7 +664,7 @@ test_factory_default(void **state)
     sr_session_switch_ds(st->sess, SR_DS_STARTUP);
     ret = sr_get_data(st->sess, "/example-module:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
     str2 =
@@ -747,7 +747,7 @@ test_subtree2xpath(void **state)
     /* get data by xpath */
     ret = sr_get_data(st->sess, filter_str, 0, 0, 0, &get_tree);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&get_str, get_tree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&get_str, get_tree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     exp =
             "<container xmlns=\"urn:mod\">\n"
@@ -781,7 +781,7 @@ test_max_depth(void **state)
      */
     ret = sr_get_data(st->sess, "/mod:container", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     sr_release_data(data);
     assert_int_equal(ret, 0);
     str2 =
@@ -800,7 +800,7 @@ test_max_depth(void **state)
 
     ret = sr_get_data(st->sess, "/mod:container", 1, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_KEEPEMPTYCONT);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_EMPTY_CONT);
     sr_release_data(data);
     assert_int_equal(ret, 0);
     str2 =
@@ -810,7 +810,7 @@ test_max_depth(void **state)
 
     ret = sr_get_data(st->sess, "/mod:container", 2, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     sr_release_data(data);
     assert_int_equal(ret, 0);
     str2 =
@@ -830,7 +830,7 @@ test_max_depth(void **state)
      */
     ret = sr_get_data(st->sess, "/mod:container", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     sr_release_data(data);
     assert_int_equal(ret, 0);
     str2 =
@@ -849,7 +849,7 @@ test_max_depth(void **state)
 
     ret = sr_get_data(st->sess, "/mod:container", 1, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_KEEPEMPTYCONT);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_EMPTY_CONT);
     sr_release_data(data);
     assert_int_equal(ret, 0);
     str2 =
@@ -859,7 +859,7 @@ test_max_depth(void **state)
 
     ret = sr_get_data(st->sess, "/mod:container", 2, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     sr_release_data(data);
     assert_int_equal(ret, 0);
     str2 =

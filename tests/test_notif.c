@@ -190,7 +190,7 @@ store_notif(int fd, const struct ly_ctx *ly_ctx, const char *notif_xpath, off_t 
     if (lyd_new_path(NULL, ly_ctx, notif_xpath, NULL, 0, &notif)) {
         return 1;
     }
-    lyd_print_mem(&notif_json, notif, LYD_JSON, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    lyd_print_mem(&notif_json, notif, LYD_JSON, LYD_PRINT_SIBLINGS | LYD_PRINT_SHRINK);
     notif_json_len = strlen(notif_json);
     notif_ts.tv_sec = start_ts + ts_offset;
     assert_int_equal(write(fd, &notif_ts, sizeof notif_ts), sizeof notif_ts);
@@ -1048,7 +1048,7 @@ notif_config_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_n
 
     switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
-        lyd_print_mem(&str1, lyd_child(notif)->next, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+        lyd_print_mem(&str1, lyd_child(notif)->next, LYD_XML, LYD_PRINT_SIBLINGS);
         str2 =
                 "<datastore xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">running</datastore>\n"
                 "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">\n"
@@ -1068,7 +1068,7 @@ notif_config_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_n
         free(str1);
         break;
     case 1:
-        lyd_print_mem(&str1, lyd_child(notif)->next, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+        lyd_print_mem(&str1, lyd_child(notif)->next, LYD_XML, LYD_PRINT_SIBLINGS);
         str2 =
                 "<datastore xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">running</datastore>\n"
                 "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">\n"
@@ -1104,7 +1104,7 @@ notif_config_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_n
         free(str1);
         break;
     case 2:
-        lyd_print_mem(&str1, lyd_child(notif)->next, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+        lyd_print_mem(&str1, lyd_child(notif)->next, LYD_XML, LYD_PRINT_SIBLINGS);
         str2 =
                 "<datastore xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">running</datastore>\n"
                 "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">\n"
@@ -1120,7 +1120,7 @@ notif_config_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_n
         free(str1);
         break;
     case 3:
-        lyd_print_mem(&str1, lyd_child(notif)->next, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+        lyd_print_mem(&str1, lyd_child(notif)->next, LYD_XML, LYD_PRINT_SIBLINGS);
         str2 =
                 "<datastore xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">running</datastore>\n"
                 "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">\n"

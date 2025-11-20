@@ -100,7 +100,7 @@ srpds_json_store_(const char *path, const struct lyd_node *mod_data, const char 
     }
 
     /* print data */
-    print_opts = LYD_PRINT_SHRINK | LYD_PRINT_KEEPEMPTYCONT | LYD_PRINT_WD_IMPL_TAG;
+    print_opts = LYD_PRINT_SHRINK | LYD_PRINT_EMPTY_CONT | LYD_PRINT_WD_IMPL_TAG;
     if (lyd_print_all(out, mod_data, LYD_JSON, print_opts)) {
         err_info = srpjson_log_err_ly(srpds_name, LYD_CTX(mod_data));
         srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_INTERNAL, "Failed to store data into \"%s\".", tmp_path);

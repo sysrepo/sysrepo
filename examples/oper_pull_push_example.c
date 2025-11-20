@@ -93,7 +93,7 @@ main(void)
 
     /* print data */
     if (data) {
-        lyd_print_file(stdout, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+        lyd_print_file(stdout, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     }
     printf("\n");
     sr_release_data(data);
@@ -124,7 +124,7 @@ main(void)
 
     /* print data */
     if (data) {
-        lyd_print_file(stdout, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+        lyd_print_file(stdout, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     }
     printf("\n");
     sr_release_data(data);

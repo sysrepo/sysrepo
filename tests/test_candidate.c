@@ -147,7 +147,7 @@ test_basic(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     sr_release_data(data);
     str2 =
             "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
@@ -164,7 +164,7 @@ test_basic(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     sr_release_data(data);
     str2 =
             "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
@@ -190,7 +190,7 @@ test_basic(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     sr_release_data(data);
     str2 =
             "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
@@ -240,7 +240,7 @@ test_invalid(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     sr_release_data(data);
     str2 =
             "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
@@ -288,7 +288,7 @@ test_when(void **state)
     ret = sr_get_data(st->sess, "/when1:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     sr_release_data(data);
     assert_string_equal(str, str2);
     free(str);
@@ -316,7 +316,7 @@ test_when(void **state)
     ret = sr_get_data(st->sess, "/when1:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     sr_release_data(data);
     assert_string_equal(str, str2);
     free(str);
@@ -380,7 +380,7 @@ test_reset_unlock(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     sr_release_data(data);
     str2 =
             "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
@@ -452,7 +452,7 @@ test_reset_session_stop(void **state)
     ret = sr_get_data(sess2, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     sr_release_data(data);
     str2 =
             "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
