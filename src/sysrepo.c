@@ -487,6 +487,11 @@ sr_session_acquire_context(sr_session_ctx_t *session)
         return NULL;
     }
 
+    if (session->ev != SR_SUB_EV_NONE) {
+        /* sr_subscription_process_events() already acquired sr_lycc_lock for event sessions */
+        return sr_yang_ctx.ly_ctx;
+    }
+
     return sr_acquire_context(session->conn);
 }
 
@@ -504,7 +509,8 @@ sr_release_context(sr_conn_ctx_t *conn)
 API void
 sr_session_release_context(sr_session_ctx_t *session)
 {
-    if (!session) {
+    if (!session || (session->ev != SR_SUB_EV_NONE)) {
+        /* nothing to unlock for event sessions - because we didn't acquire recursive lock */
         return;
     }
 
