@@ -2209,7 +2209,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_shmsub_change_collect_xpath(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t ds, const char ***xpaths)
+sr_shmsub_change_xpath_collect(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t ds, char ***xpaths)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_change_sub_t *shm_sub;
@@ -2240,7 +2240,9 @@ sr_shmsub_change_collect_xpath(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datast
         /* add the xpath */
         *xpaths = sr_realloc(*xpaths, (xpath_count + 2) * sizeof **xpaths);
         SR_CHECK_MEM_GOTO(!*xpaths, err_info, cleanup);
-        (*xpaths)[xpath_count++] = conn->ext_shm.addr + shm_sub[i].xpath;
+        (*xpaths)[xpath_count] = strdup(conn->ext_shm.addr + shm_sub[i].xpath);
+        SR_CHECK_MEM_GOTO(!(*xpaths)[xpath_count], err_info, cleanup);
+        xpath_count++;
         (*xpaths)[xpath_count] = NULL;
     }
 
@@ -2249,6 +2251,21 @@ cleanup:
     sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
 
     return err_info;
+}
+
+void
+sr_shmsub_change_xpath_free(char **xpaths)
+{
+    uint32_t i;
+
+    if (!xpaths) {
+        return;
+    }
+
+    for (i = 0; xpaths[i]; ++i) {
+        free(xpaths[i]);
+    }
+    free(xpaths);
 }
 
 sr_error_info_t *

@@ -754,7 +754,7 @@ sr_modinfo_oper_notify_diff(struct sr_mod_info_s *mod_info, struct lyd_node **ol
     struct sr_mod_info_mod_s *mod;
     struct lyd_node *new_mod_data = NULL, *old_mod_data = NULL, *diff;
     uint32_t i;
-    const char **xpaths = NULL;
+    char **xpaths = NULL;
 
     assert(!mod_info->notify_diff && !mod_info->data_cached);
 
@@ -782,7 +782,7 @@ sr_modinfo_oper_notify_diff(struct sr_mod_info_s *mod_info, struct lyd_node **ol
             xpaths = NULL;
 
             /* merge also any stored data used in change subscription xpath filters so they can be correctly evaluated */
-            if ((err_info = sr_shmsub_change_collect_xpath(mod_info->conn, mod->shm_mod, SR_DS_OPERATIONAL, &xpaths))) {
+            if ((err_info = sr_shmsub_change_xpath_collect(mod_info->conn, mod->shm_mod, SR_DS_OPERATIONAL, &xpaths))) {
                 goto cleanup;
             }
             if ((err_info = sr_xpath_merge_pred_diff(new_mod_data, (const char **)xpaths, &mod_info->notify_diff))) {
@@ -804,7 +804,7 @@ sr_modinfo_oper_notify_diff(struct sr_mod_info_s *mod_info, struct lyd_node **ol
 cleanup:
     lyd_free_all(new_mod_data);
     lyd_free_all(old_mod_data);
-    free(xpaths);
+    sr_shmsub_change_xpath_free(xpaths);
     return err_info;
 }
 
@@ -3494,23 +3494,23 @@ sr_error_info_t *
 sr_modinfo_change_diff_merge_pred_data(struct sr_mod_info_s *mod_info)
 {
     sr_error_info_t *err_info = NULL;
-    const char **xpaths = NULL;
+    char **xpaths = NULL;
     uint32_t i;
 
     /* collect all the xpaths of the subscriptions */
     for (i = 0; i < mod_info->mod_count; ++i) {
-        if ((err_info = sr_shmsub_change_collect_xpath(mod_info->conn, mod_info->mods[i].shm_mod, mod_info->ds, &xpaths))) {
+        if ((err_info = sr_shmsub_change_xpath_collect(mod_info->conn, mod_info->mods[i].shm_mod, mod_info->ds, &xpaths))) {
             goto cleanup;
         }
     }
 
     /* merge all the required data into the diff */
-    if ((err_info = sr_xpath_merge_pred_diff(mod_info->data, xpaths, &mod_info->notify_diff))) {
+    if ((err_info = sr_xpath_merge_pred_diff(mod_info->data, (const char **)xpaths, &mod_info->notify_diff))) {
         goto cleanup;
     }
 
 cleanup:
-    free(xpaths);
+    sr_shmsub_change_xpath_free(xpaths);
     return err_info;
 }
 

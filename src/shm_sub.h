@@ -170,8 +170,15 @@ sr_error_info_t *sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_
  * @param[in,out] xpaths Array of XPaths terminated by NULL to add to.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmsub_change_collect_xpath(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t ds,
-        const char ***xpaths);
+sr_error_info_t *sr_shmsub_change_xpath_collect(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t ds,
+        char ***xpaths);
+
+/**
+ * @brief Free collected XPath filters of module change subscriptions.
+ *
+ * @param[in] xpaths XPaths array to free.
+ */
+void sr_shmsub_change_xpath_free(char **xpaths);
 
 /**
  * @brief Notify about (generate) an operational get event.
