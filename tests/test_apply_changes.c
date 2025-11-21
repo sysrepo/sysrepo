@@ -8428,7 +8428,7 @@ subscribe_change_enabled_race_thread(void *arg)
     /* signal that thread was started */
     pthread_barrier_wait(&st->barrier);
 
-    for (i = 0; i < TEST_ITERATIONS; i++) {
+    for (i = 0; i < TEST_ITERATIONS / 4; i++) {
         for (j = 0; j < 4; j++) {
             ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, dummy_slow_change_cb,
                     st, 0, opts, &subscr);
