@@ -5782,17 +5782,19 @@ sr_xpath_get_text_pred_atoms(const char *xpath, char ***xp_atoms, uint32_t *xp_a
             goto cleanup;
         }
 
-        /* add a new atom */
-        mem = realloc(*xp_atoms, (*xp_atom_count + atom_count) * sizeof **xp_atoms);
-        SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
-        *xp_atoms = mem;
+        if (atom_count) {
+            /* add a new atom */
+            mem = realloc(*xp_atoms, (*xp_atom_count + atom_count) * sizeof **xp_atoms);
+            SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
+            *xp_atoms = mem;
 
-        for (i = 0; i < atom_count; ++i) {
-            (*xp_atoms)[*xp_atom_count] = atoms[i].atom;
-            ++(*xp_atom_count);
-            atoms[i].atom = NULL;
+            for (i = 0; i < atom_count; ++i) {
+                (*xp_atoms)[*xp_atom_count] = atoms[i].atom;
+                ++(*xp_atom_count);
+                atoms[i].atom = NULL;
+            }
+            free(atoms);
         }
-        free(atoms);
 
         /* move to expr after the union */
         xpath = next + 1;
