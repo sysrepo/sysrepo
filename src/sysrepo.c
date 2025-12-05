@@ -2752,15 +2752,7 @@ sr_disable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const ch
     return sr_api_ret(NULL, err_info);
 }
 
-/**
- * @brief Acquire libyang data tree together with its context lock in a SR data structure.
- *
- * @param[in] conn Connection to use.
- * @param[in] tree libyang data tree, ownership is passed to @p data in all cases.
- * @param[out] data Created SR data.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
+sr_error_info_t *
 _sr_acquire_data(sr_conn_ctx_t *conn, struct lyd_node *tree, sr_data_t **data)
 {
     sr_error_info_t *err_info = NULL;
@@ -3382,18 +3374,7 @@ sr_get_data_prune_origin(struct lyd_node *node, const struct lys_module *or_mod)
     }
 }
 
-/**
- * @brief Remove all the non-selected subtrees.
- *
- * @param[in] session Session to use.
- * @param[in,out] first First top-level node of the tree to prune, may be adjusted.
- * @param[in] set Set with the selected (disjoint) subtrees.
- * @param[in] max_depth Max depth of the selected nodes to prune.
- * @param[in] opts Get options.
- * @param[out] tree Resulting data tree.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
+sr_error_info_t *
 sr_get_data_prune(sr_session_ctx_t *session, struct lyd_node **first, const struct ly_set *set, uint32_t max_depth,
         const uint32_t opts)
 {

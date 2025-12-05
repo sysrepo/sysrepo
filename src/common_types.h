@@ -28,6 +28,7 @@
 #include "compat.h"
 #include "config.h"
 #include "sysrepo_types.h"
+#include "../utils/private_candidate.h"
 
 /**
  * @brief Generic shared memory information structure.
@@ -314,6 +315,17 @@ struct sr_subscription_ctx_s {
         sr_shm_t sub_shm;           /**< Subscription SHM. */
     } *rpc_subs;                    /**< RPC/action subscriptions for each operation. */
     uint32_t rpc_sub_count;         /**< RPC/action operation subscription count. */
+};
+
+/**
+ * @brief Private candidate datastore context.
+ */
+struct sr_priv_cand_s
+{
+    struct lyd_node *diff_backup;           /**< Diff of changes in the running datastore since the private candidate datastore was created. */
+    struct lyd_node *diff_privcand;         /**< Diff of changes made by the user in the private candidate datastore since its creation. */
+    sr_subscription_ctx_t *subscription;    /**< Subscription for tracking changes made to the running datastore. */
+    sr_pc_conflict_resolution_t conflict_resolution;  /**< Strategy for resolving conflicts during <update>. */
 };
 
 /**
