@@ -263,6 +263,7 @@ set(LIB_SRC
     src/plugins/ds_json.c
     src/plugins/ntf_json.c
     src/plugins/common_json.c
+    src/utils/private_candidate.c
     src/utils/values.c
     src/utils/xpath.c
     src/utils/error_format.c
@@ -290,6 +291,7 @@ set(LIB_MAIN_HEADERS
 set(LIB_UTIL_HEADERS
     src/plugins_datastore.h
     src/plugins_notification.h
+    src/utils/private_candidate.h
     src/utils/values.h
     src/utils/xpath.h
     src/utils/error_format.h

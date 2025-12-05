@@ -1164,6 +1164,28 @@ cleanup:
 }
 
 sr_error_info_t *
+sr_lyd_unlink_tree(struct lyd_node *node)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
+
+    if (!node) {
+        return NULL;
+    }
+
+    ly_temp_log_options(&temp_lo);
+
+    if (lyd_unlink_tree(node)) {
+        sr_errinfo_new_ly(&err_info, LYD_CTX(node), SR_ERR_LY);
+        goto cleanup;
+    }
+
+cleanup:
+    ly_temp_log_options(NULL);
+    return err_info;
+}
+
+sr_error_info_t *
 sr_lyd_insert_sibling(struct lyd_node *sibling, struct lyd_node *node, struct lyd_node **first)
 {
     sr_error_info_t *err_info = NULL;
@@ -1323,6 +1345,23 @@ sr_lyd_diff_siblings(const struct lyd_node *target, const struct lyd_node *sourc
         *snode_not_found = 1;
     } else if (lyrc) {
         sr_errinfo_new_ly(&err_info, target ? LYD_CTX(target) : LYD_CTX(source), SR_ERR_LY);
+        goto cleanup;
+    }
+
+cleanup:
+    ly_temp_log_options(NULL);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_lyd_diff_apply_all(struct lyd_node **data, const struct lyd_node *diff)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
+
+    ly_temp_log_options(&temp_lo);
+    if (lyd_diff_apply_all(data, diff)) {
+        sr_errinfo_new_ly(&err_info, *data ? LYD_CTX(*data) : LYD_CTX(diff), SR_ERR_LY);
         goto cleanup;
     }
 

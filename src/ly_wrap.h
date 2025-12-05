@@ -521,6 +521,15 @@ sr_error_info_t *sr_lyd_find_sibling_val(const struct lyd_node *sibling, const s
 sr_error_info_t *sr_lyd_find_sibling_opaq_next(const struct lyd_node *sibling, const char *name, struct lyd_node **match);
 
 /**
+ * @brief Unlink the specified data subtree.
+ *
+ * @param[in] sibling First sibling to consider.
+ * @param[in] node Data tree node to be unlinked (together with all the children).
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lyd_unlink_tree(struct lyd_node *node);
+
+/**
  * @brief Insert a data node sibling.
  *
  * @param[in] sibling Sibling to insert next to.
@@ -599,6 +608,15 @@ sr_error_info_t *sr_lyd_any_copy_value(struct lyd_node *node, const union lyd_an
  */
 sr_error_info_t *sr_lyd_diff_siblings(const struct lyd_node *target, const struct lyd_node *source, uint32_t options,
         int *snode_not_found, struct lyd_node **diff);
+
+/**
+ * @brief Apply the whole diff tree on a data tree.
+ *
+ * @param[in,out] data Data to apply the diff on.
+ * @param[in] diff Diff to apply.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lyd_diff_apply_all(struct lyd_node **data, const struct lyd_node *diff);
 
 /**
  * @brief Apply diff of a specific module on data.

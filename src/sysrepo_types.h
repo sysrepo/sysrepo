@@ -99,6 +99,11 @@ typedef uint32_t sr_cid_t;
 typedef struct sr_session_ctx_s sr_session_ctx_t;
 
 /**
+ * @brief Private candidate datastore context.
+ */
+typedef struct sr_priv_cand_s sr_priv_cand_t;
+
+/**
  * @brief Flags used to override default connection handling by ::sr_connect call.
  */
 typedef enum {
