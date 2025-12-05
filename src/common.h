@@ -1613,4 +1613,28 @@ void sr_generate_notif_module_change_updated(sr_conn_ctx_t *conn, struct ly_set 
 void sr_generate_notif_module_change_feature(sr_conn_ctx_t *conn, const struct lys_module *ly_mod,
         const struct ly_set *feat_set, int enabled);
 
+/**
+ * @brief Acquire libyang data tree together with its context lock in a SR data structure.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] tree libyang data tree, ownership is passed to @p data in all cases.
+ * @param[out] data Created SR data.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *_sr_acquire_data(sr_conn_ctx_t *conn, struct lyd_node *tree, sr_data_t **data);
+
+/**
+ * @brief Remove all the non-selected subtrees.
+ *
+ * @param[in] session Session to use.
+ * @param[in,out] first First top-level node of the tree to prune, may be adjusted.
+ * @param[in] set Set with the selected (disjoint) subtrees.
+ * @param[in] max_depth Max depth of the selected nodes to prune.
+ * @param[in] opts Get options.
+ * @param[out] tree Resulting data tree.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t * sr_get_data_prune(sr_session_ctx_t *session, struct lyd_node **first, const struct ly_set *set, uint32_t max_depth,
+        const uint32_t opts);
+
 #endif /* _COMMON_H */
