@@ -144,8 +144,9 @@ providing the same data using both methods.
 
 Firstly, regarding [connections and sessions](@ref conn_sess), a __session__ is not synchronized at all so it __must
 not be shared__ among multiple threads. Each thread should always create its own session to ensure correct behavior.
-Other than that there should be no restrictions and all Sysrepo API functions should be correctly synchronized for
-any number of processes, each with several threads.
+Nevertheless, using a single session from different thread contexts should work fine if the session is
+__never used concurrently__ by those threads. Other than that there should be no restrictions and all Sysrepo API
+functions should be correctly synchronized for any number of processes, each with several threads.
 
 As for [subscriptions](@ref subs), they are fully synchronized but it makes no sense to process events of a single
 subscription in several threads (theoretically possible when ::SR_SUBSCR_NO_THREAD is used) because all events on
