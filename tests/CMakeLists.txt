@@ -94,12 +94,10 @@ if(ENABLE_TESTS)
     endforeach()
 endif()
 
-# sr_perf benchmark binary
-add_executable(sr_perf ${CMAKE_CURRENT_SOURCE_DIR}/perf.c)
-
-# link srobj to get the number of DS plugins available
-# this number can fluctuate depending on the presence of optional libraries
-target_link_libraries(sr_perf sysrepo srobj)
+# sr_perf benchmark binary, link srobj to get the number of DS plugins available
+# (this number can fluctuate depending on the presence of optional libraries)
+add_executable(sr_perf ${CMAKE_CURRENT_SOURCE_DIR}/perf.c $<TARGET_OBJECTS:srobj>)
+target_link_libraries(sr_perf sysrepo)
 
 # valgrind tests
 if(ENABLE_VALGRIND_TESTS)
