@@ -535,7 +535,7 @@ test_cache_user(void *state)
     static ATOMIC_T thread_id = 0;
     char xpath[32] = "";
 
-    snprintf(xpath, sizeof(xpath), "/test:l1[k='key%lu']/v", ATOMIC_INC_RELAXED(thread_id));
+    snprintf(xpath, sizeof(xpath), "/test:l1[k='key%" PRIuFAST32 "']/v", ATOMIC_INC_RELAXED(thread_id));
 
     ret = sr_connect(0, &conn);
     assert_int_equal(ret, SR_ERR_OK);
