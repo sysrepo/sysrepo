@@ -1208,7 +1208,7 @@ void
 sr_lycc_store_context(sr_shm_t *shm, struct ly_ctx *ctx)
 {
     sr_error_info_t *err_info = NULL;
-    int ctx_size, fd = -1;
+    int ctx_size = 0, fd = -1;
     void *mem = NULL, *mem_end;
     char *shm_name_tmp = NULL, *shm_name = NULL;
 
