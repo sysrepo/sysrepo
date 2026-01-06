@@ -932,7 +932,7 @@ srsn_read_notif(int fd, const struct ly_ctx *ly_ctx, struct timespec *timestamp,
         }
 
         rr += r;
-    } while (rr < size);
+    } while ((uint32_t)rr < size);
     buf[size] = '\0';
 
     /* parse the notification */
