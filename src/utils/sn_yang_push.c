@@ -635,7 +635,7 @@ srsn_yp_sr_subscribe_mod(const struct lys_module *ly_mod, sr_session_ctx_t *sess
 
     /* add new sub ID */
     sub->sr_sub_ids[sub->sr_sub_id_count] = sr_subscription_get_last_sub_id(sub->sr_sub);
-    ++sub->sr_sub_id_count;
+    sub->sr_sub_id_count++;
 
     return NULL;
 }

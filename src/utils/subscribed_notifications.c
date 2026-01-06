@@ -183,7 +183,7 @@ srsn_notif_sent(uint32_t sub_id)
         goto cleanup;
     }
 
-    ++sub->sent_count;
+    sub->sent_count++;
 
 cleanup:
     return sr_api_ret(NULL, err_info);
