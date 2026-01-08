@@ -662,9 +662,9 @@ sr_ly_module_is_internal(const struct lys_module *ly_mod)
         return 1;
     } else if (!strcmp(ly_mod->name, "yang") && !strcmp(ly_mod->revision, "2022-06-16")) {
         return 1;
-    } else if (!strcmp(ly_mod->name, "ietf-inet-types") && !strcmp(ly_mod->revision, "2013-07-15")) {
+    } else if (!strcmp(ly_mod->name, "ietf-inet-types") && !strcmp(ly_mod->revision, "2025-12-22")) {
         return 1;
-    } else if (!strcmp(ly_mod->name, "ietf-yang-types") && !strcmp(ly_mod->revision, "2013-07-15")) {
+    } else if (!strcmp(ly_mod->name, "ietf-yang-types") && !strcmp(ly_mod->revision, "2025-12-22")) {
         return 1;
     }
 

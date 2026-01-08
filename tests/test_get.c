@@ -500,11 +500,11 @@ test_union(void **state)
     sr_release_data(data);
 
     str2 =
-            "<ac1 xmlns=\"s\">\n"
+            "<ac1 xmlns=\"urn:s\">\n"
             "  <acd1 xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">true</acd1>\n"
-            "  <bauga1 xmlns=\"sa\" xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\""
+            "  <bauga1 xmlns=\"urn:sa\" xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\""
             " dflt:default=\"true\">true</bauga1>\n"
-            "  <bauga2 xmlns=\"sa\">val</bauga2>\n"
+            "  <bauga2 xmlns=\"urn:sa\">val</bauga2>\n"
             "</ac1>\n";
 
     assert_string_equal(str1, str2);
@@ -518,7 +518,7 @@ test_union(void **state)
     sr_release_data(data);
 
     str2 =
-            "<bc1 xmlns=\"sa\">\n"
+            "<bc1 xmlns=\"urn:sa\">\n"
             "  <bcd1 xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">true</bcd1>\n"
             "  <bcl1>\n"
             "    <bcs1>key</bcs1>\n"
@@ -537,13 +537,13 @@ test_union(void **state)
     sr_release_data(data);
 
     str2 =
-            "<ac1 xmlns=\"s\">\n"
+            "<ac1 xmlns=\"urn:s\">\n"
             "  <acd1 xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">true</acd1>\n"
-            "  <bauga1 xmlns=\"sa\" xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\""
+            "  <bauga1 xmlns=\"urn:sa\" xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\""
             " dflt:default=\"true\">true</bauga1>\n"
-            "  <bauga2 xmlns=\"sa\">val</bauga2>\n"
+            "  <bauga2 xmlns=\"urn:sa\">val</bauga2>\n"
             "</ac1>\n"
-            "<bc1 xmlns=\"sa\">\n"
+            "<bc1 xmlns=\"urn:sa\">\n"
             "  <bcd1 xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">true</bcd1>\n"
             "  <bcl1>\n"
             "    <bcs1>key</bcs1>\n"
@@ -562,10 +562,10 @@ test_union(void **state)
     sr_release_data(data);
 
     str2 =
-            "<ac1 xmlns=\"s\">\n"
-            "  <bauga2 xmlns=\"sa\">val</bauga2>\n"
+            "<ac1 xmlns=\"urn:s\">\n"
+            "  <bauga2 xmlns=\"urn:sa\">val</bauga2>\n"
             "</ac1>\n"
-            "<bc1 xmlns=\"sa\">\n"
+            "<bc1 xmlns=\"urn:sa\">\n"
             "  <bcl1>\n"
             "    <bcs1>key</bcs1>\n"
             "  </bcl1>\n"

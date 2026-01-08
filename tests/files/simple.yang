@@ -1,5 +1,5 @@
 module simple {
-    namespace s;
+    namespace urn:s;
     prefix s;
 
     container ac1 {

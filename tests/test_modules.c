@@ -325,7 +325,7 @@ test_data_deps(void **state)
             "<source-path xmlns:r=\"urn:refs\">/r:inst-id</source-path>"
             "</inst-id>"
             "<xpath>"
-            "<expression xmlns:s=\"s\">/s:ac1/s:acd1='false'</expression>"
+            "<expression xmlns:s=\"urn:s\">/s:ac1/s:acd1='false'</expression>"
             "<target-module>simple</target-module>"
             "</xpath>"
             "</deps>"

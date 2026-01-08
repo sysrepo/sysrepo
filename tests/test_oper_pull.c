@@ -1243,7 +1243,7 @@ simple_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_na
     assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth5']/"
             "oper-status", "testing", 0, NULL));
     assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth5']/"
-            "statistics/discontinuity-time", "2000-01-01T02:00:00-00:00", 0, NULL));
+            "statistics/discontinuity-time", "2000-01-01T02:00:00Z", 0, NULL));
     sr_release_context(sr_session_get_connection(session));
 
     return SR_ERR_OK;
@@ -1325,7 +1325,7 @@ test_simple(void **state)
             "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
             "    <oper-status>testing</oper-status>\n"
             "    <statistics>\n"
-            "      <discontinuity-time>2000-01-01T02:00:00-00:00</discontinuity-time>\n"
+            "      <discontinuity-time>2000-01-01T02:00:00Z</discontinuity-time>\n"
             "    </statistics>\n"
             "  </interface>\n"
             "</interfaces-state>\n";
@@ -1612,13 +1612,13 @@ nested_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_na
         assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth2']/"
                 "oper-status", "testing", 0, NULL));
         assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth2']/"
-                "statistics/discontinuity-time", "2000-01-01T03:00:00-00:00", 0, NULL));
+                "statistics/discontinuity-time", "2000-01-01T03:00:00Z", 0, NULL));
         assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth3']/"
                 "type", "iana-if-type:ethernetCsmacd", 0, NULL));
         assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth3']/"
                 "oper-status", "dormant", 0, NULL));
         assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth3']/"
-                "statistics/discontinuity-time", "2000-01-01T03:00:00-00:00", 0, NULL));
+                "statistics/discontinuity-time", "2000-01-01T03:00:00Z", 0, NULL));
 
         sr_release_context(sr_session_get_connection(session));
     } else {
@@ -1689,7 +1689,7 @@ test_nested(void **state)
             "    <oper-status>testing</oper-status>\n"
             "    <phys-address>01:23:45:67:89:ab</phys-address>\n"
             "    <statistics>\n"
-            "      <discontinuity-time>2000-01-01T03:00:00-00:00</discontinuity-time>\n"
+            "      <discontinuity-time>2000-01-01T03:00:00Z</discontinuity-time>\n"
             "    </statistics>\n"
             "  </interface>\n"
             "  <interface>\n"
@@ -1697,7 +1697,7 @@ test_nested(void **state)
             "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
             "    <oper-status>dormant</oper-status>\n"
             "    <statistics>\n"
-            "      <discontinuity-time>2000-01-01T03:00:00-00:00</discontinuity-time>\n"
+            "      <discontinuity-time>2000-01-01T03:00:00Z</discontinuity-time>\n"
             "    </statistics>\n"
             "  </interface>\n"
             "</interfaces-state>\n";
@@ -1991,7 +1991,7 @@ mixed_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_nam
     assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth11']/"
             "oper-status", "down", 0, NULL));
     assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth11']/"
-            "statistics/discontinuity-time", "2000-01-01T03:00:00-00:00", 0, NULL));
+            "statistics/discontinuity-time", "2000-01-01T03:00:00Z", 0, NULL));
 
     sr_release_context(sr_session_get_connection(session));
 
@@ -2051,7 +2051,7 @@ test_mixed(void **state)
             "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
             "    <oper-status>down</oper-status>\n"
             "    <statistics>\n"
-            "      <discontinuity-time>2000-01-01T03:00:00-00:00</discontinuity-time>\n"
+            "      <discontinuity-time>2000-01-01T03:00:00Z</discontinuity-time>\n"
             "    </statistics>\n"
             "  </interface>\n"
             "</interfaces-state>\n";
@@ -2976,7 +2976,7 @@ same_xpath_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *modul
     assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth5']/"
             "oper-status", "testing", 0, NULL));
     assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth5']/"
-            "statistics/discontinuity-time", "2000-01-01T02:00:00-00:00", 0, NULL));
+            "statistics/discontinuity-time", "2000-01-01T02:00:00Z", 0, NULL));
     sr_session_release_context(session);
 
     return SR_ERR_OK;
@@ -3028,7 +3028,7 @@ same_xpath_oper_cb3(sr_session_ctx_t *session, uint32_t sub_id, const char *modu
     assert_null(*parent);
 
     assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, ly_ctx, "/ietf-interfaces:interfaces-state/interface[name='eth5']/"
-            "statistics/discontinuity-time", "2001-01-01T02:00:00-00:00", 0, parent));
+            "statistics/discontinuity-time", "2001-01-01T02:00:00Z", 0, parent));
     assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth5']/"
             "statistics/in-octets", "1", 0, NULL));
     sr_session_release_context(session);
@@ -3082,7 +3082,7 @@ test_same_xpath(void **state)
             "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
             "    <oper-status>unknown</oper-status>\n"
             "    <statistics>\n"
-            "      <discontinuity-time>2000-01-01T02:00:00-00:00</discontinuity-time>\n"
+            "      <discontinuity-time>2000-01-01T02:00:00Z</discontinuity-time>\n"
             "    </statistics>\n"
             "  </interface>\n"
             "</interfaces-state>\n";
@@ -3112,7 +3112,7 @@ test_same_xpath(void **state)
             "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
             "    <oper-status>unknown</oper-status>\n"
             "    <statistics>\n"
-            "      <discontinuity-time>2001-01-01T02:00:00-00:00</discontinuity-time>\n"
+            "      <discontinuity-time>2001-01-01T02:00:00Z</discontinuity-time>\n"
             "      <in-octets>1</in-octets>\n"
             "    </statistics>\n"
             "  </interface>\n"
@@ -3311,7 +3311,7 @@ cache_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_nam
     assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth5']/"
             "oper-status", "testing", 0, NULL));
     assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth5']/"
-            "statistics/discontinuity-time", "2000-01-01T02:00:00-00:00", 0, NULL));
+            "statistics/discontinuity-time", "2000-01-01T02:00:00Z", 0, NULL));
     sr_release_context(sr_session_get_connection(session));
 
     ATOMIC_INC_RELAXED(st->cb_called);
@@ -3363,7 +3363,7 @@ test_cache(void **state)
             "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
             "    <oper-status>testing</oper-status>\n"
             "    <statistics>\n"
-            "      <discontinuity-time>2000-01-01T02:00:00-00:00</discontinuity-time>\n"
+            "      <discontinuity-time>2000-01-01T02:00:00Z</discontinuity-time>\n"
             "    </statistics>\n"
             "  </interface>\n"
             "</interfaces-state>\n";
@@ -3385,7 +3385,7 @@ test_cache(void **state)
             "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
             "    <oper-status>testing</oper-status>\n"
             "    <statistics>\n"
-            "      <discontinuity-time>2000-01-01T02:00:00-00:00</discontinuity-time>\n"
+            "      <discontinuity-time>2000-01-01T02:00:00Z</discontinuity-time>\n"
             "    </statistics>\n"
             "  </interface>\n"
             "</interfaces-state>\n";
@@ -3408,7 +3408,7 @@ test_cache(void **state)
             "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
             "    <oper-status>testing</oper-status>\n"
             "    <statistics>\n"
-            "      <discontinuity-time>2000-01-01T02:00:00-00:00</discontinuity-time>\n"
+            "      <discontinuity-time>2000-01-01T02:00:00Z</discontinuity-time>\n"
             "    </statistics>\n"
             "  </interface>\n"
             "</interfaces-state>\n";
@@ -3479,7 +3479,7 @@ test_cache_no_sub(void **state)
             "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
             "    <oper-status>testing</oper-status>\n"
             "    <statistics>\n"
-            "      <discontinuity-time>2000-01-01T02:00:00-00:00</discontinuity-time>\n"
+            "      <discontinuity-time>2000-01-01T02:00:00Z</discontinuity-time>\n"
             "    </statistics>\n"
             "  </interface>\n"
             "</interfaces-state>\n";
@@ -3536,7 +3536,7 @@ cache_diff_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *modul
         assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth5']/"
                 "oper-status", "testing", 0, NULL));
         assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth5']/"
-                "statistics/discontinuity-time", "2000-01-01T02:00:00-00:00", 0, NULL));
+                "statistics/discontinuity-time", "2000-01-01T02:00:00Z", 0, NULL));
         break;
     case 2:
         assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, ly_ctx, "/ietf-interfaces:interfaces-state/interface[name='eth5']/type",
@@ -3544,7 +3544,7 @@ cache_diff_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *modul
         assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth5']/"
                 "oper-status", "dormant", 0, NULL));
         assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth5']/"
-                "statistics/discontinuity-time", "2000-01-01T02:00:00-00:00", 0, NULL));
+                "statistics/discontinuity-time", "2000-01-01T02:00:00Z", 0, NULL));
         break;
     case 4:
         assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, ly_ctx, "/ietf-interfaces:interfaces-state/interface[name='eth5']/type",
@@ -3552,7 +3552,7 @@ cache_diff_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *modul
         assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth5']/"
                 "oper-status", "dormant", 0, NULL));
         assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth5']/"
-                "statistics/discontinuity-time", "2010-01-01T02:00:00-00:00", 0, NULL));
+                "statistics/discontinuity-time", "2010-01-01T02:00:00Z", 0, NULL));
         break;
     default:
         fail();
@@ -3806,7 +3806,7 @@ cache_nested_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mod
                 "oper-status", "testing", 0, NULL));
     } else if (!strcmp(xpath, "/ietf-interfaces:interfaces-state/interface[name='eth11']/statistics")) {
         assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth11']/"
-                "statistics/discontinuity-time", "2000-01-01T02:00:00-00:00", 0, NULL));
+                "statistics/discontinuity-time", "2000-01-01T02:00:00Z", 0, NULL));
         assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth11']/"
                 "statistics/in-octets", "52", 0, NULL));
     } else {
@@ -3862,7 +3862,7 @@ test_cache_nested(void **state)
             "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
             "    <oper-status>testing</oper-status>\n"
             "    <statistics>\n"
-            "      <discontinuity-time>2000-01-01T02:00:00-00:00</discontinuity-time>\n"
+            "      <discontinuity-time>2000-01-01T02:00:00Z</discontinuity-time>\n"
             "      <in-octets>52</in-octets>\n"
             "    </statistics>\n"
             "  </interface>\n"
@@ -3884,7 +3884,7 @@ test_cache_nested(void **state)
             "  <interface>\n"
             "    <name>eth11</name>\n"
             "    <statistics>\n"
-            "      <discontinuity-time>2000-01-01T02:00:00-00:00</discontinuity-time>\n"
+            "      <discontinuity-time>2000-01-01T02:00:00Z</discontinuity-time>\n"
             "      <in-octets>52</in-octets>\n"
             "    </statistics>\n"
             "  </interface>\n"

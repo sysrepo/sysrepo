@@ -296,7 +296,7 @@ test_conn_owner2(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/statistics/discontinuity-time",
-            "2019-10-29T09:43:12-00:00", NULL, 0);
+            "2019-10-29T09:43:12Z", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -318,7 +318,7 @@ test_conn_owner2(void **state)
             "    <oper-status>up</oper-status>\n"
             "    <speed>1024</speed>\n"
             "    <statistics>\n"
-            "      <discontinuity-time>2019-10-29T09:43:12-00:00</discontinuity-time>\n"
+            "      <discontinuity-time>2019-10-29T09:43:12Z</discontinuity-time>\n"
             "    </statistics>\n"
             "  </interface>\n"
             "</interfaces-state>\n";
@@ -344,7 +344,7 @@ test_conn_owner2(void **state)
             "  <interface>\n"
             "    <name>eth1</name>\n"
             "    <statistics>\n"
-            "      <discontinuity-time>2019-10-29T09:43:12-00:00</discontinuity-time>\n"
+            "      <discontinuity-time>2019-10-29T09:43:12Z</discontinuity-time>\n"
             "    </statistics>\n"
             "  </interface>\n"
             "</interfaces-state>\n";
