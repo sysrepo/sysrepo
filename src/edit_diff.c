@@ -498,6 +498,7 @@ sr_meta_edit2diff(struct lyd_node *node, enum edit_op set_op, const char *meta_o
     struct lyd_meta *meta;
     const struct lyd_node *sibling_before;
     char *meta_val = NULL;
+    const char *meta_dflt;
     int op_own;
 
     /* check if there is an operation */
@@ -524,9 +525,16 @@ sr_meta_edit2diff(struct lyd_node *node, enum edit_op set_op, const char *meta_o
         }
     }
 
+    /* learn default flag state */
+    if (node->flags & LYD_DEFAULT) {
+        meta_dflt = "true";
+    } else {
+        meta_dflt = "false";
+    }
+
     /* add all diff metadata */
     assert((set_op == EDIT_CREATE) || (set_op == EDIT_DELETE) || (set_op == EDIT_REPLACE) || (set_op == EDIT_NONE));
-    if ((err_info = sr_diff_add_meta(node, NULL, meta_old, NULL, set_op))) {
+    if ((err_info = sr_diff_add_meta(node, NULL, meta_old, meta_dflt, set_op))) {
         goto cleanup;
     }
 
