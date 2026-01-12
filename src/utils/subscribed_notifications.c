@@ -178,7 +178,12 @@ srsn_notif_sent(uint32_t sub_id)
     sr_error_info_t *err_info = NULL;
     struct srsn_sub *sub;
 
-    if (!(sub = srsn_find(sub_id, 0))) {
+    /* LOCK */
+    if ((err_info = srsn_lock())) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    if (!(sub = srsn_find(sub_id))) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Subscription with ID %" PRIu32 " not found.", sub_id);
         goto cleanup;
     }
@@ -186,6 +191,9 @@ srsn_notif_sent(uint32_t sub_id)
     sub->sent_count++;
 
 cleanup:
+    /* UNLOCK */
+    srsn_unlock();
+
     return sr_api_ret(NULL, err_info);
 }
 
@@ -450,7 +458,12 @@ srsn_yang_push_on_change_resync(uint32_t sub_id)
     sr_error_info_t *err_info = NULL;
     struct srsn_sub *sub;
 
-    if (!(sub = srsn_find(sub_id, 0)) || (sub->type != SRSN_YANG_PUSH_ON_CHANGE)) {
+    /* LOCK */
+    if ((err_info = srsn_lock())) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    if (!(sub = srsn_find(sub_id)) || (sub->type != SRSN_YANG_PUSH_ON_CHANGE)) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "YANG-push on-change subscription with ID %" PRIu32 " not found.",
                 sub_id);
         goto cleanup;
@@ -465,6 +478,9 @@ srsn_yang_push_on_change_resync(uint32_t sub_id)
     }
 
 cleanup:
+    /* UNLOCK */
+    srsn_unlock();
+
     return sr_api_ret(NULL, err_info);
 }
 
@@ -474,7 +490,12 @@ srsn_modify_xpath_filter(uint32_t sub_id, const char *xpath_filter)
     sr_error_info_t *err_info = NULL;
     struct srsn_sub *sub;
 
-    if (!(sub = srsn_find(sub_id, 0))) {
+    /* LOCK */
+    if ((err_info = srsn_lock())) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    if (!(sub = srsn_find(sub_id))) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Subscription with ID %" PRIu32 " not found.", sub_id);
         goto cleanup;
     }
@@ -484,6 +505,9 @@ srsn_modify_xpath_filter(uint32_t sub_id, const char *xpath_filter)
     }
 
 cleanup:
+    /* UNLOCK */
+    srsn_unlock();
+
     return sr_api_ret(NULL, err_info);
 }
 
@@ -493,7 +517,12 @@ srsn_modify_stop_time(uint32_t sub_id, const struct timespec *stop_time)
     sr_error_info_t *err_info = NULL;
     struct srsn_sub *sub;
 
-    if (!(sub = srsn_find(sub_id, 0))) {
+    /* LOCK */
+    if ((err_info = srsn_lock())) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    if (!(sub = srsn_find(sub_id))) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Subscription with ID %" PRIu32 " not found.", sub_id);
         goto cleanup;
     }
@@ -503,6 +532,9 @@ srsn_modify_stop_time(uint32_t sub_id, const struct timespec *stop_time)
     }
 
 cleanup:
+    /* UNLOCK */
+    srsn_unlock();
+
     return sr_api_ret(NULL, err_info);
 }
 
@@ -512,7 +544,12 @@ srsn_yang_push_modify_periodic(uint32_t sub_id, uint32_t period_ms, const struct
     sr_error_info_t *err_info = NULL;
     struct srsn_sub *sub;
 
-    if (!(sub = srsn_find(sub_id, 0)) || (sub->type != SRSN_YANG_PUSH_PERIODIC)) {
+    /* LOCK */
+    if ((err_info = srsn_lock())) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    if (!(sub = srsn_find(sub_id)) || (sub->type != SRSN_YANG_PUSH_PERIODIC)) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "YANG-push periodic subscription with ID %" PRIu32 " not found.",
                 sub_id);
         goto cleanup;
@@ -523,6 +560,9 @@ srsn_yang_push_modify_periodic(uint32_t sub_id, uint32_t period_ms, const struct
     }
 
 cleanup:
+    /* UNLOCK */
+    srsn_unlock();
+
     return sr_api_ret(NULL, err_info);
 }
 
@@ -532,7 +572,12 @@ srsn_yang_push_modify_on_change(uint32_t sub_id, uint32_t dampening_period_ms)
     sr_error_info_t *err_info = NULL;
     struct srsn_sub *sub;
 
-    if (!(sub = srsn_find(sub_id, 0)) || (sub->type != SRSN_YANG_PUSH_ON_CHANGE)) {
+    /* LOCK */
+    if ((err_info = srsn_lock())) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    if (!(sub = srsn_find(sub_id)) || (sub->type != SRSN_YANG_PUSH_ON_CHANGE)) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "YANG-push on-change subscription with ID %" PRIu32 " not found.",
                 sub_id);
         goto cleanup;
@@ -543,6 +588,9 @@ srsn_yang_push_modify_on_change(uint32_t sub_id, uint32_t dampening_period_ms)
     }
 
 cleanup:
+    /* UNLOCK */
+    srsn_unlock();
+
     return sr_api_ret(NULL, err_info);
 }
 
@@ -558,7 +606,12 @@ srsn_suspend(uint32_t sub_id, const char *reason)
     char buf[26];
     struct timespec ts;
 
-    if (!(sub = srsn_find(sub_id, 0))) {
+    /* LOCK */
+    if ((err_info = srsn_lock())) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    if (!(sub = srsn_find(sub_id))) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Subscription with ID %" PRIu32 " not found.", sub_id);
         goto cleanup;
     }
@@ -618,6 +671,10 @@ cleanup:
     if (ly_ctx) {
         sr_release_context(sub->conn);
     }
+
+    /* UNLOCK */
+    srsn_unlock();
+
     return sr_api_ret(NULL, err_info);
 }
 
@@ -633,7 +690,12 @@ srsn_resume(uint32_t sub_id)
     char buf[26];
     struct timespec ts;
 
-    if (!(sub = srsn_find(sub_id, 0))) {
+    /* LOCK */
+    if ((err_info = srsn_lock())) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    if (!(sub = srsn_find(sub_id))) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Subscription with ID %" PRIu32 " not found.", sub_id);
         goto cleanup;
     }
@@ -690,6 +752,10 @@ cleanup:
     if (ly_ctx) {
         sr_release_context(sub->conn);
     }
+
+    /* UNLOCK */
+    srsn_unlock();
+
     return sr_api_ret(NULL, err_info);
 }
 
@@ -705,7 +771,7 @@ srsn_terminate(uint32_t sub_id, const char *reason)
         return sr_api_ret(NULL, err_info);
     }
 
-    if (!(sub = srsn_find(sub_id, 1))) {
+    if (!(sub = srsn_find(sub_id))) {
         rc = SR_ERR_NOT_FOUND;
         goto cleanup;
     }
@@ -852,7 +918,7 @@ srsn_oper_data_sub(uint32_t sub_id, srsn_state_sub_t **sub)
     }
 
     /* find the subscription */
-    if (!(s = srsn_find(sub_id, 1))) {
+    if (!(s = srsn_find(sub_id))) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Subscription with ID %" PRIu32 " not found.", sub_id);
         goto cleanup;
     }

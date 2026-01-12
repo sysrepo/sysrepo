@@ -261,10 +261,9 @@ void srsn_state_free(srsn_state_sub_t *subs, uint32_t count);
  * @brief Find a subscription wtih a specific sub ID.
  *
  * @param[in] sub_id Sub ID of the subscription to find.
- * @param[in] locked Whether the state lock is already held or not.
  * @return Found subscription, NULL if none found.
  */
-struct srsn_sub *srsn_find(uint32_t sub_id, int locked);
+struct srsn_sub *srsn_find(uint32_t sub_id);
 
 /**
  * @brief Send a notification for a subscription.

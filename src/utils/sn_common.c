@@ -1129,30 +1129,16 @@ srsn_state_free(srsn_state_sub_t *subs, uint32_t count)
 }
 
 struct srsn_sub *
-srsn_find(uint32_t sub_id, int locked)
+srsn_find(uint32_t sub_id)
 {
-    sr_error_info_t *err_info = NULL;
     struct srsn_sub *sub = NULL;
     uint32_t i;
-
-    if (!locked) {
-        /* LOCK */
-        if ((err_info = srsn_lock())) {
-            sr_errinfo_free(&err_info);
-            return NULL;
-        }
-    }
 
     for (i = 0; i < snstate.count; ++i) {
         if (snstate.subs[i]->id == sub_id) {
             sub = snstate.subs[i];
             break;
         }
-    }
-
-    if (!locked) {
-        /* UNLOCK */
-        srsn_unlock();
     }
 
     return sub;
