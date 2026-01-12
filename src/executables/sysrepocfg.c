@@ -99,8 +99,8 @@ help_print(void)
             "                               \"report-all-tagged\", \"trim\", \"explicit\", \"implicit-tagged\").\n"
             "                               Accepted by export, edit, rpc op.\n"
             "  -u, --value <value>/<path>   Node value to read or the file to write the value into. Accepted by set/get op.\n"
-            "  -v, --verbosity <level>      Change verbosity to a level (none, error, warning, info, debug) or\n"
-            "                               number (0, 1, 2, 3, 4).\n"
+            "  -v, --verbosity <level>      Change verbosity to a level (none, error, warning, info, verbose, debug) or\n"
+            "                               number (0, 1, 2, 3, 4, 5).\n"
             "\n");
 }
 
@@ -1009,9 +1009,11 @@ main(int argc, char **argv)
                 log_level = SR_LL_WRN;
             } else if (!strcmp(optarg, "info")) {
                 log_level = SR_LL_INF;
+            } else if (!strcmp(optarg, "verbose")) {
+                log_level = SR_LL_VRB;
             } else if (!strcmp(optarg, "debug")) {
                 log_level = SR_LL_DBG;
-            } else if ((strlen(optarg) == 1) && (optarg[0] >= '0') && (optarg[0] <= '4')) {
+            } else if ((strlen(optarg) == 1) && (optarg[0] >= '0') && (optarg[0] <= '5')) {
                 log_level = atoi(optarg);
             } else {
                 error_print(0, "Invalid verbosity \"%s\"", optarg);
