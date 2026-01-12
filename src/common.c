@@ -4903,6 +4903,7 @@ sr_lyd_get_enabled_xpath(struct lyd_node **data, char **xpaths, uint16_t xp_coun
         }
 
         /* find top-level root */
+        assert(root);
         while (root->parent) {
             root = &root->parent->node;
         }
