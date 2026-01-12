@@ -32,187 +32,49 @@
 #include "log.h"
 #include "sysrepo.h"
 
-struct sr_ly_err {
-    sr_log_level_t level;
-    char *msg;
-    char *path;
-};
-
-THREAD uint32_t ly_temp_lo = LY_LOLOG;  /**< temp LY log options to use */
-THREAD uint32_t *prev_ly_temp_lo;   /**< previous temp LY log options, for nested calls */
-THREAD ly_log_clb prev_ly_log_cb;   /**< previous LY log callback */
-
-THREAD struct {
-    struct sr_ly_err *errs;
-    uint32_t err_count;
-} ly_errs;                          /**< array of generated LY errors */
-
 /**
- * @brief Transform LY log level to SR log level.
- *
- * @param[in] level LY log level.
- * @return SR log level.
- */
-static sr_log_level_t
-sr_log_level_ly2sr(LY_LOG_LEVEL level)
-{
-    switch (level) {
-    case LY_LLERR:
-        return SR_LL_ERR;
-    case LY_LLWRN:
-        return SR_LL_WRN;
-    case LY_LLVRB:
-        return SR_LL_VRB;
-    case LY_LLDBG:
-        return SR_LL_DBG;
-    }
-
-    return SR_LL_NONE;
-}
-
-/**
- * @brief Sysrepo logging callback for libyang.
- */
-static void
-sr_ly_log_clb(LY_LOG_LEVEL level, const char *msg, const char *data_path, const char *schema_path, uint64_t UNUSED(line))
-{
-    sr_error_info_t *err_info = NULL;
-    struct sr_ly_err *err;
-    void *mem;
-
-    /* allocate a new error */
-    mem = realloc(ly_errs.errs, (ly_errs.err_count + 1) * sizeof *ly_errs.errs);
-    SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
-    ly_errs.errs = mem;
-    ++ly_errs.err_count;
-
-    err = &ly_errs.errs[ly_errs.err_count - 1];
-    memset(err, 0, sizeof *err);
-
-    /* store level */
-    err->level = sr_log_level_ly2sr(level);
-
-    /* store message */
-    err->msg = strdup(msg);
-    SR_CHECK_MEM_GOTO(!err->msg, err_info, cleanup);
-
-    /* store path */
-    if (data_path) {
-        err->path = strdup(data_path);
-        SR_CHECK_MEM_GOTO(!err->path, err_info, cleanup);
-    } else if (schema_path) {
-        err->path = strdup(schema_path);
-        SR_CHECK_MEM_GOTO(!err->path, err_info, cleanup);
-    }
-
-cleanup:
-    sr_errinfo_free(&err_info);
-}
-
-/**
- * @brief Set up libyang logging for sysrepo.
- *
- * Stores all the generated messages in ::ly_errs.
- */
-static void
-sr_ly_log_setup(void)
-{
-    /* only log ... */
-    prev_ly_temp_lo = ly_temp_log_options(&ly_temp_lo);
-
-    /* (unless in a nested call when we could not be logging at all, for example) */
-    if (prev_ly_temp_lo) {
-        ly_temp_log_options(prev_ly_temp_lo);
-    }
-
-    /* ... using a callback */
-    prev_ly_log_cb = ly_get_log_clb();
-    ly_set_log_clb(sr_ly_log_clb);
-}
-
-/**
- * @brief Clear any generated stored LY messages.
- */
-static void
-sr_ly_log_clear(void)
-{
-    struct sr_ly_err *err;
-    uint32_t i;
-
-    /* free all the messages */
-    for (i = 0; i < ly_errs.err_count; ++i) {
-        err = &ly_errs.errs[i];
-
-        free(err->msg);
-        free(err->path);
-    }
-
-    free(ly_errs.errs);
-    ly_errs.errs = NULL;
-    ly_errs.err_count = 0;
-}
-
-/**
- * @brief Revert back libyang logging set up for sysrepo.
- */
-static void
-sr_ly_log_revert(void)
-{
-    struct sr_ly_err *err;
-    uint32_t i;
-
-    /* print any messages */
-    for (i = 0; i < ly_errs.err_count; ++i) {
-        err = &ly_errs.errs[i];
-        assert(err->level != SR_LL_ERR);
-
-        sr_log_msg(0, err->level, err->msg);
-    }
-
-    /* free all the messages */
-    sr_ly_log_clear();
-
-    /* revert log options */
-    if (!prev_ly_temp_lo) {
-        ly_temp_log_options(NULL);
-    } else {
-        prev_ly_temp_lo = NULL;
-    }
-
-    /* revert log callback */
-    ly_set_log_clb(prev_ly_log_cb);
-}
-
-/**
- * @brief Log the error(s) generated and stored by a previous LY function call
+ * @brief Log the error(s) from a libyang context and add them into an error info structure.
  *
  * @param[in,out] err_info Existing error info.
+ * @param[in] ly_ctx libyang context to use.
  * @param[in] err_code Error code to use.
  */
 static void
-sr_errinfo_new_ly(sr_error_info_t **err_info, sr_error_t err_code)
+sr_errinfo_new_ly(sr_error_info_t **err_info, const struct ly_ctx *ly_ctx, sr_error_t err_code)
 {
-    struct sr_ly_err *err;
-    uint32_t i;
+    const struct ly_err_item *e = NULL;
 
-    for (i = 0; i < ly_errs.err_count; ++i) {
-        err = &ly_errs.errs[i];
-
-        if (err->level == SR_LL_ERR) {
-            /* store and print */
-            if (err->path) {
-                sr_errinfo_new(err_info, err_code, "%s (path \"%s\")", err->msg, err->path);
-            } else {
-                sr_errinfo_new(err_info, err_code, "%s", err->msg);
-            }
-        } else {
-            /* only print */
-            sr_log_msg(0, err->level, err->msg);
-        }
+    if (ly_ctx) {
+        e = ly_err_first(ly_ctx);
     }
 
-    /* free the printed messages */
-    sr_ly_log_clear();
+    if (!e) {
+        /* this function is called only when an error is expected, but it is still possible there
+         * will be none in a context, try to use the last */
+        sr_errinfo_new(err_info, err_code, "%s", ly_last_logmsg());
+        return;
+    }
+
+    do {
+        if (e->level == LY_LLWRN) {
+            /* just print it */
+            sr_log_msg(0, SR_LL_WRN, e->msg);
+        } else {
+            assert(e->level == LY_LLERR);
+            /* store it and print it */
+            if (e->data_path || e->schema_path) {
+                sr_errinfo_new(err_info, err_code, "%s (path \"%s\")", e->msg, e->data_path ? e->data_path : e->schema_path);
+            } else {
+                sr_errinfo_new(err_info, err_code, "%s", e->msg);
+            }
+        }
+
+        e = e->next;
+    } while (e);
+
+    if (ly_ctx) {
+        ly_err_clean((struct ly_ctx *)ly_ctx, NULL);
+    }
 }
 
 sr_error_info_t *
@@ -222,6 +84,7 @@ sr_ly_ctx_new(struct ly_ctx **ly_ctx)
     char *yang_dir;
     const char *factory_default_features[] = {"factory-default-datastore", NULL};
     uint16_t ctx_opts;
+    uint32_t temp_lo = LY_LOSTORE;
     struct ly_in *in = NULL;
     LY_ERR lyrc;
 
@@ -234,44 +97,43 @@ sr_ly_ctx_new(struct ly_ctx **ly_ctx)
         ctx_opts |= LY_CTX_SET_PRIV_PARSED;
     }
 
-    sr_ly_log_setup();
-
     /* create new context */
+    ly_temp_log_options(&temp_lo);
     if ((err_info = sr_path_yang_dir(&yang_dir))) {
         goto cleanup;
     }
     lyrc = ly_ctx_new(yang_dir, ctx_opts, ly_ctx);
     free(yang_dir);
     if (lyrc) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_logmsg());
         sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Failed to create a new libyang context.");
         goto cleanup;
     }
 
     /* load just the internal datastores modules and the "sysrepo" module */
     if (lys_parse_mem(*ly_ctx, ietf_datastores_yang, LYS_IN_YANG, NULL)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, *ly_ctx, SR_ERR_LY);
         goto cleanup;
     }
     if (lys_parse_mem(*ly_ctx, sysrepo_yang, LYS_IN_YANG, NULL)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, *ly_ctx, SR_ERR_LY);
         goto cleanup;
     }
     if (lys_parse_mem(*ly_ctx, ietf_netconf_acm_yang, LYS_IN_YANG, NULL)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, *ly_ctx, SR_ERR_LY);
         goto cleanup;
     }
 
     if (ly_in_new_memory(ietf_factory_default_yang, &in)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, NULL, SR_ERR_LY);
         goto cleanup;
     }
     if (lys_parse(*ly_ctx, in, LYS_IN_YANG, factory_default_features, NULL)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, *ly_ctx, SR_ERR_LY);
         goto cleanup;
     }
     if (lys_parse_mem(*ly_ctx, sysrepo_factory_default_yang, LYS_IN_YANG, NULL)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, *ly_ctx, SR_ERR_LY);
         goto cleanup;
     }
 
@@ -288,7 +150,7 @@ cleanup:
         ly_ctx_destroy(*ly_ctx);
         *ly_ctx = NULL;
     }
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     ly_in_free(in, 0);
     return err_info;
 }
@@ -298,30 +160,31 @@ sr_lys_parse(struct ly_ctx *ctx, const char *data, const char *path, LYS_INFORMA
         struct lys_module **ly_mod)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
     struct ly_in *in = NULL;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (path) {
         if (ly_in_new_filepath(path, 0, &in)) {
-            sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+            sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_logmsg());
             goto cleanup;
         }
     } else {
         if (ly_in_new_memory(data, &in)) {
-            sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+            sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_logmsg());
             goto cleanup;
         }
     }
 
     if (lys_parse(ctx, in, format, features, ly_mod)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, ctx, SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
     ly_in_free(in, 0);
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -329,16 +192,17 @@ sr_error_info_t *
 sr_lys_set_implemented(struct lys_module *mod, const char **features)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (lys_set_implemented(mod, features)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, mod->ctx, SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -346,10 +210,11 @@ sr_error_info_t *
 sr_lys_print(const char *path, const struct lys_module *mod, const struct lysp_submodule *submod)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
     struct ly_out *out = NULL;
     LY_ERR lyrc;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     ly_out_new_filepath(path, &out);
 
@@ -359,13 +224,13 @@ sr_lys_print(const char *path, const struct lys_module *mod, const struct lysp_s
         lyrc = lys_print_module(out, mod, LYS_OUT_YANG, 0, 0);
     }
     if (lyrc) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, submod ? submod->mod->ctx : mod->ctx, SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
     ly_out_free(out, NULL, 0);
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -373,16 +238,17 @@ sr_error_info_t *
 sr_ly_ctx_get_yanglib_data(const struct ly_ctx *ctx, struct lyd_node **data, uint32_t content_id)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (ly_ctx_get_yanglib_data(ctx, data, "0x%08x", content_id)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, ctx, SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -391,18 +257,19 @@ sr_ly_ctx_load_module(struct ly_ctx *ctx, const char *name, const char *revision
         const struct lys_module **ly_mod)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
     const struct lys_module *mod = NULL;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (!(mod = ly_ctx_load_module(ctx, name, revision, features))) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, ctx, SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
     *ly_mod = mod;
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -410,16 +277,17 @@ sr_error_info_t *
 sr_ly_ctx_compile(struct ly_ctx *ctx)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (ly_ctx_compile(ctx)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, ctx, SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -427,9 +295,10 @@ sr_error_info_t *
 sr_lys_find_path(const struct ly_ctx *ctx, const char *path, int *valid, const struct lysc_node **match)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
     const struct lysc_node *m;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (valid) {
         *valid = 1;
@@ -438,9 +307,8 @@ sr_lys_find_path(const struct ly_ctx *ctx, const char *path, int *valid, const s
     if (!(m = lys_find_path(ctx, NULL, path, 0))) {
         if (valid) {
             *valid = 0;
-            sr_ly_log_clear();
         } else {
-            sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+            sr_errinfo_new_ly(&err_info, ctx, SR_ERR_LY);
         }
         goto cleanup;
     }
@@ -450,7 +318,7 @@ sr_lys_find_path(const struct ly_ctx *ctx, const char *path, int *valid, const s
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -458,8 +326,13 @@ sr_error_info_t *
 sr_lys_find_xpath(const struct ly_ctx *ctx, const char *xpath, uint32_t options, int *valid, struct ly_set **set)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE, *prev_lo;
 
-    sr_ly_log_setup();
+    prev_lo = ly_temp_log_options(&temp_lo);
+    if (prev_lo) {
+        /* nested call, keep the previous lo */
+        ly_temp_log_options(prev_lo);
+    }
 
     if (valid) {
         *valid = 1;
@@ -468,15 +341,16 @@ sr_lys_find_xpath(const struct ly_ctx *ctx, const char *xpath, uint32_t options,
     if (lys_find_xpath(ctx, NULL, xpath, options, set) || !(*set)->count) {
         if (valid) {
             *valid = 0;
-            sr_ly_log_clear();
         } else {
-            sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+            sr_errinfo_new_ly(&err_info, ctx, SR_ERR_LY);
         }
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    if (!prev_lo) {
+        ly_temp_log_options(NULL);
+    }
     return err_info;
 }
 
@@ -484,9 +358,10 @@ sr_error_info_t *
 sr_lys_find_xpath_atoms(const struct ly_ctx *ctx, const char *xpath, uint32_t options, int *valid, struct ly_set **set)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
     LY_ERR lyrc;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (valid) {
         *valid = 1;
@@ -495,17 +370,19 @@ sr_lys_find_xpath_atoms(const struct ly_ctx *ctx, const char *xpath, uint32_t op
     if ((lyrc = lys_find_xpath_atoms(ctx, NULL, xpath, options, set))) {
         if (valid) {
             *valid = 0;
-            sr_ly_log_clear();
         } else if (lyrc == LY_ENOTFOUND) {
-            sr_errinfo_new_ly(&err_info, SR_ERR_NOT_FOUND);
+            /* no error message */
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL);
+            /* free any errors which were generated */
+            ly_err_clean((struct ly_ctx *) ctx, NULL);
         } else {
-            sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+            sr_errinfo_new_ly(&err_info, ctx, SR_ERR_LY);
         }
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -514,16 +391,17 @@ sr_lys_find_expr_atoms(const struct lysc_node *ctx_node, const struct lys_module
         struct lysc_prefix *prefixes, uint32_t options, struct ly_set **set)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (lys_find_expr_atoms(ctx_node, cur_mod, exp, prefixes, options, set)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, ctx_node->module->ctx, SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -532,9 +410,14 @@ sr_lyd_parse_data(const struct ly_ctx *ctx, const char *data, const char *data_p
         uint32_t parse_options, uint32_t validation_options, struct lyd_node **tree)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE, *prev_lo;
     LY_ERR lyrc = LY_SUCCESS;
 
-    sr_ly_log_setup();
+    prev_lo = ly_temp_log_options(&temp_lo);
+    if (prev_lo) {
+        /* nested call, keep the previous lo */
+        ly_temp_log_options(prev_lo);
+    }
 
     *tree = NULL;
 
@@ -545,21 +428,22 @@ sr_lyd_parse_data(const struct ly_ctx *ctx, const char *data, const char *data_p
     }
 
     /* empty data are fine */
-    if (lyrc) {
-        if ((lyrc != LY_EINVAL) || strcmp(ly_last_logmsg(), "Empty input file.")) {
-            sr_errinfo_new_ly(&err_info, SR_ERR_LY);
-        } else {
-            sr_ly_log_clear();
-        }
+    if (lyrc && ((lyrc != LY_EINVAL) || strcmp(ly_last_logmsg(), "Empty input file."))) {
+        sr_errinfo_new_ly(&err_info, ctx, SR_ERR_LY);
         goto cleanup;
     }
+
+    /* discard any suppressed errors */
+    ly_err_clean((struct ly_ctx *) ctx, NULL);
 
 cleanup:
     if (err_info) {
         lyd_free_siblings(*tree);
         *tree = NULL;
     }
-    sr_ly_log_revert();
+    if (!prev_lo) {
+        ly_temp_log_options(NULL);
+    }
     return err_info;
 }
 
@@ -568,23 +452,24 @@ sr_lyd_parse_op(const struct ly_ctx *ctx, const char *data, LYD_FORMAT format, e
         struct lyd_node **tree)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
     struct ly_in *in = NULL;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (ly_in_new_memory(data, &in)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_logmsg());
         goto cleanup;
     }
 
     if (lyd_parse_op(ctx, NULL, in, format, data_type, LYD_PARSE_STRICT, tree, NULL)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, ctx, SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
     ly_in_free(in, 0);
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -593,9 +478,10 @@ sr_lyd_print_data(const struct lyd_node *data, LYD_FORMAT format, uint32_t print
         uint32_t *len)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
     struct ly_out *out = NULL;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (fd == -1) {
         ly_out_new_memory(str, 0, &out);
@@ -604,7 +490,11 @@ sr_lyd_print_data(const struct lyd_node *data, LYD_FORMAT format, uint32_t print
     }
 
     if (lyd_print_all(out, data, format, print_options)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        if (data) {
+            sr_errinfo_new_ly(&err_info, LYD_CTX(data), SR_ERR_LY);
+        } else {
+            SR_ERRINFO_INT(&err_info);
+        }
         goto cleanup;
     }
 
@@ -614,7 +504,7 @@ sr_lyd_print_data(const struct lyd_node *data, LYD_FORMAT format, uint32_t print
 
 cleanup:
     ly_out_free(out, NULL, 0);
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -622,16 +512,17 @@ sr_error_info_t *
 sr_lyd_validate_all(struct lyd_node **data, const struct ly_ctx *ctx, uint32_t options)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (lyd_validate_all(data, ctx, options, NULL)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_VALIDATION_FAILED);
+        sr_errinfo_new_ly(&err_info, ctx, SR_ERR_VALIDATION_FAILED);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -639,16 +530,23 @@ sr_error_info_t *
 sr_lyd_validate_module(struct lyd_node **data, const struct lys_module *mod, uint32_t options, struct lyd_node **diff)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE, *prev_lo;
 
-    sr_ly_log_setup();
+    prev_lo = ly_temp_log_options(&temp_lo);
+    if (prev_lo) {
+        /* nested call, keep the previous lo */
+        ly_temp_log_options(prev_lo);
+    }
 
     if (lyd_validate_module(data, mod, options, diff)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_VALIDATION_FAILED);
+        sr_errinfo_new_ly(&err_info, mod->ctx, SR_ERR_VALIDATION_FAILED);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    if (!prev_lo) {
+        ly_temp_log_options(NULL);
+    }
     return err_info;
 }
 
@@ -656,16 +554,26 @@ sr_error_info_t *
 sr_lyd_validate_module_final(struct lyd_node *data, const struct lys_module *mod, uint32_t options)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
+    const struct ly_err_item *e;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
+
+    /* clear any previous errors and warnings */
+    ly_err_clean(mod->ctx, NULL);
 
     if (lyd_validate_module_final(data, mod, options)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_VALIDATION_FAILED);
+        sr_errinfo_new_ly(&err_info, mod->ctx, SR_ERR_VALIDATION_FAILED);
         goto cleanup;
     }
 
+    /* print any warnings (such as about obsolete data being instantiated) */
+    for (e = ly_err_first(mod->ctx); e; e = e->next) {
+        SR_LOG_WRN("%s", e->msg);
+    }
+
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -673,16 +581,26 @@ sr_error_info_t *
 sr_lyd_validate_op(struct lyd_node *op, const struct lyd_node *oper_data, enum lyd_type op_type)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
+    const struct ly_err_item *e;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
+
+    /* clear any previous errors and warnings */
+    ly_err_clean((struct ly_ctx *)LYD_CTX(op), NULL);
 
     if (lyd_validate_op(op, oper_data, op_type, NULL)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_VALIDATION_FAILED);
+        sr_errinfo_new_ly(&err_info, LYD_CTX(op), SR_ERR_VALIDATION_FAILED);
         goto cleanup;
     }
 
+    /* print any warnings (such as about obsolete data being instantiated) */
+    for (e = ly_err_first(LYD_CTX(op)); e; e = e->next) {
+        SR_LOG_WRN("%s", e->msg);
+    }
+
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -691,17 +609,18 @@ sr_lyd_new_path(struct lyd_node *parent, const struct ly_ctx *ctx, const char *p
         uint32_t options, struct lyd_node **new_parent, struct lyd_node **new_node)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (lyd_new_path2(parent, ctx, path, value, value ? strlen(value) * 8 : 0, LYD_ANYDATA_STRING, options, new_parent,
             new_node)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, ctx ? ctx : LYD_CTX(parent), SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -709,16 +628,17 @@ sr_error_info_t *
 sr_lyd_new_term(struct lyd_node *parent, const struct lys_module *mod, const char *name, const char *value)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (lyd_new_term(parent, mod, name, value, 0, NULL)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, parent ? LYD_CTX(parent) : mod->ctx, SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -727,16 +647,17 @@ sr_lyd_new_term2(struct lyd_node *parent, const struct lys_module *mod, const ch
         struct lyd_node **node)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (lyd_new_term(parent, mod, name, value, 0, node)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, parent ? LYD_CTX(parent) : mod->ctx, SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -744,16 +665,17 @@ sr_error_info_t *
 sr_lyd_new_list(struct lyd_node *parent, const char *name, const char *key_value, struct lyd_node **node)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (lyd_new_list3(parent, NULL, name, key_value ? (const void **)&key_value : NULL, NULL, 0, node)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, LYD_CTX(parent), SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -761,16 +683,17 @@ sr_error_info_t *
 sr_lyd_new_inner(struct lyd_node *parent, const struct lys_module *mod, const char *name, struct lyd_node **node)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (lyd_new_inner(parent, mod, name, 0, node)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, parent ? LYD_CTX(parent) : mod->ctx, SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -778,16 +701,17 @@ sr_error_info_t *
 sr_lyd_new_any(struct lyd_node *parent, const char *name, void *value, LYD_ANYDATA_VALUETYPE value_type)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (lyd_new_any(parent, NULL, name, value, value_type, LYD_NEW_ANY_USE_VALUE, NULL)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, LYD_CTX(parent), SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -796,16 +720,17 @@ sr_lyd_new_opaq(const struct ly_ctx *ctx, const char *name, const char *value, c
         const char *module_name, struct lyd_node **node)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (lyd_new_opaq(NULL, ctx, name, value, prefix, module_name, node)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, ctx, SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -813,16 +738,17 @@ sr_error_info_t *
 sr_lyd_new_meta(struct lyd_node *parent, const struct lys_module *mod, const char *name, const char *value)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (lyd_new_meta(NULL, parent, mod, name, value, 0, NULL)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, LYD_CTX(parent), SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -830,18 +756,22 @@ sr_error_info_t *
 sr_lyd_new_meta2(const struct ly_ctx *ctx, struct lyd_node *parent, const struct lyd_attr *attr, struct lyd_meta **meta)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
     LY_ERR lyrc;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     lyrc = lyd_new_meta2(ctx, parent, 0, attr, meta);
     if (lyrc && (lyrc != LY_ENOT)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, ctx, SR_ERR_LY);
         goto cleanup;
     }
 
+    /* discard any suppressed errors */
+    ly_err_clean((struct ly_ctx *) ctx, NULL);
+
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -849,16 +779,20 @@ sr_error_info_t *
 sr_lyd_dup_meta_single(const struct lyd_meta *meta, struct lyd_node *parent)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (lyd_dup_meta_single(meta, parent, NULL)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, LYD_CTX(parent), SR_ERR_LY);
         goto cleanup;
     }
 
+    /* discard any suppressed errors */
+    ly_err_clean((struct ly_ctx *)LYD_CTX(parent), NULL);
+
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -866,16 +800,17 @@ sr_error_info_t *
 sr_lyd_new_attr(struct lyd_node *parent, const char *mod_name, const char *name, const char *value)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (lyd_new_attr(parent, mod_name, name, value, NULL)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, LYD_CTX(parent), SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -883,16 +818,17 @@ sr_error_info_t *
 sr_lyd_new_attr2(struct lyd_node *parent, const char *mod_ns, const char *name, const char *value)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (lyd_new_attr2(parent, mod_ns, name, value, NULL)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, LYD_CTX(parent), SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -900,16 +836,17 @@ sr_error_info_t *
 sr_lyd_new_implicit_all(struct lyd_node **tree, const struct ly_ctx *ctx, uint32_t options)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (lyd_new_implicit_all(tree, ctx, options, NULL)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, *tree ? LYD_CTX(*tree) : ctx, SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -917,16 +854,17 @@ sr_error_info_t *
 sr_lyd_new_implicit_module(struct lyd_node **data, const struct lys_module *mod, uint32_t options, struct lyd_node **diff)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (lyd_new_implicit_module(data, mod, options, diff)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, mod->ctx, SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -934,16 +872,17 @@ sr_error_info_t *
 sr_lyd_new_implicit_tree(struct lyd_node *tree, uint32_t options)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (lyd_new_implicit_tree(tree, options, NULL)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, tree ? LYD_CTX(tree) : NULL, SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -951,9 +890,10 @@ sr_error_info_t *
 sr_lyd_dup(const struct lyd_node *node, struct lyd_node *parent, uint32_t options, int siblings, struct lyd_node **dup)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
     LY_ERR lyrc;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (siblings) {
         lyrc = lyd_dup_siblings(node, (struct lyd_node_inner *)parent, options, dup);
@@ -962,12 +902,12 @@ sr_lyd_dup(const struct lyd_node *node, struct lyd_node *parent, uint32_t option
     }
 
     if (lyrc) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, LYD_CTX(node), SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -975,16 +915,17 @@ sr_error_info_t *
 sr_lyd_dup_single_to_ctx(const struct lyd_node *node, const struct ly_ctx *trg_ctx, uint32_t options, struct lyd_node **dup)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (lyd_dup_single_to_ctx(node, trg_ctx, NULL, options, dup)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, trg_ctx, SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -1024,9 +965,10 @@ sr_error_info_t *
 sr_lyd_merge(struct lyd_node **target, const struct lyd_node *source, int siblings, uint32_t options)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
     LY_ERR lyrc;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (siblings) {
         lyrc = lyd_merge_siblings(target, source, options);
@@ -1034,12 +976,12 @@ sr_lyd_merge(struct lyd_node **target, const struct lyd_node *source, int siblin
         lyrc = lyd_merge_tree(target, source, options);
     }
     if (lyrc) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, *target ? LYD_CTX(*target) : LYD_CTX(source), SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -1048,16 +990,32 @@ sr_lyd_merge_module(struct lyd_node **target, const struct lyd_node *source, con
         lyd_merge_cb merge_cb, void *cb_data, uint32_t options)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE, *prev_lo;
+    const struct ly_ctx *ly_ctx;
 
-    sr_ly_log_setup();
+    prev_lo = ly_temp_log_options(&temp_lo);
+    if (prev_lo) {
+        /* nested call, keep the previous lo */
+        ly_temp_log_options(prev_lo);
+    }
+
+    if (mod) {
+        ly_ctx = mod->ctx;
+    } else if (source) {
+        ly_ctx = LYD_CTX(source);
+    } else {
+        ly_ctx = LYD_CTX(*target);
+    }
 
     if (lyd_merge_module(target, source, mod, merge_cb, cb_data, options)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, ly_ctx, SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    if (!prev_lo) {
+        ly_temp_log_options(NULL);
+    }
     return err_info;
 }
 
@@ -1065,21 +1023,28 @@ sr_error_info_t *
 sr_lyd_find_xpath(const struct lyd_node *tree, const char *xpath, struct ly_set **set)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE, *prev_lo;
 
     if (!tree) {
         /* return empty set */
         return sr_ly_set_new(set);
     }
 
-    sr_ly_log_setup();
+    prev_lo = ly_temp_log_options(&temp_lo);
+    if (prev_lo) {
+        /* nested call, keep the previous lo */
+        ly_temp_log_options(prev_lo);
+    }
 
     if (lyd_find_xpath(tree, xpath, set)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, LYD_CTX(tree), SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    if (!prev_lo) {
+        ly_temp_log_options(NULL);
+    }
     return err_info;
 }
 
@@ -1087,9 +1052,15 @@ sr_error_info_t *
 sr_lyd_find_path(const struct lyd_node *tree, const char *path, int with_incomplete, struct lyd_node **match)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE, *prev_lo;
     LY_ERR lyrc;
+    const struct ly_ctx *ctx = tree ? LYD_CTX(tree) : NULL;
 
-    sr_ly_log_setup();
+    prev_lo = ly_temp_log_options(&temp_lo);
+    if (prev_lo) {
+        /* nested call, keep the previous lo */
+        ly_temp_log_options(prev_lo);
+    }
 
     lyrc = lyd_find_path(tree, path, 0, match);
     if (lyrc == LY_EINCOMPLETE) {
@@ -1097,12 +1068,19 @@ sr_lyd_find_path(const struct lyd_node *tree, const char *path, int with_incompl
             *match = NULL;
         }
     } else if (lyrc && (lyrc != LY_ENOTFOUND)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, ctx, SR_ERR_LY);
         goto cleanup;
     }
 
+    /* discard any suppressed errors */
+    if (ctx) {
+        ly_err_clean((struct ly_ctx *) ctx, NULL);
+    }
+
 cleanup:
-    sr_ly_log_revert();
+    if (!prev_lo) {
+        ly_temp_log_options(NULL);
+    }
     return err_info;
 }
 
@@ -1110,18 +1088,25 @@ sr_error_info_t *
 sr_lyd_find_sibling_first(const struct lyd_node *sibling, const struct lyd_node *target, struct lyd_node **match)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
     LY_ERR lyrc;
+    const struct ly_ctx *ctx = sibling ? LYD_CTX(sibling) : NULL;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     lyrc = lyd_find_sibling_first(sibling, target, match);
     if (lyrc && (lyrc != LY_ENOTFOUND)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, ctx, SR_ERR_LY);
         goto cleanup;
     }
 
+    /* discard any suppressed errors */
+    if (ctx) {
+        ly_err_clean((struct ly_ctx *) ctx, NULL);
+    }
+
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -1130,18 +1115,25 @@ sr_lyd_find_sibling_val(const struct lyd_node *sibling, const struct lysc_node *
         struct lyd_node **match)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
     LY_ERR lyrc;
+    const struct ly_ctx *ctx = sibling ? LYD_CTX(sibling) : NULL;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     lyrc = lyd_find_sibling_val(sibling, schema, value, value ? strlen(value) : 0, match);
     if (lyrc && (lyrc != LY_ENOTFOUND)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, ctx, SR_ERR_LY);
         goto cleanup;
     }
 
+    /* discard any suppressed errors */
+    if (ctx) {
+        ly_err_clean((struct ly_ctx *) ctx, NULL);
+    }
+
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -1149,18 +1141,25 @@ sr_error_info_t *
 sr_lyd_find_sibling_opaq_next(const struct lyd_node *sibling, const char *name, struct lyd_node **match)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
     LY_ERR lyrc;
+    const struct ly_ctx *ctx = sibling ? LYD_CTX(sibling) : NULL;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     lyrc = lyd_find_sibling_opaq_next(sibling, name, match);
     if (lyrc && (lyrc != LY_ENOTFOUND)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, ctx, SR_ERR_LY);
         goto cleanup;
     }
 
+    /* discard any suppressed errors */
+    if (ctx) {
+        ly_err_clean((struct ly_ctx *) ctx, NULL);
+    }
+
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -1168,20 +1167,21 @@ sr_error_info_t *
 sr_lyd_insert_sibling(struct lyd_node *sibling, struct lyd_node *node, struct lyd_node **first)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
     if (!node) {
         return NULL;
     }
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (lyd_insert_sibling(sibling, node, first)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, LYD_CTX(node), SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -1189,16 +1189,17 @@ sr_error_info_t *
 sr_lyd_insert_child(struct lyd_node *parent, struct lyd_node *child)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (lyd_insert_child(parent, child)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, LYD_CTX(parent), SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -1206,16 +1207,17 @@ sr_error_info_t *
 sr_lyd_insert_before(struct lyd_node *sibling, struct lyd_node *node)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (lyd_insert_before(sibling, node)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, LYD_CTX(node), SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -1223,16 +1225,17 @@ sr_error_info_t *
 sr_lyd_insert_after(struct lyd_node *sibling, struct lyd_node *node)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (lyd_insert_after(sibling, node)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, LYD_CTX(node), SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -1240,18 +1243,25 @@ sr_error_info_t *
 sr_lyd_change_term(struct lyd_node *node, const char *value, int ignore_fail)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
     LY_ERR lyrc;
+    const struct ly_ctx *ctx = node ? LYD_CTX(node) : NULL;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     lyrc = lyd_change_term(node, value);
     if (lyrc && (!ignore_fail || ((lyrc != LY_EEXIST) && (lyrc != LY_ENOT)))) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, ctx, SR_ERR_LY);
         goto cleanup;
     }
 
+    /* discard any suppressed errors */
+    if (ctx) {
+        ly_err_clean((struct ly_ctx *) ctx, NULL);
+    }
+
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -1259,16 +1269,17 @@ sr_error_info_t *
 sr_lyd_any_value_str(const struct lyd_node *node, char **str)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (lyd_any_value_str(node, str)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, LYD_CTX(node), SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -1277,16 +1288,17 @@ sr_lyd_any_copy_value(struct lyd_node *node, const union lyd_any_value *value,
         LYD_ANYDATA_VALUETYPE value_type)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (lyd_any_copy_value(node, value, value_type)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, LYD_CTX(node), SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -1295,26 +1307,27 @@ sr_lyd_diff_siblings(const struct lyd_node *target, const struct lyd_node *sourc
         int *snode_not_found, struct lyd_node **diff)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
     LY_ERR lyrc;
 
     if (snode_not_found) {
         *snode_not_found = 0;
     }
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     lyrc = lyd_diff_siblings(target, source, options, diff);
     if ((lyrc == LY_ENOTFOUND) && snode_not_found) {
         /* ignore this error, just set the flag */
-        sr_ly_log_clear();
+        ly_err_clean(target ? LYD_CTX(target) : LYD_CTX(source), NULL);
         *snode_not_found = 1;
     } else if (lyrc) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, target ? LYD_CTX(target) : LYD_CTX(source), SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -1323,16 +1336,17 @@ sr_lyd_diff_apply_module(struct lyd_node **data, const struct lyd_node *diff, co
         lyd_diff_cb diff_cb)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (lyd_diff_apply_module(data, diff, mod, diff_cb, NULL)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, mod->ctx, SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -1340,16 +1354,17 @@ sr_error_info_t *
 sr_lyd_diff_merge_module(struct lyd_node **target, const struct lyd_node *source, const struct lys_module *mod)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (lyd_diff_merge_module(target, source, mod, NULL, NULL, 0)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, mod->ctx, SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -1357,16 +1372,17 @@ sr_error_info_t *
 sr_lyd_diff_merge_all(struct lyd_node **target, const struct lyd_node *source)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (lyd_diff_merge_all(target, source, 0)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, *target ? LYD_CTX(*target) : LYD_CTX(source), SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -1374,16 +1390,17 @@ sr_error_info_t *
 sr_lyd_diff_merge_tree(struct lyd_node **target_first, struct lyd_node *target_parent, const struct lyd_node *source)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (lyd_diff_merge_tree(target_first, target_parent, source, NULL, NULL, 0)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, LYD_CTX(*target_first), SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -1391,16 +1408,17 @@ sr_error_info_t *
 sr_lyd_diff_reverse_all(const struct lyd_node *diff, struct lyd_node **rdiff)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (lyd_diff_reverse_all(diff, rdiff)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, LYD_CTX(diff), SR_ERR_LY);
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -1408,16 +1426,17 @@ sr_error_info_t *
 sr_ly_set_new(struct ly_set **set)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (ly_set_new(set)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_logmsg());
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -1425,16 +1444,17 @@ sr_error_info_t *
 sr_ly_set_add(struct ly_set *set, void *item)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (ly_set_add(set, item, 1, NULL)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_logmsg());
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -1442,16 +1462,17 @@ sr_error_info_t *
 sr_ly_set_merge(struct ly_set *target, const struct ly_set *source)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (ly_set_merge(target, source, 0, NULL)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_logmsg());
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -1459,16 +1480,17 @@ sr_error_info_t *
 sr_lyht_insert(struct ly_ht *ht, void *val_p, uint32_t hash)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (lyht_insert(ht, val_p, hash, NULL)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_logmsg());
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -1531,13 +1553,14 @@ sr_error_info_t *
 sr_lyd_parse_opaq_error(const struct lyd_node *node)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     lyd_parse_opaq_error(node);
-    sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+    sr_errinfo_new_ly(&err_info, LYD_CTX(node), SR_ERR_LY);
 
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -1545,16 +1568,17 @@ sr_error_info_t *
 sr_ly_time_ts2str(const struct timespec *ts, char **str)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (ly_time_ts2str(ts, str)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_logmsg());
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -1562,16 +1586,17 @@ sr_error_info_t *
 sr_ly_ctx_compiled_print(const struct ly_ctx *ctx, void *mem, void **mem_end)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (ly_ctx_compiled_print(ctx, mem, mem_end)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_logmsg());
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -1579,16 +1604,17 @@ sr_error_info_t *
 sr_ly_ctx_new_printed(const void *mem, struct ly_ctx **ctx)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
     if (ly_ctx_new_printed(mem, ctx)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_logmsg());
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }
 
@@ -1597,22 +1623,19 @@ sr_lyplg_ext_schema_mount_create_shared_context(struct lysc_ext_instance *ext,
         const struct lyd_node *ext_data)
 {
     sr_error_info_t *err_info = NULL;
-    LY_ERR lyrc;
+    uint32_t temp_lo = LY_LOSTORE;
+    LY_ERR r;
 
-    sr_ly_log_setup();
+    ly_temp_log_options(&temp_lo);
 
-    lyrc = lyplg_ext_schema_mount_create_shared_context(ext, ext_data);
-    if (lyrc) {
-        if (lyrc == LY_ENOT) {
-            /* do not treat missing mount point data as an error */
-            sr_ly_log_clear();
-        } else {
-            sr_errinfo_new_ly(&err_info, SR_ERR_LY);
-        }
+    r = lyplg_ext_schema_mount_create_shared_context(ext, ext_data);
+    if (r && (r != LY_ENOT)) {
+        /* do not treat missing mount point data as an error */
+        sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_logmsg());
         goto cleanup;
     }
 
 cleanup:
-    sr_ly_log_revert();
+    ly_temp_log_options(NULL);
     return err_info;
 }

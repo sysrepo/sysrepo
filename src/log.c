@@ -124,10 +124,6 @@ sr_log_msg(int plugin, sr_log_level_t ll, const char *msg)
         priority = LOG_INFO;
         severity = "INF";
         break;
-    case SR_LL_VRB:
-        priority = LOG_INFO;
-        severity = "VRB";
-        break;
     case SR_LL_DBG:
         priority = LOG_DEBUG;
         severity = "DBG";
