@@ -135,8 +135,8 @@ help_print(void)
             "                       useful when there are mandatory top-level nodes. Accepted by install op.\n"
             "  -f, --force          Force the specific operation. Accepted by uninstall op.\n"
             "  -v, --verbosity <level>\n"
-            "                       Change verbosity to a level (none, error, warning, info, debug) or\n"
-            "                       number (0, 1, 2, 3, 4). Accepted by all op.\n"
+            "                       Change verbosity to a level (none, error, warning, info, verbose, debug) or\n"
+            "                       number (0, 1, 2, 3, 4, 5). Accepted by all op.\n"
             "\n");
 }
 
@@ -903,9 +903,11 @@ main(int argc, char **argv)
                 log_level = SR_LL_WRN;
             } else if (!strcmp(optarg, "info")) {
                 log_level = SR_LL_INF;
+            } else if (!strcmp(optarg, "verbose")) {
+                log_level = SR_LL_VRB;
             } else if (!strcmp(optarg, "debug")) {
                 log_level = SR_LL_DBG;
-            } else if ((strlen(optarg) == 1) && (optarg[0] >= '0') && (optarg[0] <= '4')) {
+            } else if ((strlen(optarg) == 1) && (optarg[0] >= '0') && (optarg[0] <= '5')) {
                 log_level = atoi(optarg);
             } else {
                 error_print(0, "Invalid verbosity \"%s\"", optarg);
