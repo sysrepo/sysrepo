@@ -778,6 +778,9 @@ srsn_sub_free_unsubscribe(struct srsn_sub *sub)
     if (sub->type == SRSN_YANG_PUSH_PERIODIC) {
         srsn_update_timer(NULL, NULL, &sub->update_sntimer);
     }
+    if (sub->type == SRSN_YANG_PUSH_ON_CHANGE) {
+        srsn_update_timer(NULL, NULL, &sub->damp_sntimer);
+    }
 }
 
 void
