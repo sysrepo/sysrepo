@@ -1778,6 +1778,14 @@ test_schema_mount(void **state)
             "urn:ietf:params:xml:ns:yang:ietf-origin", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess,
+            "/sm:root/ietf-yang-library:yang-library/module-set[name='mp']/module[name='ops-ref']/namespace",
+            "urn:ops-ref", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess,
+            "/sm:root/ietf-yang-library:yang-library/module-set[name='mp']/module[name='ops-ref']/feature",
+            "feat1", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess,
             "/sm:root/ietf-yang-library:yang-library/module-set[name='mp']/module[name='ops']/namespace",
             "urn:ops", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);

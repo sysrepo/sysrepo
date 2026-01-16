@@ -1027,7 +1027,7 @@ sr_module_has_data(const struct lys_module *ly_mod, int state_data)
 {
     const struct lysc_node *root;
 
-    if (!strcmp(ly_mod->name, "ietf-netconf")) {
+    if (!strcmp(ly_mod->name, "yang") || !strcmp(ly_mod->name, "ietf-netconf")) {
         /* only internal data */
         return 0;
     }
