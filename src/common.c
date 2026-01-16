@@ -660,7 +660,7 @@ sr_ly_module_is_internal(const struct lys_module *ly_mod)
 
     if (!strcmp(ly_mod->name, "ietf-yang-metadata") && !strcmp(ly_mod->revision, "2016-08-05")) {
         return 1;
-    } else if (!strcmp(ly_mod->name, "yang") && !strcmp(ly_mod->revision, "2022-06-16")) {
+    } else if (!strcmp(ly_mod->name, "yang") && !strcmp(ly_mod->revision, "2025-01-29")) {
         return 1;
     } else if (!strcmp(ly_mod->name, "ietf-inet-types") && !strcmp(ly_mod->revision, "2025-12-22")) {
         return 1;
