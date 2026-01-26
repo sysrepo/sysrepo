@@ -60,12 +60,12 @@ function(SETUP_PRINTED_CONTEXT)
         endif()
 
         # compile and run the address calculator
-        try_run(
-            exec_result compile_result
-            ${CMAKE_BINARY_DIR}
-            SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/CMakeModules/pctx_addr_calculator.c"
+        # build tree dir cannot be the same as the main build tree dir on older versions of CMake
+        # see https://cmake.cmake.narkive.com/sRBrNTsf/error-attempt-at-a-recursive-or-nested-try-compile-in-directory
+        try_run(exec_result compile_result
+            ${CMAKE_BINARY_DIR}/CMakeFiles/CMakeTmp "${CMAKE_CURRENT_SOURCE_DIR}/CMakeModules/pctx_addr_calculator.c"
             COMPILE_OUTPUT_VARIABLE compile_output
-            RUN_OUTPUT_STDOUT_VARIABLE calculated_addr
+            RUN_OUTPUT_VARIABLE calculated_addr
         )
 
         if (NOT compile_result)
