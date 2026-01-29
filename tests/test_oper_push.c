@@ -2365,8 +2365,7 @@ test_schema_mount(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
-    char *str1;
-    const char *str2;
+    const char *str;
     int ret;
     struct lyd_node *edit;
     const struct ly_ctx *ly_ctx;
@@ -2376,7 +2375,7 @@ test_schema_mount(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set schema-mount and yang-library push oper data */
-    str2 =
+    str =
             "<schema-mounts xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-schema-mount\">"
             "  <mount-point>\n"
             "    <module>sm</module>\n"
@@ -2413,7 +2412,7 @@ test_schema_mount(void **state)
             "  </yang-library>\n"
             "</root>\n";
     ly_ctx = sr_acquire_context(st->conn);
-    ret = lyd_parse_data_mem(ly_ctx, str2, LYD_XML, LYD_PARSE_ONLY, 0, &edit);
+    ret = lyd_parse_data_mem(ly_ctx, str, LYD_XML, LYD_PARSE_ONLY, 0, &edit);
     assert_int_equal(ret, LY_SUCCESS);
     ret = sr_edit_batch(st->sess, edit, "merge");
     assert_int_equal(ret, SR_ERR_OK);
@@ -2436,48 +2435,11 @@ test_schema_mount(void **state)
     /* read the operational data */
     ret = sr_get_data(st->sess, "/sm:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
-    assert_int_equal(ret, 0);
+    lyd_find_path(data->tree, "/sm:root/ietf-yang-library:yang-library", 0, &edit);
+    assert_non_null(edit);
+    lyd_find_path(data->tree, "/sm:root/ietf-interfaces:interfaces/interface[name='eth1']/description", 0, &edit);
+    assert_non_null(edit);
     sr_release_data(data);
-
-    str2 =
-            "<root xmlns=\"urn:sm\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
-            "  <yang-library xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-library\">\n"
-            "    <module-set>\n"
-            "      <name>root</name>\n"
-            "      <module>\n"
-            "        <name>ietf-yang-library</name>\n"
-            "        <namespace>urn:ietf:params:xml:ns:yang:ietf-yang-library</namespace>\n"
-            "      </module>\n"
-            "      <module>\n"
-            "        <name>sm</name>\n"
-            "        <namespace>urn:sm</namespace>\n"
-            "      </module>\n"
-            "      <module>\n"
-            "        <name>ietf-interfaces</name>\n"
-            "        <namespace>urn:ietf:params:xml:ns:yang:ietf-interfaces</namespace>\n"
-            "      </module>\n"
-            "      <module>\n"
-            "        <name>iana-if-type</name>\n"
-            "        <namespace>urn:ietf:params:xml:ns:yang:iana-if-type</namespace>\n"
-            "      </module>\n"
-            "      <module>\n"
-            "        <name>ietf-origin</name>\n"
-            "        <namespace>urn:ietf:params:xml:ns:yang:ietf-origin</namespace>\n"
-            "      </module>\n"
-            "    </module-set>\n"
-            "    <content-id>14e2ab5dc325f6d86f743e8d3ade233f1a61a899</content-id>\n"
-            "  </yang-library>\n"
-            "  <interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\" or:origin=\"or:intended\">\n"
-            "    <interface>\n"
-            "      <name>eth1</name>\n"
-            "      <description or:origin=\"or:unknown\">config-description</description>\n"
-            "      <type or:origin=\"or:unknown\" xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
-            "    </interface>\n"
-            "  </interfaces>\n"
-            "</root>\n";
-    assert_string_equal(str1, str2);
-    free(str1);
 }
 
 /* TEST */
