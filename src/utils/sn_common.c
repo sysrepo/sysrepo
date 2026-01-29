@@ -331,8 +331,7 @@ srsn_filter_xpath_buf_get_value(const struct lyd_node *node, int *dynamic)
     }
 
     /* assume identity, try to get its module */
-    mod = lyplg_type_identity_module(LYD_CTX(node), NULL, opaq->value, ptr - opaq->value, opaq->format,
-            opaq->val_prefix_data);
+    mod = lys_find_module(LYD_CTX(node), NULL, opaq->value, ptr - opaq->value, opaq->format, opaq->val_prefix_data);
 
     if (!mod) {
         /* unknown module, use as is */

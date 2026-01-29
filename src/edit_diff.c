@@ -660,11 +660,7 @@ sr_edit_diff_append(const struct lyd_node *edit, enum edit_op op, const char *pr
 
     /* finally, insert subtree into diff parent */
     if (diff_parent) {
-        if (diff_subtree->flags & LYD_EXT) {
-            lyplg_ext_insert(diff_parent, diff_subtree);
-        } else {
-            lyd_insert_child(diff_parent, diff_subtree);
-        }
+        lyd_insert_child(diff_parent, diff_subtree);
     } else {
         lyd_insert_sibling(*diff, diff_subtree, diff);
     }
@@ -1015,12 +1011,8 @@ sr_edit_insert(struct lyd_node **data_root, struct lyd_node *data_parent, struct
     if ((insert == INSERT_DEFAULT) || (insert == INSERT_LAST)) {
         /* default insert is at the last position */
         if (data_parent) {
-            if (new_node->flags & LYD_EXT) {
-                lyplg_ext_insert(data_parent, new_node);
-            } else {
-                if ((err_info = sr_lyd_insert_child(data_parent, new_node))) {
-                    goto cleanup;
-                }
+            if ((err_info = sr_lyd_insert_child(data_parent, new_node))) {
+                goto cleanup;
             }
         } else {
             if ((err_info = sr_lyd_insert_sibling(*data_root, new_node, data_root))) {
@@ -1361,11 +1353,7 @@ sr_edit_diff_add(const struct lyd_node *node, const char *meta_new, const char *
     } else {
         /* insert node into diff, not there */
         if (diff_parent) {
-            if (node_dup->flags & LYD_EXT) {
-                lyplg_ext_insert(diff_parent, node_dup);
-            } else {
-                lyd_insert_child(diff_parent, node_dup);
-            }
+            lyd_insert_child(diff_parent, node_dup);
         } else {
             lyd_insert_sibling(*diff_root, node_dup, diff_root);
         }

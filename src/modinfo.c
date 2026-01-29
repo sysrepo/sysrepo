@@ -275,7 +275,7 @@ sr_modinfo_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_data
     }
 
     /* learn what nodes are needed for evaluation */
-    if (((err_info = sr_lys_find_xpath_atoms(ly_ctx, xpath, LYS_FIND_NO_MATCH_ERROR | LYS_FIND_SCHEMAMOUNT, NULL, &set)))) {
+    if (((err_info = sr_lys_find_xpath_atoms(ly_ctx, xpath, LYS_FIND_NO_MATCH_ERROR, NULL, &set)))) {
         goto cleanup;
     }
 
@@ -3396,7 +3396,7 @@ cleanup:
         for (i = 0; i < set->count; ++i) {
             node = set->dnodes[i];
             lyd_unlink_tree(node);
-            lyplg_ext_insert(data_ext_parent, node);
+            lyd_insert_child(data_ext_parent, node);
         }
     }
 

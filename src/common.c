@@ -4700,8 +4700,9 @@ sr_lyd_copy_config_np_cont_r(struct lyd_node **first, struct lyd_node *parent, c
             return err_info;
         }
 
-        /* set the default flag after all nested containers were copied */
-        node->flags |= LYD_DEFAULT;
+        /* copy the ext flag, if set */
+        assert(node->flags & LYD_DEFAULT);
+        node->flags |= src->flags & LYD_EXT;
     }
 
     return NULL;
