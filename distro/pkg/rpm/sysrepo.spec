@@ -15,7 +15,7 @@ BuildRequires:  cmake
 BuildRequires:  gcc
 BuildRequires:  gcc-c++
 BuildRequires:  make
-BuildRequires:  pkgconfig(libyang) >= 2.2.0
+BuildRequires:  pkgconfig(libyang) >= 5.0.0
 # for tests
 BuildRequires:  pkgconfig(cmocka)
 # for sysrepo-plugind systemd support

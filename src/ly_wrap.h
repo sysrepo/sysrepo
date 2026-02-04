@@ -584,8 +584,7 @@ sr_error_info_t *sr_lyd_any_value_str(const struct lyd_node *node, char **str);
  * @param[in] value_type Value type of @p value.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lyd_any_copy_value(struct lyd_node *node, const union lyd_any_value *value,
-        LYD_ANYDATA_VALUETYPE value_type);
+sr_error_info_t *sr_lyd_any_copy_value(struct lyd_node *node, const void *value, LYD_ANYDATA_VALUETYPE value_type);
 
 /**
  * @brief Get the diff of 2 data tree sibling lists.

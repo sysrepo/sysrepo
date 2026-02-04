@@ -1749,7 +1749,7 @@ sr_edit_apply_replace(struct lyd_node *data_match, int val_equal, const struct l
 
             /* modify the node */
             any = (struct lyd_node_any *)edit_node;
-            if ((err_info = sr_lyd_any_copy_value(data_match, &any->value, any->value_type))) {
+            if ((err_info = sr_lyd_any_copy_value(data_match, any->child ? any->child : (void *)any->value, any->value_type))) {
                 free(prev_val);
                 return err_info;
             }
@@ -2764,7 +2764,6 @@ sr_edit_add_merge_op(struct lyd_node *match, struct lyd_node **root, const char 
     sr_error_info_t *err_info = NULL;
     const struct lysc_node *schema;
     struct lyd_node *parent = NULL, *sibling = NULL;
-    union lyd_any_value any_val;
     enum edit_op cur_op;
     int own_oper;
 
@@ -2847,8 +2846,7 @@ sr_edit_add_merge_op(struct lyd_node *match, struct lyd_node **root, const char 
                 if (own_oper) {
                     sr_edit_del_meta_attr(match, "operation");
                 }
-                any_val.str = value;
-                if ((err_info = sr_lyd_any_copy_value(match, &any_val, LYD_ANYDATA_STRING))) {
+                if ((err_info = sr_lyd_any_copy_value(match, value, LYD_ANYDATA_STRING))) {
                     goto cleanup;
                 }
                 break;

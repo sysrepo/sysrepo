@@ -4445,13 +4445,13 @@ store_value:
         case LYD_ANYDATA_STRING:
         case LYD_ANYDATA_XML:
         case LYD_ANYDATA_JSON:
-            if (any->value.str) {
-                ptr = strdup(any->value.str);
+            if (any->value) {
+                ptr = strdup(any->value);
                 SR_CHECK_MEM_GOTO(!ptr, err_info, error);
             }
             break;
         case LYD_ANYDATA_DATATREE:
-            if ((err_info = sr_lyd_print_data(any->value.tree, LYD_XML, 0, -1, &ptr, NULL))) {
+            if ((err_info = sr_lyd_print_data(any->child, LYD_XML, 0, -1, &ptr, NULL))) {
                 sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Failed to print anyxml/anydata into XML.");
                 goto error;
             }
@@ -4853,7 +4853,7 @@ sr_lyd_get_enabled_xpath(struct lyd_node **data, char **xpaths, uint16_t xp_coun
             /* duplicate only the parents */
             parent = NULL;
             if (src->parent) {
-                if ((err_info = sr_lyd_dup(&src->parent->node, NULL, LYD_DUP_WITH_PARENTS | LYD_DUP_WITH_FLAGS, 0, &parent))) {
+                if ((err_info = sr_lyd_dup(src->parent, NULL, LYD_DUP_WITH_PARENTS | LYD_DUP_WITH_FLAGS, 0, &parent))) {
                     goto cleanup;
                 }
             }
@@ -4906,7 +4906,7 @@ sr_lyd_get_enabled_xpath(struct lyd_node **data, char **xpaths, uint16_t xp_coun
         /* find top-level root */
         assert(root);
         while (root->parent) {
-            root = &root->parent->node;
+            root = root->parent;
         }
 
         /* add any state NP containers */

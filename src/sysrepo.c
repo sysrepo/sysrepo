@@ -6782,7 +6782,6 @@ sr_change_ly2sr(const struct lyd_node *node, const char *value_str, const char *
     sr_val_t *sr_val;
     struct lyd_node *node_dup = NULL;
     const struct lyd_node *node_ptr;
-    union lyd_any_value aval;
 
     sr_val = calloc(1, sizeof *sr_val);
     SR_CHECK_MEM_GOTO(!sr_val, err_info, cleanup);
@@ -6799,8 +6798,7 @@ sr_change_ly2sr(const struct lyd_node *node, const char *value_str, const char *
             }
         } else {
             assert(node->schema->nodetype & LYD_NODE_ANY);
-            aval.str = value_str;
-            if ((err_info = sr_lyd_any_copy_value(node_dup, &aval, LYD_ANYDATA_STRING))) {
+            if ((err_info = sr_lyd_any_copy_value(node_dup, value_str, LYD_ANYDATA_STRING))) {
                 goto cleanup;
             }
         }

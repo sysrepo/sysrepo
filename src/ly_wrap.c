@@ -966,9 +966,9 @@ sr_lyd_dup(const struct lyd_node *node, struct lyd_node *parent, uint32_t option
     sr_ly_log_setup();
 
     if (siblings) {
-        lyrc = lyd_dup_siblings(node, (struct lyd_node_inner *)parent, options, dup);
+        lyrc = lyd_dup_siblings(node, parent, options, dup);
     } else {
-        lyrc = lyd_dup_single(node, (struct lyd_node_inner *)parent, options, dup);
+        lyrc = lyd_dup_single(node, parent, options, dup);
     }
 
     if (lyrc) {
@@ -1283,8 +1283,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_lyd_any_copy_value(struct lyd_node *node, const union lyd_any_value *value,
-        LYD_ANYDATA_VALUETYPE value_type)
+sr_lyd_any_copy_value(struct lyd_node *node, const void *value, LYD_ANYDATA_VALUETYPE value_type)
 {
     sr_error_info_t *err_info = NULL;
 

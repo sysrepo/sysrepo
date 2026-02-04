@@ -337,8 +337,8 @@ sr_nacm_group_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char 
             }
         } else {
             /* name must be present */
-            assert(!strcmp(node->parent->child->schema->name, "name"));
-            group = sr_nacm_group_find(lyd_get_value(node->parent->child), NULL);
+            assert(!strcmp(lyd_child(node->parent)->schema->name, "name"));
+            group = sr_nacm_group_find(lyd_get_value(lyd_child(node->parent)), NULL);
 
             if (!strcmp(node->schema->name, "user-name")) {
                 if ((op == SR_OP_DELETED) && !group) {
@@ -673,8 +673,8 @@ sr_nacm_rule_list_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const c
             }
         } else {
             /* name must be present */
-            assert(!strcmp(node->parent->child->schema->name, "name"));
-            rlist_name = lyd_get_value(node->parent->child);
+            assert(!strcmp(lyd_child(node->parent)->schema->name, "name"));
+            rlist_name = lyd_get_value(lyd_child(node->parent));
             for (rlist = nacm.rule_lists; rlist && strcmp(rlist->name, rlist_name); rlist = rlist->next) {}
 
             if (!strcmp(node->schema->name, "group")) {
@@ -743,8 +743,8 @@ sr_nacm_rule_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *
     while ((rc = sr_get_change_tree_next(session, iter, &op, &node, NULL, &prev_list, NULL)) == SR_ERR_OK) {
         if (!strcmp(node->schema->name, "rule")) {
             /* find parent rule list */
-            assert(!strcmp(node->parent->child->schema->name, "name"));
-            rlist_name = lyd_get_value(node->parent->child);
+            assert(!strcmp(lyd_child(node->parent)->schema->name, "name"));
+            rlist_name = lyd_get_value(lyd_child(node->parent));
             for (rlist = nacm.rule_lists; rlist && strcmp(rlist->name, rlist_name); rlist = rlist->next) {}
             if ((op == SR_OP_DELETED) && !rlist) {
                 /* even parent rule-list was deleted */
@@ -841,8 +841,8 @@ sr_nacm_rule_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *
             }
         } else {
             /* find parent rule list */
-            assert(!strcmp(node->parent->parent->child->schema->name, "name"));
-            rlist_name = lyd_get_value(node->parent->parent->child);
+            assert(!strcmp(lyd_child(node->parent->parent)->schema->name, "name"));
+            rlist_name = lyd_get_value(lyd_child(node->parent->parent));
             for (rlist = nacm.rule_lists; rlist && strcmp(rlist->name, rlist_name); rlist = rlist->next) {}
             if ((op == SR_OP_DELETED) && !rlist) {
                 /* even parent rule-list was deleted */
@@ -851,8 +851,8 @@ sr_nacm_rule_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *
             assert(rlist);
 
             /* name must be present */
-            assert(!strcmp(node->parent->child->schema->name, "name"));
-            rule_name = lyd_get_value(node->parent->child);
+            assert(!strcmp(lyd_child(node->parent)->schema->name, "name"));
+            rule_name = lyd_get_value(lyd_child(node->parent));
             for (rule = rlist->rules; rule && strcmp(rule->name, rule_name); rule = rule->next) {}
             if ((op == SR_OP_DELETED) && !rule) {
                 /* even parent rule was deleted */
