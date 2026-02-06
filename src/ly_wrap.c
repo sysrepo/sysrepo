@@ -455,6 +455,33 @@ cleanup:
 }
 
 sr_error_info_t *
+sr_lys_find_path_atoms(const struct ly_ctx *ctx, const struct lysc_node *ctx_node, const char *path, int *valid,
+        struct ly_set **set)
+{
+    sr_error_info_t *err_info = NULL;
+
+    sr_ly_log_setup();
+
+    if (valid) {
+        *valid = 1;
+    }
+
+    if (lys_find_path_atoms(ctx, ctx_node, path, 0, set)) {
+        if (valid) {
+            *valid = 0;
+            sr_ly_log_clear();
+        } else {
+            sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        }
+        goto cleanup;
+    }
+
+cleanup:
+    sr_ly_log_revert();
+    return err_info;
+}
+
+sr_error_info_t *
 sr_lys_find_xpath(const struct ly_ctx *ctx, const char *xpath, uint32_t options, int *valid, struct ly_set **set)
 {
     sr_error_info_t *err_info = NULL;

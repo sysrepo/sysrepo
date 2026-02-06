@@ -559,6 +559,7 @@ sr_lydmods_moddep_type(const struct lysc_type *type, const struct lysc_node *nod
     char *default_val = NULL;
     LY_ARRAY_COUNT_TYPE u;
     uint32_t i;
+    int valid;
 
     switch (type->basetype) {
     case LY_TYPE_INST:
@@ -575,12 +576,13 @@ sr_lydmods_moddep_type(const struct lysc_type *type, const struct lysc_node *nod
             }
 
             /* get target module of the default value */
-            if (lys_find_path_atoms(node->module->ctx, NULL, default_val, 0, &atoms)) {
-                SR_ERRINFO_MEM(&err_info);
+            if ((err_info = sr_lys_find_path_atoms(node->module->ctx, NULL, default_val, &valid, &atoms))) {
                 goto cleanup;
             }
-            assert(atoms->count);
-            ly_mod = sr_ly_atom_is_foreign(atoms->snodes[0], op_node);
+            if (valid) {
+                assert(atoms->count);
+                ly_mod = sr_ly_atom_is_foreign(atoms->snodes[0], op_node);
+            } /* else is a value of a union not meant for this type */
         }
 
         if ((err_info = sr_lydmods_moddep_add_instid(node, ly_mod ? default_val : NULL, sr_deps))) {

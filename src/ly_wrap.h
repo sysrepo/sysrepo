@@ -109,6 +109,19 @@ sr_error_info_t *sr_ly_ctx_compile(struct ly_ctx *ctx);
 sr_error_info_t *sr_lys_find_path(const struct ly_ctx *ctx, const char *path, int *valid, const struct lysc_node **match);
 
 /**
+ * @brief Find schema atoms in a path.
+ *
+ * @param[in] ctx Context to use.
+ * @param[in] ctx_node Context node.
+ * @param[in] path Path to use.
+ * @param[out] valid Optional valid flag to set instead of an error.
+ * @param[out] set Set with found atoms.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lys_find_path_atoms(const struct ly_ctx *ctx, const struct lysc_node *ctx_node, const char *path,
+        int *valid, struct ly_set **set);
+
+/**
  * @brief Evaluate XPath expression on schema.
  *
  * @param[in] ctx Context to use.
