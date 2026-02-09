@@ -218,7 +218,7 @@ create_ops_notif(void **state)
     /*
      * create first notif file
      */
-    assert_return_code(asprintf(&path, "%s/ops.notif.%lu-%lu", ntf_path, start_ts, start_ts + 2), 0);
+    assert_return_code(asprintf(&path, "%s/ops.notif.%lld-%lld", ntf_path, (long long) start_ts, (long long) start_ts + 2ll), 0);
     fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 00600);
     free(path);
     if (fd == -1) {
@@ -241,7 +241,7 @@ create_ops_notif(void **state)
     /*
      * create second notif file
      */
-    assert_return_code(asprintf(&path, "%s/ops.notif.%lu-%lu", ntf_path, start_ts + 5, start_ts + 10), 0);
+    assert_return_code(asprintf(&path, "%s/ops.notif.%lld-%lld", ntf_path, (long long) start_ts + 5ll, (long long) start_ts + 10ll), 0);
     fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 00600);
     free(path);
     if (fd == -1) {
@@ -267,7 +267,7 @@ create_ops_notif(void **state)
     /*
      * create third notif file
      */
-    assert_return_code(asprintf(&path, "%s/ops.notif.%lu-%lu", ntf_path, start_ts + 12, start_ts + 15), 0);
+    assert_return_code(asprintf(&path, "%s/ops.notif.%lld-%lld", ntf_path, (long long) start_ts + 12ll, (long long) start_ts + 15ll), 0);
     fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 00600);
     free(path);
     if (fd == -1) {

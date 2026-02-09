@@ -1541,9 +1541,9 @@ main(void)
         }
         gettimeofday(&end, NULL);
         if (end.tv_usec > start.tv_usec) {
-            printf("Tests of plugin %s lasted: %ld microseconds\n", plg_name, (end.tv_sec - start.tv_sec) * 1000000 + end.tv_usec - start.tv_usec);
+            printf("Tests of plugin %s lasted: %lld microseconds\n", plg_name, (long long)(end.tv_sec - start.tv_sec) * 1000000ll + end.tv_usec - start.tv_usec);
         } else {
-            printf("Tests of plugin %s lasted: %ld microseconds\n", plg_name, (end.tv_sec - start.tv_sec - 1) * 1000000 + 1000000 + end.tv_usec - start.tv_usec);
+            printf("Tests of plugin %s lasted: %lld microseconds\n", plg_name, (long long)(end.tv_sec - start.tv_sec - 1ll) * 1000000ll + 1000000ll + end.tv_usec - start.tv_usec);
         }
     }
 
