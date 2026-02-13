@@ -168,7 +168,8 @@ set(NACM_SRMON_DATA_PERM "600" CACHE STRING "NACM modules ietf-netconf-acm and s
 # sr_cond implementation
 if(NOT SR_COND_IMPL)
     check_include_file("linux/futex.h" HAS_FUTEX)
-    if(HAS_FUTEX)
+    check_symbol_exists(SYS_futex "sys/syscall.h" HAS_SYS_FUTEX)
+    if(HAS_FUTEX AND HAS_SYS_FUTEX)
         set(SR_COND_IMPL "sr_cond_futex")
     else()
         set(SR_COND_IMPL "sr_cond_pthread")
