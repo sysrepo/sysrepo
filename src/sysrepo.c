@@ -6870,13 +6870,52 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Find the anchor of a diff node.
+ *
+ * @param[in] node Diff node to use.
+ * @param[in] meta_value Previous instance metadata value of @p node.
+ * @param[out] anchor Found anchor.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_get_change_find_anchor(const struct lyd_node *node, const char *meta_value, struct lyd_node **anchor)
+{
+    sr_error_info_t *err_info = NULL;
+    char *tmp = NULL, *path = NULL;
+    int r;
+
+    /* path to the anchor */
+    tmp = lyd_path(node, LYD_PATH_STD_NO_LAST_PRED, NULL, 0);
+    SR_CHECK_MEM_GOTO(!tmp, err_info, cleanup);
+
+    /* add the predicate */
+    if (lysc_is_dup_inst_list(node->schema)) {
+        r = asprintf(&path, "%s[%s]", tmp, meta_value);
+    } else if (node->schema->nodetype == LYS_LEAFLIST) {
+        r = asprintf(&path, "%s[.='%s']", tmp, meta_value);
+    } else {
+        assert(node->schema->nodetype == LYS_LIST);
+        r = asprintf(&path, "%s%s", tmp, meta_value);
+    }
+    SR_CHECK_MEM_GOTO(r == -1, err_info, cleanup);
+
+    /* find the anchor */
+    err_info = sr_lyd_find_path(node, path, 0, anchor);
+
+cleanup:
+    free(tmp);
+    free(path);
+    return err_info;
+}
+
 API int
 sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_oper_t *operation,
         sr_val_t **old_value, sr_val_t **new_value)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_meta *meta, *meta2;
-    struct lyd_node *node;
+    struct lyd_node *node, *anchor;
     sr_change_oper_t op;
 
     SR_CHECK_ARG_APIRET(!session || !iter || !operation || !old_value || !new_value, session, err_info);
@@ -6941,12 +6980,21 @@ sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_
         }
 
         if (lyd_get_meta_value(meta)[0]) {
+            /* find the anchor instance */
+            if ((err_info = sr_get_change_find_anchor(node, lyd_get_meta_value(meta), &anchor))) {
+                return sr_api_ret(session, err_info);
+            }
+            if (!anchor) {
+                /* anchor is not in the diff, just use the node */
+                anchor = node;
+            }
+
             if (lysc_is_dup_inst_list(node->schema)) {
-                err_info = sr_change_ly2sr(node, NULL, lyd_get_meta_value(meta), old_value);
+                err_info = sr_change_ly2sr(anchor, NULL, lyd_get_meta_value(meta), old_value);
             } else if (node->schema->nodetype == LYS_LEAFLIST) {
-                err_info = sr_change_ly2sr(node, lyd_get_meta_value(meta), NULL, old_value);
+                err_info = sr_change_ly2sr(anchor, lyd_get_meta_value(meta), NULL, old_value);
             } else {
-                err_info = sr_change_ly2sr(node, NULL, lyd_get_meta_value(meta), old_value);
+                err_info = sr_change_ly2sr(anchor, NULL, lyd_get_meta_value(meta), old_value);
             }
             if (err_info) {
                 return sr_api_ret(session, err_info);
