@@ -693,7 +693,7 @@ sr_lydmods_add_all_deps_dfs_cb(struct lysc_node *node, void *data, ly_bool *dfs_
         }
         when = lysc_node_when(node);
         musts = lysc_node_musts(node);
-        if (node->nodetype == LYS_OUTPUT) {
+        if (node->flags & LYS_IS_OUTPUT) {
             atom_opts = LYS_FIND_XP_OUTPUT;
         }
     }
