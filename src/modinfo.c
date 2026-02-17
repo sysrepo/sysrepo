@@ -3972,11 +3972,12 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
     struct lyd_node *mod_diff, *mod_data;
     sr_datastore_t store_ds;
     uint32_t i, sid;
-    int create, change;
+    int create, change, diff_same;
 
     assert(!mod_info->data_cached);
 
     sid = session ? session->sid : 0;
+    diff_same = (mod_info->ds_diff == mod_info->notify_diff) ? 1 : 0;
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
@@ -4059,6 +4060,10 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
             /* connect them back */
             if (mod_diff) {
                 lyd_insert_sibling(mod_info->ds_diff, mod_diff, &mod_info->ds_diff);
+                if (diff_same) {
+                    /* could have been zeroed on unlink */
+                    mod_info->notify_diff = mod_info->ds_diff;
+                }
             }
             if (mod_data) {
                 lyd_insert_sibling(mod_info->data, mod_data, &mod_info->data);
