@@ -6901,7 +6901,14 @@ sr_get_change_find_anchor(const struct lyd_node *node, const char *meta_value, s
     SR_CHECK_MEM_GOTO(r == -1, err_info, cleanup);
 
     /* find the anchor */
-    err_info = sr_lyd_find_path(node, path, 0, anchor);
+    if ((err_info = sr_lyd_find_path(node, path, 0, anchor))) {
+        goto cleanup;
+    }
+
+    if (!*anchor) {
+        /* best-effort, just use the node */
+        *anchor = (struct lyd_node *)node;
+    }
 
 cleanup:
     free(tmp);
@@ -6983,10 +6990,6 @@ sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_
             /* find the anchor instance */
             if ((err_info = sr_get_change_find_anchor(node, lyd_get_meta_value(meta), &anchor))) {
                 return sr_api_ret(session, err_info);
-            }
-            if (!anchor) {
-                /* anchor is not in the diff, just use the node */
-                anchor = node;
             }
 
             if (lysc_is_dup_inst_list(node->schema)) {
