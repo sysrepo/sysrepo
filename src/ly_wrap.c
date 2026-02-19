@@ -559,6 +559,10 @@ sr_lys_find_expr_atoms(const struct lysc_node *ctx_node, const struct lys_module
         goto cleanup;
     }
 
+    /* ignore any warnings, exp has already been parsed and checked so any relevant warnings must have already been
+     * printed and these can even be false-positives */
+    sr_ly_log_clear();
+
 cleanup:
     sr_ly_log_revert();
     return err_info;
