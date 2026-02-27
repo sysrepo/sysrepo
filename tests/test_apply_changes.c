@@ -3863,20 +3863,6 @@ module_change_dflt_leaflist_cb(sr_session_ctx_t *session, uint32_t sub_id, const
         ret = sr_get_changes_iter(session, "/defaults:*//.", &iter);
         assert_int_equal(ret, SR_ERR_OK);
 
-        /* 1st change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        assert_int_equal(op, SR_OP_CREATED);
-        assert_null(old_val);
-        assert_non_null(new_val);
-        assert_int_equal(new_val->dflt, 0);
-        assert_int_equal(new_val->data.uint16_val, 4);
-        assert_string_equal(new_val->xpath, "/defaults:pcont/ll");
-
-        sr_free_val(new_val);
-
-        /* 2nd change */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
@@ -3889,7 +3875,6 @@ module_change_dflt_leaflist_cb(sr_session_ctx_t *session, uint32_t sub_id, const
 
         sr_free_val(old_val);
 
-        /* 3rd change */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
@@ -3902,7 +3887,18 @@ module_change_dflt_leaflist_cb(sr_session_ctx_t *session, uint32_t sub_id, const
 
         sr_free_val(old_val);
 
-        /* 4th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_int_equal(new_val->dflt, 0);
+        assert_int_equal(new_val->data.uint16_val, 4);
+        assert_string_equal(new_val->xpath, "/defaults:pcont/ll");
+
+        sr_free_val(new_val);
+
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
@@ -3918,7 +3914,6 @@ module_change_dflt_leaflist_cb(sr_session_ctx_t *session, uint32_t sub_id, const
         sr_free_val(old_val);
         sr_free_val(new_val);
 
-        /* 5th change */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
@@ -3935,7 +3930,6 @@ module_change_dflt_leaflist_cb(sr_session_ctx_t *session, uint32_t sub_id, const
         sr_free_val(old_val);
         sr_free_val(new_val);
 
-        /* 6th change */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
@@ -3948,7 +3942,6 @@ module_change_dflt_leaflist_cb(sr_session_ctx_t *session, uint32_t sub_id, const
 
         sr_free_val(old_val);
 
-        /* 7th change */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
@@ -3979,19 +3972,6 @@ module_change_dflt_leaflist_cb(sr_session_ctx_t *session, uint32_t sub_id, const
         ret = sr_get_changes_iter(session, "/defaults:*//.", &iter);
         assert_int_equal(ret, SR_ERR_OK);
 
-        /* 1st change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        assert_int_equal(op, SR_OP_DELETED);
-        assert_non_null(old_val);
-        assert_null(new_val);
-        assert_int_equal(old_val->data.uint16_val, 4);
-        assert_string_equal(old_val->xpath, "/defaults:pcont/ll");
-
-        sr_free_val(old_val);
-
-        /* 2nd change */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
@@ -4004,7 +3984,6 @@ module_change_dflt_leaflist_cb(sr_session_ctx_t *session, uint32_t sub_id, const
 
         sr_free_val(new_val);
 
-        /* 3rd change */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
@@ -4017,7 +3996,17 @@ module_change_dflt_leaflist_cb(sr_session_ctx_t *session, uint32_t sub_id, const
 
         sr_free_val(new_val);
 
-        /* 4th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_non_null(old_val);
+        assert_null(new_val);
+        assert_int_equal(old_val->data.uint16_val, 4);
+        assert_string_equal(old_val->xpath, "/defaults:pcont/ll");
+
+        sr_free_val(old_val);
+
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
@@ -4029,7 +4018,6 @@ module_change_dflt_leaflist_cb(sr_session_ctx_t *session, uint32_t sub_id, const
 
         sr_free_val(old_val);
 
-        /* 5th change */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
@@ -4046,7 +4034,6 @@ module_change_dflt_leaflist_cb(sr_session_ctx_t *session, uint32_t sub_id, const
         sr_free_val(old_val);
         sr_free_val(new_val);
 
-        /* 6th change */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
