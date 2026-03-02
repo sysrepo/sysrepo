@@ -2282,12 +2282,12 @@ srpds_create_op(sr_datastore_t ds, const struct lyd_node *node, const char *path
     case LYS_ANYDATA:
     case LYS_ANYXML:
         /* lyd_node_any */
-        if (lyd_any_value_str(node, &any_value) != LY_SUCCESS) {
+        if (lyd_any_value_str(node, LYD_XML, &any_value)) {
             ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_any_value_str()", "");
             goto cleanup;
         }
-        if ((err_info = srpds_any(path, node->schema->name, module_name, any_value, path_modif,
-                match ? match->meta : NULL, &query))) {
+        if ((err_info = srpds_any(path, node->schema->name, module_name, any_value,
+                ((struct lyd_node_any *)node)->hints, path_modif, match ? match->meta : NULL, &query))) {
             goto cleanup;
         }
         break;
@@ -2518,7 +2518,7 @@ srpds_store_state_recursively(const struct ly_set *set, const struct lyd_node *n
         case LYS_ANYDATA:
         case LYS_ANYXML:
             /* lyd_node_any */
-            if (lyd_any_value_str(sibling, &any_value) != LY_SUCCESS) {
+            if (lyd_any_value_str(sibling, LYD_XML, &any_value)) {
                 ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_any_value_str()", "");
                 goto cleanup;
             }
@@ -3164,7 +3164,7 @@ srpds_store_data_recursively(const struct lyd_node *mod_data, mongo_bulk_data_t 
         case LYS_ANYDATA:
         case LYS_ANYXML:
             /* lyd_node_any */
-            if (lyd_any_value_str(sibling, &any_value) != LY_SUCCESS) {
+            if (lyd_any_value_str(sibling, LYD_XML, &any_value)) {
                 ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_any_value_str()", "");
                 goto cleanup;
             }
