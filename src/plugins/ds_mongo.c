@@ -1021,7 +1021,6 @@ cleanup:
  * @param[in] name Name of the node.
  * @param[in] module_name Name of the module.
  * @param[in] value Value of the node.
- * @param[in] valtype Type of the value (LYD_ANYDATA_XML = 0; LYD_ANYDATA_JSON = 1)
  * @param[in] path_modif Modified path.
  * @param[in] meta Metadata of the node.
  * @param[out] query Query to use.
@@ -1029,7 +1028,7 @@ cleanup:
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_any(const char *path, const char *name, const char *module_name, const char *value, int32_t valtype,
+srpds_any(const char *path, const char *name, const char *module_name, const char *value,
         const char *path_modif, const struct lyd_meta *meta, bson_t **query)
 {
     sr_error_info_t *err_info = NULL;
@@ -1040,7 +1039,6 @@ srpds_any(const char *path, const char *name, const char *module_name, const cha
     bson_append_int32(*query, "type", 4, SRPDS_DB_LY_ANY);
     bson_append_utf8(*query, "module_name", 11, module_name, -1);
     bson_append_utf8(*query, "value", 5, value, -1);
-    bson_append_int32(*query, "valtype", 7, valtype);
     bson_append_utf8(*query, "path_modif", 10, path_modif, -1);
     if ((err_info = srpds_add_meta(meta, *query))) {
         goto cleanup;
@@ -2288,8 +2286,7 @@ srpds_create_op(sr_datastore_t ds, const struct lyd_node *node, const char *path
             ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_any_value_str()", "");
             goto cleanup;
         }
-        if ((err_info = srpds_any(path, node->schema->name, module_name, any_value,
-                (((struct lyd_node_any *)node)->value_type == LYD_ANYDATA_JSON), path_modif,
+        if ((err_info = srpds_any(path, node->schema->name, module_name, any_value, path_modif,
                 match ? match->meta : NULL, &query))) {
             goto cleanup;
         }
@@ -2525,8 +2522,7 @@ srpds_store_state_recursively(const struct ly_set *set, const struct lyd_node *n
                 ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_any_value_str()", "");
                 goto cleanup;
             }
-            if ((err_info = srpds_any(path, sibling->schema->name, module_name, any_value,
-                    (((struct lyd_node_any *)sibling)->value_type == LYD_ANYDATA_JSON), path_modif, sibling->meta,
+            if ((err_info = srpds_any(path, sibling->schema->name, module_name, any_value, path_modif, sibling->meta,
                     &query))) {
                 goto cleanup;
             }
@@ -3172,8 +3168,7 @@ srpds_store_data_recursively(const struct lyd_node *mod_data, mongo_bulk_data_t 
                 ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_any_value_str()", "");
                 goto cleanup;
             }
-            if ((err_info = srpds_any(path, sibling->schema->name, module_name, any_value,
-                    (((struct lyd_node_any *)sibling)->value_type == LYD_ANYDATA_JSON), path_modif, sibling->meta,
+            if ((err_info = srpds_any(path, sibling->schema->name, module_name, any_value, path_modif, sibling->meta,
                     &query))) {
                 goto cleanup;
             }

@@ -241,7 +241,6 @@ void srpds_cleanup_uo_lists(srpds_db_userordered_lists_t *uo_lists);
  * @param[in] type Type of the node.
  * @param[in] module_name Module name of the node.
  * @param[in] value Value of the node.
- * @param[in] valtype Type of the value (XML=0 or JSON=1).
  * @param[in,out] dflt_flag Whether the node has default value.
  * @param[in] keys Array of the keys of the node (list instance).
  * @param[in] bit_lengths Array of the lengths of the @p keys in bits.
@@ -259,7 +258,7 @@ void srpds_cleanup_uo_lists(srpds_db_userordered_lists_t *uo_lists);
  */
 sr_error_info_t *srpds_add_mod_data(const char *plg_name, const struct ly_ctx *ly_ctx, sr_datastore_t ds,
         const char *path, const char *name, enum srpds_db_ly_types type, const char *module_name, const char *value,
-        int32_t valtype, int *dflt_flag, const char **keys, uint32_t *bit_lengths, int64_t order, const char *path_no_pred,
+        int *dflt_flag, const char **keys, uint32_t *bit_lengths, int64_t order, const char *path_no_pred,
         int32_t meta_count, const char *meta_name, const char *meta_value, srpds_db_userordered_lists_t *uo_lists,
         struct lyd_node ***parent_nodes, size_t *pnodes_size, struct lyd_node **mod_data);
 

@@ -768,7 +768,7 @@ srpds_load_all(redisContext *ctx, const struct lys_module *mod, sr_datastore_t d
         const char *xpath_filter, struct lyd_node **mod_data)
 {
     sr_error_info_t *err_info = NULL;
-    uint64_t valtype = 0, order = 0;
+    uint64_t order = 0;
     const char *path, *name, *module_name = NULL, *value = NULL, *path_no_pred = NULL;
     enum srpds_db_ly_types type;
     int dflt_flag = 0;
@@ -800,7 +800,7 @@ srpds_load_all(redisContext *ctx, const struct lys_module *mod, sr_datastore_t d
     *   |            | {metadata} ]
     *   |
     *   | 4) anydata and anyxml (LYS_ANYDATA and LYS_ANYXML)
-    *   |    Dataset [ a_path | b_name | c_type | d_module_name | e_dflt_flag | g_value | h_valtype | m_path_modif
+    *   |    Dataset [ a_path | b_name | c_type | d_module_name | e_dflt_flag | g_value | m_path_modif
     *   |            | n_meta_count | {metadata} ]
     *   |
     *   | 5) user-ordered lists
@@ -820,7 +820,6 @@ srpds_load_all(redisContext *ctx, const struct lys_module *mod, sr_datastore_t d
     *   | start number defines the type (1 - container, 2 - list...)
     *   | field names are prefixed with a letter so that they can be quickly identified based on this letter
     *   | module_name = "" - use parent's module | name - use the module specified by this name
-    *   | valtype     = 0 - XML | 1 - JSON
     *   | {metadata}  = meta_count number of fields containing metadata of the node
     *
     *   Metadata and MaxOrder
@@ -904,10 +903,6 @@ srpds_load_all(redisContext *ctx, const struct lys_module *mod, sr_datastore_t d
                     /* get value */
                     value = partial->element[j + 1]->str;
                     break;
-                case 'h':
-                    /* get valtype */
-                    valtype = (uint64_t)strtoull(partial->element[j + 1]->str, NULL, 0);
-                    break;
                 case 'i':
                     order = (uint64_t)strtoull(partial->element[j + 1]->str, NULL, 0);
                     break;
@@ -938,7 +933,7 @@ srpds_load_all(redisContext *ctx, const struct lys_module *mod, sr_datastore_t d
 
             /* add a new node to mod_data */
             if ((err_info = srpds_add_mod_data(plugin_name, mod->ctx, ds, path, name, type, module_name, value,
-                    valtype, &dflt_flag, (const char **)keys, bit_lengths, order, path_no_pred, meta_count, meta_name,
+                    &dflt_flag, (const char **)keys, bit_lengths, order, path_no_pred, meta_count, meta_name,
                     meta_value, &uo_lists, &parent_nodes, &pnodes_size, mod_data))) {
                 goto cleanup;
             }
@@ -1176,7 +1171,6 @@ cleanup:
  * @param[in] name Name of the data node.
  * @param[in] module_name Name of the node module.
  * @param[in] value Value of the node.
- * @param[in] valtype Type of the value (LYD_ANYDATA_XML = 0; LYD_ANYDATA_JSON = 1)
  * @param[in] path_modif Modified path.
  * @param[in] meta Metadata of the node.
  * @param[out] argv Arguments for command.
@@ -1185,7 +1179,7 @@ cleanup:
  */
 static sr_error_info_t *
 srpds_any(const char *mod_ns, const char *path, const char *name, const char *module_name, const char *value,
-        int32_t valtype, const char *path_modif, const struct lyd_meta *meta, redis_argv_t *argv)
+        const char *path_modif, const struct lyd_meta *meta, redis_argv_t *argv)
 {
     sr_error_info_t *err_info = NULL;
 
@@ -1206,10 +1200,6 @@ srpds_any(const char *mod_ns, const char *path, const char *name, const char *mo
     srpds_argv_add(argv, module_name, module_name ? strlen(module_name) : 0);
     srpds_argv_add(argv, "g_value", 7);
     srpds_argv_add(argv, value, value ? strlen(value) : 0);
-    srpds_argv_add(argv, "h_valtype", 9);
-    if ((err_info = srpds_argv_add_format(argv, "%" PRId32, valtype))) {
-        goto cleanup;
-    }
     srpds_argv_add(argv, "m_path_modif", 12);
     srpds_argv_add(argv, path_modif, strlen(path_modif));
     if ((err_info = srpds_add_meta(meta, argv))) {
@@ -2266,8 +2256,7 @@ srpds_create_op(redisContext *ctx, sr_datastore_t ds, const char *mod_ns, const 
             ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_any_value_str()", "");
             goto cleanup;
         }
-        if ((err_info = srpds_any(mod_ns, path, node->schema->name, module_name, any_value,
-                (((struct lyd_node_any *)node)->value_type == LYD_ANYDATA_JSON), path_modif,
+        if ((err_info = srpds_any(mod_ns, path, node->schema->name, module_name, any_value, path_modif,
                 match ? match->meta : NULL, &argv))) {
             goto cleanup;
         }
@@ -2497,8 +2486,7 @@ srpds_store_state_recursively(redisContext *ctx, const struct ly_set *set, const
                 ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_any_value_str()", "");
                 goto cleanup;
             }
-            if ((err_info = srpds_any(mod_ns, path, sibling->schema->name, module_name, value,
-                    (((struct lyd_node_any *)sibling)->value_type == LYD_ANYDATA_JSON), path_modif,
+            if ((err_info = srpds_any(mod_ns, path, sibling->schema->name, module_name, value, path_modif,
                     sibling->meta, &argv))) {
                 goto cleanup;
             }
@@ -3261,8 +3249,7 @@ srpds_store_data_recursively(redisContext *ctx, const struct lyd_node *mod_data,
                 ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_any_value_str()", "");
                 goto cleanup;
             }
-            if ((err_info = srpds_any(mod_ns, path, sibling->schema->name, module_name, value,
-                    (((struct lyd_node_any *)sibling)->value_type == LYD_ANYDATA_JSON), path_modif, sibling->meta,
+            if ((err_info = srpds_any(mod_ns, path, sibling->schema->name, module_name, value, path_modif, sibling->meta,
                     &argv))) {
                 goto cleanup;
             }
@@ -3606,7 +3593,6 @@ srpds_create_indices(redisContext *ctx, const char *mod_ns)
             "e_dflt_flag NUMERIC "
             "f_keys TAG CASESENSITIVE "
             "g_value TAG CASESENSITIVE "
-            "h_valtype NUMERIC "
             "i_order NUMERIC "
             "j_path_no_pred TAG CASESENSITIVE "
             "k_prev TAG CASESENSITIVE "

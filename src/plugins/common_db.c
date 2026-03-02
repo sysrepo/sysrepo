@@ -545,7 +545,7 @@ srpds_cleanup_uo_lists(srpds_db_userordered_lists_t *uo_lists)
 
 sr_error_info_t *
 srpds_add_mod_data(const char *plg_name, const struct ly_ctx *ly_ctx, sr_datastore_t ds, const char *path,
-        const char *name, enum srpds_db_ly_types type, const char *module_name, const char *value, int32_t valtype,
+        const char *name, enum srpds_db_ly_types type, const char *module_name, const char *value,
         int *dflt_flag, const char **keys, uint32_t *bit_lengths, int64_t order, const char *path_no_pred,
         int32_t meta_count, const char *meta_name, const char *meta_value, srpds_db_userordered_lists_t *uo_lists,
         struct lyd_node ***parent_nodes, size_t *pnodes_size, struct lyd_node **mod_data)
@@ -599,8 +599,7 @@ srpds_add_mod_data(const char *plg_name, const struct ly_ctx *ly_ctx, sr_datasto
         }
         break;
     case SRPDS_DB_LY_ANY:   /* anydata and anyxml */
-        lerr = lyd_new_any(parent_node, node_module, name, value, valtype ? LYD_ANYDATA_JSON : LYD_ANYDATA_XML,
-                LYD_NEW_VAL_STORE_ONLY, &new_node);
+        lerr = lyd_new_any(parent_node, node_module, name, NULL, value, LYD_NEW_VAL_STORE_ONLY, &new_node);
         if ((lerr != LY_SUCCESS) && (lerr != LY_ENOTFOUND)) {
             ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_any()", ly_last_logmsg());
             goto cleanup;
