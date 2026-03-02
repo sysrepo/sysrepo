@@ -735,7 +735,7 @@ sr_lyd_new_path(struct lyd_node *parent, const struct ly_ctx *ctx, const char *p
 
     sr_ly_log_setup();
 
-    if (lyd_new_path2(parent, ctx, path, value, value ? strlen(value) * 8 : 0, LYD_ANYDATA_STRING, options, new_parent,
+    if (lyd_new_path2(parent, ctx, path, value, value ? strlen(value) * 8 : 0, options, new_parent,
             new_node)) {
         sr_errinfo_new_ly(&err_info, SR_ERR_LY);
         goto cleanup;
@@ -816,13 +816,13 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_lyd_new_any(struct lyd_node *parent, const char *name, void *value, LYD_ANYDATA_VALUETYPE value_type)
+sr_lyd_new_any(struct lyd_node *parent, const char *name, struct lyd_node *child, char *value)
 {
     sr_error_info_t *err_info = NULL;
 
     sr_ly_log_setup();
 
-    if (lyd_new_any(parent, NULL, name, value, value_type, LYD_NEW_ANY_USE_VALUE, NULL)) {
+    if (lyd_new_any(parent, NULL, name, child, value, LYD_NEW_ANY_USE_VALUE, NULL)) {
         sr_errinfo_new_ly(&err_info, SR_ERR_LY);
         goto cleanup;
     }
@@ -1314,13 +1314,13 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_lyd_any_copy_value(struct lyd_node *node, const void *value, LYD_ANYDATA_VALUETYPE value_type)
+sr_lyd_any_copy_value(struct lyd_node *node, const struct lyd_node *child, const void *value, uint32_t hints)
 {
     sr_error_info_t *err_info = NULL;
 
     sr_ly_log_setup();
 
-    if (lyd_any_copy_value(node, value, value_type)) {
+    if (lyd_any_copy_value(node, child, value, hints)) {
         sr_errinfo_new_ly(&err_info, SR_ERR_LY);
         goto cleanup;
     }

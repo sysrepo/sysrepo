@@ -6798,7 +6798,7 @@ sr_change_ly2sr(const struct lyd_node *node, const char *value_str, const char *
             }
         } else {
             assert(node->schema->nodetype & LYD_NODE_ANY);
-            if ((err_info = sr_lyd_any_copy_value(node_dup, value_str, LYD_ANYDATA_STRING))) {
+            if ((err_info = sr_lyd_any_copy_value(node_dup, NULL, value_str, 0))) {
                 goto cleanup;
             }
         }

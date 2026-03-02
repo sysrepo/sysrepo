@@ -64,7 +64,7 @@ main(int argc, char **argv)
     }
 
     /* create the notification */
-    if (lyd_new_path2(NULL, ctx, path, NULL, 0, 0, 0, &tree, &notif)) {
+    if (lyd_new_path2(NULL, ctx, path, NULL, 0, 0, &tree, &notif)) {
         printf("Creating notification \"%s\" failed (%s).\n", path, ly_last_logmsg());
         goto cleanup;
     }
