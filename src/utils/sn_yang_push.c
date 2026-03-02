@@ -79,7 +79,7 @@ srsn_yp_ntf_update_send(struct srsn_sub *sub)
     }
 
     /* datastore-contents */
-    if ((err_info = sr_lyd_new_any(ly_ntf, "datastore-contents", data ? data->tree : NULL, LYD_ANYDATA_DATATREE))) {
+    if ((err_info = sr_lyd_new_any(ly_ntf, "datastore-contents", data ? data->tree : NULL, NULL))) {
         goto cleanup;
     }
     if (data) {
@@ -431,7 +431,7 @@ srsn_yp_ntf_change_edit_append(struct lyd_node *ly_yp, srsn_yp_change_t yp_op, c
             goto cleanup;
         }
         assert(xml);
-        if ((err_info = sr_lyd_new_any(ly_edit, "value", xml, LYD_ANYDATA_XML))) {
+        if ((err_info = sr_lyd_new_any(ly_edit, "value", NULL, xml))) {
             goto cleanup;
         }
     }

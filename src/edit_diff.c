@@ -1741,7 +1741,7 @@ sr_edit_apply_replace(struct lyd_node *data_match, int val_equal, const struct l
 
             /* modify the node */
             any = (struct lyd_node_any *)edit_node;
-            if ((err_info = sr_lyd_any_copy_value(data_match, any->child ? any->child : (void *)any->value, any->value_type))) {
+            if ((err_info = sr_lyd_any_copy_value(data_match, any->child, any->value, any->hints))) {
                 return err_info;
             }
 
@@ -2814,7 +2814,7 @@ sr_edit_add_merge_op(struct lyd_node *match, struct lyd_node **root, const char 
                 if (own_oper) {
                     sr_edit_del_meta_attr(match, "operation");
                 }
-                if ((err_info = sr_lyd_any_copy_value(match, value, LYD_ANYDATA_STRING))) {
+                if ((err_info = sr_lyd_any_copy_value(match, NULL, value, 0))) {
                     goto cleanup;
                 }
                 break;

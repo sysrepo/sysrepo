@@ -314,11 +314,11 @@ sr_error_info_t *sr_lyd_new_inner(struct lyd_node *parent, const struct lys_modu
  *
  * @param[in] parent Node parent.
  * @param[in] name Node name.
- * @param[in] value Node value, is spent.
- * @param[in] value_type Type of @p value.
+ * @param[in] child Data tree value, is spent.
+ * @param[in] value String value, is spent.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lyd_new_any(struct lyd_node *parent, const char *name, void *value, LYD_ANYDATA_VALUETYPE value_type);
+sr_error_info_t *sr_lyd_new_any(struct lyd_node *parent, const char *name, struct lyd_node *child, char *value);
 
 /**
  * @brief Create a new opaque node.
@@ -593,11 +593,13 @@ sr_error_info_t *sr_lyd_any_value_str(const struct lyd_node *node, char **str);
  * @brief Copy value to an any node.
  *
  * @param[in] node Any node to modify.
- * @param[in] value Value to use.
- * @param[in] value_type Value type of @p value.
+ * @param[in] child Data tree value.
+ * @param[in] value String value.
+ * @param[in] hints String value hints.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lyd_any_copy_value(struct lyd_node *node, const void *value, LYD_ANYDATA_VALUETYPE value_type);
+sr_error_info_t *sr_lyd_any_copy_value(struct lyd_node *node, const struct lyd_node *child, const void *value,
+        uint32_t hints);
 
 /**
  * @brief Get the diff of 2 data tree sibling lists.

@@ -4441,21 +4441,14 @@ store_value:
         any = (struct lyd_node_any *)node;
         ptr = NULL;
 
-        switch (any->value_type) {
-        case LYD_ANYDATA_STRING:
-        case LYD_ANYDATA_XML:
-        case LYD_ANYDATA_JSON:
-            if (any->value) {
-                ptr = strdup(any->value);
-                SR_CHECK_MEM_GOTO(!ptr, err_info, error);
-            }
-            break;
-        case LYD_ANYDATA_DATATREE:
+        if (any->value) {
+            ptr = strdup(any->value);
+            SR_CHECK_MEM_GOTO(!ptr, err_info, error);
+        } else {
             if ((err_info = sr_lyd_print_data(any->child, LYD_XML, 0, -1, &ptr, NULL))) {
                 sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Failed to print anyxml/anydata into XML.");
                 goto error;
             }
-            break;
         }
 
         if (node->schema->nodetype == LYS_ANYXML) {
