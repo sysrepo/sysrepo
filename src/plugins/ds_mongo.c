@@ -547,9 +547,8 @@ srpds_load_all(mongoc_collection_t *module, const struct lys_module *mod, sr_dat
     bson_error_t error;
     const char *path, *name, *module_name = NULL, *value = NULL, *path_no_pred = NULL;
     char **keys = NULL;
-    uint32_t *bit_lengths = NULL;
+    uint32_t *bit_lengths = NULL, hints = 0;
     enum srpds_db_ly_types type;
-    int32_t valtype = 0;
     int64_t order = 0;
     int dflt_flag = 0;
     int32_t meta_count = 0;
@@ -580,7 +579,7 @@ srpds_load_all(mongoc_collection_t *module, const struct lys_module *mod, sr_dat
     *   |            | {metadata} ]
     *   |
     *   | 4) anydata and anyxml (LYS_ANYDATA and LYS_ANYXML)
-    *   |    Dataset [ path(_id) | name | type | module_name | value | valtype | path_modif | meta_count | {metadata} ]
+    *   |    Dataset [ path(_id) | name | type | module_name | value | hints | path_modif | meta_count | {metadata} ]
     *   |
     *   | 5) user-ordered lists
     *   |    Dataset [ path(_id) | name | type | module_name | keys | order | path_no_pred | prev | path_modif
@@ -598,7 +597,6 @@ srpds_load_all(mongoc_collection_t *module, const struct lys_module *mod, sr_dat
     *   |
     *   | module_name = NULL - use parent's module | name - use the module specified by this name
     *   | {metadata}  = meta_count number of fields containing metadata of the node
-    *   | valtype     = 0 - XML | 1 - JSON
     *   | start number defines the type (1 - container, 2 - list...)
     *
     *   Metadata and MaxOrder
@@ -738,14 +736,14 @@ srpds_load_all(mongoc_collection_t *module, const struct lys_module *mod, sr_dat
             break;
         }
 
-        /* get valtype or order based on type */
+        /* get hints or order based on type */
         switch (type) {
         case SRPDS_DB_LY_ANY:  /* anydata and anyxml */
             if (!bson_iter_next(&iter)) {
                 ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
                 goto cleanup;
             }
-            valtype = bson_iter_int32(&iter);
+            hints = bson_iter_int32(&iter);
             break;
         case SRPDS_DB_LY_LIST_UO:      /* user-ordered lists */
         case SRPDS_DB_LY_LEAFLIST_UO:  /* user-ordered leaf-lists */
@@ -820,7 +818,7 @@ srpds_load_all(mongoc_collection_t *module, const struct lys_module *mod, sr_dat
         }
 
         /* add a new node to mod_data */
-        if ((err_info = srpds_add_mod_data(plugin_name, mod->ctx, ds, path, name, type, module_name, value, valtype,
+        if ((err_info = srpds_add_mod_data(plugin_name, mod->ctx, ds, path, name, type, module_name, value, hints,
                 &dflt_flag, (const char **)keys, bit_lengths, order, path_no_pred, meta_count, meta_name, meta_value,
                 &uo_lists, &parent_nodes, &pnodes_size, mod_data))) {
             goto cleanup;
@@ -1021,6 +1019,7 @@ cleanup:
  * @param[in] name Name of the node.
  * @param[in] module_name Name of the module.
  * @param[in] value Value of the node.
+ * @param[in] hints Value hints.
  * @param[in] path_modif Modified path.
  * @param[in] meta Metadata of the node.
  * @param[out] query Query to use.
@@ -1028,7 +1027,7 @@ cleanup:
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_any(const char *path, const char *name, const char *module_name, const char *value,
+srpds_any(const char *path, const char *name, const char *module_name, const char *value, uint32_t hints,
         const char *path_modif, const struct lyd_meta *meta, bson_t **query)
 {
     sr_error_info_t *err_info = NULL;
@@ -1039,6 +1038,7 @@ srpds_any(const char *path, const char *name, const char *module_name, const cha
     bson_append_int32(*query, "type", 4, SRPDS_DB_LY_ANY);
     bson_append_utf8(*query, "module_name", 11, module_name, -1);
     bson_append_utf8(*query, "value", 5, value, -1);
+    bson_append_int32(*query, "hints", 5, hints);
     bson_append_utf8(*query, "path_modif", 10, path_modif, -1);
     if ((err_info = srpds_add_meta(meta, *query))) {
         goto cleanup;
@@ -2522,8 +2522,8 @@ srpds_store_state_recursively(const struct ly_set *set, const struct lyd_node *n
                 ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_any_value_str()", "");
                 goto cleanup;
             }
-            if ((err_info = srpds_any(path, sibling->schema->name, module_name, any_value, path_modif, sibling->meta,
-                    &query))) {
+            if ((err_info = srpds_any(path, sibling->schema->name, module_name, any_value,
+                    ((struct lyd_node_any *)sibling)->hints, path_modif, sibling->meta, &query))) {
                 goto cleanup;
             }
             free(any_value);
@@ -3168,8 +3168,8 @@ srpds_store_data_recursively(const struct lyd_node *mod_data, mongo_bulk_data_t 
                 ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_any_value_str()", "");
                 goto cleanup;
             }
-            if ((err_info = srpds_any(path, sibling->schema->name, module_name, any_value, path_modif, sibling->meta,
-                    &query))) {
+            if ((err_info = srpds_any(path, sibling->schema->name, module_name, any_value,
+                    ((struct lyd_node_any *)sibling)->hints, path_modif, sibling->meta, &query))) {
                 goto cleanup;
             }
             free(any_value);

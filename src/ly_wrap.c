@@ -735,7 +735,7 @@ sr_lyd_new_path(struct lyd_node *parent, const struct ly_ctx *ctx, const char *p
 
     sr_ly_log_setup();
 
-    if (lyd_new_path2(parent, ctx, path, value, value ? strlen(value) * 8 : 0, options, new_parent,
+    if (lyd_new_path2(parent, ctx, path, value, value ? strlen(value) * 8 : 0, 0, options, new_parent,
             new_node)) {
         sr_errinfo_new_ly(&err_info, SR_ERR_LY);
         goto cleanup;
@@ -822,7 +822,7 @@ sr_lyd_new_any(struct lyd_node *parent, const char *name, struct lyd_node *child
 
     sr_ly_log_setup();
 
-    if (lyd_new_any(parent, NULL, name, child, value, LYD_NEW_ANY_USE_VALUE, NULL)) {
+    if (lyd_new_any(parent, NULL, name, child, value, 0, LYD_NEW_ANY_USE_VALUE, NULL)) {
         sr_errinfo_new_ly(&err_info, SR_ERR_LY);
         goto cleanup;
     }
@@ -1303,7 +1303,7 @@ sr_lyd_any_value_str(const struct lyd_node *node, char **str)
 
     sr_ly_log_setup();
 
-    if (lyd_any_value_str(node, str)) {
+    if (lyd_any_value_str(node, LYD_XML, str)) {
         sr_errinfo_new_ly(&err_info, SR_ERR_LY);
         goto cleanup;
     }

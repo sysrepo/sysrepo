@@ -358,7 +358,7 @@ test_input_parameters(void **state)
     struct lys_module *mod;
 
     assert_int_equal(LY_SUCCESS, lys_parse_path(ctx, TESTS_SRC_DIR "/files/simple.yang", LYS_IN_YANG, &mod));
-    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, ctx, "/simple:ac1", NULL, 0, 0, NULL, &input));
+    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, ctx, "/simple:ac1", NULL, 0, 0, 0, NULL, &input));
     ret = sr_notif_send_tree(st->sess, input, 0, 0);
     assert_int_equal(ret, SR_ERR_INVAL_ARG);
     lyd_free_all(input);
@@ -369,7 +369,7 @@ test_input_parameters(void **state)
 
     /* data tree not a valid notification invovation */
     assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, ly_ctx, "/ops:cont/list1[k='key']/cont2", NULL,
-            0, 0, NULL, &input));
+            0, 0, 0, NULL, &input));
     ret = sr_notif_send_tree(st->sess, input, 0, 0);
     assert_int_equal(ret, SR_ERR_INVAL_ARG);
     lyd_free_all(input);
