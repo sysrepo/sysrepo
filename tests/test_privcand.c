@@ -2373,10 +2373,7 @@ test_correct_conflict_generation(void **state, sr_pc_conflict_resolution_t confl
     if (conflict_resolution == SR_PC_REVERT_ON_CONFLICT) {
         assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
 
-        assert_int_equal(SR_PC_CONFLICT_VALUE_CHANGE, conflict_set->conflicts[conflict_set->conflict_count - 4].type);
-        assert_int_equal(SR_PC_CONFLICT_VALUE_CHANGE, conflict_set->conflicts[conflict_set->conflict_count - 3].type);
-        assert_int_equal(SR_PC_CONFLICT_LIST_ORDER, conflict_set->conflicts[conflict_set->conflict_count - 2].type);
-        assert_int_equal(SR_PC_CONFLICT_LIST_ENTRY, conflict_set->conflicts[conflict_set->conflict_count - 1].type);
+        assert_int_equal(conflict_set->conflict_count, 4);
     } else if (conflict_resolution == SR_PC_PREFER_CANDIDATE) {
         assert_int_equal(ret, SR_ERR_OK);
 

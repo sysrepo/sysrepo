@@ -1362,7 +1362,7 @@ sr_lyd_diff_apply_all(struct lyd_node **data, const struct lyd_node *diff)
 
     ly_temp_log_options(&temp_lo);
     if (lyd_diff_apply_all(data, diff)) {
-        sr_errinfo_new_ly(&err_info, *data ? LYD_CTX(*data) : LYD_CTX(diff), SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
         goto cleanup;
     }
 

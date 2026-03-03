@@ -1,11 +1,11 @@
 /**
  * @file private_candidate.c
  * @author Juraj Budai <budai@cesnet.cz>
- * @brief implementation of private candidate datastore
+ * @brief Implementation of private candidate datastore
  *
  * @copyright
- * Copyright (c) 2025 Deutsche Telekom AG.
- * Copyright (c) 2025 CESNET, z.s.p.o.
+ * Copyright (c) 2025 - 2026 Deutsche Telekom AG.
+ * Copyright (c) 2025 - 2026 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -36,414 +36,87 @@
 /**
  * @brief Recursively find the matching node.
  *
- * Special case: If a user-ordered list node is encountered that entire list node is considered as a match.
- *
- * @param[in] root Tree to search in.
+ * @param[in] src_tree Tree to search in.
  * @param[in] target Target node to find.
- * @param[out] match Can be NULL, otherwise the found data node.
- */
-static sr_error_info_t *
-pc_find_node_r(struct lyd_node *root, struct lyd_node *target, struct lyd_node **match)
-{
-    sr_error_info_t *err_info = NULL;
-    struct lyd_node *iter, *child;
-
-    LY_LIST_FOR(root, iter) {
-        /* special handling for user-ordered lists: consider entire list as match */
-        if (lysc_is_userordered(target->schema)) {
-            if (target->schema != iter->schema) {
-                if ((child = lyd_child(iter))) {
-                    if ((err_info = pc_find_node_r(child, target, match))) {
-                        goto cleanup;
-                    }
-
-                    if (*match) {
-                        goto cleanup;
-                    }
-                }
-                continue;
-            }
-
-            *match = iter;
-            goto cleanup;
-        }
-
-        /* find the target node */
-        if ((err_info = sr_lyd_find_sibling_val(root, target->schema, NULL, match))) {
-            goto cleanup;
-        }
-
-        /* check if the node is from the same list instance */
-        if (target->parent && *match && (target->parent->schema->nodetype == LYS_LIST)) {
-            if ((*match)->parent->hash != target->parent->hash) {
-                *match = NULL;
-                goto cleanup;
-            }
-        }
-
-        if (*match) {
-            goto cleanup;
-        }
-
-        /* recurse into child nodes if any */
-        if ((child = lyd_child(iter))) {
-            if ((err_info = pc_find_node_r(child, target, match))) {
-                goto cleanup;
-            }
-
-            if (*match) {
-                goto cleanup;
-            }
-        }
-    }
-
-cleanup:
-    return err_info;
-}
-
-/**
- * @brief Iterates over sibling nodes of two conflicting list nodes and checks
- *        whether both sides contain at least one node with an edit operation.
- *
- * @param[in] conflict_node_cand Conflicting node from the candidate diff.
- * @param[in] conflict_node_run Conflicting node from the running diff.
- * @return 1 on success, 0 otherwise.
- */
-static int
-pc_find_operation_in_both_siblings(const struct lyd_node *conflict_node_cand, const struct lyd_node *conflict_node_run)
-{
-    const struct lyd_node *iter = NULL;
-    const struct lyd_node *iter2 = NULL;
-    enum edit_op op;
-    int cand_has_op, run_has_op = 0;
-
-    /* look for operation on list node in cand_conflict */
-    LY_LIST_FOR(conflict_node_cand, iter) {
-        op = sr_edit_diff_find_oper(iter, 0, NULL);
-        if (op > 6) {
-            cand_has_op = 1;
-            break;
-        }
-    }
-
-    /* look for operation on list node in run_conflict */
-    LY_LIST_FOR(conflict_node_run, iter2) {
-        op = sr_edit_diff_find_oper(iter2, 0, NULL);
-        if (op > 6) {
-            run_has_op = 1;
-            break;
-        }
-    }
-
-    return cand_has_op && run_has_op;
-}
-
-/**
- * @brief Look for replace or delete operation in parent node.
- *
- * The conflicting node does not need to be the node with operation.
- *
- * @param[in] diff Diff tree where to look for operation.
- * @return diff_node on success, NULL otherwise.
- */
-static struct lyd_node *
-pc_diff_find_parent_with_oper(struct lyd_node *diff)
-{
-    struct lyd_node *parent, *ret_node = NULL;
-    enum edit_op op;
-
-    if (!diff) {
-        return NULL;
-    }
-
-    parent = diff;
-    do {
-        op = sr_edit_diff_find_oper(parent, 0, NULL);
-        if ((op == EDIT_DELETE) || (op == EDIT_REPLACE)) {
-            ret_node = parent;
-        }
-
-        parent = lyd_parent(parent);
-    } while (parent);
-
-    return ret_node;
-}
-
-/**
- * @brief Unlink and free the nodes from diff_tree which are same as conflicting nodes.
- *
- * The diff is prepared in a way that applying it to the private candidate only apply non-conflicting changes.
- * This ensures that the private candidate datastore remains according to the "prefer-candidate" resolution strategy.
- *
- * @param[in,out] diff_tree Diff tree to remove conflicts from.
- * @param[out] conflict_set List of conflicting trees which were unlinked from the @p diff_tree.
+ * @param[out] match Found data node.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-pc_unlink_conflicting_nodes(struct lyd_node **diff_tree, sr_pc_conflict_set_t **conflict_set)
+pc_find_node_r(const struct lyd_node *src_tree, const struct lyd_node *target, struct lyd_node **match)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *conflict_node_run = NULL, *conflict_node_cand = NULL, *match = NULL, *match_iter, *conflict_node = NULL;
-    const struct lysc_node *current_schema;
-    uint32_t i;
-    enum edit_op run_op, cand_op;
+    struct lyd_node *common_child;
 
-    if (!*conflict_set || !*diff_tree) {
-        return NULL;
-    }
-
-    for (i = 0; i < (*conflict_set)->conflict_count; i++) {
-        conflict_node_run = (*conflict_set)->conflicts[i].run_diff;
-        conflict_node_cand = (*conflict_set)->conflicts[i].pc_diff;
-
-        run_op = sr_edit_diff_find_oper(conflict_node_run, 0, NULL);
-        cand_op = sr_edit_diff_find_oper(conflict_node_cand, 0, NULL);
-
-        if (run_op == EDIT_CONTINUE) {
-            conflict_node = pc_diff_find_parent_with_oper(conflict_node_run);
-        } else if (cand_op == EDIT_CONTINUE) {
-            conflict_node = pc_diff_find_parent_with_oper(conflict_node_cand);
-        } else {
-            conflict_node = conflict_node_run;
-        }
-
-        if ((err_info = pc_find_node_r(*diff_tree, conflict_node, &match))) {
-            goto cleanup;
-        }
-
-        /* special case when whole list/leaflist needs to be unlinked */
-        if (match && ((match->schema->nodetype == LYS_LEAFLIST) ||
-                pc_find_operation_in_both_siblings(conflict_node_cand, conflict_node_run))) {
-            current_schema = match->schema;
-
-            /* find the first node in the list or leaflist */
-            if ((err_info = sr_lyd_find_sibling_val(match, match->schema, NULL, &match))) {
-                goto cleanup;
-            }
-
-            /* unlink whole list/leaflist */
-            while (match && (match->schema == current_schema)) {
-                match_iter = match->next;
-
-                sr_lyd_free_tree_safe(match, diff_tree);
-
-                match = match_iter;
-            }
-        } else {
-            sr_lyd_free_tree_safe(match, diff_tree);
-        }
-    }
-
-cleanup:
-    return err_info;
-}
-
-/**
- * @brief Unlink and free the nodes from diff_tree so that applying it to the private datastore merges
- *        running changes while respecting non-conflicting private modifications.
- *
- * The diff tree represents changes between private candidate and running
- * datastore. This function removes from the diff all non-conflicting nodes, so
- * that applying the resulting diff to the private candidate reflects merging.
- *
- * @param[in,out] diff_tree Diff tree to remove nodes from.
- * @param[in] unlink_diff_tree Nodes that should be removed from @p diff_tree.
- * @param[in] privcand Pointer to the private candidate datastore structure.
- * @param[in] conflict_set List of conflicts.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-pc_unlink_diff_nodes_r(struct lyd_node **diff_tree, const struct lyd_node *unlink_diff_tree, sr_priv_cand_t *privcand, sr_pc_conflict_set_t *conflict_set)
-{
-    sr_error_info_t *err_info = NULL;
-    struct lyd_node *privcand_iter = NULL, *match = NULL;
-    enum edit_op node_op;
-    uint32_t i;
-
-    LY_LIST_FOR((struct lyd_node *)unlink_diff_tree, privcand_iter) {
-
-        /* determine edit operations */
-        node_op = sr_edit_diff_find_oper(privcand_iter, 0, NULL);
-
-        /* continue looking for changed nodes, also check the child nodes */
-        if ((node_op == EDIT_NONE) || (node_op == EDIT_CONTINUE)) {
-            if (privcand_iter->schema->nodetype & LYD_NODE_INNER) {
-                if ((err_info = pc_unlink_diff_nodes_r(diff_tree, lyd_child(privcand_iter), privcand, conflict_set))) {
-                    goto cleanup;
-                }
-            }
-            continue;
-        }
-
-        /* try to find the corresponding node */
-        if (privcand_iter->schema->nodetype & (LYS_LIST | LYS_LEAFLIST)) {
-            if ((err_info = sr_lyd_find_sibling_first(*diff_tree, privcand_iter, &match))) {
-                goto cleanup;
-            }
-        } else {
-            if ((err_info = pc_find_node_r(*diff_tree, privcand_iter, &match))) {
-                goto cleanup;
-            }
-        }
-
-        /* skip the conflicting nodes */
-        if ((privcand->conflict_resolution == SR_PC_PREFER_RUNNING) && conflict_set) {
-            for (i = 0; i < conflict_set->conflict_count; i++) {
-                if (match && (conflict_set->conflicts[i].run_diff->schema == match->schema)) {
-                    match = NULL;
-                    continue;
-                }
-            }
-        }
-
-        if (match) {
-            sr_lyd_free_tree_safe(match, diff_tree);
-        }
-    }
-
-cleanup:
-    return err_info;
-}
-
-/**
- * @brief Resolve data conflicts between the private candidate and running datastore.
- *
- * @param[in] running_ds_tree Tree of the current running datastore.
- * @param[in] privcand_ds_tree Tree of the current private candidate datastore.
- * @param[in,out] privcand Pointer to the private candidate datastore structure.
- * @param[in,out] conflict_set List of conflicts which will be resolved.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-pc_update_diff_privcand(const struct lyd_node *running_ds_tree, struct lyd_node *privcand_ds_tree, sr_priv_cand_t *privcand, sr_pc_conflict_set_t **conflict_set)
-{
-    sr_error_info_t *err_info = NULL;
-    struct lyd_node *final_diff = NULL, *running_vs_privcand = NULL, *privcand_vs_running = NULL;
-
-    /* user resolves the conflicts by himself */
-    if ((privcand->conflict_resolution == SR_PC_REVERT_ON_CONFLICT) && conflict_set && (*conflict_set)) {
-        return NULL;
-    }
-
-    if ((err_info = sr_lyd_diff_siblings(privcand_ds_tree, running_ds_tree, 0, NULL, &privcand_vs_running))) {
+    /* try to find target node in top-level */
+    if ((err_info = sr_lyd_find_sibling_first(src_tree, target, match))) {
         goto cleanup;
     }
 
-    switch (privcand->conflict_resolution) {
-    case SR_PC_REVERT_ON_CONFLICT:
-        /* no conflict, reset private candidate to match current running datastore */
-
-        /* prepare privcand_vs_running diff to reflect datastore merge */
-        if ((err_info = pc_unlink_diff_nodes_r(&privcand_vs_running, privcand->diff_backup, privcand, *conflict_set))) {
+    /* the target node nested somewhere in src_tree*/
+    if (!*match) {
+        /* find common parent */
+        if ((err_info = pc_find_node_r(src_tree, target->parent, match))) {
             goto cleanup;
         }
 
-        if ((err_info = sr_lyd_diff_reverse_all(privcand_vs_running, &running_vs_privcand))) {
+        /* traverse down from the common parent to the target node */
+        common_child = lyd_child_no_keys(*match);
+
+        if ((err_info = sr_lyd_find_sibling_first(common_child, target, match))) {
             goto cleanup;
         }
-
-        lyd_free_all(privcand->diff_backup);
-        privcand->diff_backup = NULL;
-
-        lyd_free_all(privcand->diff_privcand);
-        privcand->diff_privcand = NULL;
-
-        if ((err_info = sr_lyd_dup(running_vs_privcand, NULL, LYD_DUP_RECURSIVE, 1, &privcand->diff_privcand))) {
-            goto cleanup;
-        }
-        break;
-    case SR_PC_PREFER_RUNNING:
-        /* prepare privcand_vs_running diff to reflect datastore merge */
-        if ((err_info = pc_unlink_diff_nodes_r(&privcand_vs_running, privcand->diff_privcand, privcand, *conflict_set))) {
-            goto cleanup;
-        }
-
-        if ((err_info = sr_lyd_diff_apply_all(&privcand_ds_tree, privcand_vs_running))) {
-            goto cleanup;
-        }
-
-        /* reset private candidate to match current running datastore */
-        lyd_free_all(privcand->diff_backup);
-        privcand->diff_backup = NULL;
-        lyd_free_all(privcand->diff_privcand);
-        privcand->diff_privcand = NULL;
-
-        /* The current running is now considered the baseline for the private candidate datastore.
-         * Changes are stored in diff_privcand */
-        if ((err_info = sr_lyd_diff_siblings(running_ds_tree, privcand_ds_tree, 0, NULL, &privcand->diff_privcand))) {
-            goto cleanup;
-        }
-
-        sr_pc_free_conflicts(*conflict_set);
-        (*conflict_set) = NULL;
-        break;
-    case SR_PC_PREFER_CANDIDATE:
-        /*
-         * Remove conflicting nodes from diff, This ensures that the corresponding
-         * data from the private candidate is preserved
-         */
-        if ((err_info = pc_unlink_conflicting_nodes(&privcand_vs_running, conflict_set))) {
-            goto cleanup;
-        }
-
-        /* prepare privcand_vs_running diff to reflect datastore merge */
-        if ((err_info = pc_unlink_diff_nodes_r(&privcand_vs_running, privcand->diff_privcand, privcand, *conflict_set))) {
-            goto cleanup;
-        }
-
-        /* merge nodes that are not in conflict */
-        if ((err_info = sr_lyd_diff_apply_all(&privcand_ds_tree, privcand_vs_running))) {
-            goto cleanup;
-        }
-
-        /* reset private candidate to match current running datastore */
-        lyd_free_all(privcand->diff_backup);
-        privcand->diff_backup = NULL;
-
-        lyd_free_all(privcand->diff_privcand);
-        privcand->diff_privcand = NULL;
-
-        /* The current running is now considered the baseline for the private candidate datastore.
-         * Changes are stored in diff_privcand */
-        if ((err_info = sr_lyd_diff_siblings(running_ds_tree, privcand_ds_tree, 0, NULL, &privcand->diff_privcand))) {
-            goto cleanup;
-        }
-
-        sr_pc_free_conflicts(*conflict_set);
-        (*conflict_set) = NULL;
-        break;
-    default:
-        /* should never happen */
-        assert(0);
-        break;
     }
 
 cleanup:
-    lyd_free_all(running_vs_privcand);
-    lyd_free_all(final_diff);
-    lyd_free_all(privcand_vs_running);
+    return err_info;
+}
 
+/**
+ * @brief Find and unlink subtree based on target node.
+ *
+ * @param[in] target_node Node to search for in the source diff tree.
+ * @param[in,out] source_diff Diff tree where the unlink happens. May be updated if the removed node was the first sibling.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+pc_find_and_unlink_node(const struct lyd_node *target_node, struct lyd_node **source_diff)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *match = NULL;
+
+    if ((err_info = pc_find_node_r(*source_diff, target_node, &match))) {
+        goto cleanup;
+    }
+
+    sr_lyd_free_tree_safe(match, source_diff);
+
+cleanup:
     return err_info;
 }
 
 /**
  * @brief Store a conflict between candidate and running datastore nodes.
  *
- * After resolving the conflicts, the private candidate's internal diff is rebuilt to reflect the resolved state.
- *
- * @param[in] cand_iter Pointer to the conflicting node from the private candidate datastore.
- * @param[in] run_iter Pointer to the conflicting node from the running datastore.
- * @param[in] type The type of conflict.
- * @param[in] dup Wheter to duplicate @p run_iter and @p cand_iter into conflicts.
+ * @param[in] cand_node Conflicting node from the private candidate datastore.
+ * @param[in] run_node Conflicting node from the running datastore.
+ * @param[in] privcand Private candidate datastore structure.
+ * @param[in] type Type of conflict.
+ * @param[in] dup Wheter to duplicate @p run_node and @p cand_node into conflicts.
  *                If zero, the function will assign pointers without duplication.
- * @param[out] conflict_set List of conflicts which are not resolved yet.
+ * @param[out] conflict_set List of conflicts to store into.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-pc_add_conflict(struct lyd_node *cand_iter, struct lyd_node *run_iter, sr_pc_conflict_type_t type, int dup, sr_pc_conflict_set_t **conflict_set)
+pc_add_conflict(struct lyd_node *cand_node, struct lyd_node *run_node, sr_priv_cand_t *privcand, sr_pc_conflict_type_t type,
+        int dup, sr_pc_conflict_set_t **conflict_set)
 {
     sr_error_info_t *err_info = NULL;
-    sr_pc_conflict_info_t *c_info, *tmp;
+    sr_pc_conflict_info_t *c_info = NULL, *tmp;
+
+    /* no need to store conflicts for other resolutions */
+    if (privcand->conflict_resolution != SR_PC_REVERT_ON_CONFLICT) {
+        goto cleanup;
+    }
 
     if (conflict_set && !(*conflict_set)) {
         *conflict_set = calloc(1, sizeof(**conflict_set));
@@ -452,13 +125,11 @@ pc_add_conflict(struct lyd_node *cand_iter, struct lyd_node *run_iter, sr_pc_con
 
     /* allocate memory for new conflicts */
     tmp = realloc((*conflict_set)->conflicts, ((*conflict_set)->conflict_count + 1) * sizeof *tmp);
-
     SR_CHECK_MEM_GOTO(!tmp, err_info, cleanup);
 
     (*conflict_set)->conflicts = tmp;
-    memset(&tmp[(*conflict_set)->conflict_count], 0, sizeof *tmp);
-
     c_info = &(*conflict_set)->conflicts[(*conflict_set)->conflict_count];
+    memset(c_info, 0, sizeof *c_info);
 
     /*
      * Save the conflicting trees into the conflict structure.
@@ -468,16 +139,16 @@ pc_add_conflict(struct lyd_node *cand_iter, struct lyd_node *run_iter, sr_pc_con
      * the pointers without duplicating the data.
      */
     if (dup) {
-        if ((err_info = sr_lyd_dup(run_iter, NULL, LYD_DUP_WITH_PARENTS, 0, &c_info->run_diff))) {
+        if ((err_info = sr_lyd_dup(run_node, NULL, LYD_DUP_WITH_PARENTS, 0, &c_info->run_diff))) {
             goto cleanup;
         }
 
-        if ((err_info = sr_lyd_dup(cand_iter, NULL, LYD_DUP_WITH_PARENTS, 0, &c_info->pc_diff))) {
+        if ((err_info = sr_lyd_dup(cand_node, NULL, LYD_DUP_WITH_PARENTS, 0, &c_info->pc_diff))) {
             goto cleanup;
         }
     } else {
-        c_info->run_diff = run_iter;
-        c_info->pc_diff = cand_iter;
+        c_info->run_diff = run_node;
+        c_info->pc_diff = cand_node;
     }
 
     c_info->type = type;
@@ -485,9 +156,16 @@ pc_add_conflict(struct lyd_node *cand_iter, struct lyd_node *run_iter, sr_pc_con
     (*conflict_set)->conflict_count++;
 
 cleanup:
-    if (err_info && !dup) {
-        lyd_free_all(c_info->run_diff);
-        lyd_free_all(c_info->pc_diff);
+    if (err_info) {
+        if (dup) {
+            if (c_info) {
+                lyd_free_all(c_info->run_diff);
+                lyd_free_all(c_info->pc_diff);
+            }
+        } else {
+            lyd_free_all(run_node);
+            lyd_free_all(cand_node);
+        }
     }
 
     return err_info;
@@ -496,29 +174,29 @@ cleanup:
 /**
  * @brief Determine the specific type of conflict between candidate and running nodes.
  *
- * @param[in] node_type The YANG schema node type.
- * @param[in] diff_op_cand The diff operation applied to the candidate node.
- * @param[in] diff_op_run The diff operation applied to the running node.
+ * @param[in] node_type YANG schema node type.
+ * @param[in] cand_op Diff operation applied to the candidate node.
+ * @param[in] run_op Diff operation applied to the running node.
  * @return sr_pc_conflict_type_t The specific type of conflict identified between the two nodes.
  */
 static sr_pc_conflict_type_t
-pc_get_conflict_type(uint16_t node_type, enum edit_op diff_op_cand, enum edit_op diff_op_run)
+pc_get_conflict_type(uint16_t node_type, enum edit_op cand_op, enum edit_op run_op)
 {
     switch (node_type) {
     case LYS_LIST:
-        if ((diff_op_cand == EDIT_REPLACE) && (diff_op_run == EDIT_REPLACE)) {
+        if ((cand_op == EDIT_REPLACE) && (run_op == EDIT_REPLACE)) {
             return SR_PC_CONFLICT_LIST_ORDER;
         }
         return SR_PC_CONFLICT_LIST_ENTRY;
 
     case LYS_LEAF:
-        if ((diff_op_cand == EDIT_REPLACE) && (diff_op_run == EDIT_REPLACE)) {
+        if ((cand_op == EDIT_REPLACE) && (run_op == EDIT_REPLACE)) {
             return SR_PC_CONFLICT_VALUE_CHANGE;
         }
         return SR_PC_CONFLICT_LEAF_EXISTENCE;
 
     case LYS_LEAFLIST:
-        if ((diff_op_cand == EDIT_REPLACE) && (diff_op_run == EDIT_REPLACE)) {
+        if ((cand_op == EDIT_REPLACE) && (run_op == EDIT_REPLACE)) {
             return SR_PC_CONFLICT_LEAFLIST_ORDER;
         }
         return SR_PC_CONFLICT_LEAFLIST_ITEM;
@@ -529,7 +207,9 @@ pc_get_conflict_type(uint16_t node_type, enum edit_op diff_op_cand, enum edit_op
 
     case LYS_CONTAINER:
         return SR_PC_CONFLICT_PRESENCE_CONTAINER;
+
     default:
+        assert(0);
         break;
     }
 
@@ -543,7 +223,7 @@ pc_get_conflict_type(uint16_t node_type, enum edit_op diff_op_cand, enum edit_op
  * This function is used for adding list or leaf-list nodes,
  * duplicating the parent nodes only once when @p target is NULL.
  *
- * @param[in] src The source data node to duplicate.
+ * @param[in] src Source data node to duplicate.
  * @param[in,out] target Sibling list that receives the duplicated node.
  * @return err_info, NULL on success.
  */
@@ -578,37 +258,36 @@ cleanup:
 }
 
 /**
- * @brief categorize nodes based on relevance to the conflict.
+ * @brief Categorize nodes based on relevance to the conflict.
  *
  * - Nodes from @p run_diff are separated into:
- *      - @p list_entry_node : nodes representing create/delete operations.
- *      - @p list_order_node : nodes representing ordering modifications.
+ *      - @p list_entry_siblings : nodes representing create/delete operations.
+ *      - @p list_order_siblings : nodes representing ordering modifications.
  * - Nodes from @p cand_diff that participate in the conflict are duplicated into
- *      - @p cand_conflict_node.
+ *      - @p cand_conflict_siblings.
  *
  * @param[in] run_diff Running datastore's diff subtree.
  * @param[in] cand_diff Candidate's diff subtree.
- * @param[out] list_entry_node Set of nodes that cause list entry conflict.
- * @param[out] list_order_node Set of nodes that cause list order conflict.
- * @param[out] cand_conflict_node List of candidate nodes that are part of the detected conflict.
+ * @param[out] list_entry_siblings Siblings that cause list entry conflict.
+ * @param[out] list_order_siblings Siblings that cause list order conflict.
+ * @param[out] cand_conflict_siblings Siblings that are part of the detected conflict.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-pc_userord_conflict_types(struct lyd_node *run_diff, struct lyd_node *cand_diff, struct lyd_node **list_entry_node, struct lyd_node **list_order_node,
-        struct lyd_node **cand_conflict_node)
+pc_userord_conflict_types(struct lyd_node *run_diff, struct lyd_node *cand_diff, struct lyd_node **list_entry_siblings,
+        struct lyd_node **list_order_siblings, struct lyd_node **cand_conflict_siblings)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *iter;
     const struct lysc_node *current_schema;
     enum edit_op node_op;
 
-    *list_entry_node = NULL;
-    *list_order_node = NULL;
-    *cand_conflict_node = NULL;
-
-    current_schema = run_diff->schema;
+    *list_entry_siblings = NULL;
+    *list_order_siblings = NULL;
+    *cand_conflict_siblings = NULL;
 
     /* sort individual nodes into categories based on conflict */
+    current_schema = run_diff->schema;
     LY_LIST_FOR_SAFE(run_diff, iter, run_diff) {
         /* check if there are any other nodes on the same level besides the current list/leaf-list */
         if (run_diff->schema != current_schema) {
@@ -623,19 +302,19 @@ pc_userord_conflict_types(struct lyd_node *run_diff, struct lyd_node *cand_diff,
 
         /* separate nodes based on what type of conflict they cause */
         if ((node_op == EDIT_CREATE) || (node_op == EDIT_DELETE)) {
-            if ((err_info = pc_dup_and_insert(run_diff, list_entry_node))) {
+            if ((err_info = pc_dup_and_insert(run_diff, list_entry_siblings))) {
                 goto cleanup;
             }
         } else {
-            if ((err_info = pc_dup_and_insert(run_diff, list_order_node))) {
+            assert(node_op == EDIT_REPLACE);
+            if ((err_info = pc_dup_and_insert(run_diff, list_order_siblings))) {
                 goto cleanup;
             }
         }
     }
 
-    current_schema = cand_diff->schema;
-
     /* skip nodes with operation none, unwanted in list/leaflist conflict */
+    current_schema = cand_diff->schema;
     LY_LIST_FOR_SAFE(cand_diff, iter, cand_diff){
         if (cand_diff->schema != current_schema) {
             break;
@@ -647,52 +326,249 @@ pc_userord_conflict_types(struct lyd_node *run_diff, struct lyd_node *cand_diff,
             continue;
         }
 
-        if ((err_info = pc_dup_and_insert(cand_diff, cand_conflict_node))) {
+        if ((err_info = pc_dup_and_insert(cand_diff, cand_conflict_siblings))) {
             goto cleanup;
         }
     }
 
 cleanup:
     if (err_info) {
-        lyd_free_all(*list_entry_node);
-        lyd_free_all(*list_order_node);
-        lyd_free_all(*cand_conflict_node);
+        lyd_free_all(*list_entry_siblings);
+        list_entry_siblings = NULL;
+        lyd_free_all(*list_order_siblings);
+        list_order_siblings = NULL;
+        lyd_free_all(*cand_conflict_siblings);
+        cand_conflict_siblings = NULL;
     }
 
     return err_info;
 }
 
 /**
- * @brief Recursively detect and store conflicts between private candidate and running datastore.
+ * @brief Handle user-ordered list conflicts between running and candidate diffs according to the selected conflict
+ * resolution mode.
  *
- * @param[in] privcand_diff_node Pointer to the candidate's diff subtree.
- * @param[in] running_diff_node Pointer to the running datastore's diff subtree.
+ * @param[in] run_diff Running datastore's diff subtree.
+ * @param[in,out] cand_diff Candidate's diff subtree.
+ * @param[in] privcand Private candidate datastore structure.
  * @param[out] conflict_set List of conflicts which are not resolved yet.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-pc_generate_conflicts_r(const struct lyd_node *privcand_diff_node, const struct lyd_node *running_diff_node, sr_pc_conflict_set_t **conflict_set)
+pc_process_userord_conflict(struct lyd_node *run_diff, struct lyd_node **cand_diff, sr_priv_cand_t *privcand,
+        sr_pc_conflict_set_t **conflict_set)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *cand_iter = NULL, *run_iter = NULL, *tmp;
-    struct lyd_node *list_entry_node = NULL, *list_order_node = NULL, *cand_conflict_node = NULL, *cand_conflict_node_dup = NULL;
-    const struct lysc_node *current_schema;
-    enum edit_op run_op, cand_op;
-    int skip_inner_cykle = 0;
+    struct lyd_node *tmp, *list_entry_siblings = NULL, *list_order_siblings = NULL;
+    struct lyd_node *cand_conflict_siblings = NULL, *cand_conflict_siblings_dup = NULL;
+    struct lyd_node *iter, *next;
+    enum edit_op op;
 
-    /* No conflicts can occur */
-    if (!privcand_diff_node || !running_diff_node) {
-        return err_info;
+    switch (privcand->conflict_resolution) {
+    case SR_PC_REVERT_ON_CONFLICT:
+        /* sort nodes into categories based on conflict they cause */
+        if ((err_info = pc_userord_conflict_types(run_diff, *cand_diff, &list_entry_siblings, &list_order_siblings,
+                &cand_conflict_siblings))) {
+            goto cleanup;
+        }
+
+        /* create a duplicate for the second conflict only if we have both conflicts */
+        if (list_entry_siblings && list_order_siblings) {
+            if ((err_info = sr_lyd_dup(cand_conflict_siblings, NULL, LYD_DUP_WITH_PARENTS, 1, &cand_conflict_siblings_dup))) {
+                goto cleanup;
+            }
+        }
+
+        if (list_order_siblings) {
+            if ((err_info = pc_add_conflict(cand_conflict_siblings, list_order_siblings, privcand,
+                    pc_get_conflict_type(run_diff->schema->nodetype, EDIT_REPLACE, EDIT_REPLACE), 0, conflict_set))) {
+                goto cleanup;
+            }
+        }
+
+        if (list_entry_siblings) {
+            /* use the duplicate only if it exists, otherwise use the original node */
+            tmp = cand_conflict_siblings_dup ? cand_conflict_siblings_dup : cand_conflict_siblings;
+            if ((err_info = pc_add_conflict(tmp, list_entry_siblings, privcand,
+                    pc_get_conflict_type(run_diff->schema->nodetype, EDIT_CREATE, EDIT_CREATE), 0, conflict_set))) {
+                goto cleanup;
+            }
+        }
+
+        cand_conflict_siblings_dup = NULL;
+        break;
+    case SR_PC_PREFER_RUNNING:
+        LY_LIST_FOR_SAFE(*cand_diff, next, iter) {
+            /* conflicting node is removed from private candidate diff */
+            if (run_diff->schema == iter->schema) {
+                op = sr_edit_diff_find_oper(iter, 0, NULL);
+                if ((op != EDIT_NONE) && (op != 0)) {
+                    sr_lyd_free_tree_safe(iter, cand_diff);
+                }
+            } else {
+                break;
+            }
+        }
+        break;
+    case SR_PC_PREFER_CANDIDATE:
+        /* no conflict handling is needed here because the running configuration changes are ignored */
+        break;
+    default:
+        assert(0);
+        break;
     }
 
-    LY_LIST_FOR((struct lyd_node *)running_diff_node, run_iter) {
-        /* try to find the corresponding node */
+cleanup:
+    lyd_free_all(cand_conflict_siblings_dup);
+
+    return err_info;
+}
+
+/**
+ * @brief Handle conflicts unrelated to user-ordered lists between running and candidate diffs according to the selected
+ * conflict resolution mode.
+ *
+ * @param[in] run_diff Running datastore's diff subtree.
+ * @param[in,out] cand_diff Candidate's diff subtree.
+ * @param[in] cand_op Diff operation applied to the candidate node.
+ * @param[in] run_op Diff operation applied to the running node.
+ * @param[in] privcand Private candidate datastore structure.
+ * @param[out] conflict_set List of conflicts which are not resolved yet.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+pc_resolve_conflict(struct lyd_node *run_diff, struct lyd_node **cand_diff, enum edit_op run_op, enum edit_op cand_op,
+        sr_priv_cand_t *privcand, sr_pc_conflict_set_t **conflict_set)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *remove_node;
+
+    /* no need to store conflicts besides revert_on_conflcit */
+    switch (privcand->conflict_resolution) {
+    case SR_PC_REVERT_ON_CONFLICT:
+        if ((err_info = pc_add_conflict(*cand_diff, run_diff, privcand,
+                pc_get_conflict_type(run_diff->schema->nodetype, cand_op, run_op), 1, conflict_set))) {
+            goto cleanup;
+        }
+        break;
+    case SR_PC_PREFER_RUNNING:
+        /* conflicting node is removed from private candidate diff */
+        remove_node = *cand_diff;
+        *cand_diff = (*cand_diff)->next;
+        lyd_free_tree(remove_node);
+        break;
+    case SR_PC_PREFER_CANDIDATE:
+        /* no conflict handling is needed here because the running configuration changes are ignored */
+        break;
+    default:
+        assert(0);
+        break;
+    }
+
+cleanup:
+    return err_info;
+}
+
+/**
+ * @brief Process list and leaf-list nodes of the same schema from running and candidate diff subtrees and resolve
+ * or store conflicts according to the conflict resolution mode.
+ *
+ * @param[in] run_diff Running datastore's diff subtree.
+ * @param[in,out] cand_diff Candidate's diff subtree.
+ * @param[in] cand_iter Node form cand_diff where the conflict occurs.
+ * @param[in] run_op Diff operation applied to the running node.
+ * @param[in] cand_op Diff operation applied to the candidate node.
+ * @param[in,out] userord_conflict_stored Flag whether userdered list conflict was stored.
+ * @param[in] privcand Private candidate datastore structure.
+ * @param[out] conflict_set List of conflicts.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+pc_process_diff_trees_lists(struct lyd_node **run_diff, struct lyd_node **cand_diff, struct lyd_node *cand_iter,
+        enum edit_op run_op, enum edit_op cand_op, int *userord_conflict_stored, sr_priv_cand_t *privcand,
+        sr_pc_conflict_set_t **conflict_set)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node **cand_target;
+
+    if (!lysc_is_userordered((*run_diff)->schema)) {
+        cand_target = (cand_iter == *cand_diff) ? cand_diff : &cand_iter;
+        if ((err_info = pc_resolve_conflict(*run_diff, cand_target, run_op, cand_op, privcand, conflict_set))) {
+            goto cleanup;
+        }
+        goto cleanup;
+    }
+
+    /* process the whole userordered conflict */
+    if (!*userord_conflict_stored) {
+        /* move to the first sibling of the same schema */
+        if ((err_info = sr_lyd_find_sibling_val(cand_iter, (*run_diff)->schema, NULL, &cand_iter))) {
+            goto cleanup;
+        }
+
+        cand_target = (cand_iter == *cand_diff) ? cand_diff : &cand_iter;
+        if ((err_info = pc_process_userord_conflict(*run_diff, cand_target, privcand, conflict_set))) {
+            goto cleanup;
+        }
+
+        /* no more siblings of the same schema or schema changed */
+        if (!*cand_target || ((*cand_target)->schema != (*run_diff)->schema)) {
+            *userord_conflict_stored = 0;
+            goto cleanup;
+        }
+
+        *userord_conflict_stored = 1;
+    } else {
+        /* skip conflicting nodes */
+        while (*run_diff && (*run_diff)->next) {
+            /* stop if the next node belongs to a different schema */
+            if ((*run_diff)->next->schema != (*run_diff)->schema) {
+                *userord_conflict_stored = 0;
+                break;
+            }
+
+            run_op = sr_edit_diff_find_oper((*run_diff)->next, 0, NULL);
+
+            /* the parent node was modified in one datastore, while in the other datastore the modification
+             * happened on its child, this conflict is processed elsewhere */
+            if (run_op == EDIT_NONE) {
+                break;
+            }
+
+            *run_diff = (*run_diff)->next;
+        }
+    }
+
+cleanup:
+    return err_info;
+}
+
+/**
+ * @brief Recursively process running and candidate diffs, detect conflicts, and resolve or store them according to the
+ * conflict resolution mode.
+ *
+ * @param[in] run_diff Running datastore's diff tree.
+ * @param[in,out] cand_diff Candidate's diff tree.
+ * @param[in] privcand Private candidate datastore structure.
+ * @param[out] conflict_set List of conflicts which are not resolved yet.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+pc_process_diff_trees_r(const struct lyd_node *run_diff, struct lyd_node **cand_diff, sr_priv_cand_t *privcand,
+        sr_pc_conflict_set_t **conflict_set)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *cand_iter = NULL, *run_iter, *cand_child, **cand_target;
+    enum edit_op run_op, cand_op;
+    int skip_outer_loop = 0, userord_conflict_stored = 0;
+
+    LY_LIST_FOR((struct lyd_node *)run_diff, run_iter) {
         if (run_iter->schema->nodetype & (LYS_LIST | LYS_LEAFLIST)) {
-            if ((err_info = sr_lyd_find_sibling_first(privcand_diff_node, run_iter, &cand_iter))) {
+            if ((err_info = sr_lyd_find_sibling_first(*cand_diff, run_iter, &cand_iter))) {
                 goto cleanup;
             }
         } else {
-            if ((err_info = sr_lyd_find_sibling_val(privcand_diff_node, run_iter->schema, NULL, &cand_iter))) {
+            if ((err_info = sr_lyd_find_sibling_val(*cand_diff, run_iter->schema, NULL, &cand_iter))) {
                 goto cleanup;
             }
         }
@@ -701,21 +577,35 @@ pc_generate_conflicts_r(const struct lyd_node *privcand_diff_node, const struct 
         run_op = sr_edit_diff_find_oper(run_iter, 0, NULL);
         cand_op = sr_edit_diff_find_oper(cand_iter, 0, NULL);
 
-        /* no conflict in node continue with its child */
-        if (((run_op == EDIT_NONE) || (run_op == EDIT_CONTINUE)) && (((cand_op == EDIT_NONE) || (cand_op == EDIT_CONTINUE)))) {
-            if (cand_iter && run_iter->schema->nodetype & LYD_NODE_INNER) {
-                if ((err_info = pc_generate_conflicts_r(lyd_child(cand_iter), lyd_child(run_iter), conflict_set))) {
+        /* no conflict in unchanged node continue with its child */
+        if (((run_op == EDIT_NONE) || (run_op == 0)) && (((cand_op == EDIT_NONE) || (cand_op == 0)))) {
+            if (cand_iter && (run_iter->schema->nodetype & LYD_NODE_INNER)) {
+                cand_child = lyd_child_no_keys(cand_iter);
+                if ((err_info = pc_process_diff_trees_r(lyd_child_no_keys(run_iter), &cand_child, privcand, conflict_set))) {
+                    goto cleanup;
+                }
+            } else {
+                /* removing the node from diff_run means the original running datastore value will be used implicitly */
+                if ((err_info = pc_find_and_unlink_node(run_iter, &privcand->diff_run))) {
                     goto cleanup;
                 }
             }
             continue;
-        }
-        /* the parent node was modified in one datastore, while in the other datastore the modification happened on its child */
-        else if ((((run_op == EDIT_NONE) || (run_op == EDIT_CONTINUE)) && ((cand_iter) && ((cand_op == EDIT_DELETE) || (cand_op == EDIT_REPLACE)))) ||
-                (((run_op == EDIT_DELETE) || (run_op == EDIT_REPLACE)) && ((cand_iter) && ((cand_op == EDIT_NONE) || (cand_op == EDIT_CONTINUE))))) {
+        } else if ((((run_op == EDIT_NONE) || (run_op == 0)) && (cand_iter && (cand_op == EDIT_DELETE))) ||
+                ((run_op == EDIT_DELETE) && (cand_iter && ((cand_op == EDIT_NONE) || (cand_op == 0))))) {
+            /* the parent node was deleted in one datastore, while in the other datastore the modification happened on its child */
             if (run_iter->schema->nodetype & LYD_NODE_INNER) {
-                if ((err_info = pc_generate_conflicts_r(lyd_child(cand_iter), lyd_child(run_iter), conflict_set))) {
-                    goto cleanup;
+                if (privcand->conflict_resolution == SR_PC_REVERT_ON_CONFLICT) {
+                    cand_child = lyd_child_no_keys(cand_iter);
+                    if ((err_info = pc_process_diff_trees_r(lyd_child_no_keys(run_iter), &cand_child, privcand, conflict_set))) {
+                        goto cleanup;
+                    }
+                } else {
+                    /* no need to find child where conflict occurs */
+                    if ((err_info = pc_resolve_conflict(run_iter, cand_diff, run_op, cand_op, privcand, conflict_set))) {
+                        goto cleanup;
+                    }
+                    cand_iter = NULL;
                 }
                 continue;
             }
@@ -726,144 +616,123 @@ pc_generate_conflicts_r(const struct lyd_node *privcand_diff_node, const struct 
         case LYS_LIST:
         case LYS_LEAFLIST:
 
-            current_schema = run_iter->schema;
-
-            /* finding node based on value wasnt successful, try to find node based on schema */
+            /* finding node based on value was not successful, try to find node based on schema */
             if (!cand_iter) {
-                if ((err_info = sr_lyd_find_sibling_val(privcand_diff_node, current_schema, NULL, &cand_iter))) {
+                if ((err_info = sr_lyd_find_sibling_val(*cand_diff, run_iter->schema, NULL, &cand_iter))) {
                     goto cleanup;
                 }
                 cand_op = sr_edit_diff_find_oper(cand_iter, 0, NULL);
             }
 
-            /* node not found, there is no conflict */
             if (!cand_iter) {
+                /* there is no conflict. Removing the node from diff_run means the original running datastore value will
+                 * be used implicitly */
+                if ((err_info = pc_find_and_unlink_node(run_iter, &privcand->diff_run))) {
+                    goto cleanup;
+                }
                 break;
             }
 
-            if (lysc_is_userordered(run_iter->schema)) {
-
-                /* skip the nodes that do not cause the conflict till the new schema node */
-                while (cand_iter && (cand_op == EDIT_CONTINUE || cand_op == EDIT_NONE)) {
-                    if (cand_iter->next && (cand_iter->next->schema == current_schema)) {
-                        cand_iter = cand_iter->next;
-                        cand_op = sr_edit_diff_find_oper(cand_iter, 0, NULL);
-                    } else {
-                        /* there is no other node with same schema */
-                        skip_inner_cykle = 1;
-                        break;
-                    }
-                }
-
-                /* no conflict, continue */
-                if (skip_inner_cykle) {
-                    skip_inner_cykle = 0;
+            /* skip the nodes that do not cause the conflict till the new schema node */
+            while (cand_iter && ((cand_op == 0) || (cand_op == EDIT_NONE))) {
+                if (cand_iter->next && (cand_iter->next->schema == run_iter->schema)) {
+                    cand_iter = cand_iter->next;
+                    cand_op = sr_edit_diff_find_oper(cand_iter, 0, NULL);
+                } else {
+                    /* there is no other node with same schema */
+                    skip_outer_loop = 1;
                     break;
-                }
-
-                /* sort nodes into categories based on conflict they cause */
-                if ((err_info = pc_userord_conflict_types(run_iter, cand_iter, &list_entry_node, &list_order_node, &cand_conflict_node))) {
-                    goto cleanup;
-                }
-
-                /* create a duplicate for the second conflict only if we have both conflicts */
-                if (list_entry_node && list_order_node) {
-                    if ((err_info = sr_lyd_dup(cand_conflict_node, NULL, LYD_DUP_WITH_PARENTS, 1, &cand_conflict_node_dup))) {
-                        goto cleanup;
-                    }
-                }
-
-                if (list_order_node) {
-                    if ((err_info = pc_add_conflict(cand_conflict_node, list_order_node,
-                            pc_get_conflict_type(run_iter->schema->nodetype, EDIT_REPLACE, EDIT_REPLACE), 0, conflict_set))) {
-                        goto cleanup;
-                    }
-                }
-
-                if (list_entry_node) {
-                    /* use the duplicate only if it exists, otherwise use the original node */
-                    tmp = cand_conflict_node_dup ? cand_conflict_node_dup : cand_conflict_node;
-                    if ((err_info = pc_add_conflict(tmp, list_entry_node,
-                            pc_get_conflict_type(run_iter->schema->nodetype, EDIT_CREATE, EDIT_CREATE), 0, conflict_set))) {
-                        goto cleanup;
-                    }
-                }
-
-                /* check whether there are additional sibling nodes at the same level apart from the current list/leaf-list */
-                LY_LIST_FOR(run_iter, run_iter) {
-                    if (run_iter->next && (run_iter->next->schema != current_schema)) {
-                        current_schema = run_iter->next->schema;
-                        break;
-                    }
-                }
-            } else {
-                /* skip the nodes that do not cause the conflict till the new schema node */
-                while (cand_iter && (cand_op == EDIT_CONTINUE || cand_op == EDIT_NONE)) {
-                    if (cand_iter->next && (cand_iter->next->schema == current_schema)) {
-                        cand_iter = cand_iter->next;
-                        cand_op = sr_edit_diff_find_oper(cand_iter, 0, NULL);
-                    } else {
-                        /* there is no other node with same schema */
-                        skip_inner_cykle = 1;
-                        break;
-                    }
-                }
-
-                /* no conflict, continue */
-                if (skip_inner_cykle) {
-                    skip_inner_cykle = 0;
-                    break;
-                }
-
-                if ((err_info = pc_add_conflict(cand_iter, run_iter,
-                        pc_get_conflict_type(run_iter->schema->nodetype, cand_op, run_op), 1, conflict_set))) {
-                    goto cleanup;
                 }
             }
 
-            list_entry_node = NULL;
-            list_order_node = NULL;
-            cand_conflict_node = NULL;
-            cand_conflict_node_dup = NULL;
+            if (skip_outer_loop) {
+                /* there is no conflict, continue */
+                if ((err_info = pc_find_and_unlink_node(run_iter, &privcand->diff_run))) {
+                    goto cleanup;
+                }
+                skip_outer_loop = 0;
+                break;
+            }
 
-            /* there are no other siblings besides current list/leaflist */
-            if (!run_iter) {
+            if ((err_info = pc_process_diff_trees_lists(&run_iter, cand_diff, cand_iter, run_op, cand_op, &userord_conflict_stored,
+                    privcand, conflict_set))) {
                 goto cleanup;
             }
+
             break;
         case LYS_CONTAINER:
         case LYS_LEAF:
         case LYS_ANYDATA:
         case LYS_ANYXML:
-            /* generic conflict handling for other types */
-            /* there is no conflict */
             if (!cand_iter) {
+                /* there is no conflict */
+                if ((err_info = pc_find_and_unlink_node(run_iter, &privcand->diff_run))) {
+                    goto cleanup;
+                }
                 break;
             }
 
-            /* look for parent and its child conflict */
-            if (run_op == EDIT_CONTINUE) {
-                run_op = sr_edit_diff_find_oper(run_iter, 1, NULL);
-            } else if (cand_op == EDIT_CONTINUE) {
-                cand_op = sr_edit_diff_find_oper(cand_iter, 1, NULL);
-            }
-
-            if ((err_info = pc_add_conflict(cand_iter, run_iter,
-                    pc_get_conflict_type(run_iter->schema->nodetype, cand_op, run_op), 1, conflict_set))) {
+            cand_target = (cand_iter == *cand_diff) ? cand_diff : &cand_iter;
+            if ((err_info = pc_resolve_conflict(run_iter, cand_target, run_op, cand_op, privcand, conflict_set))) {
                 goto cleanup;
             }
+
             break;
         default:
+            assert(0);
             /* should never happen */
             break;
         }
     }
 
 cleanup:
-    if (cand_conflict_node_dup) {
-        lyd_free_all(cand_conflict_node_dup);
+    return err_info;
+}
+
+/**
+ * @brief Update private candidate datastore structure.
+ *
+ * @param[in,out] privcand Private candidate datastore structure.
+ * @param[in,out] conflict_set List of conflicts which will be resolved.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+pc_update_diff_privcand(sr_priv_cand_t *privcand, sr_pc_conflict_set_t **conflict_set)
+{
+    sr_error_info_t *err_info = NULL;
+
+    /* user resolves the conflicts by himself */
+    if ((privcand->conflict_resolution == SR_PC_REVERT_ON_CONFLICT) && conflict_set && (*conflict_set)) {
+        goto cleanup;
     }
 
+    /* already up to date */
+    if ((privcand->conflict_resolution == SR_PC_REVERT_ON_CONFLICT) && !privcand->diff_run) {
+        goto cleanup;
+    }
+
+    switch (privcand->conflict_resolution) {
+    case SR_PC_PREFER_RUNNING:
+        lyd_free_all(privcand->diff_run);
+        privcand->diff_run = NULL;
+        break;
+    case SR_PC_REVERT_ON_CONFLICT:
+    /* there is not a single node in conflict, merge datastores */
+    case SR_PC_PREFER_CANDIDATE:
+        if ((err_info = sr_lyd_diff_merge_all(&privcand->diff_run, privcand->diff_privcand))) {
+            goto cleanup;
+        }
+        lyd_free_all(privcand->diff_privcand);
+        privcand->diff_privcand = privcand->diff_run;
+        privcand->diff_run = NULL;
+        break;
+    default:
+        /* should never happen */
+        assert(0);
+        break;
+    }
+
+cleanup:
     return err_info;
 }
 
@@ -883,8 +752,7 @@ cleanup:
  */
 static int
 pc_update_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *UNUSED(module_name),
-        const char *UNUSED(xpath), sr_event_t UNUSED(event),
-        uint32_t UNUSED(request_id), void *private_data)
+        const char *UNUSED(xpath), sr_event_t UNUSED(event), uint32_t UNUSED(request_id), void *private_data)
 {
     sr_error_info_t *err_info = NULL;
     sr_priv_cand_t *privcand = private_data;
@@ -901,19 +769,19 @@ pc_update_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *UNU
     }
 
     /* merge the reversed changes */
-    if ((err_info = sr_lyd_diff_merge_all(&reversed_diff, privcand->diff_backup))) {
+    if ((err_info = sr_lyd_diff_merge_all(&reversed_diff, privcand->diff_run))) {
         goto cleanup;
     }
 
-    lyd_free_tree(privcand->diff_backup);
-    privcand->diff_backup = reversed_diff;
+    lyd_free_tree(privcand->diff_run);
+    privcand->diff_run = reversed_diff;
     reversed_diff = NULL;
 
 cleanup:
     lyd_free_all(reversed_diff);
 
     if (err_info) {
-        sr_session_set_error_message(session, err_info->err[0].error_format);
+        sr_session_set_error_message(session, err_info->err[0].message);
         ret = err_info->err[0].err_code;
         sr_errinfo_free(&err_info);
     }
@@ -936,12 +804,14 @@ sr_pc_create_ds(sr_session_ctx_t *session, uint32_t subscription_opts, sr_subscr
             (subscription && (subscription_opts && subscription_opts != SR_SUBSCR_NO_THREAD)),
             session, err_info);
 
+    /* backup datastore */
+    datastore = session->ds;
+
     /* allocate and initialize the private candidate structure */
     *privcand = calloc(1, sizeof(**privcand));
     SR_CHECK_MEM_GOTO(!*privcand, err_info, cleanup);
 
     /* temporarily switch to the running datastore to subscribe */
-    datastore = session->ds;
     session->ds = SR_DS_RUNNING;
 
     /* get the subscription for each module of the running datastore */
@@ -949,6 +819,11 @@ sr_pc_create_ds(sr_session_ctx_t *session, uint32_t subscription_opts, sr_subscr
 
         /* skip unimplemented modules and internal "sysrepo" module */
         if (!mod->implemented || !strcmp(mod->name, "sysrepo")) {
+            continue;
+        }
+
+        /* skip mudules that has no data */
+        if (!sr_module_has_data(mod, 0)) {
             continue;
         }
 
@@ -1006,14 +881,19 @@ sr_pc_destroy_ds(sr_priv_cand_t *privcand)
         return ret;
     }
 
-    lyd_free_all(privcand->diff_backup);
-    lyd_free_all(privcand->diff_privcand);
     if (privcand->subscription) {
-        ret = sr_unsubscribe(privcand->subscription);
+        if ((ret = sr_unsubscribe(privcand->subscription))) {
+            goto cleanup;
+        }
+
     }
+
+    lyd_free_all(privcand->diff_run);
+    lyd_free_all(privcand->diff_privcand);
 
     free(privcand);
 
+cleanup:
     return ret;
 }
 
@@ -1038,58 +918,21 @@ sr_pc_free_conflicts(sr_pc_conflict_set_t *conflict_set)
 /**
  * @brief Updates the private candidate datastore.
  *
- * This function reconstructs the current private candidate by:
- *   1. Replaying the original `diff_backup` to restore the initial state of the private candidate.
- *   2. Re-applying the changes from `diff_privcand` on top.
- *   3. Detecting and resolving conflicts with the current running datastore based on conflict resolution method.
- *
- *
- * @param[in] session Sysrepo session.
  * @param[in,out] privcand Private candidate structure to update.
+ * @param[out] conflict_set List of conflicts.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-_sr_pc_update(sr_session_ctx_t *session, sr_priv_cand_t *privcand, sr_pc_conflict_set_t **conflict_set)
+_sr_pc_update(sr_priv_cand_t *privcand, sr_pc_conflict_set_t **conflict_set)
 {
     sr_error_info_t *err_info = NULL;
-    struct sr_mod_info_s mod_info;
-    struct lyd_node *tree_privcand = NULL, *backup_vs_running = NULL;
+    struct lyd_node *running_changes_diff;
+    struct lyd_node *diff_run_backup = NULL, *diff_privcand_backup = NULL;
 
-    /* init modinfo */
-    sr_modinfo_init(&mod_info, session->conn, session->ds, session->ds, 0);
-
-    /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
-        return err_info;
-    }
-
-    /* adding all modules from diffs into mod_info*/
-    if ((err_info = sr_modinfo_collect_edit(privcand->diff_backup, &mod_info)) ||
-            (err_info = sr_modinfo_collect_edit(privcand->diff_privcand, &mod_info))) {
-        goto cleanup;
-    }
-
-    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_PERM_NO, session, 0, 0, 0))) {
-        goto cleanup;
-    }
-
-    /* duplicate the running datastore to reconstruct the private candidate backup */
-    if ((err_info = sr_lyd_dup(mod_info.data, NULL, LYD_DUP_RECURSIVE, 1, &tree_privcand))) {
-        goto cleanup;
-    }
-
-    /* apply the backup diff to restore the running datastore state at the time of private candidate creation */
-    if ((err_info = sr_lyd_diff_apply_all(&tree_privcand, privcand->diff_backup))) {
-        goto cleanup;
-    }
-
-    if ((err_info = sr_lyd_diff_siblings(tree_privcand, mod_info.data, 0, NULL, &backup_vs_running))) {
-        goto cleanup;
-    }
-
-    /* apply the private candidate diff to reconstruct the private candidate datastore */
-    if ((err_info = sr_lyd_diff_apply_all(&tree_privcand, privcand->diff_privcand))) {
-        goto cleanup;
+    /* Avoid unnecessary processing if no changes were made in the private candidate */
+    if (!privcand->diff_privcand) {
+        lyd_free_all(privcand->diff_run);
+        privcand->diff_run = NULL;
     }
 
     /* new update will discard old conflicts */
@@ -1098,30 +941,47 @@ _sr_pc_update(sr_session_ctx_t *session, sr_priv_cand_t *privcand, sr_pc_conflic
         (*conflict_set) = NULL;
     }
 
-    /* conflicts are stored only if conflict resolution is revert on conflict */
-    if ((err_info = pc_generate_conflicts_r(privcand->diff_privcand, backup_vs_running, conflict_set))) {
+    if ((err_info = sr_lyd_diff_reverse_all(privcand->diff_run, &running_changes_diff))) {
         goto cleanup;
     }
 
-    /* resolve conflicts between running and updated private candidate changes. */
-    if ((err_info = pc_update_diff_privcand(mod_info.data, tree_privcand, privcand, conflict_set))) {
+    if ((privcand->conflict_resolution == SR_PC_REVERT_ON_CONFLICT) && privcand->diff_run) {
+        if ((err_info = sr_lyd_dup(privcand->diff_privcand, NULL, LYD_DUP_RECURSIVE, 1, &diff_privcand_backup))) {
+            goto cleanup;
+        }
+
+        if ((err_info = sr_lyd_dup(privcand->diff_run, NULL, LYD_DUP_RECURSIVE, 1, &diff_run_backup))) {
+            goto cleanup;
+        }
+    }
+
+    /* prepare running and private candidate diff for merge */
+    if ((err_info = pc_process_diff_trees_r(running_changes_diff, &privcand->diff_privcand, privcand, conflict_set))) {
         goto cleanup;
+    }
+
+    if (!(conflict_set && (*conflict_set))) {
+        if ((err_info = pc_update_diff_privcand(privcand, conflict_set))) {
+            goto cleanup;
+        }
+    } else {
+        /* conflicts were found revert the state of run and cand diffs */
+        lyd_free_all(privcand->diff_privcand);
+        lyd_free_all(privcand->diff_run);
+        privcand->diff_privcand = diff_privcand_backup;
+        privcand->diff_run = diff_run_backup;
+        diff_privcand_backup = NULL;
+        diff_run_backup = NULL;
     }
 
 cleanup:
-    lyd_free_all(backup_vs_running);
-    lyd_free_all(tree_privcand);
-
-    /* MODULES UNLOCK */
-    sr_shmmod_modinfo_unlock(&mod_info);
-    sr_modinfo_erase(&mod_info);
-
-    /* CONTEXT UNLOCK */
-    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
-
     if (conflict_set && (*conflict_set)) {
-        sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Update failed. Unresolved conflicts.");
+        sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Update failed, there are unresolved conflicts.");
     }
+
+    lyd_free_all(diff_privcand_backup);
+    lyd_free_all(diff_run_backup);
+    lyd_free_all(running_changes_diff);
 
     return err_info;
 }
@@ -1131,9 +991,9 @@ sr_pc_update(sr_session_ctx_t *session, sr_priv_cand_t *privcand, sr_pc_conflict
 {
     sr_error_info_t *err_info = NULL;
 
-    SR_CHECK_ARG_APIRET(!session || !privcand, NULL, err_info);
+    SR_CHECK_ARG_APIRET(!privcand, NULL, err_info);
 
-    err_info = _sr_pc_update(session, privcand, conflict_set);
+    err_info = _sr_pc_update(privcand, conflict_set);
 
     return sr_api_ret(session, err_info);
 }
@@ -1145,25 +1005,32 @@ sr_pc_commit(sr_session_ctx_t *session, sr_priv_cand_t *privcand, sr_pc_conflict
     struct sr_mod_info_s mod_info;
     struct lyd_node *tree_privcand = NULL;
     sr_pc_conflict_resolution_t conflict_resolution_backup;
+    sr_datastore_t datastore;
     int ret = SR_ERR_OK;
 
     SR_CHECK_ARG_APIRET(!session || !privcand, NULL, err_info);
+
+    /* backup datastore */
+    datastore = session->ds;
+
+    /* temporarily switch to the running datastore */
+    session->ds = SR_DS_RUNNING;
+
+    /* implicit <update> operation always has a resolution of revert_on_conflict */
+    conflict_resolution_backup = privcand->conflict_resolution;
+    privcand->conflict_resolution = SR_PC_REVERT_ON_CONFLICT;
 
     /* if there are no changes in the private candidate diff, nothing to commit */
     if (!privcand->diff_privcand) {
         goto cleanup;
     }
 
-    /* implicit <update> operation always has a resolution of revert_on_conflict */
-    conflict_resolution_backup = privcand->conflict_resolution;
-    privcand->conflict_resolution = SR_PC_REVERT_ON_CONFLICT;
-
     /* check for conflicts before committing */
-    if ((err_info = _sr_pc_update(session, privcand, conflict_set))) {
+    if ((err_info = _sr_pc_update(privcand, conflict_set))) {
         goto cleanup;
     }
 
-    /* resolved conflicts can result in empty diff_pricand*/
+    /* resolved conflicts can result in empty diff_pricand */
     if (!privcand->diff_privcand) {
         goto cleanup;
     }
@@ -1176,7 +1043,7 @@ sr_pc_commit(sr_session_ctx_t *session, sr_priv_cand_t *privcand, sr_pc_conflict
         goto cleanup_unlock;
     }
 
-    /* adding all modules from diffs into mod_info*/
+    /* adding all modules from diffs into mod_info */
     if ((err_info = sr_modinfo_collect_edit(privcand->diff_privcand, &mod_info))) {
         goto cleanup_unlock;
     }
@@ -1221,14 +1088,13 @@ cleanup_unlock:
 
 cleanup:
     lyd_free_all(tree_privcand);
-
-    lyd_free_all(privcand->diff_backup);
-    privcand->diff_backup = NULL;
-
+    lyd_free_all(privcand->diff_run);
+    privcand->diff_run = NULL;
     lyd_free_all(privcand->diff_privcand);
     privcand->diff_privcand = NULL;
-
     privcand->conflict_resolution = conflict_resolution_backup;
+    /* restore the original datastore */
+    session->ds = datastore;
 
     return ret ? ret : sr_api_ret(session, err_info);
 }
@@ -1277,11 +1143,9 @@ sr_pc_edit_config(sr_session_ctx_t *session, sr_priv_cand_t *privcand, const str
         }
     }
 
-    /**
-     * creation of the final diff. After application to running datastore,
-     * a private candidate datastores will be constructed
-     */
-    if ((err_info = sr_lyd_diff_merge_all(&final_diff, privcand->diff_backup)) ||
+    /* creation of the final diff. After application to running datastore,
+     * a private candidate datastores will be constructed */
+    if ((err_info = sr_lyd_diff_merge_all(&final_diff, privcand->diff_run)) ||
             (err_info = sr_lyd_diff_merge_all(&final_diff, privcand->diff_privcand))) {
         goto cleanup;
     }
@@ -1303,7 +1167,7 @@ sr_pc_edit_config(sr_session_ctx_t *session, sr_priv_cand_t *privcand, const str
         goto cleanup;
     }
 
-    /* apply user changes to private candidate datastore*/
+    /* apply user changes to private candidate datastore */
     if ((err_info = sr_modinfo_edit_apply(&mod_info, dup_edit, 1, &err_info2))) {
         goto cleanup;
     }
@@ -1346,7 +1210,7 @@ sr_pc_discard_changes(sr_priv_cand_t *privcand)
 }
 
 API int
-sr_pc_get_data (sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, const uint32_t opts,
+sr_pc_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, const uint32_t opts,
         sr_priv_cand_t *privcand, sr_data_t **data)
 {
     sr_error_info_t *err_info = NULL;
@@ -1366,11 +1230,9 @@ sr_pc_get_data (sr_session_ctx_t *session, const char *xpath, uint32_t max_depth
         return sr_api_ret(session, err_info);
     }
 
-    /**
-     * creation of the final diff. After application to running datastore,
-     * a private candidate datastores will be constructed
-     */
-    if ((err_info = sr_lyd_diff_merge_all(&final_diff, privcand->diff_backup))) {
+    /* creation of the final diff. After application to running datastore,
+     * a private candidate datastores will be constructed */
+    if ((err_info = sr_lyd_diff_merge_all(&final_diff, privcand->diff_run))) {
         goto cleanup;
     }
 

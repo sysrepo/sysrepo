@@ -622,6 +622,17 @@ sr_error_info_t *sr_lyd_diff_siblings(const struct lyd_node *target, const struc
 sr_error_info_t *sr_lyd_diff_apply_all(struct lyd_node **data, const struct lyd_node *diff);
 
 /**
+ * @brief Apply the diff subtree on a data tree.
+ *
+ * @param[in,out] data_parent Parent of data to apply the diff subtree on.
+ * @param[in,out] data_first First sibling of the subtree.
+ * @param[in] diff_node Diff subtree to apply on data.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lyd_diff_apply_node(struct lyd_node *data_parent, struct lyd_node **data_first,
+        const struct lyd_node *diff_node);
+
+/**
  * @brief Apply diff of a specific module on data.
  *
  * @param[in,out] data Data to modify.
