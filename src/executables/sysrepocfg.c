@@ -99,8 +99,8 @@ help_print(void)
             "                               \"report-all-tagged\", \"trim\", \"explicit\", \"implicit-tagged\").\n"
             "                               Accepted by export, edit, rpc op.\n"
             "  -u, --value <value>/<path>   Node value to read or the file to write the value into. Accepted by set/get op.\n"
-            "  -v, --verbosity <level>      Change verbosity to a level (none, error, warning, info, debug) or\n"
-            "                               number (0, 1, 2, 3, 4).\n"
+            "  -v, --verbosity <level>      Change verbosity to a level (none, error, warning, info, verbose, debug) or\n"
+            "                               number (0, 1, 2, 3, 4, 5).\n"
             "\n");
 }
 
@@ -269,10 +269,10 @@ step_load_data(const struct ly_ctx *ly_ctx, const char *file_path, LYD_FORMAT fo
         lyrc = lyd_parse_data(ly_ctx, NULL, in, format, parse_flags, 0, data);
         break;
     case DATA_RPC:
-        lyrc = lyd_parse_op(ly_ctx, NULL, in, format, LYD_TYPE_RPC_YANG, data, NULL);
+        lyrc = lyd_parse_op(ly_ctx, NULL, in, format, LYD_TYPE_RPC_YANG, LYD_PARSE_STRICT, data, NULL);
         break;
     case DATA_NOTIF:
-        lyrc = lyd_parse_op(ly_ctx, NULL, in, format, LYD_TYPE_NOTIF_YANG, data, NULL);
+        lyrc = lyd_parse_op(ly_ctx, NULL, in, format, LYD_TYPE_NOTIF_YANG, LYD_PARSE_STRICT, data, NULL);
         break;
     }
     ly_in_free(in, 1);
@@ -359,7 +359,7 @@ op_export(sr_session_ctx_t *sess, const char *file_path, const char *module_name
     FILE *file = NULL;
     char *str;
     int r;
-    sr_get_options_t opts = SR_OPER_DEFAULT;
+    uint32_t opts = SR_OPER_DEFAULT;
 
     if ((sr_session_get_ds(sess) == SR_DS_OPERATIONAL) && no_subs) {
         opts |= SR_OPER_NO_SUBS;
@@ -396,7 +396,7 @@ op_export(sr_session_ctx_t *sess, const char *file_path, const char *module_name
     }
 
     /* print exported data */
-    lyd_print_file(file ? file : stdout, data ? data->tree : NULL, format, LYD_PRINT_WITHSIBLINGS | wd_opt);
+    lyd_print_file(file ? file : stdout, data ? data->tree : NULL, format, LYD_PRINT_SIBLINGS | wd_opt);
     sr_release_data(data);
 
     /* cleanup */
@@ -1009,9 +1009,11 @@ main(int argc, char **argv)
                 log_level = SR_LL_WRN;
             } else if (!strcmp(optarg, "info")) {
                 log_level = SR_LL_INF;
+            } else if (!strcmp(optarg, "verbose")) {
+                log_level = SR_LL_VRB;
             } else if (!strcmp(optarg, "debug")) {
                 log_level = SR_LL_DBG;
-            } else if ((strlen(optarg) == 1) && (optarg[0] >= '0') && (optarg[0] <= '4')) {
+            } else if ((strlen(optarg) == 1) && (optarg[0] >= '0') && (optarg[0] <= '5')) {
                 log_level = atoi(optarg);
             } else {
                 error_print(0, "Invalid verbosity \"%s\"", optarg);

@@ -40,7 +40,7 @@
  */
 sr_error_info_t *sr_subscr_change_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session_ctx_t *sess,
         const char *mod_name, const char *xpath, sr_module_change_cb change_cb, void *private_data, uint32_t priority,
-        sr_subscr_options_t sub_opts, sr_lock_mode_t has_subs_lock);
+        uint32_t sub_opts, sr_lock_mode_t has_subs_lock);
 
 /**
  * @brief Delete a change subscription from a subscription structure.
@@ -89,8 +89,7 @@ void sr_subscr_oper_get_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id);
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_subscr_oper_poll_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session_ctx_t *sess,
-        const char *mod_name, const char *path, uint32_t valid_ms, sr_subscr_options_t sub_opts,
-        sr_lock_mode_t has_subs_lock);
+        const char *mod_name, const char *path, uint32_t valid_ms, uint32_t sub_opts, sr_lock_mode_t has_subs_lock);
 
 /**
  * @brief Delete an operational poll subscription from a subscription structure.

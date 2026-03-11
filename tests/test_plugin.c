@@ -288,7 +288,6 @@ load_empty_ds(test_data_t *tdata)
             "    </ac1>\n"
             "  </simple-cont2>\n"
             "  <simple-cont3/>\n"
-            "  <simple-cont4/>\n"
             "  <simple-cont5/>\n"
             "</simple-cont>\n";
 
@@ -296,7 +295,7 @@ load_empty_ds(test_data_t *tdata)
     rc = sr_get_data(tdata->sess, "/plugin:*", 0, 0, 0, &data);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_ALL_TAG | LYD_PRINT_KEEPEMPTYCONT);
+    rc = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_ALL_TAG | LYD_PRINT_EMPTY_CONT);
     assert_int_equal(rc, LY_SUCCESS);
     sr_release_data(data);
 
@@ -446,7 +445,7 @@ store_and_load_example(test_data_t *tdata)
     rc = sr_get_data(tdata->sess, "/plugin:*", 0, 0, 0, &data);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_ALL_TAG);
+    rc = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_ALL_TAG);
     assert_int_equal(rc, LY_SUCCESS);
     sr_release_data(data);
 
@@ -815,7 +814,7 @@ store_and_load_complex(test_data_t *tdata)
     rc = sr_get_data(tdata->sess, "/plugin:*", 0, 0, 0, &data);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_ALL_TAG);
+    rc = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_ALL_TAG);
     assert_int_equal(rc, LY_SUCCESS);
     sr_release_data(data);
 
@@ -836,7 +835,7 @@ store_and_load_complex(test_data_t *tdata)
     rc = sr_get_data(tdata->sess, "/plugin:*", 0, 0, 0, &data);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_ALL_TAG);
+    rc = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_ALL_TAG);
     assert_int_equal(rc, LY_SUCCESS);
     sr_release_data(data);
 
@@ -880,8 +879,8 @@ teardown_store_oper(void **state)
         return 1;
     }
 
-    // delete all datastore data
-    rc = sr_discard_oper_changes(NULL, tdata->sess, "plugin", 0);
+    /* delete all datastore data */
+    rc = sr_discard_oper_changes(tdata->sess, "plugin", 0);
     if (rc != SR_ERR_OK) {
         return 1;
     }
@@ -949,13 +948,170 @@ test_store_oper(void **state)
     rc = sr_get_data(tdata->sess, "/plugin:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_ALL_TAG);
+    rc = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_ALL_TAG);
     assert_int_equal(rc, LY_SUCCESS);
     sr_release_data(data);
 
     // compare
     assert_string_equal(str1, str2);
     free(str1);
+}
+
+int
+teardown_all_stores(void **state)
+{
+    if (teardown_store(state)) {
+        return 1;
+    }
+
+    if (teardown_store_oper(state)) {
+        return 1;
+    }
+
+    return 0;
+}
+
+static void
+store_and_load_prefix(test_data_t *tdata, const char *first_store, const char *second_store)
+{
+    int rc;
+    struct lyd_node *node;
+    sr_data_t *data = NULL;
+    char *str = NULL;
+
+    /*
+     *   FIRST STORE
+     */
+    rc = lyd_parse_data_mem(tdata->ctx, first_store, LYD_XML, LYD_PARSE_STRICT | LYD_PARSE_ONLY, 0, &node);
+    assert_int_equal(rc, LY_SUCCESS);
+
+    rc = sr_edit_batch(tdata->sess, node, "replace");
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_apply_changes(tdata->sess, 0);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    lyd_free_all(node);
+
+    // load module
+    rc = sr_get_data(tdata->sess, "/plugin:*", 0, 0, 0, &data);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_ALL_TAG);
+    assert_int_equal(rc, LY_SUCCESS);
+    sr_release_data(data);
+
+    // compare
+    assert_string_equal(str, first_store);
+    free(str);
+
+    /*
+     *   SECOND STORE
+     */
+    rc = lyd_parse_data_mem(tdata->ctx, second_store, LYD_XML, LYD_PARSE_STRICT | LYD_PARSE_ONLY, 0, &node);
+    assert_int_equal(rc, LY_SUCCESS);
+
+    rc = sr_edit_batch(tdata->sess, node, "replace");
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = sr_apply_changes(tdata->sess, 0);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    lyd_free_all(node);
+
+    // load module
+    rc = sr_get_data(tdata->sess, "/plugin:*", 0, 0, 0, &data);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    rc = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_ALL_TAG);
+    assert_int_equal(rc, LY_SUCCESS);
+    sr_release_data(data);
+
+    // compare
+    assert_string_equal(str, second_store);
+    free(str);
+}
+
+/* TEST */
+static void
+test_remove_same_prefix(void **state)
+{
+    int rc;
+    test_data_t *tdata = *state;
+    const char *str1 =
+            "<simple-cont xmlns=\"s\">\n"
+            "  <simple-cont4>\n"
+            "    <leaf-prefix>me</leaf-prefix>\n"
+            "    <leaf-prefix2>me</leaf-prefix2>\n"
+            "    <prefix>\n"
+            "      <l>me</l>\n"
+            "    </prefix>\n"
+            "    <prefix2>\n"
+            "      <l>me</l>\n"
+            "    </prefix2>\n"
+            "  </simple-cont4>\n"
+            "</simple-cont>\n";
+    const char *str2 =
+            "<simple-cont xmlns=\"s\">\n"
+            "  <simple-cont4>\n"
+            "    <leaf-prefix2>me</leaf-prefix2>\n"
+            "    <prefix2>\n"
+            "      <l>me</l>\n"
+            "    </prefix2>\n"
+            "  </simple-cont4>\n"
+            "</simple-cont>\n";
+    const char *oper_str1 =
+            "<simple-cont xmlns=\"s\">\n"
+            "  <simple-cont4>\n"
+            "    <leaf-prefix>me</leaf-prefix>\n"
+            "    <leaf-prefix2>me</leaf-prefix2>\n"
+            "    <prefix>\n"
+            "      <l>me</l>\n"
+            "    </prefix>\n"
+            "    <prefix2>\n"
+            "      <l>me</l>\n"
+            "    </prefix2>\n"
+            "    <state-prefix>\n"
+            "      <l>me</l>\n"
+            "    </state-prefix>\n"
+            "    <state-prefix2>\n"
+            "      <l>me</l>\n"
+            "    </state-prefix2>\n"
+            "  </simple-cont4>\n"
+            "</simple-cont>\n";
+    const char *oper_str2 =
+            "<simple-cont xmlns=\"s\">\n"
+            "  <simple-cont4>\n"
+            "    <leaf-prefix2>me</leaf-prefix2>\n"
+            "    <prefix2>\n"
+            "      <l>me</l>\n"
+            "    </prefix2>\n"
+            "    <state-prefix2>\n"
+            "      <l>me</l>\n"
+            "    </state-prefix2>\n"
+            "  </simple-cont4>\n"
+            "</simple-cont>\n";
+
+    /* STARTUP */
+    rc = sr_session_switch_ds(tdata->sess, SR_DS_STARTUP);
+    assert_int_equal(rc, SR_ERR_OK);
+    store_and_load_prefix(tdata, str1, str2);
+
+    /* RUNNING */
+    rc = sr_session_switch_ds(tdata->sess, SR_DS_RUNNING);
+    assert_int_equal(rc, SR_ERR_OK);
+    store_and_load_prefix(tdata, str1, str2);
+
+    /* CANDIDATE */
+    rc = sr_session_switch_ds(tdata->sess, SR_DS_CANDIDATE);
+    assert_int_equal(rc, SR_ERR_OK);
+    store_and_load_prefix(tdata, str1, str2);
+
+    /* OPERATIONAL */
+    rc = sr_session_switch_ds(tdata->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(rc, SR_ERR_OK);
+    store_and_load_prefix(tdata, oper_str1, oper_str2);
+
 }
 
 int
@@ -1000,7 +1156,7 @@ check_access(char *username, char *groupname, mode_t perm, char *username_out, c
     free(username_out);
     assert_string_equal(groupname, groupname_out);
     free(groupname_out);
-    assert_true(perm == perm_out);
+    assert_true(perm == (perm_out & ~SR_UMASK));
 }
 
 /* TEST */
@@ -1012,11 +1168,6 @@ test_access_get(void **state)
     char *username = NULL, *groupname = NULL;
     char *username_out = NULL, *groupname_out = NULL;
     mode_t perm;
-
-    if (SR_UMASK) {
-        puts("Custom Sysrepo umask affects the test. Skipping.");
-        return;
-    }
 
     rc = testutil_uid2usr(getuid(), &username);
     assert_int_equal(rc, SR_ERR_OK);
@@ -1062,11 +1213,6 @@ test_access_setandget(void **state)
     char *username = NULL, *groupname = NULL;
     char *username_out = NULL, *groupname_out = NULL;
     mode_t perm;
-
-    if (SR_UMASK) {
-        puts("Custom Sysrepo umask affects the test. Skipping.");
-        return;
-    }
 
     rc = testutil_uid2usr(getuid(), &username);
     assert_int_equal(rc, SR_ERR_OK);
@@ -1262,7 +1408,7 @@ test_copy(void **state)
     rc = sr_get_data(tdata->sess, "/plugin:*", 0, 0, 0, &data);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_ALL_TAG);
+    rc = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_ALL_TAG);
     assert_int_equal(rc, LY_SUCCESS);
     sr_release_data(data);
 
@@ -1278,7 +1424,7 @@ test_copy(void **state)
     rc = sr_get_data(tdata->sess, "/plugin:*", 0, 0, 0, &data);
     assert_int_equal(rc, SR_ERR_OK);
 
-    rc = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_ALL_TAG);
+    rc = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_ALL_TAG);
     assert_int_equal(rc, LY_SUCCESS);
     sr_release_data(data);
 
@@ -1292,6 +1438,75 @@ test_copy(void **state)
     assert_true(perm == (S_IRUSR | S_IWUSR));
 }
 
+static void
+check_last_modif(test_data_t *tdata, sr_datastore_t ds, const char *path_to_last_modif, const char *store)
+{
+    sr_val_t *val1 = NULL, *val2 = NULL;
+    struct timespec ts1, ts2;
+    int rc;
+
+    rc = sr_session_switch_ds(tdata->sess, ds);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_set_item_str(tdata->sess, "/plugin:simple-cont/simple-cont2/ac1/acl1[acs1='primary']/acs2", store, NULL, 0);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_apply_changes(tdata->sess, 0);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_switch_ds(tdata->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_get_item(tdata->sess, path_to_last_modif, 0, &val1);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_switch_ds(tdata->sess, ds);
+    rc = sr_set_item_str(tdata->sess, "/plugin:simple-cont/simple-cont2/ac1/acl1[acs1='secondary']/acs2", store, NULL, 0);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_apply_changes(tdata->sess, 0);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = sr_session_switch_ds(tdata->sess, SR_DS_OPERATIONAL);
+    rc = sr_get_item(tdata->sess, path_to_last_modif, 0, &val2);
+    assert_int_equal(rc, SR_ERR_OK);
+    rc = ly_time_str2ts(val1->data.string_val, &ts1);
+    assert_int_equal(rc, LY_SUCCESS);
+    rc = ly_time_str2ts(val2->data.string_val, &ts2);
+    assert_int_equal(rc, LY_SUCCESS);
+    /* second save has latter timestamp than the first save */
+    assert_true(ts1.tv_sec < ts2.tv_sec || (ts1.tv_sec == ts2.tv_sec && ts1.tv_nsec < ts2.tv_nsec));
+    sr_free_val(val1);
+    val1 = NULL;
+    sr_free_val(val2);
+    val2 = NULL;
+}
+
+/* TEST */
+static void
+test_last_modif(void **state)
+{
+    test_data_t *tdata = *state;
+
+    /* last modif can be cached for files (and not modified correctly), skip */
+    if (!strcmp(plg_name, "JSON DS file")) {
+        return;
+    }
+
+    /* STARTUP */
+    check_last_modif(tdata, SR_DS_STARTUP,
+            "/sysrepo-monitoring:sysrepo-state/module[name='plugin']/datastore[name='ietf-datastores:startup']/last-modified",
+            "startup");
+
+    /* RUNNING */
+    check_last_modif(tdata, SR_DS_RUNNING,
+            "/sysrepo-monitoring:sysrepo-state/module[name='plugin']/datastore[name='ietf-datastores:running']/last-modified",
+            "running");
+
+    /* CANDIDATE */
+    check_last_modif(tdata, SR_DS_CANDIDATE,
+            "/sysrepo-monitoring:sysrepo-state/module[name='plugin']/datastore[name='ietf-datastores:candidate']/last-modified",
+            "candidate");
+
+    /* OPERATIONAL */
+    check_last_modif(tdata, SR_DS_OPERATIONAL,
+            "/sysrepo-monitoring:sysrepo-state/module[name='plugin']/datastore[name='ietf-datastores:operational']/last-modified",
+            "operational");
+}
+
 int
 main(void)
 {
@@ -1301,11 +1516,13 @@ main(void)
         cmocka_unit_test_teardown(test_store_example, teardown_store),
         cmocka_unit_test_teardown(test_store_complex, teardown_store),
         cmocka_unit_test_teardown(test_store_oper, teardown_store_oper),
+        cmocka_unit_test_teardown(test_remove_same_prefix, teardown_all_stores),
         cmocka_unit_test(test_access_get),
         cmocka_unit_test_teardown(test_access_setandget, teardown_access),
         cmocka_unit_test_teardown(test_access_setandget2, teardown_access),
         cmocka_unit_test(test_access_check),
         cmocka_unit_test_teardown(test_copy, teardown_store),
+        cmocka_unit_test_teardown(test_last_modif, teardown_all_stores),
     };
 
     int rc;
@@ -1324,9 +1541,9 @@ main(void)
         }
         gettimeofday(&end, NULL);
         if (end.tv_usec > start.tv_usec) {
-            printf("Tests of plugin %s lasted: %ld microseconds\n", plg_name, (end.tv_sec - start.tv_sec) * 1000000 + end.tv_usec - start.tv_usec);
+            printf("Tests of plugin %s lasted: %lld microseconds\n", plg_name, (long long)(end.tv_sec - start.tv_sec) * 1000000ll + end.tv_usec - start.tv_usec);
         } else {
-            printf("Tests of plugin %s lasted: %ld microseconds\n", plg_name, (end.tv_sec - start.tv_sec - 1) * 1000000 + 1000000 + end.tv_usec - start.tv_usec);
+            printf("Tests of plugin %s lasted: %lld microseconds\n", plg_name, (long long)(end.tv_sec - start.tv_sec - 1ll) * 1000000ll + 1000000ll + end.tv_usec - start.tv_usec);
         }
     }
 

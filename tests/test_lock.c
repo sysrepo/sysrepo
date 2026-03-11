@@ -357,6 +357,40 @@ test_get_lock(void **state)
 }
 
 /* TEST */
+static void
+test_commit(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_session_ctx_t *sess;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_CANDIDATE, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* lock the module */
+    ret = sr_lock(sess, "ietf-interfaces", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* edit data */
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth0']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* copy to running */
+    sr_session_switch_ds(sess, SR_DS_RUNNING);
+    ret = sr_copy_config(sess, "ietf-interfaces", SR_DS_CANDIDATE, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* unlock the module */
+    sr_session_switch_ds(sess, SR_DS_CANDIDATE);
+    ret = sr_unlock(sess, "ietf-interfaces");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_session_stop(sess);
+}
+
+/* TEST */
 static void *
 lock_timeout_thread(void *arg)
 {
@@ -443,6 +477,7 @@ main(void)
         cmocka_unit_test(test_multi_session),
         cmocka_unit_test(test_session_stop_unlock),
         cmocka_unit_test(test_get_lock),
+        cmocka_unit_test(test_commit),
         cmocka_unit_test(test_timeout),
     };
 

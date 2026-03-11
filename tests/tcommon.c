@@ -38,6 +38,10 @@ _test_log_msg(sr_log_level_t level, const char *message, const char *prefix)
     case SR_LL_INF:
         severity = "INF";
         break;
+    case SR_LL_VRB:
+        /*severity = "VRB";
+        break;*/
+        return;
     case SR_LL_DBG:
         /*severity = "DBG";
         break;*/
@@ -50,7 +54,7 @@ _test_log_msg(sr_log_level_t level, const char *message, const char *prefix)
     clock_gettime(CLOCK_REALTIME, &ts);
     ts.tv_sec %= 1000;
     ts.tv_nsec /= 1000;
-    fprintf(stderr, "%03ld.%06ld [%ld][%lu][%s]%s: %s\n", ts.tv_sec, ts.tv_nsec,
+    fprintf(stderr, "%03lld.%06ld [%ld][%lu][%s]%s: %s\n", (long long)ts.tv_sec, ts.tv_nsec,
             (long)getpid(), (unsigned long)pthread_self(), severity,
             prefix, message);
 }

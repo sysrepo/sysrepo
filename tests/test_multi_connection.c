@@ -63,8 +63,11 @@ setup_f(void **state)
     st = calloc(1, sizeof *st);
     *state = st;
 
+    /* use running cache */
+    sr_cache_running(1);
+
     /* connection 1 */
-    if (sr_connect(SR_CONN_CACHE_RUNNING, &(st->conn1)) != SR_ERR_OK) {
+    if (sr_connect(0, &(st->conn1)) != SR_ERR_OK) {
         return 1;
     }
     if (sr_session_start(st->conn1, SR_DS_RUNNING, &st->sess1) != SR_ERR_OK) {
@@ -72,7 +75,7 @@ setup_f(void **state)
     }
 
     /* connection 2 */
-    if (sr_connect(SR_CONN_CACHE_RUNNING, &(st->conn2)) != SR_ERR_OK) {
+    if (sr_connect(0, &(st->conn2)) != SR_ERR_OK) {
         return 1;
     }
     if (sr_session_start(st->conn2, SR_DS_RUNNING, &st->sess2) != SR_ERR_OK) {
@@ -80,7 +83,7 @@ setup_f(void **state)
     }
 
     /* connection 3 */
-    if (sr_connect(SR_CONN_CACHE_RUNNING, &(st->conn3)) != SR_ERR_OK) {
+    if (sr_connect(0, &(st->conn3)) != SR_ERR_OK) {
         return 1;
     }
     if (sr_session_start(st->conn3, SR_DS_RUNNING, &st->sess3) != SR_ERR_OK) {
@@ -169,7 +172,7 @@ test_create1(void **state)
 
     ret = sr_get_subtree(st->sess3, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_SHRINK);
     sr_release_data(subtree);
 
     const char *ptr = strstr(str, "ethS1");
@@ -435,7 +438,7 @@ test_sub_suspend(void **state)
     }
 
     /* discard all operational data */
-    ret = sr_discard_oper_changes(NULL, st->sess2, NULL, 0);
+    ret = sr_discard_oper_changes(st->sess2, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_session_switch_ds(st->sess2, SR_DS_RUNNING);
@@ -485,7 +488,7 @@ slow_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name
     (void)private_data;
 
     /* Wait longer than run cache lock timeout */
-    usleep(1000 * (1 + SR_CONN_RUN_CACHE_LOCK_TIMEOUT));
+    usleep(1000 * (1 + SR_RUN_CACHE_LOCK_TIMEOUT));
 
     return SR_ERR_OK;
 }
@@ -632,6 +635,7 @@ int
 main(void)
 {
     const struct CMUnitTest tests[] = {
+        cmocka_unit_test_teardown(test_ctx_change_with_cache, clear_interfaces),
         cmocka_unit_test_teardown(test_create1, clear_interfaces),
         cmocka_unit_test(test_new_conn),
         cmocka_unit_test_teardown(test_sub_suspend, clear_interfaces),

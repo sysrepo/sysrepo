@@ -4,8 +4,8 @@
  * @brief header for modinfo routines
  *
  * @copyright
- * Copyright (c) 2018 - 2024 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2024 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2025 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2025 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -37,7 +37,6 @@
 
 #define MOD_INFO_DATA       0x0100 /* module data were loaded */
 #define MOD_INFO_CHANGED    0x0200 /* module data were changed */
-#define MOD_INFO_XPATH_DYN  0x0400 /* module XPaths are dynamically allocated and need to be freed */
 
 /**
  * @brief Mod info structure, used for keeping all relevant modules for a data operation.
@@ -56,7 +55,11 @@ struct sr_mod_info_s {
         sr_mod_t *shm_mod;      /**< Module SHM structure. */
         const struct lys_module *ly_mod;    /**< Module libyang structure. */
         const struct sr_ds_handle_s *ds_handle[SR_DS_READ_COUNT];  /**< Module DS plugin handles, only the required ones are set. */
-        const char **xpaths;    /**< XPaths selecting the required data from the module, all data if NULL. */
+        struct sr_mod_info_xpath_s {
+            const char *xpath;  /**< XPath itself. */
+            int dyn;            /**< Flag marking an XPath that needs to be freed. */
+            int parent_only;    /**< Flag marking an XPath that is selecting a parent node only, does not require the subtree. */
+        } *xpaths;              /**< XPaths selecting the required data from the module, all data if NULL. */
         uint32_t xpath_count;   /**< Count of XPaths. */
         uint32_t state;         /**< Module state (flags). */
         uint32_t request_id;    /**< Request ID of the published event. */
@@ -66,19 +69,32 @@ struct sr_mod_info_s {
 };
 
 /**
+ * @brief Initialize mod info structure.
+ *
+ * @param[in,out] mod_info Mod info to initialize.
+ * @param[in] conn Connection to use.
+ * @param[in] ds Main datastore to use.
+ * @param[in] ds2 Secondary datastore to use, if different from @p ds.
+ * @param[in] op_id Operation ID of the operation, if 0 it is automatically incremented.
+ */
+void sr_modinfo_init(struct sr_mod_info_s *mod_info, sr_conn_ctx_t *conn, sr_datastore_t ds, sr_datastore_t ds2,
+        uint32_t op_id);
+
+/**
  * @brief Add a new module and/or XPath into mod info.
  *
  * If the module is already in @p mod_info only an XPath is added to it, if any.
  *
  * @param[in] ly_mod Module to be added.
  * @param[in] xpath Optional XPath selecting the required data of @p ly_mod.
- * @param[in] dup_xpath Whether to duplicate @p xpath or use it directly.
+ * @param[in] dyn Whether to duplicate @p xpath or use it directly.
+ * @param[in] parent_only Whether the XPath is for parent only, not requiring the subtree data.
  * @param[in] no_dup_check Skip duplicate module check and assume it was not yet added.
  * @param[in,out] mod_info Mod info to add the module to.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_modinfo_add(const struct lys_module *ly_mod, const char *xpath, int dup_xpath, int no_dup_check,
-        struct sr_mod_info_s *mod_info);
+sr_error_info_t *sr_modinfo_add(const struct lys_module *ly_mod, const char *xpath, int dyn, int parent_only,
+        int no_dup_check, struct sr_mod_info_s *mod_info);
 
 /**
  * @brief Add all modules defining some data into mod info.
@@ -122,13 +138,15 @@ sr_error_info_t *sr_modinfo_collect_xpath(const struct ly_ctx *ly_ctx, const cha
 /**
  * @brief Collect modules with oper push data of a session.
  *
+ * @details If the session is being stopped, get all modules if data was pushed in the past, even if no data exists now.
  * @param[in] sess Session to use.
  * @param[in] ly_mod Optional module to check and and add.
+ * @param[in] session_del Flag whether session is being stopped.
  * @param[in,out] mod_info Mod info to add to.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_modinfo_collect_oper_sess(sr_session_ctx_t *sess, const struct lys_module *ly_mod,
-        struct sr_mod_info_s *mod_info);
+        int session_del, struct sr_mod_info_s *mod_info);
 
 /**
  * @brief Collect required modules of (MOD_INFO_REQ & MOD_INFO_CHANGED) | MOD_INFO_INV_DEP modules in mod info.
@@ -226,6 +244,20 @@ sr_error_info_t *sr_modinfo_changesub_rdlock(struct sr_mod_info_s *mod_info);
 void sr_modinfo_changesub_rdunlock(struct sr_mod_info_s *mod_info);
 
 /**
+ * @brief Load and merge/process all the oper push data stored for a module.
+ *
+ * @param[in] mod Mod info module.
+ * @param[in] conn Connection to use.
+ * @param[in] sess Session whose oper push data should be loaded, if NULL, load data of all sessions with oper push data
+ * for this module.
+ * @param[in,out] mod_oper_data Optional module operational data to use.
+ * @param[in,out] data Operational data tree.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_module_oper_data_load(struct sr_mod_info_mod_s *mod, sr_conn_ctx_t *conn, sr_session_ctx_t *sess,
+        struct lyd_node **mod_oper_data, struct lyd_node **data);
+
+/**
  * @brief Get specific oper DS data based on the params.
  *
  * @param[in] mod_info Mod info to use.
@@ -302,16 +334,27 @@ sr_error_info_t *sr_modinfo_check_state_data(struct sr_mod_info_s *mod_info, sr_
 sr_error_info_t *sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, int output);
 
 /**
+ * @brief Merge data referenced in predicates in module change subscriptions of the relevant datastore to the notify diff.
+ *
+ * CHANGE SUB READ lock expected to be held.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_modinfo_change_diff_merge_pred_data(struct sr_mod_info_s *mod_info);
+
+/**
  * @brief Filter data from mod info.
  *
  * @param[in] mod_info Mod info to use.
  * @param[in] xpath Selected data.
  * @param[in] session Sysrepo session.
+ * @param[in] ignore_new_changes If set, do not use prepared edit changes or stored diff.
  * @param[out] result Resulting set of matching nodes.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_session_ctx_t *session,
-        struct ly_set **result);
+        int ignore_new_changes, struct ly_set **result);
 
 /**
  * @brief Publish "update" event for diff in mod info and update it is needed.

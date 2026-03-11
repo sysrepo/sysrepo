@@ -97,8 +97,8 @@ help_print(void)
             "  -h, --help           Prints usage help.\n"
             "  -V, --version        Prints only information about sysrepo version.\n"
             "  -v, --verbosity <level>\n"
-            "                       Change verbosity to a level (none, error, warning, info, debug) or\n"
-            "                       number (0, 1, 2, 3, 4).\n"
+            "                       Change verbosity to a level (none, error, warning, info, verbose, debug) or\n"
+            "                       number (0, 1, 2, 3, 4, 5).\n"
             "  -d, --debug          Debug mode - is not daemonized and logs to stderr instead of syslog.\n"
             "  -P, --plugin-install <path>\n"
             "                       Install a sysrepo-plugind plugin. The plugin is simply copied\n"
@@ -507,9 +507,11 @@ main(int argc, char **argv)
                 log_level = SR_LL_WRN;
             } else if (!strcmp(optarg, "info")) {
                 log_level = SR_LL_INF;
+            } else if (!strcmp(optarg, "verbose")) {
+                log_level = SR_LL_VRB;
             } else if (!strcmp(optarg, "debug")) {
                 log_level = SR_LL_DBG;
-            } else if ((strlen(optarg) == 1) && (optarg[0] >= '0') && (optarg[0] <= '4')) {
+            } else if ((strlen(optarg) == 1) && (optarg[0] >= '0') && (optarg[0] <= '5')) {
                 log_level = atoi(optarg);
             } else {
                 error_print(0, "Invalid verbosity \"%s\"", optarg);

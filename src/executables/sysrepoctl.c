@@ -5,7 +5,7 @@
  *
  * @copyright
  * Copyright (c) 2018 - 2022 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2022 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2025 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -40,7 +40,6 @@
 #define SRCTL_LIST_OWNER "Startup Owner"
 #define SRCTL_LIST_START_PERMS "Startup Perms"
 #define SRCTL_LIST_RUN_PERMS "Running Perms"
-#define SRCTL_LIST_SUBMODS "Submodules"
 #define SRCTL_LIST_FEATURES "Features"
 
 struct list_item {
@@ -51,8 +50,8 @@ struct list_item {
     char *owner;
     mode_t start_perms;
     mode_t run_perms;
-    char *submodules;
     char *features;
+    char *main_mod;
 };
 
 struct change_item {
@@ -136,8 +135,8 @@ help_print(void)
             "                       useful when there are mandatory top-level nodes. Accepted by install op.\n"
             "  -f, --force          Force the specific operation. Accepted by uninstall op.\n"
             "  -v, --verbosity <level>\n"
-            "                       Change verbosity to a level (none, error, warning, info, debug) or\n"
-            "                       number (0, 1, 2, 3, 4). Accepted by all op.\n"
+            "                       Change verbosity to a level (none, error, warning, info, verbose, debug) or\n"
+            "                       number (0, 1, 2, 3, 4, 5). Accepted by all op.\n"
             "\n");
 }
 
@@ -333,11 +332,10 @@ srctl_list_collect(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct list
 {
     struct list_item *cur_item;
     const struct lys_module *ly_mod;
-    const struct lysp_feature *f;
     char *owner, *group;
-    const char *str;
+    const char *str, *feat;
     int ret = SR_ERR_OK, enabled;
-    uint32_t idx = 0, idx2;
+    uint32_t idx = 0;
     LY_ARRAY_COUNT_TYPE u;
 
     while ((ly_mod = ly_ctx_get_module_iter(ly_ctx, &idx))) {
@@ -353,39 +351,32 @@ srctl_list_collect(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct list
         /* init */
         memset(cur_item, 0, sizeof *cur_item);
         cur_item->impl_flag = "";
-        cur_item->submodules = strdup("");
         cur_item->features = strdup("");
 
         /* name and revision */
         cur_item->name = strdup(ly_mod->name);
         cur_item->revision = ly_mod->revision ? strdup(ly_mod->revision) : strdup("");
 
+        /* replay-support */
+        enabled = 0;
         if (ly_mod->implemented) {
-            /* replay-support */
             ret = sr_get_module_replay_support(conn, ly_mod->name, NULL, &enabled);
             if (ret != SR_ERR_OK) {
-                return ret;
+                goto cleanup;
             }
-            cur_item->replay = enabled;
-        } else {
-            /* replay-support */
-            cur_item->replay = 0;
         }
+        cur_item->replay = enabled;
 
-        /* enabled features */
-        f = NULL;
-        idx2 = 0;
-        while ((f = lysp_feature_next(f, ly_mod->parsed, &idx2))) {
-            if (!(f->flags & LYS_FENABLED)) {
-                /* disabled, skip */
-                continue;
+        /* collect enabled features */
+        if (ly_mod->implemented) {
+            LY_ARRAY_FOR(ly_mod->compiled->features, u) {
+                feat = ly_mod->compiled->features[u];
+                cur_item->features = realloc(cur_item->features, strlen(cur_item->features) + strlen(feat) + 2);
+                if (cur_item->features[0]) {
+                    strcat(cur_item->features, " ");
+                }
+                strcat(cur_item->features, feat);
             }
-
-            cur_item->features = realloc(cur_item->features, strlen(cur_item->features) + strlen(f->name) + 2);
-            if (cur_item->features[0]) {
-                strcat(cur_item->features, " ");
-            }
-            strcat(cur_item->features, f->name);
         }
 
         if (ly_mod->implemented) {
@@ -395,11 +386,11 @@ srctl_list_collect(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct list
             /* owner and permissions */
             ret = sr_get_module_ds_access(conn, cur_item->name, SR_DS_STARTUP, &owner, &group, &cur_item->start_perms);
             if (ret != SR_ERR_OK) {
-                return ret;
+                goto cleanup;
             }
             ret = sr_get_module_ds_access(conn, cur_item->name, SR_DS_RUNNING, NULL, NULL, &cur_item->run_perms);
             if (ret != SR_ERR_OK) {
-                return ret;
+                goto cleanup;
             }
             cur_item->owner = malloc(strlen(owner) + 1 + strlen(group) + 1);
             sprintf(cur_item->owner, "%s:%s", owner, group);
@@ -415,30 +406,55 @@ srctl_list_collect(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct list
             cur_item->owner = strdup("");
         }
 
-        /* learn submodules */
-        LY_ARRAY_FOR(ly_mod->parsed->includes, u) {
-            str = ly_mod->parsed->includes[u].submodule->name;
-            cur_item->submodules = realloc(cur_item->submodules, strlen(cur_item->submodules) + 1 + strlen(str) + 1);
-            if (u) {
-                strcat(cur_item->submodules, " ");
+        /* new submodules */
+        LY_ARRAY_FOR(ly_mod->submodules, u) {
+            *list = realloc(*list, (*list_count + 1) * sizeof **list);
+            cur_item = &(*list)[*list_count];
+            ++(*list_count);
+
+            /* init a submodule */
+            memset(cur_item, 0, sizeof *cur_item);
+            cur_item->impl_flag = "s";
+            cur_item->features = strdup("");
+            cur_item->owner = strdup("");
+            cur_item->main_mod = strdup(ly_mod->name);
+
+            /* name and revision */
+            if (asprintf(&cur_item->name, " %s", ly_mod->submodules[u].name) == -1) {
+                error_print(0, "Memory allocation failed");
+                ret = SR_ERR_NO_MEMORY;
+                goto cleanup;
             }
-            strcat(cur_item->submodules, str);
+            str = ly_mod->submodules[u].revision;
+            cur_item->revision = str ? strdup(str) : strdup("");
         }
     }
 
-    return SR_ERR_OK;
+cleanup:
+    return ret;
 }
 
 static int
 srctl_list_cmp(const void *ptr1, const void *ptr2)
 {
     struct list_item *item1, *item2;
+    const char *str1, *str2;
 
     item1 = (struct list_item *)ptr1;
     item2 = (struct list_item *)ptr2;
 
+    if (item1->main_mod && item2->main_mod && !strcmp(item1->main_mod, item2->main_mod)) {
+        /* use submodule names of submodules of the same module */
+        str1 = item1->name + 1;
+        str2 = item2->name + 1;
+    } else {
+        /* otherwise always compare module names */
+        str1 = item1->main_mod ? item1->main_mod : item1->name;
+        str2 = item2->main_mod ? item2->main_mod : item2->name;
+    }
+
     /* sort alphabetically */
-    return strcmp(item1->name, item2->name);
+    return strcmp(str1, str2);
 }
 
 static int
@@ -449,7 +465,7 @@ srctl_list(sr_conn_ctx_t *conn)
     char flags_str[5], s_perm_str[12], r_perm_str[12];
     struct list_item *list = NULL;
     size_t i, line_len, list_count = 0;
-    int max_name_len, max_owner_len, max_submod_len, max_feat_len;
+    int max_name_len, max_owner_len, max_feat_len;
     int rev_len, flag_len, s_perm_len, r_perm_len;
 
     /* acquire context */
@@ -470,7 +486,6 @@ srctl_list(sr_conn_ctx_t *conn)
     max_owner_len = strlen(SRCTL_LIST_OWNER);
     s_perm_len = strlen(SRCTL_LIST_START_PERMS);
     r_perm_len = strlen(SRCTL_LIST_RUN_PERMS);
-    max_submod_len = strlen(SRCTL_LIST_SUBMODS);
     max_feat_len = strlen(SRCTL_LIST_FEATURES);
     for (i = 0; i < list_count; ++i) {
         if ((int)strlen(list[i].name) > max_name_len) {
@@ -478,9 +493,6 @@ srctl_list(sr_conn_ctx_t *conn)
         }
         if ((int)strlen(list[i].owner) > max_owner_len) {
             max_owner_len = strlen(list[i].owner);
-        }
-        if ((int)strlen(list[i].submodules) > max_submod_len) {
-            max_submod_len = strlen(list[i].submodules);
         }
         if ((int)strlen(list[i].features) > max_feat_len) {
             max_feat_len = strlen(list[i].features);
@@ -491,14 +503,14 @@ srctl_list(sr_conn_ctx_t *conn)
     printf("Sysrepo repository: %s\n\n", sr_get_repo_path());
 
     /* print header */
-    printf("%-*s | %-*s | %-*s | %-*s | %-*s | %-*s | %-*s | %-*s\n", max_name_len, SRCTL_LIST_NAME, rev_len,
+    printf("%-*s | %-*s | %-*s | %-*s | %-*s | %-*s | %-*s\n", max_name_len, SRCTL_LIST_NAME, rev_len,
             SRCTL_LIST_REVISION, flag_len, SRCTL_LIST_FLAGS, max_owner_len, SRCTL_LIST_OWNER,
             s_perm_len, SRCTL_LIST_START_PERMS, r_perm_len, SRCTL_LIST_RUN_PERMS,
-            max_submod_len, SRCTL_LIST_SUBMODS, max_feat_len, SRCTL_LIST_FEATURES);
+            max_feat_len, SRCTL_LIST_FEATURES);
 
     /* print ruler */
     line_len = max_name_len + 3 + rev_len + 3 + flag_len + 3 + max_owner_len + 3 + s_perm_len + 3 + r_perm_len + 3 +
-            max_submod_len + 3 + max_feat_len;
+            max_feat_len;
     for (i = 0; i < line_len; ++i) {
         printf("-");
     }
@@ -514,13 +526,13 @@ srctl_list(sr_conn_ctx_t *conn)
             s_perm_str[0] = '\0';
             r_perm_str[0] = '\0';
         }
-        printf("%-*s | %-*s | %-*s | %-*s | %-*s | %-*s | %-*s | %-*s\n", max_name_len, list[i].name,
+        printf("%-*s | %-*s | %-*s | %-*s | %-*s | %-*s | %-*s\n", max_name_len, list[i].name,
                 rev_len, list[i].revision, flag_len, flags_str, max_owner_len, list[i].owner, s_perm_len, s_perm_str,
-                r_perm_len, r_perm_str, max_submod_len, list[i].submodules, max_feat_len, list[i].features);
+                r_perm_len, r_perm_str, max_feat_len, list[i].features);
     }
 
     /* print flag legend */
-    printf("\nFlags meaning: I - Installed/i - Imported; R - Replay support\n\n");
+    printf("\nFlags meaning: I - Installed/i - Imported/s - Submodule; R - Replay support\n\n");
 
 cleanup:
     sr_release_context(conn);
@@ -528,8 +540,8 @@ cleanup:
         free(list[i].name);
         free(list[i].revision);
         free(list[i].owner);
-        free(list[i].submodules);
         free(list[i].features);
+        free(list[i].main_mod);
     }
     free(list);
     return ret;
@@ -891,9 +903,11 @@ main(int argc, char **argv)
                 log_level = SR_LL_WRN;
             } else if (!strcmp(optarg, "info")) {
                 log_level = SR_LL_INF;
+            } else if (!strcmp(optarg, "verbose")) {
+                log_level = SR_LL_VRB;
             } else if (!strcmp(optarg, "debug")) {
                 log_level = SR_LL_DBG;
-            } else if ((strlen(optarg) == 1) && (optarg[0] >= '0') && (optarg[0] <= '4')) {
+            } else if ((strlen(optarg) == 1) && (optarg[0] >= '0') && (optarg[0] <= '5')) {
                 log_level = atoi(optarg);
             } else {
                 error_print(0, "Invalid verbosity \"%s\"", optarg);

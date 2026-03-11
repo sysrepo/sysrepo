@@ -1,5 +1,5 @@
 module simple {
-    namespace s;
+    namespace urn:s;
     prefix s;
 
     container ac1 {
@@ -10,6 +10,12 @@ module simple {
         list acl1 {
             key acs1;
             leaf acs1 {
+                type string;
+            }
+            leaf l1 {
+                type string;
+            }
+            leaf l2 {
                 type string;
             }
         }

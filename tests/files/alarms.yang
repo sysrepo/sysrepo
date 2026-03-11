@@ -4,7 +4,6 @@ module alarms {
   prefix "a";
   import ietf-yang-types {
     prefix yang;
-    revision-date 2013-07-15;
   }
   grouping alarm {
     leaf fault-id {

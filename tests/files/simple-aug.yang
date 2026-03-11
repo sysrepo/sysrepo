@@ -1,5 +1,5 @@
 module simple-aug {
-    namespace sa;
+    namespace urn:sa;
     prefix sa;
     import simple {prefix s;}
 

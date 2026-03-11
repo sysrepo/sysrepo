@@ -34,11 +34,15 @@
 #include "sysrepo.h"
 #include "tests/tcommon.h"
 
+/**< loop count for tests where applicable */
+#define TEST_ITERATIONS 20
+
 struct state {
     sr_conn_ctx_t *conn;
     sr_session_ctx_t *sm_sess;
     ATOMIC_T cb_called, cb_called2, cb_called3;
     pthread_barrier_t barrier, barrier2, barrier4;
+    ATOMIC_T running;
 };
 
 static int
@@ -55,6 +59,8 @@ setup(void **state)
         TESTS_SRC_DIR "/files/when2.yang",
         TESTS_SRC_DIR "/files/defaults.yang",
         TESTS_SRC_DIR "/files/sm.yang",
+        TESTS_SRC_DIR "/files/ops.yang",
+        TESTS_SRC_DIR "/files/simple.yang",
         NULL
     };
 
@@ -62,6 +68,10 @@ setup(void **state)
     *state = st;
 
     if (sr_connect(0, &(st->conn)) != SR_ERR_OK) {
+        return 1;
+    }
+
+    if (sr_install_modules(st->conn, schema_paths, TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
 
@@ -73,11 +83,45 @@ setup(void **state)
             "/ietf-yang-schema-mount:schema-mounts/mount-point[module='sm'][label='root']/shared-schema", NULL, NULL, 0)) {
         return 1;
     }
-    if (sr_apply_changes(st->sm_sess, 0)) {
+    if (sr_set_item_str(st->sm_sess,
+            "/sm:root/ietf-yang-library:yang-library/module-set[name='mp']", NULL, NULL, 0)) {
         return 1;
     }
-
-    if (sr_install_modules(st->conn, schema_paths, TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
+    if (sr_set_item_str(st->sm_sess,
+            "/sm:root/ietf-yang-library:yang-library/module-set[name='mp']/module[name='ietf-yang-library']/namespace",
+            "urn:ietf:params:xml:ns:yang:ietf-yang-library", NULL, 0)) {
+        return 1;
+    }
+    if (sr_set_item_str(st->sm_sess,
+            "/sm:root/ietf-yang-library:yang-library/module-set[name='mp']/module[name='ietf-netconf']/namespace",
+            "urn:ietf:params:xml:ns:netconf:base:1.0", NULL, 0)) {
+        return 1;
+    }
+    if (sr_set_item_str(st->sm_sess,
+            "/sm:root/ietf-yang-library:yang-library/module-set[name='mp']/module[name='ietf-origin']/namespace",
+            "urn:ietf:params:xml:ns:yang:ietf-origin", NULL, 0)) {
+        return 1;
+    }
+    if (sr_set_item_str(st->sm_sess,
+            "/sm:root/ietf-yang-library:yang-library/module-set[name='mp']/module[name='ietf-interfaces']/namespace",
+            "urn:ietf:params:xml:ns:yang:ietf-interfaces", NULL, 0)) {
+        return 1;
+    }
+    if (sr_set_item_str(st->sm_sess,
+            "/sm:root/ietf-yang-library:yang-library/module-set[name='mp']/module[name='iana-if-type']/namespace",
+            "urn:ietf:params:xml:ns:yang:iana-if-type", NULL, 0)) {
+        return 1;
+    }
+    if (sr_set_item_str(st->sm_sess,
+            "/sm:root/ietf-yang-library:yang-library/module-set[name='mp']/module[name='ops']/namespace",
+            "urn:ops", NULL, 0)) {
+        return 1;
+    }
+    if (sr_set_item_str(st->sm_sess,
+            "/sm:root/ietf-yang-library:yang-library/content-id", "1", NULL, 0)) {
+        return 1;
+    }
+    if (sr_apply_changes(st->sm_sess, 0)) {
         return 1;
     }
 
@@ -98,6 +142,8 @@ teardown(void **state)
         "ietf-ip",
         "ietf-interfaces",
         "test",
+        "ops",
+        "simple",
         NULL
     };
 
@@ -120,6 +166,7 @@ setup_f(void **state)
     pthread_barrier_init(&st->barrier, NULL, 2);
     pthread_barrier_init(&st->barrier2, NULL, 2);
     pthread_barrier_init(&st->barrier4, NULL, 4);
+    ATOMIC_STORE_RELAXED(st->running, 1);
     return 0;
 }
 
@@ -270,7 +317,7 @@ module_change_done_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mo
         ret = sr_get_subtree(session, "/ietf-interfaces:interfaces", 0, &subtree);
         assert_int_equal(ret, SR_ERR_OK);
 
-        ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
+        ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_IMPL_TAG);
         assert_int_equal(ret, 0);
         sr_release_data(subtree);
 
@@ -279,13 +326,13 @@ module_change_done_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mo
                 "  <interface>\n"
                 "    <name>eth52</name>\n"
                 "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
-                "    <enabled xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\""
-                " ncwd:default=\"true\">true</enabled>\n"
+                "    <enabled xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\""
+                " dflt:default=\"true\">true</enabled>\n"
                 "    <ipv4 xmlns=\"urn:ietf:params:xml:ns:yang:ietf-ip\">\n"
-                "      <enabled xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\""
-                " ncwd:default=\"true\">true</enabled>\n"
-                "      <forwarding xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\""
-                " ncwd:default=\"true\">false</forwarding>\n"
+                "      <enabled xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\""
+                " dflt:default=\"true\">true</enabled>\n"
+                "      <forwarding xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\""
+                " dflt:default=\"true\">false</forwarding>\n"
                 "      <address>\n"
                 "        <ip>192.168.2.100</ip>\n"
                 "        <prefix-length>24</prefix-length>\n"
@@ -406,7 +453,7 @@ module_change_done_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mo
         ret = sr_get_subtree(session, "/ietf-interfaces:interfaces", 0, &subtree);
         assert_int_equal(ret, SR_ERR_OK);
 
-        ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+        ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
         assert_int_equal(ret, 0);
         sr_release_data(subtree);
 
@@ -459,7 +506,7 @@ apply_change_done_thread(void *arg)
     ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(subtree);
 
@@ -492,7 +539,7 @@ apply_change_done_thread(void *arg)
     /* check current data tree */
     ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_SHRINK);
     assert_int_equal(ret, 0);
     assert_null(str1);
     sr_release_data(subtree);
@@ -669,7 +716,7 @@ module_update_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_
         ret = sr_get_subtree(session, "/ietf-interfaces:interfaces", 0, &subtree);
         assert_int_equal(ret, SR_ERR_OK);
 
-        ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+        ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
         assert_int_equal(ret, 0);
         sr_release_data(subtree);
 
@@ -801,7 +848,7 @@ apply_update_thread(void *arg)
     ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(subtree);
 
@@ -832,7 +879,7 @@ apply_update_thread(void *arg)
     ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_SHRINK);
     assert_int_equal(ret, 0);
 
     assert_null(str1);
@@ -1361,7 +1408,7 @@ apply_update_fail_thread(void *arg)
     ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
 
     assert_null(str1);
@@ -1476,7 +1523,7 @@ test_update_foreign(void **state)
     /* check current data tree */
     ret = sr_get_data(sess, "/when1:* | /when2:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
@@ -1903,7 +1950,7 @@ apply_change_fail_thread(void *arg)
     ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
 
     assert_null(str1);
@@ -1928,7 +1975,7 @@ apply_change_fail_thread(void *arg)
     ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
 
     assert_null(str1);
@@ -2469,24 +2516,24 @@ apply_no_changes_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
             "<cont xmlns=\"urn:defaults\">\n"
-            "  <l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>\n"
-            "  <interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>\n"
+            "  <l xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">dflt</l>\n"
+            "  <interval xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">30</interval>\n"
             "</cont>\n"
             "<pcont xmlns=\"urn:defaults\">\n"
-            "  <ll xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">1</ll>\n"
-            "  <ll xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">2</ll>\n"
-            "  <ll xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">3</ll>\n"
-            "  <uni xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">some-ip</uni>\n"
-            "  <ll2 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">4</ll2>\n"
-            "  <ll2 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">5</ll2>\n"
-            "  <ll2 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">6</ll2>\n"
+            "  <ll xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">1</ll>\n"
+            "  <ll xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">2</ll>\n"
+            "  <ll xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">3</ll>\n"
+            "  <uni xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">some-ip</uni>\n"
+            "  <ll2 xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">4</ll2>\n"
+            "  <ll2 xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">5</ll2>\n"
+            "  <ll2 xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">6</ll2>\n"
             "</pcont>\n";
 
     assert_string_equal(str1, str2);
@@ -2518,15 +2565,15 @@ apply_no_changes_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
             "<cont xmlns=\"urn:defaults\">\n"
-            "  <l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>\n"
-            "  <interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>\n"
+            "  <l xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">dflt</l>\n"
+            "  <interval xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">30</interval>\n"
             "</cont>\n"
             "<pcont xmlns=\"urn:defaults\">\n"
             "  <ll>1</ll>\n"
@@ -2653,7 +2700,7 @@ module_change_any_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mod
         ret = sr_get_subtree(session, "/test:cont", 0, &subtree);
         assert_int_equal(ret, SR_ERR_OK);
 
-        ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+        ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
         assert_int_equal(ret, 0);
         sr_release_data(subtree);
 
@@ -2713,7 +2760,7 @@ module_change_any_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mod
         ret = sr_get_subtree(session, "/test:cont", 0, &subtree);
         assert_int_equal(ret, SR_ERR_OK);
 
-        ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+        ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
         assert_int_equal(ret, 0);
         sr_release_data(subtree);
 
@@ -2809,7 +2856,7 @@ apply_change_any_thread(void *arg)
     ret = sr_get_subtree(sess, "/test:cont", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(subtree);
 
@@ -2840,7 +2887,7 @@ apply_change_any_thread(void *arg)
     ret = sr_get_subtree(sess, "/test:cont", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(subtree);
 
@@ -3307,7 +3354,7 @@ apply_change_dflt_leaf_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
@@ -3317,17 +3364,17 @@ apply_change_dflt_leaf_thread(void *arg)
             "  <k>when-true</k>\n"
             "  <cont1>\n"
             "    <cont2>\n"
-            "      <dflt1 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">10</dflt1>\n"
+            "      <dflt1 xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">10</dflt1>\n"
             "    </cont2>\n"
             "    <ll>val</ll>\n"
             "  </cont1>\n"
             "</l1>\n"
-            "<dflt2 xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">"
+            "<dflt2 xmlns=\"urn:defaults\" xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">"
             "I exist!"
             "</dflt2>\n"
             "<cont xmlns=\"urn:defaults\">\n"
-            "  <l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>\n"
-            "  <interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>\n"
+            "  <l xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">dflt</l>\n"
+            "  <interval xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">30</interval>\n"
             "</cont>\n";
 
     assert_string_equal(str1, str2);
@@ -3349,7 +3396,7 @@ apply_change_dflt_leaf_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
@@ -3359,7 +3406,7 @@ apply_change_dflt_leaf_thread(void *arg)
             "  <k>when-true</k>\n"
             "  <cont1>\n"
             "    <cont2>\n"
-            "      <dflt1 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">10</dflt1>\n"
+            "      <dflt1 xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">10</dflt1>\n"
             "    </cont2>\n"
             "  </cont1>\n"
             "</l1>\n"
@@ -3367,8 +3414,8 @@ apply_change_dflt_leaf_thread(void *arg)
             "explicit"
             "</dflt2>\n"
             "<cont xmlns=\"urn:defaults\">\n"
-            "  <l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>\n"
-            "  <interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>\n"
+            "  <l xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">dflt</l>\n"
+            "  <interval xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">30</interval>\n"
             "</cont>\n";
 
     assert_string_equal(str1, str2);
@@ -3390,7 +3437,7 @@ apply_change_dflt_leaf_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
@@ -3404,12 +3451,12 @@ apply_change_dflt_leaf_thread(void *arg)
             "    </cont2>\n"
             "  </cont1>\n"
             "</l1>\n"
-            "<dflt2 xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">"
+            "<dflt2 xmlns=\"urn:defaults\" xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">"
             "I exist!"
             "</dflt2>\n"
             "<cont xmlns=\"urn:defaults\">\n"
-            "  <l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>\n"
-            "  <interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>\n"
+            "  <l xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">dflt</l>\n"
+            "  <interval xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">30</interval>\n"
             "</cont>\n";
 
     assert_string_equal(str1, str2);
@@ -3429,7 +3476,7 @@ apply_change_dflt_leaf_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
@@ -3443,12 +3490,12 @@ apply_change_dflt_leaf_thread(void *arg)
             "    </cont2>\n"
             "  </cont1>\n"
             "</l1>\n"
-            "<dflt2 xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">"
+            "<dflt2 xmlns=\"urn:defaults\" xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">"
             "I exist!"
             "</dflt2>\n"
             "<cont xmlns=\"urn:defaults\">\n"
-            "  <l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>\n"
-            "  <interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>\n"
+            "  <l xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">dflt</l>\n"
+            "  <interval xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">30</interval>\n"
             "</cont>\n";
 
     assert_string_equal(str1, str2);
@@ -3468,7 +3515,7 @@ apply_change_dflt_leaf_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
@@ -3478,16 +3525,16 @@ apply_change_dflt_leaf_thread(void *arg)
             "  <k>when-true</k>\n"
             "  <cont1>\n"
             "    <cont2>\n"
-            "      <dflt1 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">10</dflt1>\n"
+            "      <dflt1 xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">10</dflt1>\n"
             "    </cont2>\n"
             "  </cont1>\n"
             "</l1>\n"
-            "<dflt2 xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">"
+            "<dflt2 xmlns=\"urn:defaults\" xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">"
             "I exist!"
             "</dflt2>\n"
             "<cont xmlns=\"urn:defaults\">\n"
-            "  <l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>\n"
-            "  <interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>\n"
+            "  <l xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">dflt</l>\n"
+            "  <interval xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">30</interval>\n"
             "</cont>\n";
 
     assert_string_equal(str1, str2);
@@ -3816,20 +3863,6 @@ module_change_dflt_leaflist_cb(sr_session_ctx_t *session, uint32_t sub_id, const
         ret = sr_get_changes_iter(session, "/defaults:*//.", &iter);
         assert_int_equal(ret, SR_ERR_OK);
 
-        /* 1st change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        assert_int_equal(op, SR_OP_CREATED);
-        assert_null(old_val);
-        assert_non_null(new_val);
-        assert_int_equal(new_val->dflt, 0);
-        assert_int_equal(new_val->data.uint16_val, 4);
-        assert_string_equal(new_val->xpath, "/defaults:pcont/ll");
-
-        sr_free_val(new_val);
-
-        /* 2nd change */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
@@ -3842,7 +3875,6 @@ module_change_dflt_leaflist_cb(sr_session_ctx_t *session, uint32_t sub_id, const
 
         sr_free_val(old_val);
 
-        /* 3rd change */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
@@ -3855,7 +3887,18 @@ module_change_dflt_leaflist_cb(sr_session_ctx_t *session, uint32_t sub_id, const
 
         sr_free_val(old_val);
 
-        /* 4th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_int_equal(new_val->dflt, 0);
+        assert_int_equal(new_val->data.uint16_val, 4);
+        assert_string_equal(new_val->xpath, "/defaults:pcont/ll");
+
+        sr_free_val(new_val);
+
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
@@ -3871,7 +3914,6 @@ module_change_dflt_leaflist_cb(sr_session_ctx_t *session, uint32_t sub_id, const
         sr_free_val(old_val);
         sr_free_val(new_val);
 
-        /* 5th change */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
@@ -3888,7 +3930,6 @@ module_change_dflt_leaflist_cb(sr_session_ctx_t *session, uint32_t sub_id, const
         sr_free_val(old_val);
         sr_free_val(new_val);
 
-        /* 6th change */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
@@ -3901,7 +3942,6 @@ module_change_dflt_leaflist_cb(sr_session_ctx_t *session, uint32_t sub_id, const
 
         sr_free_val(old_val);
 
-        /* 7th change */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
@@ -3932,19 +3972,6 @@ module_change_dflt_leaflist_cb(sr_session_ctx_t *session, uint32_t sub_id, const
         ret = sr_get_changes_iter(session, "/defaults:*//.", &iter);
         assert_int_equal(ret, SR_ERR_OK);
 
-        /* 1st change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        assert_int_equal(op, SR_OP_DELETED);
-        assert_non_null(old_val);
-        assert_null(new_val);
-        assert_int_equal(old_val->data.uint16_val, 4);
-        assert_string_equal(old_val->xpath, "/defaults:pcont/ll");
-
-        sr_free_val(old_val);
-
-        /* 2nd change */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
@@ -3957,7 +3984,6 @@ module_change_dflt_leaflist_cb(sr_session_ctx_t *session, uint32_t sub_id, const
 
         sr_free_val(new_val);
 
-        /* 3rd change */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
@@ -3970,7 +3996,17 @@ module_change_dflt_leaflist_cb(sr_session_ctx_t *session, uint32_t sub_id, const
 
         sr_free_val(new_val);
 
-        /* 4th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_non_null(old_val);
+        assert_null(new_val);
+        assert_int_equal(old_val->data.uint16_val, 4);
+        assert_string_equal(old_val->xpath, "/defaults:pcont/ll");
+
+        sr_free_val(old_val);
+
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
@@ -3982,7 +4018,6 @@ module_change_dflt_leaflist_cb(sr_session_ctx_t *session, uint32_t sub_id, const
 
         sr_free_val(old_val);
 
-        /* 5th change */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
@@ -3999,7 +4034,6 @@ module_change_dflt_leaflist_cb(sr_session_ctx_t *session, uint32_t sub_id, const
         sr_free_val(old_val);
         sr_free_val(new_val);
 
-        /* 6th change */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
@@ -4565,7 +4599,7 @@ apply_change_dflt_create_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
@@ -4573,7 +4607,7 @@ apply_change_dflt_create_thread(void *arg)
     str2 =
             "<cont xmlns=\"urn:defaults\">\n"
             "  <l>dflt</l>\n"
-            "  <interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>\n"
+            "  <interval xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">30</interval>\n"
             "</cont>\n";
 
     assert_string_equal(str1, str2);
@@ -4589,15 +4623,15 @@ apply_change_dflt_create_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
             "<cont xmlns=\"urn:defaults\">\n"
-            "  <l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>\n"
-            "  <interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>\n"
+            "  <l xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">dflt</l>\n"
+            "  <interval xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">30</interval>\n"
             "</cont>\n";
 
     assert_string_equal(str1, str2);
@@ -6037,6 +6071,68 @@ test_filter_orig(void **state)
 
 /* TEST */
 static int
+module_sub_xpath_data_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+
+    (void)session;
+    (void)sub_id;
+    (void)xpath;
+    (void)event;
+    (void)request_id;
+
+    assert_string_equal(module_name, "simple");
+
+    ATOMIC_INC_RELAXED(st->cb_called);
+    return SR_ERR_OK;
+}
+
+static void
+test_sub_xpath_data(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *sub = NULL;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set some data */
+    ret = sr_set_item_str(sess, "/simple:ac1/acl1[acs1='item1key']/l1", "item1leaf1", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/simple:ac1/acl1[acs1='item1key']/l2", "item1leaf2", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe */
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 0);
+    ret = sr_module_change_subscribe(sess, "simple", "/simple:ac1/acl1[l1='item1leaf1']/l2", module_sub_xpath_data_cb,
+            st, 0, SR_SUBSCR_ENABLED | SR_SUBSCR_DONE_ONLY, &sub);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
+
+    /* perform changes */
+    ret = sr_set_item_str(sess, "/simple:ac1/acl1[acs1='item1key']/l2", "changed leaf", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
+
+    /* cleanup */
+    ret = sr_delete_item(sess, "/simple:ac1", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_unsubscribe(sub);
+    sr_session_stop(sess);
+}
+
+/* TEST */
+static int
 module_change_order_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
         sr_event_t event, uint32_t request_id, void *private_data)
 {
@@ -6684,6 +6780,8 @@ apply_change_enabled_thread(void *arg)
 
     /* subscription can start */
     pthread_barrier_wait(&st->barrier);
+    /* subscription created */
+    pthread_barrier_wait(&st->barrier);
 
     /* perform the changes in a loop */
     for (i = 1; i < 20; ++i) {
@@ -6728,6 +6826,8 @@ subscribe_change_enabled_thread(void *arg)
     ret = sr_module_change_subscribe(sess, "test", NULL, module_change_enabled_cb, st, 0,
             SR_SUBSCR_DONE_ONLY | SR_SUBSCR_ENABLED, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
+    /* signal subscription created */
+    pthread_barrier_wait(&st->barrier);
 
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
@@ -6935,6 +7035,62 @@ test_change_schema_mount(void **state)
 }
 
 /* TEST */
+static void
+test_change_schema_mount_data_autodel(void **arg)
+{
+    struct state *st = (struct state *)*arg;
+    sr_session_ctx_t *sess;
+    int ret;
+    struct lyd_node *notif = NULL;
+    sr_data_t *data = NULL;
+    const struct ly_ctx *ly_ctx;
+    char *str1 = NULL;
+
+    /* create a schema mount point */
+    ret = sr_session_start(st->conn, SR_DS_OPERATIONAL, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess,
+            "/ietf-yang-schema-mount:schema-mounts/mount-point[module='sm'][label='root']/shared-schema", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* try to parse some data */
+    ly_ctx = sr_acquire_context(st->conn);
+    assert_non_null(ly_ctx);
+    assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, ly_ctx, "/sm:root/ops:notif4/l", "val", 0, &notif));
+    lyd_free_all(notif);
+    sr_release_context(st->conn);
+
+    /* create some mount point data */
+    sr_session_switch_ds(sess, SR_DS_RUNNING);
+    ret = sr_set_item_str(sess,
+            "/sm:root/ops:cont/list1[k='key']/cont2/nl", "value", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* delete the mount point */
+    sr_session_switch_ds(sess, SR_DS_OPERATIONAL);
+    ret = sr_delete_item(sess, "/ietf-yang-schema-mount:schema-mounts/mount-point[module='sm'][label='root']", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check if the mount point data are still there */
+    ret = sr_get_data(sess, "/sm:root/ops:cont", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(data);
+    assert_int_equal(ret, LY_SUCCESS);
+    assert_null(str1);
+
+    /* cleanup */
+    sr_session_stop(sess);
+}
+
+/* TEST */
 static int
 oper_write_starve_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
         const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
@@ -7091,8 +7247,6 @@ test_write_starve(void **state)
 }
 
 /* TEST */
-#define APPLY_ITERATIONS 50
-
 static void *
 apply_when1_thread(void *arg)
 {
@@ -7106,7 +7260,7 @@ apply_when1_thread(void *arg)
     ret = sr_session_start(conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
-    for (int i = 0; i < APPLY_ITERATIONS; i++) {
+    for (int i = 0; i < TEST_ITERATIONS; i++) {
         /* let other thread also run */
         pthread_barrier_wait(&st->barrier);
 
@@ -7154,7 +7308,7 @@ apply_when2_thread(void *arg)
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    for (int i = 0; i < APPLY_ITERATIONS; i++) {
+    for (int i = 0; i < TEST_ITERATIONS; i++) {
         /* let other thread also run */
         pthread_barrier_wait(&st->barrier);
 
@@ -7294,6 +7448,144 @@ test_done_timeout_priority(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     sr_session_stop(sess);
+}
+
+/* TEST */
+static int
+module_diff_reuse_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
+{
+    (void)sub_id;
+    (void)xpath;
+    (void)request_id;
+
+    struct state *st = (struct state *)private_data;
+    const struct lyd_node *diff = NULL;
+    int ret;
+    uint32_t cb_called = ATOMIC_INC_RELAXED(st->cb_called);
+
+    char *diff_str = NULL;
+    const char *intf_diff =
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\" xmlns:yang=\"urn:ietf:params:xml:ns:yang:1\" yang:operation=\"none\">\n"
+            "  <interface yang:operation=\"create\">\n"
+            "    <name>eth52</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
+
+    const char *test_diff = "<l1 xmlns=\"urn:test\" xmlns:yang=\"urn:ietf:params:xml:ns:yang:1\" yang:key=\"\" yang:operation=\"create\">\n"
+            "  <k>key1</k>\n"
+            "  <v>1</v>\n"
+            "</l1>\n";
+    const char *full_diff =
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\" xmlns:yang=\"urn:ietf:params:xml:ns:yang:1\" yang:operation=\"none\">\n"
+            "  <interface yang:operation=\"create\">\n"
+            "    <name>eth52</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "  </interface>\n"
+            "</interfaces>\n"
+            "<l1 xmlns=\"urn:test\" xmlns:yang=\"urn:ietf:params:xml:ns:yang:1\" yang:key=\"\" yang:operation=\"create\">\n"
+            "  <k>key1</k>\n"
+            "  <v>1</v>\n"
+            "</l1>\n";
+
+    const size_t NUM_SUBS = 7;
+
+    diff = sr_get_change_diff(session);
+    ret = lyd_print_mem(&diff_str, diff, LYD_XML, LYD_PRINT_SIBLINGS);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    if (cb_called < NUM_SUBS) {
+        assert_int_equal(event, SR_EV_CHANGE);
+    } else {
+        assert_int_equal(event, SR_EV_DONE);
+    }
+
+    if (!strcmp(module_name, "test")) {
+        /* test module will always receive module specific diff */
+        assert_string_equal(diff_str, test_diff);
+    } else {
+        switch (cb_called % NUM_SUBS) {
+        case 0:
+        case 1:
+        /* priority 10 module_diff */
+        case 5:
+        case 6:
+            /* priority 30 module diff */
+            assert_string_equal(diff_str, intf_diff);
+            break;
+        case 2:
+        case 3:
+        case 4:
+            /* priority 20 full diff as we have a ALL_MODULES sub */
+            assert_string_equal(diff_str, full_diff);
+            break;
+        default:
+            fail();
+            break;
+        }
+    }
+
+    free(diff_str);
+    return SR_ERR_OK;
+}
+
+static void
+test_diff_reuse(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr = NULL;
+    sr_session_ctx_t *sess;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+    /* create a subscription requesting an all-modules diff */
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", "/ietf-interfaces:interfaces", module_diff_reuse_cb, st, 20, SR_SUBSCR_CHANGE_ALL_MODULES, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* create normal subscriptions at different priorities */
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, module_diff_reuse_cb, st, 10, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, module_diff_reuse_cb, st, 20, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, module_diff_reuse_cb, st, 30, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_module_change_subscribe(sess, "test", NULL, module_diff_reuse_cb, st, 10, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_module_change_subscribe(sess, "test", NULL, module_diff_reuse_cb, st, 20, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_module_change_subscribe(sess, "test", NULL, module_diff_reuse_cb, st, 30, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* create changes for multiple modules */
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth52']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(sess, "/test:l1[k='key1']/v", "1", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 14);
+
+    ret = sr_unsubscribe(subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_delete_item(sess, "/ietf-interfaces:interfaces", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_delete_item(sess, "/test:l1", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_session_stop(sess);
+    assert_int_equal(ret, SR_ERR_OK);
 }
 
 /* TEST */
@@ -7897,7 +8189,7 @@ apply_list_replace_thread(void *arg)
     /* check current data tree */
     ret = sr_get_data(sess, "/ietf-interfaces:interfaces", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_SHRINK);
     sr_release_data(data);
     assert_int_equal(ret, LY_SUCCESS);
 
@@ -7963,141 +8255,195 @@ test_list_replace(void **state)
 }
 
 /* TEST */
-static int
-module_diff_reuse_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
-        sr_event_t event, uint32_t request_id, void *private_data)
+static void *
+locked_write_thread(void *arg)
 {
-    (void)sub_id;
-    (void)xpath;
-    (void)request_id;
-
-    struct state *st = (struct state *)private_data;
-    const struct lyd_node *diff = NULL;
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    uint32_t i;
     int ret;
-    uint32_t cb_called = ATOMIC_INC_RELAXED(st->cb_called);
 
-    char *diff_str = NULL;
-    const char *intf_diff =
-            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\" xmlns:yang=\"urn:ietf:params:xml:ns:yang:1\" yang:operation=\"none\">\n"
-            "  <interface yang:operation=\"create\">\n"
-            "    <name>eth52</name>\n"
-            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
-            "  </interface>\n"
-            "</interfaces>\n";
-
-    const char *test_diff = "<l1 xmlns=\"urn:test\" xmlns:yang=\"urn:ietf:params:xml:ns:yang:1\" yang:key=\"\" yang:operation=\"create\">\n"
-            "  <k>key1</k>\n"
-            "  <v>1</v>\n"
-            "</l1>\n";
-    const char *full_diff =
-            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\" xmlns:yang=\"urn:ietf:params:xml:ns:yang:1\" yang:operation=\"none\">\n"
-            "  <interface yang:operation=\"create\">\n"
-            "    <name>eth52</name>\n"
-            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
-            "  </interface>\n"
-            "</interfaces>\n"
-            "<l1 xmlns=\"urn:test\" xmlns:yang=\"urn:ietf:params:xml:ns:yang:1\" yang:key=\"\" yang:operation=\"create\">\n"
-            "  <k>key1</k>\n"
-            "  <v>1</v>\n"
-            "</l1>\n";
-
-    const size_t NUM_SUBS = 7;
-
-    diff = sr_get_change_diff(session);
-    ret = lyd_print_mem(&diff_str, diff, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
-    if (cb_called < NUM_SUBS) {
-        assert_int_equal(event, SR_EV_CHANGE);
-    } else {
-        assert_int_equal(event, SR_EV_DONE);
+    /* set some data */
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth0']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']"
+            "/prefix-length", "24", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for other thread  */
+    pthread_barrier_wait(&st->barrier);
+
+    /* keep changing data in locked DS */
+    for (i = 0; i < TEST_ITERATIONS / 2; ++i) {
+        ret = sr_lock(sess, NULL, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address[ip='192.168.2.100']"
+                "/prefix-length", (i % 2) ? "16" : "24", NULL, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+        ret = sr_apply_changes(sess, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        ret = sr_unlock(sess, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
     }
 
-    if (!strcmp(module_name, "test")) {
-        /* test module will always receive module specific diff */
-        assert_string_equal(diff_str, test_diff);
-    } else {
-        switch (cb_called % NUM_SUBS) {
-        case 0:
-        case 1:
-        /* priority 10 module_diff */
-        case 5:
-        case 6:
-            /* priority 30 module diff */
-            assert_string_equal(diff_str, intf_diff);
-            break;
-        case 2:
-        case 3:
-        case 4:
-            /* priority 20 full diff as we have a ALL_MODULES sub */
-            assert_string_equal(diff_str, full_diff);
-            break;
-        default:
-            fail();
-            break;
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void *
+unlocked_write_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    uint32_t i;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set some data */
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth1']/ietf-ip:ipv4/address[ip='192.168.2.100']"
+            "/prefix-length", "24", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for other thread  */
+    pthread_barrier_wait(&st->barrier);
+
+    /* keep changing data in unlocked DS */
+    for (i = 0; i < TEST_ITERATIONS; ++i) {
+        ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth1']/ietf-ip:ipv4/address[ip='192.168.2.100']"
+                "/prefix-length", (i % 2) ? "16" : "24", NULL, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+        while (1) {
+            /* give the other thread a chance */
+            usleep(20000);
+            if (sr_apply_changes(sess, 0) != SR_ERR_LOCKED) {
+                break;
+            }
         }
+        assert_int_equal(ret, SR_ERR_OK);
     }
 
-    free(diff_str);
-    return SR_ERR_OK;
+    sr_session_stop(sess);
+    return NULL;
 }
 
 static void
-test_diff_reuse(void **state)
+test_lock_write(void **state)
 {
-    struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr = NULL;
+    pthread_t tid[2];
+
+    pthread_create(&tid[0], NULL, locked_write_thread, *state);
+    pthread_create(&tid[1], NULL, unlocked_write_thread, *state);
+
+    pthread_join(tid[0], NULL);
+    pthread_join(tid[1], NULL);
+}
+
+/* TEST */
+
+static int
+dummy_slow_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath, sr_event_t event,
+        uint32_t request_id, void *private_data)
+{
+    (void)session;
+    (void)sub_id;
+    (void)module_name;
+    (void)xpath;
+    (void)event;
+    (void)request_id;
+    (void)private_data;
+
+    usleep(10000);
+
+    return SR_ERR_OK;
+}
+
+static void *
+apply_changes_enabled_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
     int ret;
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
-    /* create a subscription requesting an all-modules diff */
-    ret = sr_module_change_subscribe(sess, "ietf-interfaces", "/ietf-interfaces:interfaces", module_diff_reuse_cb, st, 20, SR_SUBSCR_CHANGE_ALL_MODULES, &subscr);
-    assert_int_equal(ret, SR_ERR_OK);
 
-    /* create normal subscriptions at different priorities */
-    ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, module_diff_reuse_cb, st, 10, 0, &subscr);
-    assert_int_equal(ret, SR_ERR_OK);
+    /* signal that thread was started */
+    pthread_barrier_wait(&st->barrier);
 
-    ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, module_diff_reuse_cb, st, 20, 0, &subscr);
-    assert_int_equal(ret, SR_ERR_OK);
+    while (ATOMIC_LOAD_RELAXED(st->running)) {
+        ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+        ret = sr_apply_changes(sess, 0);
+        assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, module_diff_reuse_cb, st, 30, 0, &subscr);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = sr_module_change_subscribe(sess, "test", NULL, module_diff_reuse_cb, st, 10, 0, &subscr);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = sr_module_change_subscribe(sess, "test", NULL, module_diff_reuse_cb, st, 20, 0, &subscr);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = sr_module_change_subscribe(sess, "test", NULL, module_diff_reuse_cb, st, 30, 0, &subscr);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* create changes for multiple modules */
-    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth52']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = sr_set_item_str(sess, "/test:l1[k='key1']/v", "1", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = sr_apply_changes(sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 14);
-
-    ret = sr_unsubscribe(subscr);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = sr_delete_item(sess, "/ietf-interfaces:interfaces", 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_delete_item(sess, "/test:l1", 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
+        ret = sr_delete_item(sess, "/ietf-interfaces:interfaces/interface[name='eth1']", 0);
+        assert_int_equal(ret, SR_ERR_OK);
+        ret = sr_apply_changes(sess, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+    }
 
     ret = sr_session_stop(sess);
     assert_int_equal(ret, SR_ERR_OK);
+
+    return NULL;
+}
+
+static void *
+subscribe_change_enabled_race_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *subscr = NULL;
+    int ret, i, j;
+    uint32_t opts = SR_SUBSCR_ENABLED;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+    /* signal that thread was started */
+    pthread_barrier_wait(&st->barrier);
+
+    for (i = 0; i < TEST_ITERATIONS / 4; i++) {
+        for (j = 0; j < 4; j++) {
+            ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, dummy_slow_change_cb,
+                    st, 0, opts, &subscr);
+            assert_int_equal(ret, SR_ERR_OK);
+            ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, dummy_slow_change_cb,
+                    st, 0, opts | SR_SUBSCR_DONE_ONLY, &subscr);
+            assert_int_equal(ret, SR_ERR_OK);
+        }
+        ret = sr_unsubscribe(subscr);
+        subscr = NULL;
+        assert_int_equal(ret, SR_ERR_OK);
+    }
+    /* signal other thread to stop */
+    ATOMIC_STORE_RELAXED(st->running, 0);
+
+    return NULL;
+}
+
+static void
+test_change_enabled_race(void **state)
+{
+    pthread_t tid[2];
+
+    pthread_create(&tid[0], NULL, apply_changes_enabled_thread, *state);
+    pthread_create(&tid[1], NULL, subscribe_change_enabled_race_thread, *state);
+
+    pthread_join(tid[0], NULL);
+    pthread_join(tid[1], NULL);
 }
 
 /* MAIN */
@@ -8125,15 +8471,19 @@ main(void)
         cmocka_unit_test_setup_teardown(test_change_timeout, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_done_timeout, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_filter_orig, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_sub_xpath_data, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_diff_reuse, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_order, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_userord, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_enabled, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_schema_mount, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_change_schema_mount_data_autodel, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_write_starve, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_mult_update, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_done_timeout_priority, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_list_replace, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_lock_write, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_change_enabled_race, setup_f, teardown_f),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

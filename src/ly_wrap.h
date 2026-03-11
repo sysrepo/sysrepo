@@ -4,8 +4,8 @@
  * @brief libyang function wrappers header
  *
  * @copyright
- * Copyright (c) 2024 Deutsche Telekom AG.
- * Copyright (c) 2024 CESNET, z.s.p.o.
+ * Copyright (c) 2024 - 2025 Deutsche Telekom AG.
+ * Copyright (c) 2024 - 2025 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -28,11 +28,10 @@
 /**
  * @brief Create a new libyang context.
  *
- * @param[in] conn Connection to read opts from and use for the LY ext data callback.
- * @param[out] ly_ctx libyang context.
+ * @param[out] ly_ctx Created libyang context.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_ly_ctx_init(sr_conn_ctx_t *conn, struct ly_ctx **ly_ctx);
+sr_error_info_t *sr_ly_ctx_new(struct ly_ctx **ly_ctx);
 
 /**
  * @brief Parse a YANG module.
@@ -108,6 +107,19 @@ sr_error_info_t *sr_ly_ctx_compile(struct ly_ctx *ctx);
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_lys_find_path(const struct ly_ctx *ctx, const char *path, int *valid, const struct lysc_node **match);
+
+/**
+ * @brief Find schema atoms in a path.
+ *
+ * @param[in] ctx Context to use.
+ * @param[in] ctx_node Context node.
+ * @param[in] path Path to use.
+ * @param[out] valid Optional valid flag to set instead of an error.
+ * @param[out] set Set with found atoms.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lys_find_path_atoms(const struct ly_ctx *ctx, const struct lysc_node *ctx_node, const char *path,
+        int *valid, struct ly_set **set);
 
 /**
  * @brief Evaluate XPath expression on schema.
@@ -302,11 +314,11 @@ sr_error_info_t *sr_lyd_new_inner(struct lyd_node *parent, const struct lys_modu
  *
  * @param[in] parent Node parent.
  * @param[in] name Node name.
- * @param[in] value Node value, is spent.
- * @param[in] value_type Type of @p value.
+ * @param[in] child Data tree value, is spent.
+ * @param[in] value String value, is spent.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lyd_new_any(struct lyd_node *parent, const char *name, void *value, LYD_ANYDATA_VALUETYPE value_type);
+sr_error_info_t *sr_lyd_new_any(struct lyd_node *parent, const char *name, struct lyd_node *child, char *value);
 
 /**
  * @brief Create a new opaque node.
@@ -422,16 +434,16 @@ sr_error_info_t *sr_lyd_dup(const struct lyd_node *node, struct lyd_node *parent
         struct lyd_node **dup);
 
 /**
- * @brief Duplicate data node siblings into a specific context.
+ * @brief Duplicate a data tree into another context.
  *
- * @param[in] sibling Siblings to duplicate.
+ * @param[in] node Subtree to duplicate.
  * @param[in] trg_ctx Target context.
  * @param[in] options Dup options.
- * @param[out] dup Duplicated data.
+ * @param[out] dup Diplicated subtree.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lyd_dup_siblings_to_ctx(const struct lyd_node *sibling, const struct ly_ctx *trg_ctx,
-        uint32_t options, struct lyd_node **dup);
+sr_error_info_t *sr_lyd_dup_single_to_ctx(const struct lyd_node *node, const struct ly_ctx *trg_ctx, uint32_t options,
+        struct lyd_node **dup);
 
 /**
  * @brief Safely free a subtree when there is also a pointer that may point to it.
@@ -581,12 +593,13 @@ sr_error_info_t *sr_lyd_any_value_str(const struct lyd_node *node, char **str);
  * @brief Copy value to an any node.
  *
  * @param[in] node Any node to modify.
- * @param[in] value Value to use.
- * @param[in] value_type Value type of @p value.
+ * @param[in] child Data tree value.
+ * @param[in] value String value.
+ * @param[in] hints String value hints.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lyd_any_copy_value(struct lyd_node *node, const union lyd_any_value *value,
-        LYD_ANYDATA_VALUETYPE value_type);
+sr_error_info_t *sr_lyd_any_copy_value(struct lyd_node *node, const struct lyd_node *child, const void *value,
+        uint32_t hints);
 
 /**
  * @brief Get the diff of 2 data tree sibling lists.
@@ -594,11 +607,12 @@ sr_error_info_t *sr_lyd_any_copy_value(struct lyd_node *node, const union lyd_an
  * @param[in] target Target diff siblings.
  * @param[in] source Source diff siblings.
  * @param[in] options Diff options.
+ * @param[out] snode_not_found If provided, is set when this particular error is returned, the function succeeds.
  * @param[out] diff Generated diff.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_lyd_diff_siblings(const struct lyd_node *target, const struct lyd_node *source, uint32_t options,
-        struct lyd_node **diff);
+        int *snode_not_found, struct lyd_node **diff);
 
 /**
  * @brief Apply diff of a specific module on data.
@@ -726,5 +740,34 @@ sr_error_info_t *sr_lyd_parse_opaq_error(const struct lyd_node *node);
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_ly_time_ts2str(const struct timespec *ts, char **str);
+
+/**
+ * @brief Print a libyang context to memory.
+ *
+ * @param[in] ctx Context to print.
+ * @param[in] mem Memory to print to.
+ * @param[out] mem_end Set to the end of the printed memory.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_ly_ctx_compiled_print(const struct ly_ctx *ctx, void *mem, void **mem_end);
+
+/**
+ * @brief Create a new libyang context from printed data.
+ *
+ * @param[in] mem Memory with printed context.
+ * @param[out] ctx Created libyang context.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_ly_ctx_new_printed(const void *mem, struct ly_ctx **ctx);
+
+/**
+ * @brief Create a shared schema mount context for a schema mount point.
+ *
+ * @param[in] ext Compiled extension instance of a schema mount point.
+ * @param[in] ext_data ietf-yang-schema-mount and ietf-yang-library data of the mount point.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lyplg_ext_schema_mount_create_shared_context(struct lysc_ext_instance *ext,
+        const struct lyd_node *ext_data);
 
 #endif /* _LY_WRAP_H */

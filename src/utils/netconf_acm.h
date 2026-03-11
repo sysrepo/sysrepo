@@ -34,7 +34,7 @@ extern "C" {
  * @param[out] sub Subscription context.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_nacm_init(sr_session_ctx_t *session, sr_subscr_options_t opts, sr_subscription_ctx_t **sub);
+int sr_nacm_init(sr_session_ctx_t *session, uint32_t opts, sr_subscription_ctx_t **sub);
 
 /**
  * @brief Subscribe for providing global NACM stats. These include triggering subscriptions made by ::sr_nacm_init() so
@@ -48,7 +48,7 @@ int sr_nacm_init(sr_session_ctx_t *session, sr_subscr_options_t opts, sr_subscri
  * @param[out] sub Subscription context, **must** be different from the one used in ::sr_nacm_init()!
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_nacm_glob_stats_subscribe(sr_session_ctx_t *session, sr_subscr_options_t opts, sr_subscription_ctx_t **sub);
+int sr_nacm_glob_stats_subscribe(sr_session_ctx_t *session, uint32_t opts, sr_subscription_ctx_t **sub);
 
 /**
  * @brief Destroy NACM.
@@ -94,6 +94,15 @@ const char *sr_nacm_get_recovery_user(void);
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_nacm_check_operation(sr_session_ctx_t *session, const struct lyd_node *op);
+
+/**
+ * @brief Explicitly filter data and remove any that the NACM user has no read access for.
+ *
+ * @param[in] session Session to use, must have NACM username set for the filtering to be performed.
+ * @param[in,out] data Data tree to filter.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_nacm_filter_data_read(sr_session_ctx_t *session, struct lyd_node **data);
 
 #ifdef __cplusplus
 }

@@ -250,13 +250,14 @@ srsn_filter_xpath_print_node_module(const struct lyd_node *node, const struct ly
 
         switch (opaq->format) {
         case LY_VALUE_XML:
-            /* in dict */
-            if (m->ns == opaq->name.module_ns) {
+            /* one in schema dict, other in data dict, need strcmp */
+            if (!strcmp(m->ns, opaq->name.module_ns)) {
                 return NULL;
             }
             break;
         case LY_VALUE_JSON:
-            if (m->name == opaq->name.module_name) {
+            /* one in schema dict, other in data dict, need strcmp */
+            if (!strcmp(m->name, opaq->name.module_name)) {
                 return NULL;
             }
             break;
@@ -269,7 +270,7 @@ srsn_filter_xpath_print_node_module(const struct lyd_node *node, const struct ly
         opaq = (struct lyd_node_opaq *)node;
         opaq2 = (struct lyd_node_opaq *)parent;
 
-        /* in dict */
+        /* in data dict, can compare ptrs */
         if (opaq->name.module_ns == opaq2->name.module_ns) {
             return NULL;
         }
@@ -330,8 +331,7 @@ srsn_filter_xpath_buf_get_value(const struct lyd_node *node, int *dynamic)
     }
 
     /* assume identity, try to get its module */
-    mod = lyplg_type_identity_module(LYD_CTX(node), NULL, opaq->value, ptr - opaq->value, opaq->format,
-            opaq->val_prefix_data);
+    mod = lys_find_module(LYD_CTX(node), NULL, opaq->value, ptr - opaq->value, opaq->format, opaq->val_prefix_data);
 
     if (!mod) {
         /* unknown module, use as is */
@@ -575,7 +575,7 @@ srsn_filter_create_subtree(const struct lyd_node *node, struct srsn_filter *filt
 
                 snode = NULL;
                 while ((snode = lys_getnext(snode, NULL, mod->compiled, 0))) {
-                    if (snode->name == ((struct lyd_node_opaq *)iter)->name.name) {
+                    if (!strcmp(snode->name, ((struct lyd_node_opaq *)iter)->name.name)) {
                         /* match */
                         match = 1;
                         if ((err_info = srsn_filter_xpath_create_top(iter, mod, filter))) {
@@ -776,6 +776,9 @@ srsn_sub_free_unsubscribe(struct srsn_sub *sub)
 
     if (sub->type == SRSN_YANG_PUSH_PERIODIC) {
         srsn_update_timer(NULL, NULL, &sub->update_sntimer);
+    }
+    if (sub->type == SRSN_YANG_PUSH_ON_CHANGE) {
+        srsn_update_timer(NULL, NULL, &sub->damp_sntimer);
     }
 }
 
@@ -1128,30 +1131,16 @@ srsn_state_free(srsn_state_sub_t *subs, uint32_t count)
 }
 
 struct srsn_sub *
-srsn_find(uint32_t sub_id, int locked)
+srsn_find(uint32_t sub_id)
 {
-    sr_error_info_t *err_info = NULL;
     struct srsn_sub *sub = NULL;
     uint32_t i;
-
-    if (!locked) {
-        /* LOCK */
-        if ((err_info = srsn_lock())) {
-            sr_errinfo_free(&err_info);
-            return NULL;
-        }
-    }
 
     for (i = 0; i < snstate.count; ++i) {
         if (snstate.subs[i]->id == sub_id) {
             sub = snstate.subs[i];
             break;
         }
-    }
-
-    if (!locked) {
-        /* UNLOCK */
-        srsn_unlock();
     }
 
     return sub;
@@ -1333,7 +1322,7 @@ srsn_ntf_send_terminated(struct srsn_sub *sub, const char *reason)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *ly_ntf = NULL;
-    sr_conn_ctx_t *conn = NULL;
+    sr_conn_ctx_t *conn;
     const struct ly_ctx *ly_ctx;
     char buf[26];
     struct timespec ts;
@@ -1356,10 +1345,8 @@ srsn_ntf_send_terminated(struct srsn_sub *sub, const char *reason)
     }
 
 cleanup:
-    if (conn) {
-        sr_release_context(conn);
-    }
     lyd_free_tree(ly_ntf);
+    sr_release_context(conn);
     return err_info;
 }
 

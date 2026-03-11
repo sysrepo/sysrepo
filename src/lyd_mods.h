@@ -55,12 +55,12 @@ sr_error_info_t *sr_lydmods_change_add_modules(const struct ly_ctx *ly_ctx, sr_c
  * @param[in] new_ctx Context with the module removed.
  * @param[in] mod_set Set of all the removed modules.
  * @param[in] conn Connection to use for DS handles.
- * @param[out] sr_del_mods Deleted modules from @p sr_mods.
- * @param[out] sr_mods SR internal module data.
+ * @param[out] sr_del_mods_p Optional, deleted modules from @p sr_mods_p.
+ * @param[out] sr_mods_p Optional, SR internal module data.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_lydmods_change_del_module(const struct ly_ctx *ly_ctx, const struct ly_ctx *new_ctx,
-        const struct ly_set *mod_set, sr_conn_ctx_t *conn, struct lyd_node **sr_del_mods, struct lyd_node **sr_mods);
+        const struct ly_set *mod_set, sr_conn_ctx_t *conn, struct lyd_node **sr_del_mods_p, struct lyd_node **sr_mods_p);
 
 /**
  * @brief Update modules in SR internal module data.
@@ -83,12 +83,12 @@ sr_error_info_t *sr_lydmods_change_upd_modules(const struct ly_ctx *ly_ctx, cons
  * @param[in] feat_set Set with all the changed features.
  * @param[in] enable Whether the feature was enabled or disabled.
  * @param[in] conn Connection to use for DS handles.
- * @param[out] sr_mods SR internal module data.
+ * @param[out] sr_mods_p Optional, SR internal module data.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_lydmods_change_chng_feature(const struct ly_ctx *ly_ctx, const struct lys_module *old_mod,
         const struct ly_ctx *new_ctx, const struct ly_set *feat_set, int enable, sr_conn_ctx_t *conn,
-        struct lyd_node **sr_mods);
+        struct lyd_node **sr_mods_p);
 
 /**
  * @brief Change replay support of a module in SR internal module data.

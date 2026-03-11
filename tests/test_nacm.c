@@ -157,7 +157,7 @@ test_basic(void **state)
     ret = sr_get_data(st->sess, "/test:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, LY_SUCCESS);
     sr_release_data(data);
     assert_string_equal(str,
@@ -287,7 +287,7 @@ test_read(void **state)
     ret = sr_get_data(st->sess, "/test:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, LY_SUCCESS);
     sr_release_data(data);
     assert_string_equal(str,
@@ -302,7 +302,7 @@ test_read(void **state)
     ret = sr_get_data(st->sess, "/test:cont/l2", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, LY_SUCCESS);
     sr_release_data(data);
     assert_string_equal(str,
@@ -317,7 +317,7 @@ test_read(void **state)
     ret = sr_get_data(st->sess, "/test:cont/l2/k", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, LY_SUCCESS);
     sr_release_data(data);
     assert_string_equal(str,
@@ -422,7 +422,7 @@ test_filter_denied(void **state)
     ret = sr_get_data(st->sess, "/test:cont/l2[v < 21]", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, LY_SUCCESS);
     sr_release_data(data);
     assert_string_equal(str,
@@ -440,7 +440,7 @@ test_filter_denied(void **state)
     ret = sr_get_data(st->sess, "/test:cont/l2[v > 21]", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, LY_SUCCESS);
     sr_release_data(data);
     assert_string_equal(str,
@@ -554,7 +554,7 @@ test_write(void **state)
     ret = sr_get_data(st->sess, "/test:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, LY_SUCCESS);
     sr_release_data(data);
     assert_string_equal(str,
@@ -587,7 +587,7 @@ test_write(void **state)
     ret = sr_get_data(st->sess, "/test:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, LY_SUCCESS);
     sr_release_data(data);
     assert_string_equal(str,
@@ -755,7 +755,7 @@ test_read_var(void **state)
     ret = sr_get_data(st->sess, "/test:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, LY_SUCCESS);
     sr_release_data(data);
     assert_string_equal(str,
@@ -771,7 +771,7 @@ test_read_var(void **state)
     ret = sr_get_data(st->sess, "/test:cont/l2", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, LY_SUCCESS);
     sr_release_data(data);
     assert_string_equal(str,
@@ -787,7 +787,7 @@ test_read_var(void **state)
     ret = sr_get_data(st->sess, "/test:cont/l2/k", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, LY_SUCCESS);
     sr_release_data(data);
     assert_string_equal(str,
@@ -802,7 +802,7 @@ test_read_var(void **state)
     ret = sr_get_data(st->sess, "/test:cont/l2/v", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, LY_SUCCESS);
     sr_release_data(data);
     assert_string_equal(str,

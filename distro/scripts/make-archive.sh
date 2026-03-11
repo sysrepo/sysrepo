@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # create archive from current source using git
 
-VERSION=$(git log --oneline -n1 --grep="^VERSION" | rev | cut -d' ' -f1 | rev)
+VERSION=$(grep \(SYSREPO_M.*_VERSION CMakeLists.txt | sed 'N; N; s/[[:print:]]*[[:blank:]]\([[:digit:]]\+\)[[:print:]]/\1/g; s/\n/./g')
 
 NAMEVER=sysrepo-$VERSION
 ARCHIVE=$NAMEVER.tar.gz

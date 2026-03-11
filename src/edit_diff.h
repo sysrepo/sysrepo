@@ -170,7 +170,7 @@ sr_error_info_t *sr_edit_mod_apply(const struct lyd_node *edit, const struct lys
  * @param[in] ly_mod Data tree module.
  * @param[in,out] data Data tree to modify.
  * @param[in,out] diff Optionally create the diff of the original data and the new one (or merge into diff).
- * @param[out] change Optional, set if there were some module changes.
+ * @param[out] change Set if there were some module changes.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_oper_edit_mod_apply(const struct lyd_node *tree, const struct lys_module *ly_mod,

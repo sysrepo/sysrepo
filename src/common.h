@@ -28,12 +28,14 @@
 
 struct lysp_submodule;
 struct sr_ds_handle;
+struct sr_lycc_ds_data_set_s;
 struct sr_mod_info_s;
 struct sr_mod_info_mod_s;
+struct sr_mod_info_xpath_s;
 struct srplg_ds_s;
 struct srplg_ntf_s;
 
-/* max length for env variables specifying paths **/
+/** max length for env variables specifying paths **/
 #define SR_PATH_MAX 256
 
 /** macro for mutex align check */
@@ -51,16 +53,16 @@ struct srplg_ntf_s;
 /** macro for checking session type */
 #define SR_IS_EVENT_SESS(session) (session->ev != SR_SUB_EV_NONE)
 
-/* macro for getting aligned SHM size */
+/** macro for getting aligned SHM size */
 #define SR_SHM_SIZE(size) ((size) + ((~(size) + 1) & (SR_SHM_MEM_ALIGN - 1)))
 
-/* macro for getting main SHM from a connection */
+/** macro for getting main SHM from a connection */
 #define SR_CONN_MAIN_SHM(conn) ((sr_main_shm_t *)(conn)->main_shm.addr)
 
-/* macro for getting mod SHM from a connection */
-#define SR_CONN_MOD_SHM(conn) ((sr_mod_shm_t *)(conn)->mod_shm.addr)
+/** macro for getting mod SHM from sysrepo's global context */
+#define SR_CTX_MOD_SHM(ctx) ((sr_mod_shm_t *)(ctx).mod_shm.addr)
 
-/* macro for getting ext SHM from a connection */
+/** macro for getting ext SHM from a connection */
 #define SR_CONN_EXT_SHM(conn) ((sr_ext_shm_t *)(conn)->ext_shm.addr)
 
 /** all ext SHM item sizes will be aligned to this number; also represents the allocation unit (B) */
@@ -87,20 +89,23 @@ struct srplg_ntf_s;
 /** timeout for locking the local connection list; maximum time the list can be accessed (ms) */
 #define SR_CONN_LIST_LOCK_TIMEOUT 100
 
-/** timeout for locking connection remap lock; maximum time it can be continuously read/written to (ms) */
-#define SR_CONN_REMAP_LOCK_TIMEOUT 10000
+/** timeout for locking remap lock; maximum time it can be continuously read/written to (ms) */
+#define SR_REMAP_LOCK_TIMEOUT 10000
 
 /** timeout for write-locking module running plugin cache (ms) */
-#define SR_CONN_RUN_CACHE_LOCK_TIMEOUT 1000
+#define SR_RUN_CACHE_LOCK_TIMEOUT 1000
 
-/** timeout for write-locking connection oper cache (ms) */
-#define SR_CONN_OPER_CACHE_LOCK_TIMEOUT 50
+/** timeout for write-locking oper cache (ms) */
+#define SR_OPER_CACHE_LOCK_TIMEOUT 50
 
-/** timeout for write-locking connection subscription oper cache data (ms) */
-#define SR_CONN_OPER_CACHE_DATA_LOCK_TIMEOUT 1000
+/** timeout for write-locking subscription oper cache data (ms) */
+#define SR_OPER_CACHE_DATA_LOCK_TIMEOUT 1000
 
-/** timeout for accessing stored connection ext data (duplication) (ms) */
-#define SR_CONN_EXT_DATA_LOCK_TIMEOUT 100
+/** timeout for locking the global schema mount context; opening, truncating, writing (parsing) and closing the file (ms) */
+#define SR_SM_CTX_LOCK_TIMEOUT 2000
+
+/** timeout for locking global YANG context create mutex; held only on connection creation and deletion (ms) */
+#define SR_YANG_CTX_LOCK_TIMEOUT 10000
 
 /** timeout for locking (data of) a module; maximum time a module write lock is expected to be held (ms) */
 #define SR_MOD_LOCK_TIMEOUT 5000
@@ -169,6 +174,21 @@ struct srplg_ntf_s;
 #define SR_EDIT_DS_API_CHECK(ds, opts) (!SR_IS_STANDARD_DS(ds) || \
         (!SR_IS_CONVENTIONAL_DS(ds) && (opts & (SR_EDIT_STRICT | SR_EDIT_NON_RECURSIVE | SR_EDIT_ISOLATE))))
 
+/**
+ * @brief sysrepo rwlock static initializer.
+ */
+#define SR_RWLOCK_INITIALIZER { \
+    .mutex = PTHREAD_MUTEX_INITIALIZER, \
+    .cond = SR_COND_INITIALIZER, \
+    .readers = {0}, \
+    .read_count = {0}, \
+    .upgr = 0, \
+    .writer = 0 \
+}
+
+/** static initializer of the shared memory structure */
+#define SR_SHM_INITIALIZER {.fd = -1, .size = 0, .addr = NULL}
+
 /*
  * Internal declarations + definitions
  */
@@ -185,16 +205,80 @@ extern const struct srplg_ntf_s *sr_internal_ntf_plugins[];
 extern const sr_module_ds_t sr_module_ds_default;
 extern const sr_module_ds_t sr_module_ds_disabled_run;
 
-/** static initializer of the shared memory structure */
-#define SR_SHM_INITIALIZER {.fd = -1, .size = 0, .addr = NULL}
+/**
+ * @brief Sysrepo's global YANG context.
+ */
+struct sr_yang_ctx_s {
+    uint32_t content_id;            /**< Content ID of the context. */
+    uint32_t sm_data_id;            /**< ID of the schema mount data supported by the context. */
 
-/** initializer of mod_info structure */
-#define SR_MODINFO_INIT(mi, c, d, d2, op_id) \
-        memset(&(mi), 0, sizeof (mi)); \
-        (mi).ds = (d); \
-        (mi).ds2 = (d2); \
-        (mi).conn = (c); \
-        (mi).operation_id = (op_id) ? (op_id) : ATOMIC_INC_RELAXED(SR_CONN_MAIN_SHM(c)->new_operation_id)
+    sr_shm_t ly_ctx_shm;            /**< Printed libyang context SHM. */
+    struct ly_ctx *ly_ctx;          /**< Process-local libyang context. */
+    ATOMIC_T sr_opts;               /**< Context sysrepo options used for the libyang context. */
+
+    sr_shm_t mod_shm;               /**< YANG modules SHM. */
+    sr_rwlock_t remap_lock;         /**< Lock for remapping libyang modules SHM. */
+
+    uint32_t refcount;              /**< Number of connections in this process using this context. */
+    pthread_mutex_t create_lock;    /**< Lock for refcount and managing the context on connection creation and deletion. */
+};
+
+/**
+ * @brief Global YANG context.
+ */
+extern struct sr_yang_ctx_s sr_yang_ctx;
+
+/**
+ * @brief Connection to use when getting schema-mount data in the ext_data callback.
+ */
+extern THREAD sr_conn_ctx_t *sr_available_conn;
+
+/**
+ * @brief Running data cache.
+ */
+struct sr_run_cache_s {
+    ATOMIC_T enabled;                   /**< Whether the running data cache is enabled. */
+    struct lyd_node *data;              /**< Cached running data of all the modules. */
+    struct sr_run_cache_mod_s {
+        const struct lys_module *mod;   /**< Cached libyang module. */
+        uint32_t id;                    /**< Cached module data ID. */
+    } *mods;                            /**< Cached modules. */
+    uint32_t mod_count;                 /**< Cached module count. */
+    pid_t shm_pid;                      /**< Set if present in main SHM running cache pids, always if there are any data. */
+    sr_rwlock_t lock;                   /**< Lock for accessing the cache. */
+};
+
+typedef struct sr_run_cache_s sr_run_cache_t;
+
+/**
+ * @brief Running data cache.
+ */
+extern sr_run_cache_t sr_run_cache;
+
+/**
+ * @brief Operational data cache.
+ */
+struct sr_oper_cache_s {
+    struct sr_oper_cache_sub_s {
+        uint32_t sub_id;            /**< Operational poll subscription ID. */
+        char *module_name;          /**< Operational poll subscription module name. */
+        char *path;                 /**< Operational poll/get subscription path. */
+
+        sr_rwlock_t data_lock;      /**< Lock for accessing the data and timestamp. */
+        struct lyd_node *data;      /**< Cached data of a single operational get subscription. */
+        struct timespec timestamp;  /**< Timestamp of the cached operational data. */
+    } *subs;                        /**< Operational subscription data caches. */
+    uint32_t sub_count;             /**< Operational subscription data cache count. */
+    pid_t shm_pid;                  /**< Set if present in main SHM operational cache pids, always if there are any data. */
+    sr_rwlock_t lock;               /**< Operational subscription data cache lock. */
+};
+
+typedef struct sr_oper_cache_s sr_oper_cache_t;
+
+/**
+ * @brief Operational data cache.
+ */
+extern sr_oper_cache_t sr_oper_cache;
 
 /**
  * @brief Internal information about a module to be installed.
@@ -375,6 +459,14 @@ sr_error_info_t *sr_remove_module_yang_r(const struct lys_module *ly_mod, const 
 int sr_ly_module_is_internal(const struct lys_module *ly_mod);
 
 /**
+ * @brief Check whether a file exists.
+ *
+ * @param[in] path Path to the file.
+ * @return 0 if file does not exist, non-zero if it exists.
+ */
+int sr_file_exists(const char *path);
+
+/**
  * @brief Read full contents of a file into a buffer.
  *
  * @param[in] path Path to the file.
@@ -442,6 +534,15 @@ sr_error_info_t *sr_path_main_shm(char **path);
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_path_mod_shm(char **path);
+
+/**
+ * @brief Get the path of the ctx SHM.
+ *
+ * @param[in] tmp if a temporary filename should be created.
+ * @param[out] path Created path. Should be freed by the caller.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_path_ctx_shm(int tmp, char **path);
 
 /**
  * @brief Get the path of the external SHM.
@@ -824,69 +925,127 @@ void sr_rwunlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, 
 int sr_conn_is_alive(sr_cid_t cid);
 
 /**
- * @brief Update cached schema-mount operational data (LY ext data) of a connection.
+ * @brief Get the current ietf-yang-schema-mount operational data.
+ *
+ * @note The caller must hold the global libyang context READ lock.
  *
  * @param[in] conn Connection to use.
+ * @param[in] ly_ctx Context to use.
+ * @param[in] mp_path Path to the shared mount-point root node. NULL for inline mount point, the standard yang-library
+ * data are used.
+ * @param[out] sm_data New schema mount data, should be freed by the caller.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_conn_ext_data_update(sr_conn_ctx_t *conn);
+sr_error_info_t *sr_schema_mount_data_get(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, const char *mp_path,
+        struct lyd_node **sm_data);
 
 /**
- * @brief Add a new oper cache entry into a connection.
+ * @brief Create schema mount contexts in a libyang context based on the sysrepo data.
+ *
+ * @param[in] ly_ctx libyang context.
+ * @param[in] sr_data sysrepo module data.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_schema_mount_create_contexts(struct ly_ctx *ly_ctx, const struct lyd_node *sr_data);
+
+/**
+ * @brief Check whether operational schema-mount data changed. That includes data of `ietf-yang-schema-mount` and
+ * `ietf-yang-library` data underneath a mount-point extension instance.
+ *
+ * @param[in] oper_data New pushed operational data.
+ * @return 0 if @p oper_data include no schema-mount data;
+ * @return non-zero otherwise.
+ */
+int sr_schema_mount_changed_oper_data(const struct lyd_node *oper_data);
+
+/**
+ * @brief Handle the update of the operational schema mount data.
+ *
+ * This function prints a new libyang context to memory, which is prepared to use the new schema mount data.
+ *
+ * @note Context READ-UPGRADE lock needs to be held by the caller.
  *
  * @param[in] conn Connection to use.
+ * @param[in] data_old Current data loaded with the old SM push oper data, are spent.
+ * @return err_info on error, NULL on success.
+ */
+sr_error_info_t *sr_schema_mount_ds_data_update(sr_conn_ctx_t *conn, struct sr_lycc_ds_data_set_s *data_old);
+
+/**
+ * @brief Check whether discarding some operational data of a session can cause the schema-mount context to be
+ * updated.
+ *
+ * @param[in] sess Session to use.
+ * @param[in] mod_name Optional module name to use.
+ * @return 0 if no schema-mount data can have been stored by this session;
+ * @return non-zero otherwise.
+ */
+int sr_schema_mount_session_have_oper_data_for_ctx_update(sr_session_ctx_t *sess, const char *mod_name);
+
+/**
+ * @brief Add a new oper cache entry.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] oper_cache Oper cache to add to.
  * @param[in] sub_id Subscription ID of the oper poll subscription.
  * @param[in] module_name Subscription module name.
  * @param[in] path Subscription path.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_conn_oper_cache_add(sr_conn_ctx_t *conn, uint32_t sub_id, const char *module_name, const char *path);
+sr_error_info_t *sr_oper_cache_add(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache, uint32_t sub_id,
+        const char *module_name, const char *path);
 
 /**
- * @brief Delete an oper cache entry in a connection.
+ * @brief Delete an oper cache entry.
  *
  * @param[in] conn Connection to use.
+ * @param[in] oper_cache Oper cache to delete from.
  * @param[in] sub_id Subscription ID to delete.
  */
-void sr_conn_oper_cache_del(sr_conn_ctx_t *conn, uint32_t sub_id);
+void sr_oper_cache_del(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache, uint32_t sub_id);
 
 /**
- * @brief Update cached running data of a connection.
+ * @brief Flush all cached operational data.
+ *
+ * Must be called only with WRITE mode context lock or mod_remap_lock.
  *
  * @param[in] conn Connection to use.
+ * @param[in,out] oper_cache Oper cache to flush.
+ */
+void sr_oper_cache_flush(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache);
+
+/**
+ * @brief Update cached running data.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] run_cache Run cache to update.
  * @param[in] mod_info Mod info with modules to cache.
- * @param[in] has_lock Currently held conn run cache lock mode.
+ * @param[in] has_lock Currently held run cache lock mode.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_info, sr_lock_mode_t has_lock);
+sr_error_info_t *sr_run_cache_update(sr_conn_ctx_t *conn, sr_run_cache_t *run_cache,
+        const struct sr_mod_info_s *mod_info, sr_lock_mode_t has_lock);
 
 /**
- * @brief Update connection cached running data of a particular module with specific data.
+ * @brief Update cached running data of a particular module with specific data.
  *
  * @param[in] conn Connection to use.
+ * @param[in] run_cache Run cache to update.
  * @param[in] ly_mod Module to update.
  * @param[in] mod_cache_id Module @p mod_data cache ID.
  * @param[in] mod_data Current module data to store in the cache, are spent.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_conn_run_cache_update_mod(sr_conn_ctx_t *conn, const struct lys_module *ly_mod,
-        uint32_t mod_cache_id, struct lyd_node *mod_data);
+sr_error_info_t *sr_run_cache_update_mod(sr_conn_ctx_t *conn, sr_run_cache_t *run_cache,
+        const struct lys_module *ly_mod, uint32_t mod_cache_id, struct lyd_node *mod_data);
 
 /**
- * @brief Flush all cached running data of a connection.
+ * @brief Flush all cached running data.
  *
  * @param[in] conn Connection to use.
+ * @param[in] run_cache Run cache to flush.
  */
-void sr_conn_run_cache_flush(sr_conn_ctx_t *conn);
-
-/**
- * @brief Switch the context of a connection while correctly handling all connection data in the context.
- *
- * @param[in] conn Connection to use.
- * @param[in,out] new_ctx New context to use, set to NULL after use.
- * @param[out] old_ctx Optional old context, destroyed if not set.
- */
-void sr_conn_ctx_switch(sr_conn_ctx_t *conn, struct ly_ctx **new_ctx, struct ly_ctx **old_ctx);
+void sr_run_cache_flush(sr_conn_ctx_t *conn, sr_run_cache_t *run_cache);
 
 /**
  * @brief Initialize all used DS plugins not yet initialized.
@@ -1006,6 +1165,15 @@ const char *sr_mod_ds2ident(int mod_ds);
  * @return Datastore identity name.
  */
 const char *sr_ds2ident(sr_datastore_t ds);
+
+/**
+ * @brief Transform a sized array into a NULL-terminated array.
+ *
+ * @param[in] sa Sized array.
+ * @param[out] na NULL-terminated array.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_sizedarray2nullarray(const char **sa, const char ***na);
 
 /**
  * @brief Sleep for specified milliseconds.
@@ -1207,7 +1375,7 @@ size_t sr_xpath_len_no_predicates(const char *xpath);
  *
  * @param[in] xpath Current position in the XPath (`/` expected at the beginning).
  * @param[out] mod Module name, if any.
- * @param[out] mod_len Moduel name length.
+ * @param[out] mod_len Module name length.
  * @param[out] name Node name.
  * @param[out] len Node name length,
  * @return Pointer to the next XPath part (node name or predicate).
@@ -1232,6 +1400,15 @@ const char *sr_xpath_skip_predicate(const char *xpath);
 int sr_xpath_refs_mod(const char *xpath, const char *mod_name);
 
 /**
+ * @brief Get the first node prefix in an XPath.
+ *
+ * @param[in] xpath XPath to use.
+ * @param[out] prefix Found prefix.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_xpath_first_prefix(const char *xpath, char **prefix);
+
+/**
  * @brief Filter out the results that are descendants of another result. In case the results represent selected
  * subtrees, the filtered out results are redundant.
  *
@@ -1239,6 +1416,16 @@ int sr_xpath_refs_mod(const char *xpath, const char *mod_name);
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_xpath_set_filter_subtrees(struct ly_set *set);
+
+/**
+ * @brief Merge all data subtrees required for evaluating predicates in XPaths into a diff with 'none' operation.
+ *
+ * @param[in] mod_data All data of a module.
+ * @param[in] xpaths Array of XPaths terminated by NULL.
+ * @param[in,out] diff Diff to merge into.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_xpath_merge_pred_diff(const struct lyd_node *mod_data, const char **xpaths, struct lyd_node **diff);
 
 /**
  * @brief Get all text atoms (simple paths) for an XPath.
@@ -1278,9 +1465,10 @@ sr_error_info_t *sr_ly_find_last_parent(struct lyd_node **parent, int nodetype);
  * @brief Get metadata name of the anchor value of user-ordered nodes.
  *
  * @param[in] schema Schema node of the anchor.
+ * @param[in] old_inst If set, return the metadata of previous (old) instances prefixed with "orig-".
  * @return Metadata name (with module name as prefix).
  */
-const char *sr_userord_anchor_meta_name(const struct lysc_node *schema);
+const char *sr_userord_anchor_meta_name(const struct lysc_node *schema, int old_inst);
 
 /**
  * @brief Unlink data of a specific module from a data tree.
@@ -1306,7 +1494,8 @@ struct lyd_node *sr_module_data_unlink(struct lyd_node **data, const struct lys_
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_module_file_data_append(const struct lys_module *ly_mod, const struct sr_ds_handle_s *ds_handle[],
-        sr_datastore_t ds, sr_cid_t cid, uint32_t sid, const char **xpaths, uint32_t xpath_count, struct lyd_node **data);
+        sr_datastore_t ds, sr_cid_t cid, uint32_t sid, const struct sr_mod_info_xpath_s *xpaths, uint32_t xpath_count,
+        struct lyd_node **data);
 
 /**
  * @brief Learn CIDs and PIDs of all the live connections.
@@ -1319,6 +1508,15 @@ sr_error_info_t *sr_module_file_data_append(const struct lys_module *ly_mod, con
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_conn_info(sr_cid_t **cids, pid_t **pids, uint32_t *count, sr_cid_t **dead_cids, uint32_t *dead_count);
+
+/**
+ * @brief Append generated module data of the ietf-yang-library module.
+ *
+ * @param[in] ly_mod ietf-yang-library module to generate data for.
+ * @param[in,out] data Data tree to append to.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_module_data_append_yanglib(const struct lys_module *ly_mod, struct lyd_node **data);
 
 /**
  * @brief Check if we are running in a development/test env - we may not be able to chown/chmod.

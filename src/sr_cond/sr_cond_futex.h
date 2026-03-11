@@ -28,8 +28,14 @@
  * @brief Condition variable futex implementation.
  */
 typedef struct {
-    uint32_t futex;             /**< futex used for waiting and signalling idle/ready */
+    uint32_t futex;             /**< futex used for waiting and signalling idle/ready. */
+    int shared;                 /**< Flag whether the futex is process-shared or private. */
 } sr_cond_t;
+
+/**
+ * @brief Static initializer for #sr_cond_t.
+ */
+#define SR_COND_INITIALIZER {0}
 
 /**
  * @brief Wrapper for pthread_cond_init().

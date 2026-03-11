@@ -1,5 +1,5 @@
 module simple-imp {
-    namespace si;
+    namespace urn:si;
     prefix si;
 
     import simple {

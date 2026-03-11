@@ -144,7 +144,7 @@ clear_up(void **state)
 {
     struct state *st = (struct state *)*state;
 
-    sr_discard_oper_changes(NULL, st->sess, NULL, 0);
+    sr_discard_oper_changes(st->sess, NULL, 0);
 
     sr_session_switch_ds(st->sess, SR_DS_STARTUP);
     sr_delete_item(st->sess, "/ietf-interfaces:interfaces", 0);
@@ -206,7 +206,7 @@ test_conn_owner1(void **state)
     ret = sr_get_data(sess, "/ietf-interfaces:interfaces-state", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
@@ -272,7 +272,7 @@ test_conn_owner2(void **state)
     ret = sr_get_data(sess, "/ietf-interfaces:interfaces-state", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
@@ -296,7 +296,7 @@ test_conn_owner2(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/statistics/discontinuity-time",
-            "2019-10-29T09:43:12-00:00", NULL, 0);
+            "2019-10-29T09:43:12Z", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -305,7 +305,7 @@ test_conn_owner2(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
@@ -318,7 +318,7 @@ test_conn_owner2(void **state)
             "    <oper-status>up</oper-status>\n"
             "    <speed>1024</speed>\n"
             "    <statistics>\n"
-            "      <discontinuity-time>2019-10-29T09:43:12-00:00</discontinuity-time>\n"
+            "      <discontinuity-time>2019-10-29T09:43:12Z</discontinuity-time>\n"
             "    </statistics>\n"
             "  </interface>\n"
             "</interfaces-state>\n";
@@ -333,7 +333,7 @@ test_conn_owner2(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
@@ -344,7 +344,7 @@ test_conn_owner2(void **state)
             "  <interface>\n"
             "    <name>eth1</name>\n"
             "    <statistics>\n"
-            "      <discontinuity-time>2019-10-29T09:43:12-00:00</discontinuity-time>\n"
+            "      <discontinuity-time>2019-10-29T09:43:12Z</discontinuity-time>\n"
             "    </statistics>\n"
             "  </interface>\n"
             "</interfaces-state>\n";
@@ -388,7 +388,7 @@ test_conn_owner_same_data(void **state)
     ret = sr_get_data(sess, "/ietf-interfaces:interfaces-state", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
@@ -429,7 +429,7 @@ test_conn_owner_same_data(void **state)
     /* read the data */
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
@@ -602,7 +602,7 @@ test_state(void **state)
     /* read the data */
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
     str2 =
@@ -629,7 +629,7 @@ test_state(void **state)
     /* read the data */
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
     str2 =
@@ -935,7 +935,7 @@ test_state_list(void **state)
     /* read the data */
     ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
     str2 =
@@ -974,7 +974,7 @@ test_state_list(void **state)
     /* read the data */
     ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
     str2 =
@@ -1012,7 +1012,7 @@ test_state_list(void **state)
     /* read the data */
     ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
     str2 =
@@ -1030,7 +1030,7 @@ test_state_list(void **state)
     free(str1);
 
     /* discard everything */
-    ret = sr_discard_oper_changes(NULL, st->sess, "mixed-config", 0);
+    ret = sr_discard_oper_changes(st->sess, "mixed-config", 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* callback called */
@@ -1039,7 +1039,7 @@ test_state_list(void **state)
     /* read the data */
     ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
     assert_null(str1);
@@ -1367,7 +1367,7 @@ test_state_leaflist(void **state)
     /* read the operational data #1 */
     ret = sr_get_data(st->sess, "/alarms:active-alarm-list", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_JSON, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_JSON, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
@@ -1403,7 +1403,7 @@ test_state_leaflist(void **state)
     free(str1);
 
     /* delete oper data */
-    ret = sr_discard_oper_changes(NULL, st->sess, NULL, 0);
+    ret = sr_discard_oper_changes(st->sess, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
 
@@ -1454,7 +1454,7 @@ test_config(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
@@ -1485,7 +1485,7 @@ test_config(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
@@ -1527,7 +1527,7 @@ test_config(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
@@ -1562,7 +1562,7 @@ test_config(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
@@ -1632,7 +1632,7 @@ test_top_list(void **state)
     ret = sr_get_data(st->sess, "/czechlight-roadm-device:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
@@ -1719,7 +1719,7 @@ test_top_list(void **state)
     ret = sr_get_data(st->sess, "/czechlight-roadm-device:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
@@ -1804,7 +1804,7 @@ test_top_leaf(void **state)
     ret = sr_get_data(st->sess, "/test:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
     assert_string_equal(str1,
@@ -1814,14 +1814,14 @@ test_top_leaf(void **state)
     free(str1);
 
     /* discard the oper change */
-    ret = sr_discard_oper_changes(NULL, st->sess, "test", 0);
+    ret = sr_discard_oper_changes(st->sess, "test", 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the operational data */
     ret = sr_get_data(st->sess, "/test:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
@@ -2069,7 +2069,7 @@ test_discard_items(void **state)
     /* read the data */
     ret = sr_get_data(st->sess, "/ietf-interfaces-new:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
@@ -2103,7 +2103,7 @@ test_discard_items(void **state)
     /* read the data */
     ret = sr_get_data(st->sess, "/ietf-interfaces-new:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
@@ -2145,7 +2145,7 @@ test_discard_items(void **state)
     /* read the data */
     ret = sr_get_data(st->sess, "/ietf-interfaces-new:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
@@ -2237,7 +2237,7 @@ test_np_cont1(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
@@ -2273,7 +2273,7 @@ test_np_cont1(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
@@ -2334,7 +2334,7 @@ test_np_cont2(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
@@ -2364,27 +2364,63 @@ static void
 test_schema_mount(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_session_ctx_t *sess;
     sr_data_t *data;
-    char *str1;
-    const char *str2;
+    const char *str;
     int ret;
+    struct lyd_node *edit;
+    const struct ly_ctx *ly_ctx;
 
     /* switch to operational DS */
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* set oper ext data */
-    ret = sr_set_item_str(st->sess,
-            "/ietf-yang-schema-mount:schema-mounts/mount-point[module='sm'][label='root']/shared-schema", NULL, NULL, 0);
+    /* set schema-mount and yang-library push oper data */
+    str =
+            "<schema-mounts xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-schema-mount\">"
+            "  <mount-point>\n"
+            "    <module>sm</module>\n"
+            "    <label>root</label>\n"
+            "    <shared-schema/>\n"
+            "  </mount-point>\n"
+            "</schema-mounts>\n"
+            "<root xmlns=\"urn:sm\">\n"
+            "  <yang-library xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-library\">\n"
+            "    <module-set>\n"
+            "    <name>root</name>\n"
+            "      <module>\n"
+            "        <name>ietf-yang-library</name>\n"
+            "        <namespace>urn:ietf:params:xml:ns:yang:ietf-yang-library</namespace>\n"
+            "      </module>\n"
+            "      <module>\n"
+            "        <name>sm</name>\n"
+            "        <namespace>urn:sm</namespace>\n"
+            "      </module>\n"
+            "      <module>\n"
+            "        <name>ietf-interfaces</name>\n"
+            "        <namespace>urn:ietf:params:xml:ns:yang:ietf-interfaces</namespace>\n"
+            "      </module>\n"
+            "      <module>\n"
+            "        <name>iana-if-type</name>\n"
+            "        <namespace>urn:ietf:params:xml:ns:yang:iana-if-type</namespace>\n"
+            "      </module>\n"
+            "      <module>\n"
+            "        <name>ietf-origin</name>\n"
+            "        <namespace>urn:ietf:params:xml:ns:yang:ietf-origin</namespace>\n"
+            "      </module>\n"
+            "    </module-set>\n"
+            "    <content-id>14e2ab5dc325f6d86f743e8d3ade233f1a61a899</content-id>\n"
+            "  </yang-library>\n"
+            "</root>\n";
+    ly_ctx = sr_acquire_context(st->conn);
+    ret = lyd_parse_data_mem(ly_ctx, str, LYD_XML, LYD_PARSE_ONLY, 0, &edit);
+    assert_int_equal(ret, LY_SUCCESS);
+    ret = sr_edit_batch(st->sess, edit, "merge");
     assert_int_equal(ret, SR_ERR_OK);
+    lyd_free_siblings(edit);
+    sr_release_context(st->conn);
+
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
-
-    /* create a session just to update LY ext data */
-    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
-    assert_int_equal(ret, SR_ERR_OK);
-    sr_session_stop(sess);
 
     /* set some data */
     ret = sr_set_item_str(st->sess, "/sm:root/ietf-interfaces:interfaces/interface[name='eth1']/type",
@@ -2399,22 +2435,11 @@ test_schema_mount(void **state)
     /* read the operational data */
     ret = sr_get_data(st->sess, "/sm:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
-    assert_int_equal(ret, 0);
+    lyd_find_path(data->tree, "/sm:root/ietf-yang-library:yang-library", 0, &edit);
+    assert_non_null(edit);
+    lyd_find_path(data->tree, "/sm:root/ietf-interfaces:interfaces/interface[name='eth1']/description", 0, &edit);
+    assert_non_null(edit);
     sr_release_data(data);
-
-    str2 =
-            "<root xmlns=\"urn:sm\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
-            "  <interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
-            "    <interface>\n"
-            "      <name>eth1</name>\n"
-            "      <description or:origin=\"or:unknown\">config-description</description>\n"
-            "      <type or:origin=\"or:unknown\" xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
-            "    </interface>\n"
-            "  </interfaces>\n"
-            "</root>\n";
-    assert_string_equal(str1, str2);
-    free(str1);
 }
 
 /* TEST */
@@ -2613,7 +2638,7 @@ test_change_cb(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_true(data->tree->next->flags & LYD_DEFAULT);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
@@ -2815,6 +2840,7 @@ oper_list_enabled_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const ch
         assert_int_equal(op, SR_OP_CREATED);
         assert_string_equal(prev_value, "");
         assert_string_equal(node->schema->name, "ll");
+        assert_string_equal(lyd_get_value(node), "a1");
 
         /* no more changes */
         ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
@@ -2841,7 +2867,9 @@ test_oper_list_enabled(void **state)
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* set some operational data */
+    /* set some operational data, update the value */
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll[1]", "old_val", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll[1]", "a1", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
@@ -2884,7 +2912,7 @@ test_origin(void **state)
     /* read the operational data */
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
@@ -2912,7 +2940,7 @@ test_origin(void **state)
     /* read the operational data */
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
@@ -2943,7 +2971,7 @@ test_origin(void **state)
     /* read the operational data */
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
@@ -3118,7 +3146,7 @@ test_oper_order(void **state)
     assert_int_equal(ret, SR_ERR_UNSUPPORTED);
 
     /* discard pushed operational data */
-    ret = sr_discard_oper_changes(NULL, st->sess, NULL, 0);
+    ret = sr_discard_oper_changes(st->sess, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* it should be possible again to set oper changes order */
@@ -3228,7 +3256,7 @@ test_oper_cache(void **state)
     sr_unsubscribe(subscr);
     subscr = NULL;
 
-    ret = sr_discard_oper_changes(NULL, st->sess, NULL, 0);
+    ret = sr_discard_oper_changes(st->sess, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* build a new oper_push_cache, one module at a time */
@@ -3259,6 +3287,48 @@ test_oper_cache(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 }
 
+static void
+test_session_stop(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_session_ctx_t *sess = NULL;
+    int i, ret;
+
+    for (i = 0; i < 2; i++) {
+        ret = sr_session_start(st->conn, SR_DS_OPERATIONAL, &sess);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* set some operational data of first module */
+        ret = sr_set_item_str(sess, "/mixed-config:test-state/ll[1]", "x1", NULL, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* set some operational data of second module */
+        ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth0']/type",
+                "iana-if-type:ethernetCsmacd", NULL, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        ret = sr_apply_changes(st->sess, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        if (i) {
+            /* delete only the first module */
+            ret = sr_delete_item(sess, "/mixed-config:test-state", SR_EDIT_STRICT);
+            assert_int_equal(ret, SR_ERR_OK);
+
+            ret = sr_apply_changes(sess, 0);
+            assert_int_equal(ret, SR_ERR_OK);
+        } else {
+            /* delete all oper push data */
+            ret = sr_discard_oper_changes(st->sess, NULL, 0);
+            assert_int_equal(ret, SR_ERR_OK);
+        }
+
+        ret = sr_session_stop(sess);
+        assert_int_equal(ret, SR_ERR_OK);
+    }
+
+}
+
 int
 main(void)
 {
@@ -3284,6 +3354,7 @@ main(void)
         cmocka_unit_test_teardown(test_oper_delete, clear_up),
         cmocka_unit_test_teardown(test_oper_order, clear_up),
         cmocka_unit_test_teardown(test_oper_cache, clear_up),
+        cmocka_unit_test_teardown(test_session_stop, clear_up),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

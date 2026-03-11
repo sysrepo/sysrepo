@@ -29,8 +29,10 @@
 
 #include "compat.h"
 #include "config.h"
+#include "context_change.h"
 #include "log.h"
 #include "ly_wrap.h"
+#include "shm_mod.h"
 #include "sn_common.h"
 #include "sn_yang_push.h"
 
@@ -176,14 +178,22 @@ srsn_notif_sent(uint32_t sub_id)
     sr_error_info_t *err_info = NULL;
     struct srsn_sub *sub;
 
-    if (!(sub = srsn_find(sub_id, 0))) {
+    /* LOCK */
+    if ((err_info = srsn_lock())) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    if (!(sub = srsn_find(sub_id))) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Subscription with ID %" PRIu32 " not found.", sub_id);
         goto cleanup;
     }
 
-    ++sub->sent_count;
+    sub->sent_count++;
 
 cleanup:
+    /* UNLOCK */
+    srsn_unlock();
+
     return sr_api_ret(NULL, err_info);
 }
 
@@ -196,14 +206,30 @@ srsn_subscribe(sr_session_ctx_t *session, const char *stream, const char *xpath_
     const struct lys_module *ly_mod;
     struct srsn_sub *s = NULL;
     struct timespec cur_ts, replay_start;
+    int valid;
 
-    if (!(ly_mod = ly_ctx_get_module_implemented(session->conn->ly_ctx, "ietf-subscribed-notifications"))) {
+    /* CONTEXT LOCK */
+    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
+        return sr_api_ret(session, err_info);
+    }
+
+    /* find the subscribed-notifications module */
+    ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, "ietf-subscribed-notifications");
+    if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Module \"ietf-subscribed-notifications\" is not implemented.");
         goto cleanup;
-    } else if (start_time && lys_feature_value(ly_mod, "replay")) {
-        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Module \"ietf-subscribed-notifications\" feature \"replay\" "
-                "is not enabled.");
-        goto cleanup;
+    }
+
+    if (start_time) {
+        /* check whether the replay feature is enabled by checking if a node that depends on this feature is present */
+        if ((err_info = sr_lys_find_path(sr_yang_ctx.ly_ctx, "/ietf-subscribed-notifications:replay-completed", &valid, NULL))) {
+            goto cleanup;
+        }
+        if (!valid) {
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Module \"ietf-subscribed-notifications\" feature \"replay\" "
+                    "is not enabled.");
+            goto cleanup;
+        }
     }
 
     /* check parameters */
@@ -264,6 +290,9 @@ cleanup:
         srsn_sub_free(s);
     }
 
+    /* CONTEXT UNLOCK */
+    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
+
     return sr_api_ret(session, err_info);
 }
 
@@ -273,8 +302,20 @@ srsn_yang_push_periodic(sr_session_ctx_t *session, sr_datastore_t ds, const char
 {
     sr_error_info_t *err_info = NULL;
     struct srsn_sub *s = NULL;
+    struct lys_module *ly_mod;
 
-    if (!ly_ctx_get_module_implemented(session->conn->ly_ctx, "ietf-yang-push")) {
+    /* CONTEXT LOCK */
+    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
+        return sr_api_ret(session, err_info);
+    }
+
+    /* check whether the yang-push module is implemented, accessing context so it must be locked */
+    ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, "ietf-yang-push");
+
+    /* CONTEXT UNLOCK */
+    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
+
+    if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Module \"ietf-yang-push\" is not implemented.");
         goto cleanup;
     }
@@ -331,11 +372,25 @@ srsn_yang_push_on_change(sr_session_ctx_t *session, sr_datastore_t ds, const cha
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
     struct srsn_sub *s = NULL;
+    int valid;
 
-    if (!(ly_mod = ly_ctx_get_module_implemented(session->conn->ly_ctx, "ietf-yang-push"))) {
+    /* CONTEXT LOCK */
+    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
+        return sr_api_ret(session, err_info);
+    }
+
+    /* find the yang-push module */
+    ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, "ietf-yang-push");
+    if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Module \"ietf-yang-push\" is not implemented.");
         goto cleanup;
-    } else if (lys_feature_value(ly_mod, "on-change")) {
+    }
+
+    /* check whether the on-change feature is enabled by checking if a node that depends on this feature is present */
+    if ((err_info = sr_lys_find_path(sr_yang_ctx.ly_ctx, "/ietf-yang-push:resync-subscription", &valid, NULL))) {
+        goto cleanup;
+    }
+    if (!valid) {
         sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Module \"ietf-yang-push\" feature \"on-change\" is not enabled.");
         goto cleanup;
     }
@@ -391,6 +446,9 @@ cleanup:
         srsn_sub_free(s);
     }
 
+    /* CONTEXT UNLOCK */
+    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
+
     return sr_api_ret(session, err_info);
 }
 
@@ -400,7 +458,12 @@ srsn_yang_push_on_change_resync(uint32_t sub_id)
     sr_error_info_t *err_info = NULL;
     struct srsn_sub *sub;
 
-    if (!(sub = srsn_find(sub_id, 0)) || (sub->type != SRSN_YANG_PUSH_ON_CHANGE)) {
+    /* LOCK */
+    if ((err_info = srsn_lock())) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    if (!(sub = srsn_find(sub_id)) || (sub->type != SRSN_YANG_PUSH_ON_CHANGE)) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "YANG-push on-change subscription with ID %" PRIu32 " not found.",
                 sub_id);
         goto cleanup;
@@ -415,6 +478,9 @@ srsn_yang_push_on_change_resync(uint32_t sub_id)
     }
 
 cleanup:
+    /* UNLOCK */
+    srsn_unlock();
+
     return sr_api_ret(NULL, err_info);
 }
 
@@ -424,7 +490,12 @@ srsn_modify_xpath_filter(uint32_t sub_id, const char *xpath_filter)
     sr_error_info_t *err_info = NULL;
     struct srsn_sub *sub;
 
-    if (!(sub = srsn_find(sub_id, 0))) {
+    /* LOCK */
+    if ((err_info = srsn_lock())) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    if (!(sub = srsn_find(sub_id))) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Subscription with ID %" PRIu32 " not found.", sub_id);
         goto cleanup;
     }
@@ -434,6 +505,9 @@ srsn_modify_xpath_filter(uint32_t sub_id, const char *xpath_filter)
     }
 
 cleanup:
+    /* UNLOCK */
+    srsn_unlock();
+
     return sr_api_ret(NULL, err_info);
 }
 
@@ -443,7 +517,12 @@ srsn_modify_stop_time(uint32_t sub_id, const struct timespec *stop_time)
     sr_error_info_t *err_info = NULL;
     struct srsn_sub *sub;
 
-    if (!(sub = srsn_find(sub_id, 0))) {
+    /* LOCK */
+    if ((err_info = srsn_lock())) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    if (!(sub = srsn_find(sub_id))) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Subscription with ID %" PRIu32 " not found.", sub_id);
         goto cleanup;
     }
@@ -453,6 +532,9 @@ srsn_modify_stop_time(uint32_t sub_id, const struct timespec *stop_time)
     }
 
 cleanup:
+    /* UNLOCK */
+    srsn_unlock();
+
     return sr_api_ret(NULL, err_info);
 }
 
@@ -462,7 +544,12 @@ srsn_yang_push_modify_periodic(uint32_t sub_id, uint32_t period_ms, const struct
     sr_error_info_t *err_info = NULL;
     struct srsn_sub *sub;
 
-    if (!(sub = srsn_find(sub_id, 0)) || (sub->type != SRSN_YANG_PUSH_PERIODIC)) {
+    /* LOCK */
+    if ((err_info = srsn_lock())) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    if (!(sub = srsn_find(sub_id)) || (sub->type != SRSN_YANG_PUSH_PERIODIC)) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "YANG-push periodic subscription with ID %" PRIu32 " not found.",
                 sub_id);
         goto cleanup;
@@ -473,6 +560,9 @@ srsn_yang_push_modify_periodic(uint32_t sub_id, uint32_t period_ms, const struct
     }
 
 cleanup:
+    /* UNLOCK */
+    srsn_unlock();
+
     return sr_api_ret(NULL, err_info);
 }
 
@@ -482,7 +572,12 @@ srsn_yang_push_modify_on_change(uint32_t sub_id, uint32_t dampening_period_ms)
     sr_error_info_t *err_info = NULL;
     struct srsn_sub *sub;
 
-    if (!(sub = srsn_find(sub_id, 0)) || (sub->type != SRSN_YANG_PUSH_ON_CHANGE)) {
+    /* LOCK */
+    if ((err_info = srsn_lock())) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    if (!(sub = srsn_find(sub_id)) || (sub->type != SRSN_YANG_PUSH_ON_CHANGE)) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "YANG-push on-change subscription with ID %" PRIu32 " not found.",
                 sub_id);
         goto cleanup;
@@ -493,6 +588,9 @@ srsn_yang_push_modify_on_change(uint32_t sub_id, uint32_t dampening_period_ms)
     }
 
 cleanup:
+    /* UNLOCK */
+    srsn_unlock();
+
     return sr_api_ret(NULL, err_info);
 }
 
@@ -508,7 +606,12 @@ srsn_suspend(uint32_t sub_id, const char *reason)
     char buf[26];
     struct timespec ts;
 
-    if (!(sub = srsn_find(sub_id, 0))) {
+    /* LOCK */
+    if ((err_info = srsn_lock())) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    if (!(sub = srsn_find(sub_id))) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Subscription with ID %" PRIu32 " not found.", sub_id);
         goto cleanup;
     }
@@ -568,6 +671,10 @@ cleanup:
     if (ly_ctx) {
         sr_release_context(sub->conn);
     }
+
+    /* UNLOCK */
+    srsn_unlock();
+
     return sr_api_ret(NULL, err_info);
 }
 
@@ -583,7 +690,12 @@ srsn_resume(uint32_t sub_id)
     char buf[26];
     struct timespec ts;
 
-    if (!(sub = srsn_find(sub_id, 0))) {
+    /* LOCK */
+    if ((err_info = srsn_lock())) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    if (!(sub = srsn_find(sub_id))) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Subscription with ID %" PRIu32 " not found.", sub_id);
         goto cleanup;
     }
@@ -640,6 +752,10 @@ cleanup:
     if (ly_ctx) {
         sr_release_context(sub->conn);
     }
+
+    /* UNLOCK */
+    srsn_unlock();
+
     return sr_api_ret(NULL, err_info);
 }
 
@@ -655,7 +771,7 @@ srsn_terminate(uint32_t sub_id, const char *reason)
         return sr_api_ret(NULL, err_info);
     }
 
-    if (!(sub = srsn_find(sub_id, 1))) {
+    if (!(sub = srsn_find(sub_id))) {
         rc = SR_ERR_NOT_FOUND;
         goto cleanup;
     }
@@ -802,7 +918,7 @@ srsn_oper_data_sub(uint32_t sub_id, srsn_state_sub_t **sub)
     }
 
     /* find the subscription */
-    if (!(s = srsn_find(sub_id, 1))) {
+    if (!(s = srsn_find(sub_id))) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Subscription with ID %" PRIu32 " not found.", sub_id);
         goto cleanup;
     }
@@ -834,7 +950,7 @@ srsn_read_notif(int fd, const struct ly_ctx *ly_ctx, struct timespec *timestamp,
     int rc = SR_ERR_OK;
     uint32_t size;
     char *buf = NULL;
-    ssize_t r;
+    ssize_t r, rr;
 
     SR_CHECK_ARG_APIRET(!ly_ctx || !timestamp || !notif, NULL, err_info);
 
@@ -858,15 +974,32 @@ srsn_read_notif(int fd, const struct ly_ctx *ly_ctx, struct timespec *timestamp,
         sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to read notification size (%s).", strerror(errno));
         goto cleanup;
     }
+    assert(size < UINT32_MAX);
 
     buf = malloc(size + 1);
     SR_CHECK_MEM_GOTO(!buf, err_info, cleanup);
 
-    /* 3) read the notification LYB */
-    if (read(fd, buf, size) != (signed)size) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to read a notification (%s).", strerror(errno));
-        goto cleanup;
-    }
+    /* 3) read the notification LYB, handle large notifications */
+    rr = 0;
+    do {
+        r = read(fd, buf + rr, size - rr);
+        if ((r == -1) && ((errno == EAGAIN) || (errno == EWOULDBLOCK))) {
+            /* busy */
+            usleep(100);
+            continue;
+        } else if (r == -1) {
+            /* error */
+            sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to read a notification (%s).", strerror(errno));
+            goto cleanup;
+        } else if (!r) {
+            /* end-of-file */
+            r = SR_ERR_UNSUPPORTED;
+            goto cleanup;
+        }
+
+        rr += r;
+    } while ((uint32_t)rr < size);
+    buf[size] = '\0';
 
     /* parse the notification */
     if ((err_info = sr_lyd_parse_op(ly_ctx, buf, LYD_LYB, LYD_TYPE_NOTIF_YANG, notif))) {

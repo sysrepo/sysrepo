@@ -35,9 +35,10 @@
 #include "sysrepo_types.h"
 
 sr_error_info_t *
-sr_cond_init(sr_cond_t *cond, int UNUSED(shared), int UNUSED(robust))
+sr_cond_init(sr_cond_t *cond, int shared, int UNUSED(robust))
 {
     cond->futex = 1;
+    cond->shared = shared;
 
     return NULL;
 }
@@ -50,39 +51,40 @@ sr_cond_destroy(sr_cond_t *UNUSED(cond))
 /**
  * @brief Wrapper for syscall FUTEX_WAIT.
  *
- * @param[in] uaddr Futex address.
+ * @param[in] cond Conditional variable.
  * @param[in] expected Expected value in the futex.
  * @param[in] clockid ID of the clock to use.
  * @param[in] timeout Absolute real timeout for waiting, infinite if NULL.
  * @return 0 on success, -1 on error.
  */
 static int
-sys_futex_wait(uint32_t *uaddr, uint32_t expected, clockid_t clockid, const struct timespec *timeout)
+sys_futex_wait(sr_cond_t *cond, uint32_t expected, clockid_t clockid, const struct timespec *timeout)
 {
-    int futex_op;
+    int futex_op = cond->shared ? 0 : FUTEX_PRIVATE_FLAG;
 
     if (clockid == CLOCK_MONOTONIC) {
-        futex_op = FUTEX_WAIT_BITSET;
+        futex_op |= FUTEX_WAIT_BITSET;
     } else if (clockid == CLOCK_REALTIME) {
-        futex_op = FUTEX_WAIT_BITSET | FUTEX_CLOCK_REALTIME;
+        futex_op |= FUTEX_WAIT_BITSET | FUTEX_CLOCK_REALTIME;
     } else {
         return EINVAL;
     }
 
-    return syscall(SYS_futex, uaddr, futex_op, expected, timeout, NULL, FUTEX_BITSET_MATCH_ANY);
+    return syscall(SYS_futex, &cond->futex, futex_op, expected, timeout, NULL, FUTEX_BITSET_MATCH_ANY);
 }
 
 /**
  * @brief Wrapper for syscall FUTEX_WAKE.
  *
- * @param[in] uaddr Futex address.
+ * @param[in] cond Conditional variable.
  * @param[in] waiter_count Number of waiter to wake.
  * @return 0 on success, -1 on error.
  */
 static int
-sys_futex_wake(uint32_t *uaddr, uint32_t waiter_count)
+sys_futex_wake(sr_cond_t *cond, uint32_t waiter_count)
 {
-    return syscall(SYS_futex, uaddr, FUTEX_WAKE, waiter_count, NULL, NULL, 0);
+    int futex_op = cond->shared ? FUTEX_WAKE : FUTEX_WAKE_PRIVATE;
+    return syscall(SYS_futex, &cond->futex, futex_op, waiter_count, NULL, NULL, 0);
 }
 
 /**
@@ -128,7 +130,7 @@ sr_cond_wait_(sr_cond_t *cond, pthread_mutex_t *mutex, clockid_t clockid, struct
     /* wait, ignore EINTR */
     do {
         errno = 0;
-        rf = sys_futex_wait(&cond->futex, last_val, clockid, timeout_abs);
+        rf = sys_futex_wait(cond, last_val, clockid, timeout_abs);
     } while ((rf == -1) && (errno == EINTR));
 
     /* MUTEX LOCK */
@@ -162,5 +164,5 @@ sr_cond_broadcast(sr_cond_t *cond)
     /* just increase the counter, makes sure it is recognized as a new "change" */
     cond->futex++;
 
-    sys_futex_wake(&cond->futex, INT_MAX);
+    sys_futex_wake(cond, INT_MAX);
 }

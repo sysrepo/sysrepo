@@ -337,8 +337,8 @@ sr_nacm_group_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char 
             }
         } else {
             /* name must be present */
-            assert(!strcmp(node->parent->child->schema->name, "name"));
-            group = sr_nacm_group_find(lyd_get_value(node->parent->child), NULL);
+            assert(!strcmp(lyd_child(node->parent)->schema->name, "name"));
+            group = sr_nacm_group_find(lyd_get_value(lyd_child(node->parent)), NULL);
 
             if (!strcmp(node->schema->name, "user-name")) {
                 if ((op == SR_OP_DELETED) && !group) {
@@ -673,8 +673,8 @@ sr_nacm_rule_list_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const c
             }
         } else {
             /* name must be present */
-            assert(!strcmp(node->parent->child->schema->name, "name"));
-            rlist_name = lyd_get_value(node->parent->child);
+            assert(!strcmp(lyd_child(node->parent)->schema->name, "name"));
+            rlist_name = lyd_get_value(lyd_child(node->parent));
             for (rlist = nacm.rule_lists; rlist && strcmp(rlist->name, rlist_name); rlist = rlist->next) {}
 
             if (!strcmp(node->schema->name, "group")) {
@@ -743,8 +743,8 @@ sr_nacm_rule_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *
     while ((rc = sr_get_change_tree_next(session, iter, &op, &node, NULL, &prev_list, NULL)) == SR_ERR_OK) {
         if (!strcmp(node->schema->name, "rule")) {
             /* find parent rule list */
-            assert(!strcmp(node->parent->child->schema->name, "name"));
-            rlist_name = lyd_get_value(node->parent->child);
+            assert(!strcmp(lyd_child(node->parent)->schema->name, "name"));
+            rlist_name = lyd_get_value(lyd_child(node->parent));
             for (rlist = nacm.rule_lists; rlist && strcmp(rlist->name, rlist_name); rlist = rlist->next) {}
             if ((op == SR_OP_DELETED) && !rlist) {
                 /* even parent rule-list was deleted */
@@ -841,8 +841,8 @@ sr_nacm_rule_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *
             }
         } else {
             /* find parent rule list */
-            assert(!strcmp(node->parent->parent->child->schema->name, "name"));
-            rlist_name = lyd_get_value(node->parent->parent->child);
+            assert(!strcmp(lyd_child(node->parent->parent)->schema->name, "name"));
+            rlist_name = lyd_get_value(lyd_child(node->parent->parent));
             for (rlist = nacm.rule_lists; rlist && strcmp(rlist->name, rlist_name); rlist = rlist->next) {}
             if ((op == SR_OP_DELETED) && !rlist) {
                 /* even parent rule-list was deleted */
@@ -851,8 +851,8 @@ sr_nacm_rule_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *
             assert(rlist);
 
             /* name must be present */
-            assert(!strcmp(node->parent->child->schema->name, "name"));
-            rule_name = lyd_get_value(node->parent->child);
+            assert(!strcmp(lyd_child(node->parent)->schema->name, "name"));
+            rule_name = lyd_get_value(lyd_child(node->parent));
             for (rule = rlist->rules; rule && strcmp(rule->name, rule_name); rule = rule->next) {}
             if ((op == SR_OP_DELETED) && !rule) {
                 /* even parent rule was deleted */
@@ -1008,7 +1008,7 @@ sr_nacm_get_user(sr_session_ctx_t *session)
     }
 
 API int
-sr_nacm_init(sr_session_ctx_t *session, sr_subscr_options_t opts, sr_subscription_ctx_t **sub)
+sr_nacm_init(sr_session_ctx_t *session, uint32_t opts, sr_subscription_ctx_t **sub)
 {
     sr_error_info_t *err_info = NULL;
     const char *mod_name, *xpath;
@@ -1021,6 +1021,8 @@ sr_nacm_init(sr_session_ctx_t *session, sr_subscr_options_t opts, sr_subscriptio
     pthread_mutex_init(&nacm.lock, NULL);
 
     /* subscribe to all the relevant config data */
+    sr_session_switch_ds(session, SR_DS_RUNNING);
+
     mod_name = "ietf-netconf-acm";
     xpath = "/ietf-netconf-acm:nacm";
     SR_CONFIG_SUBSCR(session, sub, mod_name, xpath, opts, sr_nacm_nacm_params_cb);
@@ -1052,7 +1054,7 @@ cleanup:
 }
 
 API int
-sr_nacm_glob_stats_subscribe(sr_session_ctx_t *session, sr_subscr_options_t opts, sr_subscription_ctx_t **sub)
+sr_nacm_glob_stats_subscribe(sr_session_ctx_t *session, uint32_t opts, sr_subscription_ctx_t **sub)
 {
     sr_error_info_t *err_info = NULL;
     const char *mod_name, *xpath;
@@ -2119,6 +2121,57 @@ cleanup:
     return err_info;
 }
 
+API int
+sr_nacm_filter_data_read(sr_session_ctx_t *session, struct lyd_node **data)
+{
+    sr_error_info_t *err_info = NULL;
+    char **groups = NULL;
+    uint32_t group_count = 0;
+    struct ly_set denied_set = {0};
+    struct lyd_node *root;
+    uint32_t i;
+
+    SR_CHECK_ARG_APIRET(!session || !data, session, err_info);
+
+    if (!session->nacm_user || !*data) {
+        goto cleanup;
+    }
+
+    /* NACM LOCK */
+    pthread_mutex_lock(&nacm.lock);
+
+    /* collect groups */
+    if ((err_info = sr_nacm_collect_groups(session->nacm_user, &groups, &group_count))) {
+        goto cleanup_unlock;
+    }
+
+    /* apply NACM on all the subtrees */
+    LY_LIST_FOR(*data, root) {
+        if ((err_info = sr_nacm_check_data_read_filter(root, session->nacm_user, groups, group_count, &denied_set))) {
+            goto cleanup_unlock;
+        }
+    }
+
+    /* NACM UNLOCK */
+    pthread_mutex_unlock(&nacm.lock);
+
+    for (i = 0; i < denied_set.count; ++i) {
+        /* free the denied nodes while adjusting the first node pointer */
+        sr_lyd_free_tree_safe(denied_set.dnodes[i], data);
+    }
+
+    goto cleanup;
+
+cleanup_unlock:
+    /* NACM UNLOCK */
+    pthread_mutex_unlock(&nacm.lock);
+
+cleanup:
+    sr_nacm_free_groups(groups, group_count);
+    ly_set_erase(&denied_set, NULL);
+    return sr_api_ret(session, err_info);
+}
+
 /**
  * @brief Check whether diff node siblings can be applied by a user, recursively with children.
  *
@@ -2255,11 +2308,19 @@ cleanup:
 sr_error_info_t *
 sr_nacm_check_yp_change_begin(const char *nacm_user, char ***groups, uint32_t *group_count)
 {
+    *groups = NULL;
+    *group_count = 0;
+
     /* NACM LOCK */
     pthread_mutex_lock(&nacm.lock);
 
     if (!nacm_user) {
         /* no groups to collect */
+        return NULL;
+    }
+
+    /* NACM is off */
+    if (!nacm.enabled) {
         return NULL;
     }
 
@@ -2276,6 +2337,16 @@ sr_nacm_check_yp_change_target(const char *nacm_user, char **groups, uint32_t gr
     *denied = 0;
 
     if (!nacm_user) {
+        goto cleanup;
+    }
+
+    /* 1) NACM is off */
+    if (!nacm.enabled) {
+        goto cleanup;
+    }
+
+    /* 2) recovery session allowed */
+    if (!strcmp(nacm_user, SR_NACM_RECOVERY_USER)) {
         goto cleanup;
     }
 

@@ -64,7 +64,8 @@ typedef enum {
     SR_LL_NONE = 0,  /**< Do not print any messages. */
     SR_LL_ERR,       /**< Print only error messages. */
     SR_LL_WRN,       /**< Print error and warning messages. */
-    SR_LL_INF,       /**< Besides errors and warnings, print some other informational messages. */
+    SR_LL_INF,       /**< Print error, warning, and informational messages. */
+    SR_LL_VRB,       /**< Print error, warning, informational, and even verbose (libyang) messages. */
     SR_LL_DBG        /**< Print all messages including some development debug messages. */
 } sr_log_level_t;
 
@@ -102,17 +103,19 @@ typedef struct sr_session_ctx_s sr_session_ctx_t;
  * @brief Flags used to override default connection handling by ::sr_connect call.
  */
 typedef enum {
-    SR_CONN_DEFAULT = 0x0,              /**< No special behaviour. */
-    SR_CONN_CACHE_RUNNING = 0x1,        /**< Always cache running datastore data which makes mainly repeated retrieval
-                                             of data much faster. Affects all sessions created on this connection. */
-    SR_CONN_CTX_SET_PRIV_PARSED = 0x2   /**< Use LY_CTX_SET_PRIV_PARSED option for the connection libyang context. */
+    SR_CONN_DEFAULT = 0x0               /**< No special behaviour. */
 } sr_conn_flag_t;
 
 /**
- * @brief Options overriding default connection handling by ::sr_connect call,
- * it is supposed to be bitwise OR-ed value of any ::sr_conn_flag_t flags.
+ * @brief Flags used to override default context behaviour.
  */
-typedef uint32_t sr_conn_options_t;
+typedef enum {
+    SR_CTX_DEFAULT = 0x0,           /**< No special behaviour. */
+    SR_CTX_NO_PRINTED = 0x1,        /**< Do not print nor use printed context even if available. Can be used to keep
+                                         parsed modules in the context. */
+    SR_CTX_SET_PRIV_PARSED = 0x2    /**< Use LY_CTX_SET_PRIV_PARSED libyang option for the context. Affects only
+                                         non-printed context. */
+} sr_context_flag_t;
 
 /**
  * @brief [Datastores](@ref datastores) that sysrepo supports. To change which datastore a session operates on,
@@ -307,9 +310,11 @@ typedef enum {
                                           available. */
     SR_OPER_NO_RUN_CACHED = 0x40,    /**< Do not use connection running datastore cache data even if the connection
                                           supports it, may prevent some dead locks. */
-    SR_OPER_NO_PUSH_NP_CONT = 0x80   /**< Do not add empty NP containers to loaded push operational data. Can only be
+    SR_OPER_NO_PUSH_NP_CONT = 0x80,  /**< Do not add empty NP containers to loaded push operational data. Can only be
                                           used if ::SR_OPER_NO_SUBS is also set (ignored othwerise) and may make getting
                                           data faster. */
+    SR_OPER_NO_NEW_CHANGES = 0x0100  /**< Do not apply prepared changes in an edit or stored diff changes when reading
+                                          data in a change callback, effectively getting current (old) data. */
 } sr_get_oper_flag_t;
 
 #define SR_OPER_MASK 0xFFFF          /**< Mask for all get oper data flags. */
@@ -322,12 +327,6 @@ typedef enum {
                                           would normally be applied on. The filter is used only when deciding what data
                                           to retrieve from subscribers and similar optimization cases. */
 } sr_get_flag_t;
-
-/**
- * @brief Options overriding default get handling by ::sr_get_data call,
- * it is supposed to be a bitmask ::sr_get_oper_flag_t and ::sr_get_flag_t flags.
- */
-typedef uint32_t sr_get_options_t;
 
 /** @} getdata */
 
@@ -351,12 +350,6 @@ typedef enum {
                                      are set and an error is observed. This flag can in those cases be used. Also, if an error
                                      is returned the previous edit is always left untouched. */
 } sr_edit_flag_t;
-
-/**
- * @brief Options overriding default behavior of data manipulation calls,
- * it is supposed to be bitwise OR-ed value of any ::sr_edit_flag_t flags.
- */
-typedef uint32_t sr_edit_options_t;
 
 /**
  * @brief Options for specifying move direction of ::sr_move_item call.
@@ -462,7 +455,9 @@ typedef enum {
     /**
      * @brief If you call getters (::sr_get_data()) in the module change callback for data from **other** modules
      * than the one the callback subscribed for, use this flag. Normally, only the changes of the subscribed module
-     * are sent to the callback so it retrieves the old data of other modules.
+     * are sent to the callback so it retrieves the old data of other modules. This flag does not affect ::SR_EV_DONE
+     * event because by then the changes of all the modules are written into the datastore (so it makes no sense to
+     * combine this flag with ::SR_SUBSCR_DONE_ONLY).
      */
     SR_SUBSCR_CHANGE_ALL_MODULES = 0x0200
 
@@ -473,12 +468,6 @@ typedef enum {
  * it is supposed to be released by the caller using ::sr_unsubscribe call.
  */
 typedef struct sr_subscription_ctx_s sr_subscription_ctx_t;
-
-/**
- * @brief Options overriding default behavior of subscriptions,
- * it is supposed to be a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
- */
-typedef uint32_t sr_subscr_options_t;
 
 /** @} subs */
 

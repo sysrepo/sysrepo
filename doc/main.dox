@@ -104,9 +104,9 @@ _running_).
 @anchor oper_ds
 
 _Operational_ datastore maintains the currently used configuration. Details about what exactly it is supposed
-to represent can be found in the [NMDA RFC](https://tools.ietf.org/html/rfc8342#section-5.3). In short, it is
-read-only and generally corresponds to _running_ with some possible differences. Also, only this datastore includes
-any **state data** nodes.
+to represent can be found in the [NMDA RFC](https://tools.ietf.org/html/rfc8342#section-5.3). In short, it should
+generally correspond to the current operational state and actual behavior of the system. In practice it includes
+data from _running_ with some notable differences. Also, only this datastore includes any **state data** nodes.
 
 By default, this datastore is **empty**. From user perspective, this is how data becomes a part of this datastore:
 - any subscribed _running_ data (in-use concept) will appear in _operational_ datastore;
@@ -144,8 +144,9 @@ providing the same data using both methods.
 
 Firstly, regarding [connections and sessions](@ref conn_sess), a __session__ is not synchronized at all so it __must
 not be shared__ among multiple threads. Each thread should always create its own session to ensure correct behavior.
-Other than that there should be no restrictions and all Sysrepo API functions should be correctly synchronized for
-any number of processes, each with several threads.
+Nevertheless, using a single session from different thread contexts should work fine if the session is
+__never used concurrently__ by those threads. Other than that there should be no restrictions and all Sysrepo API
+functions should be correctly synchronized for any number of processes, each with several threads.
 
 As for [subscriptions](@ref subs), they are fully synchronized but it makes no sense to process events of a single
 subscription in several threads (theoretically possible when ::SR_SUBSCR_NO_THREAD is used) because all events on
@@ -187,9 +188,14 @@ session is created by an application that delegates requests from other sources 
 # Schema Mount
 @anchor schema_mount
 
-Schema-mount extension ([RFC 8528](https://www.rfc-editor.org/rfc/rfc8528.html)) is supported but requires
-operational data of `ietf-yang-schema-mount:schema-mounts` to be provided. If you do, using any of the [methods](@ref oper_data),
-it will automatically work. Note that these data are cached in the connection and are updated on __new session creation__.
+Schema-mount extension ([RFC 8528](https://www.rfc-editor.org/rfc/rfc8528.html)) is supported. To use it,
+`ietf-yang-schema-mount:schema-mounts` operational data must be provided. Once set, this data is cached
+for future use. Using any of the [methods](@ref oper_data) will automatically work.
+Note: If you set new operational data, ensure the context is not acquired when performing the first operation afterward.
+
+If you wish to use `inline` schema mount points, make sure to compile sysrepo without
+printed context support (-DPRINTED_CONTEXT_ADDRESS=0), because printed contexts currently
+only support `shared` mount points.
 
 # Path and XPath
 @anchor paths

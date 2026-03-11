@@ -4,8 +4,8 @@
  * @brief routines for sysrepo edit and diff data tree handling
  *
  * @copyright
- * Copyright (c) 2018 - 2021 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2026 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2026 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -278,7 +278,11 @@ sr_edit_create_meta_attr(struct lyd_node *edit_node, const char *mod_name, const
 
     /* get the module */
     mod = ly_ctx_get_module_implemented(LYD_CTX(edit_node), mod_name);
-    SR_CHECK_INT_RET(!mod, err_info);
+    if (!mod) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Cannot create metadata \"%s\", module \"%s\" not found.", name,
+                mod_name);
+        return err_info;
+    }
 
     if (edit_node->schema) {
         /* create a new meta */
@@ -323,126 +327,6 @@ sr_op_edit2diff(enum edit_op op)
 
     assert(0);
     return 0;
-}
-
-/**
- * @brief Add diff metadata.
- *
- * @param[in] diff_node Diff node to change.
- * @param[in] meta_val Metadata value (meaning depends on the nodetype).
- * @param[in] prev_meta_val Previous metadata value (meaning depends on the nodetype).
- * @param[in] op Diff operation.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_diff_add_meta(struct lyd_node *diff_node, const char *meta_val, const char *prev_meta_val, enum edit_op op)
-{
-    sr_error_info_t *err_info = NULL;
-    enum edit_op cur_op;
-
-    assert((op == EDIT_CREATE) || (op == EDIT_DELETE) || (op == EDIT_REPLACE) || (op == EDIT_NONE));
-
-    /* add operation if needed */
-    cur_op = sr_edit_diff_find_oper(diff_node, 1, NULL);
-    if ((cur_op != op) && (err_info = sr_diff_set_oper(diff_node, sr_edit_op2str(op)))) {
-        return err_info;
-    }
-
-    switch (op) {
-    case EDIT_NONE:
-        /* add attributes for the special dflt-only change */
-        if (diff_node->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST)) {
-            if ((err_info = sr_lyd_new_meta(diff_node, NULL, "yang:orig-default", prev_meta_val ? "true" : "false"))) {
-                return err_info;
-            }
-        }
-        break;
-    case EDIT_REPLACE:
-        if (diff_node->schema->nodetype & (LYS_LEAF | LYS_ANYXML | LYS_ANYDATA)) {
-            assert(meta_val);
-            assert(!prev_meta_val || (diff_node->schema->nodetype == LYS_LEAF));
-
-            /* add info about previous value and default state as an attribute */
-            if ((err_info = sr_lyd_new_meta(diff_node, NULL, "yang:orig-value", meta_val))) {
-                return err_info;
-            }
-            if ((err_info = sr_lyd_new_meta(diff_node, NULL, "yang:orig-default", prev_meta_val ? "true" : "false"))) {
-                return err_info;
-            }
-            break;
-        }
-
-        assert(lysc_is_userordered(diff_node->schema));
-
-        /* add info about current place for abort */
-        if (lysc_is_dup_inst_list(diff_node->schema)) {
-            if ((err_info = sr_lyd_new_meta(diff_node, NULL, "yang:orig-position", prev_meta_val))) {
-                return err_info;
-            }
-        } else if (diff_node->schema->nodetype == LYS_LIST) {
-            if ((err_info = sr_lyd_new_meta(diff_node, NULL, "yang:orig-key", prev_meta_val))) {
-                return err_info;
-            }
-        } else {
-            if ((err_info = sr_lyd_new_meta(diff_node, NULL, "yang:orig-value", prev_meta_val))) {
-                return err_info;
-            }
-        }
-    /* fallthrough */
-    case EDIT_CREATE:
-        if (lysc_is_userordered(diff_node->schema)) {
-            /* add info about inserted place as a metadata (meta_val can be NULL, inserted on the first place) */
-            if ((err_info = sr_lyd_new_meta(diff_node, NULL, sr_userord_anchor_meta_name(diff_node->schema), meta_val))) {
-                return err_info;
-            }
-        }
-        break;
-    case EDIT_DELETE:
-        if (lysc_is_userordered(diff_node->schema)) {
-            /* add info about current place for abort */
-            if (lysc_is_dup_inst_list(diff_node->schema)) {
-                if ((err_info = sr_lyd_new_meta(diff_node, NULL, "yang:orig-position", prev_meta_val))) {
-                    return err_info;
-                }
-            } else if (diff_node->schema->nodetype == LYS_LIST) {
-                if ((err_info = sr_lyd_new_meta(diff_node, NULL, "yang:orig-key", prev_meta_val))) {
-                    return err_info;
-                }
-            } else {
-                if ((err_info = sr_lyd_new_meta(diff_node, NULL, "yang:orig-value", prev_meta_val))) {
-                    return err_info;
-                }
-            }
-        }
-        break;
-    default:
-        SR_ERRINFO_INT(&err_info);
-        return err_info;
-    }
-
-    return NULL;
-}
-
-/**
- * @brief Find a previous (leaf-)list instance.
- *
- * @param[in] llist (Leaf-)list instance.
- * @return Previous instance, NULL if first.
- */
-static const struct lyd_node *
-sr_edit_find_previous_instance(const struct lyd_node *llist)
-{
-    if (!llist->prev->next) {
-        /* the only/first node */
-        return NULL;
-    }
-
-    if (llist->prev->schema != llist->schema) {
-        /* first instance */
-        return NULL;
-    }
-
-    return llist->prev;
 }
 
 /**
@@ -494,22 +378,147 @@ sr_edit_create_userord_predicate(const struct lyd_node *llist)
 }
 
 /**
+ * @brief Add diff metadata.
+ *
+ * @param[in] diff_node Diff node to change.
+ * @param[in] node_new New node (meaning depends on the nodetype).
+ * @param[in] node_old Old node (meaning depends on the nodetype).
+ * @param[in] meta_dflt Old default state metadata value, if applicable.
+ * @param[in] op Diff operation.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_diff_add_meta(struct lyd_node *diff_node, const struct lyd_node *node_new, const struct lyd_node *node_old,
+        const char *meta_dflt, enum edit_op op)
+{
+    sr_error_info_t *err_info = NULL;
+    enum edit_op cur_op;
+    char *meta_old = NULL, *meta_new = NULL;
+
+    assert((op == EDIT_CREATE) || (op == EDIT_DELETE) || (op == EDIT_REPLACE) || (op == EDIT_NONE));
+
+    /* add operation if needed */
+    cur_op = sr_edit_diff_find_oper(diff_node, 1, NULL);
+    if ((cur_op != op) && (err_info = sr_diff_set_oper(diff_node, sr_edit_op2str(op)))) {
+        goto cleanup;
+    }
+
+    switch (op) {
+    case EDIT_NONE:
+        /* add attributes for the special dflt-only change */
+        if (diff_node->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST)) {
+            if ((err_info = sr_lyd_new_meta(diff_node, NULL, "yang:orig-default", meta_dflt))) {
+                goto cleanup;
+            }
+        }
+        break;
+    case EDIT_REPLACE:
+        if (diff_node->schema->nodetype == LYS_LEAF) {
+            /* add info about previous value */
+            assert(node_old);
+            if ((err_info = sr_lyd_new_meta(diff_node, NULL, "yang:orig-value", lyd_get_value(node_old)))) {
+                goto cleanup;
+            }
+        } else if (diff_node->schema->nodetype & LYD_NODE_ANY) {
+            /* add info about previous value */
+            assert(node_old);
+            if ((err_info = sr_lyd_any_value_str(node_old, &meta_old))) {
+                goto cleanup;
+            }
+            if ((err_info = sr_lyd_new_meta(diff_node, NULL, "yang:orig-value", meta_old))) {
+                goto cleanup;
+            }
+        }
+
+        if (diff_node->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST)) {
+            /* add info about the default state as a metadata */
+            if ((err_info = sr_lyd_new_meta(diff_node, NULL, "yang:orig-default", meta_dflt))) {
+                goto cleanup;
+            }
+        }
+
+        if (lysc_is_userordered(diff_node->schema)) {
+            /* add info about current place for abort */
+            if (node_old) {
+                meta_old = sr_edit_create_userord_predicate(node_old);
+            }
+            if ((err_info = sr_lyd_new_meta(diff_node, NULL, sr_userord_anchor_meta_name(diff_node->schema, 1), meta_old))) {
+                goto cleanup;
+            }
+        }
+    /* fallthrough */
+    case EDIT_CREATE:
+        if (lysc_is_userordered(diff_node->schema)) {
+            /* add info about inserted place as a metadata (meta_new can be NULL, inserted on the first place) */
+            if (node_new) {
+                meta_new = sr_edit_create_userord_predicate(node_new);
+            }
+            if ((err_info = sr_lyd_new_meta(diff_node, NULL, sr_userord_anchor_meta_name(diff_node->schema, 0), meta_new))) {
+                goto cleanup;
+            }
+        }
+        break;
+    case EDIT_DELETE:
+        if (lysc_is_userordered(diff_node->schema)) {
+            /* add info about current place for abort */
+            if (node_old) {
+                meta_old = sr_edit_create_userord_predicate(node_old);
+            }
+            if ((err_info = sr_lyd_new_meta(diff_node, NULL, sr_userord_anchor_meta_name(diff_node->schema, 1), meta_old))) {
+                goto cleanup;
+            }
+        }
+        break;
+    default:
+        SR_ERRINFO_INT(&err_info);
+        goto cleanup;
+    }
+
+cleanup:
+    free(meta_old);
+    free(meta_new);
+    return err_info;
+}
+
+/**
+ * @brief Find a previous (leaf-)list instance.
+ *
+ * @param[in] llist (Leaf-)list instance.
+ * @return Previous instance, NULL if first.
+ */
+static const struct lyd_node *
+sr_edit_find_previous_instance(const struct lyd_node *llist)
+{
+    if (!llist->prev->next) {
+        /* the only/first node */
+        return NULL;
+    }
+
+    if (llist->prev->schema != llist->schema) {
+        /* first instance */
+        return NULL;
+    }
+
+    return llist->prev;
+}
+
+/**
  * @brief Transform edit metadata into best-effort diff metadata.
  *
  * @param[in] node Node to transform.
  * @param[in] set_op Set this diff op, if 0 inherit or transform edit op to diff op if there is an explicit operation.
- * @param[in] prev_val Previous value of a leaf, if applicable.
+ * @param[in] node_old Previous trm node, if applicable.
  * @param[in] orig_node Original @p node linked into the full edit.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_meta_edit2diff(struct lyd_node *node, enum edit_op set_op, const char *prev_val, const struct lyd_node *orig_node)
+sr_meta_edit2diff(struct lyd_node *node, enum edit_op set_op, const struct lyd_node *node_old,
+        const struct lyd_node *orig_node)
 {
     sr_error_info_t *err_info = NULL;
     enum edit_op eop;
     struct lyd_meta *meta;
-    const struct lyd_node *sibling_before;
-    char *meta_val = NULL;
+    const char *meta_dflt;
     int op_own;
 
     /* check if there is an operation */
@@ -530,20 +539,23 @@ sr_meta_edit2diff(struct lyd_node *node, enum edit_op set_op, const char *prev_v
 
     if (lysc_is_userordered(node->schema)) {
         /* find previous instance */
-        sibling_before = sr_edit_find_previous_instance(orig_node);
-        if (sibling_before) {
-            prev_val = meta_val = sr_edit_create_userord_predicate(sibling_before);
-        }
+        node_old = sr_edit_find_previous_instance(orig_node);
+    }
+
+    /* learn default flag state */
+    if (node->flags & LYD_DEFAULT) {
+        meta_dflt = "true";
+    } else {
+        meta_dflt = "false";
     }
 
     /* add all diff metadata */
     assert((set_op == EDIT_CREATE) || (set_op == EDIT_DELETE) || (set_op == EDIT_REPLACE) || (set_op == EDIT_NONE));
-    if ((err_info = sr_diff_add_meta(node, prev_val, NULL, set_op))) {
+    if ((err_info = sr_diff_add_meta(node, NULL, node_old, meta_dflt, set_op))) {
         goto cleanup;
     }
 
 cleanup:
-    free(meta_val);
     return err_info;
 }
 
@@ -607,13 +619,13 @@ cleanup:
  *
  * @param[in] edit Edit node to transform into diff.
  * @param[in] op Diff operation to set.
- * @param[in] prev_val Previous value of a leaf, if applicable.
+ * @param[in] node_old Previous term node, if applicable.
  * @param[in] recursive Whether to append @p edit with descendants or not.
  * @param[in,out] diff Diff to append to, do nothing if NULL.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_edit_diff_append(const struct lyd_node *edit, enum edit_op op, const char *prev_val, int recursive,
+sr_edit_diff_append(const struct lyd_node *edit, enum edit_op op, const struct lyd_node *node_old, int recursive,
         struct lyd_node **diff)
 {
     sr_error_info_t *err_info = NULL;
@@ -641,7 +653,7 @@ sr_edit_diff_append(const struct lyd_node *edit, enum edit_op op, const char *pr
 
     if (op == EDIT_REPLACE) {
         /* store the previous value */
-        assert(prev_val);
+        assert(node_old);
     }
 
     /* switch all edit metadata for best-effort diff metadata */
@@ -649,7 +661,7 @@ sr_edit_diff_append(const struct lyd_node *edit, enum edit_op op, const char *pr
         if (!lysc_is_key(elem->schema)) {
             if (elem == diff_subtree) {
                 /* set specific operation for the root, use original node from the edit to learn positions */
-                err_info = sr_meta_edit2diff(elem, op, prev_val, edit);
+                err_info = sr_meta_edit2diff(elem, op, node_old, edit);
             } else {
                 /* inherit and transform op, descendats were fully duplicated so we can use the node normally */
                 err_info = sr_meta_edit2diff(elem, 0, NULL, elem);
@@ -664,11 +676,7 @@ sr_edit_diff_append(const struct lyd_node *edit, enum edit_op op, const char *pr
 
     /* finally, insert subtree into diff parent */
     if (diff_parent) {
-        if (diff_subtree->flags & LYD_EXT) {
-            lyplg_ext_insert(diff_parent, diff_subtree);
-        } else {
-            lyd_insert_child(diff_parent, diff_subtree);
-        }
+        lyd_insert_child(diff_parent, diff_subtree);
     } else {
         lyd_insert_sibling(*diff, diff_subtree, diff);
     }
@@ -1019,12 +1027,8 @@ sr_edit_insert(struct lyd_node **data_root, struct lyd_node *data_parent, struct
     if ((insert == INSERT_DEFAULT) || (insert == INSERT_LAST)) {
         /* default insert is at the last position */
         if (data_parent) {
-            if (new_node->flags & LYD_EXT) {
-                lyplg_ext_insert(data_parent, new_node);
-            } else {
-                if ((err_info = sr_lyd_insert_child(data_parent, new_node))) {
-                    goto cleanup;
-                }
+            if ((err_info = sr_lyd_insert_child(data_parent, new_node))) {
+                goto cleanup;
             }
         } else {
             if ((err_info = sr_lyd_insert_sibling(*data_root, new_node, data_root))) {
@@ -1313,8 +1317,9 @@ sr_diff_find_match(const struct lyd_node *diff_sibling, const struct lyd_node *d
  * @brief Add a node from data tree/edit into sysrepo diff.
  *
  * @param[in] node Changed node to be added to the diff.
- * @param[in] meta_val Metadata value (meaning depends on the nodetype).
- * @param[in] prev_meta_value Previous metadata value (meaning depends on the nodetype).
+ * @param[in] node_new New node (meaning depends on the nodetype).
+ * @param[in] node_old Old node (meaning depends on the nodetype).
+ * @param[in] meta_dflt Old default state metadata value, if applicable.
  * @param[in] op Diff operation.
  * @param[in] diff_parent Current sysrepo diff parent.
  * @param[in,out] diff_root Current sysrepo diff root node.
@@ -1322,12 +1327,12 @@ sr_diff_find_match(const struct lyd_node *diff_sibling, const struct lyd_node *d
  * @return err_info, NULL on error.
  */
 static sr_error_info_t *
-sr_edit_diff_add(const struct lyd_node *node, const char *meta_val, const char *prev_meta_val, enum edit_op op,
-        struct lyd_node *diff_parent, struct lyd_node **diff_root, struct lyd_node **diff_node)
+sr_edit_diff_add(const struct lyd_node *node, const struct lyd_node *node_new, const struct lyd_node *node_old,
+        const char *meta_dflt, enum edit_op op, struct lyd_node *diff_parent, struct lyd_node **diff_root,
+        struct lyd_node **diff_node)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *node_dup = NULL, *diff_match;
-    char *sibling_before_val = NULL;
 
     assert((op == EDIT_NONE) || (op == EDIT_CREATE) || (op == EDIT_DELETE) || (op == EDIT_REPLACE));
     assert(diff_node && !*diff_node);
@@ -1348,7 +1353,7 @@ sr_edit_diff_add(const struct lyd_node *node, const char *meta_val, const char *
     }
     if (diff_match) {
         /* add diff metadata for the node so it can be merged as diff */
-        if ((err_info = sr_diff_add_meta(node_dup, meta_val, prev_meta_val, op))) {
+        if ((err_info = sr_diff_add_meta(node_dup, node_new, node_old, meta_dflt, op))) {
             goto cleanup;
         }
 
@@ -1364,17 +1369,13 @@ sr_edit_diff_add(const struct lyd_node *node, const char *meta_val, const char *
     } else {
         /* insert node into diff, not there */
         if (diff_parent) {
-            if (node_dup->flags & LYD_EXT) {
-                lyplg_ext_insert(diff_parent, node_dup);
-            } else {
-                lyd_insert_child(diff_parent, node_dup);
-            }
+            lyd_insert_child(diff_parent, node_dup);
         } else {
             lyd_insert_sibling(*diff_root, node_dup, diff_root);
         }
 
         /* add diff metadata for the node, after it was connected to the diff */
-        if ((err_info = sr_diff_add_meta(node_dup, meta_val, prev_meta_val, op))) {
+        if ((err_info = sr_diff_add_meta(node_dup, node_new, node_old, meta_dflt, op))) {
             goto cleanup;
         }
 
@@ -1384,7 +1385,6 @@ sr_edit_diff_add(const struct lyd_node *node, const char *meta_val, const char *
 
 cleanup:
     lyd_free_tree(node_dup);
-    free(sibling_before_val);
     return err_info;
 }
 
@@ -1512,7 +1512,7 @@ sr_edit_apply_none(struct lyd_node *data_match, const struct lyd_node *edit_node
 
     if (data_match->schema->nodetype & (LYS_LIST | LYS_CONTAINER)) {
         /* update diff, we may need this node */
-        if ((err_info = sr_edit_diff_add(data_match, NULL, NULL, EDIT_NONE, diff_parent, diff_root, diff_node))) {
+        if ((err_info = sr_edit_diff_add(data_match, NULL, NULL, NULL, EDIT_NONE, diff_parent, diff_root, diff_node))) {
             return err_info;
         }
     } /* else the node exists (possibly with different value/dflt flag) so ignore it */
@@ -1539,20 +1539,16 @@ sr_edit_apply_remove(struct lyd_node *data_match, struct lyd_node *diff_parent, 
         struct lyd_node **diff_node, enum edit_op *next_op, int *flags_r, int *change, struct lyd_node **data_del)
 {
     sr_error_info_t *err_info = NULL;
-    const struct lyd_node *sibling_before;
-    char *sibling_before_val = NULL;
+    const struct lyd_node *sibling_before = NULL;
 
     if (data_match) {
         if (lysc_is_userordered(data_match->schema)) {
             /* get original (current) previous instance to be stored in diff */
             sibling_before = sr_edit_find_previous_instance(data_match);
-            if (sibling_before) {
-                sibling_before_val = sr_edit_create_userord_predicate(sibling_before);
-            }
         }
 
         /* update diff, whole subtree removed */
-        if ((err_info = sr_edit_diff_add(data_match, NULL, sibling_before_val, EDIT_DELETE, diff_parent, diff_root,
+        if ((err_info = sr_edit_diff_add(data_match, NULL, sibling_before, NULL, EDIT_DELETE, diff_parent, diff_root,
                 diff_node))) {
             goto cleanup;
         }
@@ -1571,7 +1567,6 @@ sr_edit_apply_remove(struct lyd_node *data_match, struct lyd_node *diff_parent, 
     *next_op = EDIT_CONTINUE;
 
 cleanup:
-    free(sibling_before_val);
     return err_info;
 }
 
@@ -1597,8 +1592,8 @@ sr_edit_apply_move(struct lyd_node **data_root, struct lyd_node *data_parent, co
         struct lyd_node **diff_root, struct lyd_node **diff_node, enum edit_op *next_op, int *change)
 {
     sr_error_info_t *err_info = NULL;
-    const struct lyd_node *old_sibling_before, *sibling_before;
-    char *old_sibling_before_val = NULL, *sibling_before_val = NULL;
+    const struct lyd_node *old_sibling_before = NULL, *sibling_before = NULL;
+    const char *old_dflt = NULL;
     struct lyd_node *data_dup = NULL;
     enum edit_op diff_op;
 
@@ -1616,8 +1611,11 @@ sr_edit_apply_move(struct lyd_node **data_root, struct lyd_node *data_parent, co
         diff_op = EDIT_REPLACE;
     }
 
-    /* get current previous sibling instance */
+    /* get current previous sibling instance and default state */
     old_sibling_before = sr_edit_find_previous_instance(*data_match);
+    if ((*data_match)->schema->nodetype == LYS_LEAFLIST) {
+        old_dflt = ((*data_match)->flags & LYD_DEFAULT) ? "true" : "false";
+    }
 
     /* move the node */
     if ((err_info = sr_edit_insert(data_root, data_parent, *data_match, insert, key_or_value))) {
@@ -1628,18 +1626,8 @@ sr_edit_apply_move(struct lyd_node **data_root, struct lyd_node *data_parent, co
     sibling_before = sr_edit_find_previous_instance(*data_match);
 
     /* update diff with correct move information */
-    if (old_sibling_before) {
-        old_sibling_before_val = sr_edit_create_userord_predicate(old_sibling_before);
-    }
-    if (sibling_before) {
-        sibling_before_val = sr_edit_create_userord_predicate(sibling_before);
-    }
-    err_info = sr_edit_diff_add(*data_match, sibling_before_val, old_sibling_before_val, diff_op, diff_parent,
-            diff_root, diff_node);
-
-    free(old_sibling_before_val);
-    free(sibling_before_val);
-    if (err_info) {
+    if ((err_info = sr_edit_diff_add(*data_match, sibling_before, old_sibling_before, old_dflt, diff_op, diff_parent,
+            diff_root, diff_node))) {
         goto error;
     }
 
@@ -1670,7 +1658,7 @@ sr_edit_created_subtree_apply_move(struct lyd_node *match_subtree)
                 sibling_before_val = sr_edit_create_userord_predicate(sibling_before);
             }
 
-            if ((err_info = sr_lyd_new_meta(elem, NULL, sr_userord_anchor_meta_name(elem->schema), sibling_before_val))) {
+            if ((err_info = sr_lyd_new_meta(elem, NULL, sr_userord_anchor_meta_name(elem->schema, 0), sibling_before_val))) {
                 return err_info;
             }
             free(sibling_before_val);
@@ -1704,8 +1692,7 @@ sr_edit_apply_replace(struct lyd_node *data_match, int val_equal, const struct l
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node_any *any;
-    char *prev_val;
-    uintptr_t prev_dflt;
+    const char *prev_dflt;
 
     if (!edit_node->schema) {
         sr_errinfo_merge(val_err_info, sr_lyd_parse_opaq_error(edit_node));
@@ -1727,22 +1714,15 @@ sr_edit_apply_replace(struct lyd_node *data_match, int val_equal, const struct l
             *next_op = EDIT_MOVE;
             break;
         case LYS_LEAF:
-            /* remember previous value */
-            prev_val = strdup(lyd_get_value(data_match));
-            SR_CHECK_MEM_RET(!prev_val, err_info);
-            prev_dflt = data_match->flags & LYD_DEFAULT;
-
-            /* modify the node */
-            if ((err_info = sr_lyd_change_term(data_match, lyd_get_value(edit_node), 1))) {
-                free(prev_val);
+            /* add the node into diff */
+            prev_dflt = (data_match->flags & LYD_DEFAULT) ? "true" : "false";
+            if ((err_info = sr_edit_diff_add(edit_node, NULL, data_match, prev_dflt, EDIT_REPLACE, diff_parent,
+                    diff_root, diff_node))) {
                 return err_info;
             }
 
-            /* add the updated node into diff */
-            err_info = sr_edit_diff_add(data_match, prev_val, (char *)prev_dflt, EDIT_REPLACE, diff_parent,
-                    diff_root, diff_node);
-            free(prev_val);
-            if (err_info) {
+            /* modify the node */
+            if ((err_info = sr_lyd_change_term(data_match, lyd_get_value(edit_node), 1))) {
                 return err_info;
             }
 
@@ -1753,22 +1733,15 @@ sr_edit_apply_replace(struct lyd_node *data_match, int val_equal, const struct l
             break;
         case LYS_ANYXML:
         case LYS_ANYDATA:
-            /* remember previous value */
-            if ((err_info = sr_lyd_any_value_str(data_match, &prev_val))) {
+            /* add the node into diff */
+            if ((err_info = sr_edit_diff_add(edit_node, NULL, data_match, NULL, EDIT_REPLACE, diff_parent, diff_root,
+                    diff_node))) {
                 return err_info;
             }
 
             /* modify the node */
             any = (struct lyd_node_any *)edit_node;
-            if ((err_info = sr_lyd_any_copy_value(data_match, &any->value, any->value_type))) {
-                free(prev_val);
-                return err_info;
-            }
-
-            /* add the updated node into diff */
-            err_info = sr_edit_diff_add(data_match, prev_val, NULL, EDIT_REPLACE, diff_parent, diff_root, diff_node);
-            free(prev_val);
-            if (err_info) {
+            if ((err_info = sr_lyd_any_copy_value(data_match, any->child, any->value, any->hints))) {
                 return err_info;
             }
 
@@ -1855,7 +1828,7 @@ sr_edit_apply_create(struct lyd_node **data_root, struct lyd_node *data_parent, 
         return err_info;
     }
 
-    if ((err_info = sr_edit_diff_add(*data_match, NULL, NULL, EDIT_CREATE, diff_parent, diff_root, diff_node))) {
+    if ((err_info = sr_edit_diff_add(*data_match, NULL, NULL, NULL, EDIT_CREATE, diff_parent, diff_root, diff_node))) {
         return err_info;
     }
 
@@ -1955,20 +1928,19 @@ sr_edit_apply_dflt_change(struct lyd_node *data_match, const struct lyd_node *ed
         struct lyd_node **diff_root, struct lyd_node **diff_node, enum edit_op *next_op, int *change)
 {
     sr_error_info_t *err_info = NULL;
-    uintptr_t prev_dflt;
+    const char *prev_dflt;
 
     assert(data_match->schema->nodetype & LYD_NODE_TERM);
     assert((data_match->flags & LYD_DEFAULT) != (edit_node->flags & LYD_DEFAULT));
 
-    prev_dflt = data_match->flags & LYD_DEFAULT;
+    prev_dflt = (data_match->flags & LYD_DEFAULT) ? "true" : "false";
 
     /* update dflt flag itself */
     data_match->flags &= ~LYD_DEFAULT;
     data_match->flags |= edit_node->flags & LYD_DEFAULT;
 
     /* default flag changed, we need the node in the diff */
-    if ((err_info = sr_edit_diff_add(data_match, NULL, (char *)prev_dflt, EDIT_NONE, diff_parent, diff_root,
-            diff_node))) {
+    if ((err_info = sr_edit_diff_add(data_match, NULL, NULL, prev_dflt, EDIT_NONE, diff_parent, diff_root, diff_node))) {
         return err_info;
     }
 
@@ -1994,7 +1966,6 @@ sr_edit_apply_remove_diff_subtree_add(struct lyd_node *data_del, struct lyd_node
     sr_error_info_t *err_info = NULL;
     struct lyd_node *child, *next, *first;
     const struct lyd_node *sibling_before;
-    char *sibling_before_val = NULL;
 
     /* get all the descendants of the deleted node */
     first = lyd_child_no_keys(data_del);
@@ -2011,16 +1982,11 @@ sr_edit_apply_remove_diff_subtree_add(struct lyd_node *data_del, struct lyd_node
             if (lysc_is_userordered(child->schema)) {
                 /* only add information about previous instance for userord lists, nothing else is needed */
                 sibling_before = sr_edit_find_previous_instance(child);
-                if (sibling_before) {
-                    sibling_before_val = sr_edit_create_userord_predicate(sibling_before);
-                }
 
                 /* add metadata */
-                if ((err_info = sr_diff_add_meta(child, NULL, sibling_before_val, EDIT_DELETE))) {
+                if ((err_info = sr_diff_add_meta(child, NULL, sibling_before, NULL, EDIT_DELETE))) {
                     goto cleanup;
                 }
-                free(sibling_before_val);
-                sibling_before_val = NULL;
             }
 
             LYD_TREE_DFS_END(next, child);
@@ -2260,7 +2226,7 @@ sr_edit_mod_apply(const struct lyd_node *edit, const struct lys_module *ly_mod, 
                 *diff = mod_diff;
                 mod_diff = NULL;
             } else {
-                if (lyd_diff_merge_all(diff, mod_diff, 0)) {
+                if ((err_info = sr_lyd_diff_merge_all(diff, mod_diff))) {
                     goto cleanup;
                 }
                 lyd_free_siblings(mod_diff);
@@ -2287,7 +2253,6 @@ sr_oper_edit_mod_apply_cb(struct lyd_node *trg_node, const struct lyd_node *src_
 {
     sr_error_info_t *err_info = NULL;
     struct sr_oper_edit_arg *arg = cb_data;
-    char *any_val = NULL;
     const char *src_origin, *trg_origin;
 
     if (!src_node) {
@@ -2321,16 +2286,9 @@ sr_oper_edit_mod_apply_cb(struct lyd_node *trg_node, const struct lyd_node *src_
     /* cases when merging 2 nodes but adding to diff */
     switch (src_node->schema->nodetype) {
     case LYS_LEAF:
-        if ((err_info = sr_edit_diff_append(src_node, EDIT_REPLACE, lyd_get_value(trg_node), 0, &arg->mod_diff))) {
-            goto cleanup;
-        }
-        break;
     case LYS_ANYDATA:
     case LYS_ANYXML:
-        if ((err_info = sr_lyd_any_value_str(trg_node, &any_val))) {
-            goto cleanup;
-        }
-        if ((err_info = sr_edit_diff_append(src_node, EDIT_REPLACE, any_val, 0, &arg->mod_diff))) {
+        if ((err_info = sr_edit_diff_append(src_node, EDIT_REPLACE, trg_node, 0, &arg->mod_diff))) {
             goto cleanup;
         }
         break;
@@ -2341,7 +2299,6 @@ sr_oper_edit_mod_apply_cb(struct lyd_node *trg_node, const struct lyd_node *src_
     arg->change = 1;
 
 cleanup:
-    free(any_val);
     if (err_info) {
         sr_errinfo_free(&err_info);
         return LY_EOTHER;
@@ -2461,7 +2418,7 @@ sr_oper_edit_mod_apply_data(const struct lyd_node *mod_first, struct ly_set *opa
         trg_tree = sr_module_data_unlink(data, ly_mod, 0);
 
         /* generate diff and replace module data */
-        if ((err_info = sr_lyd_diff_siblings(trg_tree, src_tree, LYD_DIFF_DEFAULTS, mod_diff))) {
+        if ((err_info = sr_lyd_diff_siblings(trg_tree, src_tree, LYD_DIFF_DEFAULTS, NULL, mod_diff))) {
             goto cleanup;
         }
         if (*mod_diff) {
@@ -2565,9 +2522,7 @@ sr_oper_edit_mod_apply(const struct lyd_node *tree, const struct lys_module *ly_
     enum edit_op op = 0;
     const char *xpath;
 
-    if (change) {
-        *change = 0;
-    }
+    *change = 0;
 
     if (!tree) {
         /* discarding the data by replacing them with empty data */
@@ -2777,7 +2732,6 @@ sr_edit_add_merge_op(struct lyd_node *match, struct lyd_node **root, const char 
     sr_error_info_t *err_info = NULL;
     const struct lysc_node *schema;
     struct lyd_node *parent = NULL, *sibling = NULL;
-    union lyd_any_value any_val;
     enum edit_op cur_op;
     int own_oper;
 
@@ -2860,8 +2814,7 @@ sr_edit_add_merge_op(struct lyd_node *match, struct lyd_node **root, const char 
                 if (own_oper) {
                     sr_edit_del_meta_attr(match, "operation");
                 }
-                any_val.str = value;
-                if ((err_info = sr_lyd_any_copy_value(match, &any_val, LYD_ANYDATA_STRING))) {
+                if ((err_info = sr_lyd_any_copy_value(match, NULL, value, 0))) {
                     goto cleanup;
                 }
                 break;
@@ -3212,13 +3165,14 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
 
     if (!isolate) {
         /* find an existing node */
-        if ((err_info = sr_edit_add_find_match(session->conn->ly_ctx, session->dt[session->ds].edit->tree, xpath, value,
+        if ((err_info = sr_edit_add_find_match(sr_yang_ctx.ly_ctx, session->dt[session->ds].edit->tree, xpath, value,
                 &match))) {
             goto error_safe;
         }
         if (match) {
             /* node exists, nothing to create */
-            if (match->schema && (match->schema->nodetype == LYS_LEAF)) {
+            if (match->schema && ((match->schema->nodetype == LYS_LEAF) ||
+                    ((match->schema->nodetype == LYS_LEAFLIST) && (match->schema->flags & LYS_CONFIG_R)))) {
                 /* update value */
                 if ((err_info = sr_lyd_change_term(match, value, 1))) {
                     goto error_safe;
@@ -3242,7 +3196,7 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
     }
 
     /* merge the change into existing edit */
-    err_info = sr_lyd_new_path(isolate ? NULL : session->dt[session->ds].edit->tree, session->conn->ly_ctx, xpath,
+    err_info = sr_lyd_new_path(isolate ? NULL : session->dt[session->ds].edit->tree, sr_yang_ctx.ly_ctx, xpath,
             (void *)value, opts, &parent, &node);
     if (err_info) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Invalid datastore edit.");
@@ -3318,7 +3272,7 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
                 goto error;
             }
             if (((*position == SR_MOVE_BEFORE) || (*position == SR_MOVE_AFTER)) && (err_info = sr_lyd_new_meta(node, NULL,
-                    sr_userord_anchor_meta_name(node->schema), meta_val))) {
+                    sr_userord_anchor_meta_name(node->schema, 0), meta_val))) {
                 goto error;
             }
         }

@@ -74,12 +74,12 @@ srsn_yp_ntf_update_send(struct srsn_sub *sub)
 
     /* create the notification */
     sprintf(buf, "%" PRIu32, sub->id);
-    if ((err_info = sr_lyd_new_path(NULL, sub->conn->ly_ctx, "/ietf-yang-push:push-update/id", buf, 0, &ly_ntf, NULL))) {
+    if ((err_info = sr_lyd_new_path(NULL, sr_yang_ctx.ly_ctx, "/ietf-yang-push:push-update/id", buf, 0, &ly_ntf, NULL))) {
         goto cleanup;
     }
 
     /* datastore-contents */
-    if ((err_info = sr_lyd_new_any(ly_ntf, "datastore-contents", data ? data->tree : NULL, LYD_ANYDATA_DATATREE))) {
+    if ((err_info = sr_lyd_new_any(ly_ntf, "datastore-contents", data ? data->tree : NULL, NULL))) {
         goto cleanup;
     }
     if (data) {
@@ -431,7 +431,7 @@ srsn_yp_ntf_change_edit_append(struct lyd_node *ly_yp, srsn_yp_change_t yp_op, c
             goto cleanup;
         }
         assert(xml);
-        if ((err_info = sr_lyd_new_any(ly_edit, "value", xml, LYD_ANYDATA_XML))) {
+        if ((err_info = sr_lyd_new_any(ly_edit, "value", NULL, xml))) {
             goto cleanup;
         }
     }
@@ -635,7 +635,7 @@ srsn_yp_sr_subscribe_mod(const struct lys_module *ly_mod, sr_session_ctx_t *sess
 
     /* add new sub ID */
     sub->sr_sub_ids[sub->sr_sub_id_count] = sr_subscription_get_last_sub_id(sub->sr_sub);
-    ++sub->sr_sub_id_count;
+    sub->sr_sub_id_count++;
 
     return NULL;
 }

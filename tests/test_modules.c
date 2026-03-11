@@ -113,6 +113,28 @@ cmp_int_data(sr_conn_ctx_t *conn, const char *module_name, const char *expected)
 }
 
 static void
+test_context_options(void **state)
+{
+    struct state *st = (struct state *)*state;
+    const struct ly_ctx *ly_ctx;
+    const struct lysc_node *snode;
+
+    /* no parsed nodes */
+    ly_ctx = sr_acquire_context(st->conn);
+    snode = lys_find_path(ly_ctx, NULL, "/ietf-yang-library:yang-library", 0);
+    assert_true(snode && !snode->priv);
+    sr_release_context(st->conn);
+
+    sr_context_options(SR_CTX_NO_PRINTED | SR_CTX_SET_PRIV_PARSED, 1, NULL);
+
+    /* pointer to parsed nodes */
+    ly_ctx = sr_acquire_context(st->conn);
+    snode = lys_find_path(ly_ctx, NULL, "/ietf-yang-library:yang-library", 0);
+    assert_true(snode && snode->priv);
+    sr_release_context(st->conn);
+}
+
+static void
 test_install_module(void **state)
 {
     struct state *st = (struct state *)*state;
@@ -303,7 +325,7 @@ test_data_deps(void **state)
             "<source-path xmlns:r=\"urn:refs\">/r:inst-id</source-path>"
             "</inst-id>"
             "<xpath>"
-            "<expression xmlns:s=\"s\">/s:ac1/s:acd1='false'</expression>"
+            "<expression xmlns:s=\"urn:s\">/s:ac1/s:acd1='false'</expression>"
             "<target-module>simple</target-module>"
             "</xpath>"
             "</deps>"
@@ -365,6 +387,8 @@ test_op_deps(void **state)
             "</inst-id>"
             "</out>"
             "</rpc>"
+            "<rpc><path xmlns:o=\"urn:ops\">/o:cont/o:list1/o:cont2/o:act11</path>"
+            "</rpc>"
             "<rpc><path xmlns:o=\"urn:ops\">/o:rpc1</path>"
             "<in>"
             "<lref><target-path xmlns:or=\"urn:ops-ref\">/or:l1</target-path><target-module>ops-ref</target-module></lref>"
@@ -410,6 +434,8 @@ test_op_deps(void **state)
             "<default-target-path xmlns:o=\"urn:ops\">/o:cont/o:list1[o:k='key']/o:k</default-target-path>"
             "</inst-id>"
             "</out>"
+            "</rpc>"
+            "<rpc><path xmlns:o=\"urn:ops\">/o:cont/o:list1/o:cont2/o:act11</path>"
             "</rpc>"
             "<rpc><path xmlns:o=\"urn:ops\">/o:rpc1</path>"
             "<in>"
@@ -1615,6 +1641,7 @@ int
 main(void)
 {
     const struct CMUnitTest tests[] = {
+        cmocka_unit_test_setup_teardown(test_context_options, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_install_module, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_data_deps, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_op_deps, setup_f, teardown_f),

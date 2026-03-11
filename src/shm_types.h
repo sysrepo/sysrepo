@@ -4,8 +4,8 @@
  * @brief header for all SHM types
  *
  * @copyright
- * Copyright (c) 2018 - 2024 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2024 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2025 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2025 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@
 #include "common_types.h"
 #include "sysrepo_types.h"
 
-#define SR_SHM_VER 19   /**< Main, mod, and ext SHM version of their expected content structures. */
+#define SR_SHM_VER 23   /**< Main, mod, and ext SHM version of their expected content structures. */
 #define SR_MAIN_SHM_LOCK "sr_main_lock"     /**< Main SHM file lock name. */
 
 /**
@@ -146,6 +146,9 @@ typedef struct {
     off_t inv_deps;             /**< Array of inverse module data dependencies (off_t *) (offset in mod SHM). */
     uint16_t inv_dep_count;     /**< Number of inverse module data dependencies. */
 
+    off_t sm_ext_paths;         /**< Array of paths to schema nodes with schema mount extension (offset in mod SHM). */
+    uint16_t sm_ext_path_count; /**< Number of schema mount extension paths. */
+
     off_t oper_push_data;       /**< Array of oper push data entries (offset in ext SHM), protected by operational DS
                                      mod data locks. */
     uint32_t oper_push_data_count;  /**< Number of oper push data entries, also protected by operational DS
@@ -187,6 +190,11 @@ typedef struct {
 } sr_mod_shm_t;
 
 /**
+ * @brief Maximum number of processes having running or operational data cache and using a printed context.
+ */
+#define SR_MAIN_SHM_CACHE_PID_SIZE 64
+
+/**
  * @brief Main SHM structure.
  */
 typedef struct {
@@ -195,10 +203,11 @@ typedef struct {
     sr_rwlock_t ext_lock;       /**< Process-shared lock for accessing holes and truncating ext SHM. Accessing ext SHM
                                      structures requires another dedicated lock. */
 
-    sr_rwlock_t context_lock;   /**< Process-shared lock for accessing connection LY context, lydmods data,
-                                     and SHM mod modules. */
+    sr_rwlock_t context_lock;       /**< Process-shared lock for accessing connection LY context, lydmods data,
+                                         and SHM mod modules. */
     pthread_mutex_t lydmods_lock;   /**< Process-shared lock for modifying SR internal module data. */
-    uint32_t content_id;        /**< Context content ID of the latest context. */
+    uint32_t content_id;            /**< Context content ID of the latest context. */
+    uint32_t schema_mount_data_id;  /**< ID of the latest schema mount data change. */
 
     ATOMIC_T new_sr_cid;        /**< Connection ID for a new connection. */
     ATOMIC_T new_sr_sid;        /**< SID for a new session. */
@@ -370,7 +379,7 @@ typedef struct {
     ATOMIC_T event;             /**< Event. */
 
     ATOMIC_T priority;          /**< Priority of the subscriber. */
-    uint32_t subscriber_count;  /**< Number of subscribers to process this event. */
+    ATOMIC_T subscriber_count;  /**< Number of subscribers to process this event. */
     uint32_t operation_id;      /**< Operation ID for the callback. */
 } sr_sub_shm_t;
 

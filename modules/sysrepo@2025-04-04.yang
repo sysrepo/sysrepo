@@ -27,6 +27,11 @@ module sysrepo {
     description
         "Sysrepo YANG datastore internal attributes and information.";
 
+    revision "2025-04-04" {
+        description
+            "Added schema mount extension instance metadata.";
+    }
+
     revision "2024-10-25" {
         description
             "Removed redundant metadata used for push operational data.";
@@ -251,6 +256,12 @@ module sysrepo {
                         "Notification dependencies.";
                     uses deps-grp;
                 }
+            }
+
+            leaf-list schema-mount-ext-instance {
+                type yang:xpath1.0;
+                description
+                    "Schema mount extension instance parent path.";
             }
         }
     }

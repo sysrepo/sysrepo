@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 2.8.12...3.28.1)
 
-project(sysrepo)
+project(sysrepo C)
 set(SYSREPO_DESC "YANG-based system repository for all-around configuration management.")
 
 # include custom Modules
@@ -15,6 +15,7 @@ include(ABICheck)
 include(SourceFormat)
 include(GenDoc)
 include(GenCoverage)
+include(SetupPrintedContext)
 if(POLICY CMP0075)
     cmake_policy(SET CMP0075 NEW)
 endif()
@@ -52,24 +53,24 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 # Generic version of not only the library. Major version is reserved for really big changes of the project,
 # minor version changes with added functionality (new tool, functionality of the tool or library, ...) and
 # micro version is changed with a set of small changes or bugfixes anywhere in the project.
-set(SYSREPO_MAJOR_VERSION 3)
-set(SYSREPO_MINOR_VERSION 6)
-set(SYSREPO_MICRO_VERSION 10)
+set(SYSREPO_MAJOR_VERSION 4)
+set(SYSREPO_MINOR_VERSION 5)
+set(SYSREPO_MICRO_VERSION 3)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
 
 # Version of the library
 # Major version is changed with every backward non-compatible API/ABI change, minor version changes
 # with backward compatible change and micro version is connected with any internal change of the library.
-set(SYSREPO_MAJOR_SOVERSION 7)
-set(SYSREPO_MINOR_SOVERSION 33)
-set(SYSREPO_MICRO_SOVERSION 4)
+set(SYSREPO_MAJOR_SOVERSION 8)
+set(SYSREPO_MINOR_SOVERSION 4)
+set(SYSREPO_MICRO_SOVERSION 7)
 set(SYSREPO_SOVERSION_FULL ${SYSREPO_MAJOR_SOVERSION}.${SYSREPO_MINOR_SOVERSION}.${SYSREPO_MICRO_SOVERSION})
 set(SYSREPO_SOVERSION ${SYSREPO_MAJOR_SOVERSION})
 
 # Version of libyang library that this sysrepo depends on
-set(LIBYANG_DEP_VERSION 3.12.0)
-set(LIBYANG_DEP_SOVERSION 3.9.0)
-set(LIBYANG_DEP_SOVERSION_MAJOR 3)
+set(LIBYANG_DEP_VERSION 5.1.1)
+set(LIBYANG_DEP_SOVERSION 5.1.1)
+set(LIBYANG_DEP_SOVERSION_MAJOR 5)
 
 # generate only version header, it is needed for docs
 configure_file("${PROJECT_SOURCE_DIR}/src/version.h.in" "${PROJECT_BINARY_DIR}/include/sysrepo/version.h" ESCAPE_QUOTES @ONLY)
@@ -87,6 +88,8 @@ else()
     option(ENABLE_VALGRIND_TESTS "Build tests with valgrind" OFF)
 endif()
 option(ENABLE_EXAMPLES "Build examples." ON)
+set(PRINTED_CONTEXT_ADDRESS "" CACHE STRING "Address of the printed context, generated automatically by default.
+If set, it must be page-aligned and in a memory region unlikely to conflict with normal process allocation. Set to 0 to disable printed context.")
 option(ENABLE_COVERAGE "Build code coverage report from tests" OFF)
 option(ENABLE_COMMON_TARGETS "Define common custom target names such as 'doc' or 'uninstall', may cause conflicts when using add_subdirectory() to build this project" ON)
 option(ENABLE_DS_MONGO "Enable MongoDB datastore plugin" OFF)
@@ -135,12 +138,14 @@ set(MONGO_USERNAME "" CACHE STRING "Username for MongoDB administrator client, a
 set(MONGO_PASSWORD "" CACHE STRING "Password for all MongoDB clients in case MongoDB plugin is supported.")
 set(MONGO_HOST "127.0.0.1" CACHE STRING "Host for the MongoDB client to connect to.")
 set(MONGO_PORT 27017 CACHE STRING "Port for the MongoDB client to connect to.")
+set(MONGO_SOCKET "" CACHE STRING "Unix socket for the MongoDB client to connect to, this overrides MONGO_HOST and MONGO_PORT variables.")
 
 # Redis username, password, host and port for the client
 set(REDIS_USERNAME "" CACHE STRING "Username for Redis user, all operations are done via this client in case Redis plugin is supported. If not provided, no authentication is done.")
 set(REDIS_PASSWORD "" CACHE STRING "Password for Redis user in case Redis plugin is supported.")
 set(REDIS_HOST "127.0.0.1" CACHE STRING "Host for the Redis client to connect to.")
 set(REDIS_PORT 6379 CACHE STRING "Port for the Redis client to connect to.")
+set(REDIS_SOCKET "" CACHE STRING "Unix socket for the Redis client to connect to, this overrides REDIS_HOST and REDIS_PORT variables.")
 
 # ietf-yang-library revision
 set(YANGLIB_REVISION "2019-01-04" CACHE STRING
@@ -163,7 +168,8 @@ set(NACM_SRMON_DATA_PERM "600" CACHE STRING "NACM modules ietf-netconf-acm and s
 # sr_cond implementation
 if(NOT SR_COND_IMPL)
     check_include_file("linux/futex.h" HAS_FUTEX)
-    if(HAS_FUTEX)
+    check_symbol_exists(SYS_futex "sys/syscall.h" HAS_SYS_FUTEX)
+    if(HAS_FUTEX AND HAS_SYS_FUTEX)
         set(SR_COND_IMPL "sr_cond_futex")
     else()
         set(SR_COND_IMPL "sr_cond_pthread")
@@ -356,22 +362,20 @@ if(ENABLE_TESTS)
     endif()
 endif()
 
-if(ENABLE_PERF_TESTS)
-    find_path(VALGRIND_INCLUDE_DIR
-        NAMES
-        valgrind/callgrind.h
-        PATHS
-        /usr/include
-        /usr/local/include
-        /opt/local/include
-        /sw/include
-        ${CMAKE_INCLUDE_PATH}
-        ${CMAKE_INSTALL_PREFIX}/include)
-    if(VALGRIND_INCLUDE_DIR)
-        set(SR_HAVE_CALLGRIND 1)
-    else()
-        message(STATUS "Disabling callgrind macros in performance tests because of missing valgrind headers")
-    endif()
+find_path(VALGRIND_INCLUDE_DIR
+    NAMES
+    valgrind/callgrind.h
+    PATHS
+    /usr/include
+    /usr/local/include
+    /opt/local/include
+    /sw/include
+    ${CMAKE_INCLUDE_PATH}
+    ${CMAKE_INSTALL_PREFIX}/include)
+if(VALGRIND_INCLUDE_DIR)
+    set(SR_HAVE_CALLGRIND 1)
+else()
+    message(STATUS "Disabling callgrind macros in performance tests because of missing valgrind headers")
 endif()
 
 if(ENABLE_COVERAGE)
@@ -393,6 +397,9 @@ endif()
 
 # use compat
 use_compat()
+
+# setup printed context - needs to be after use_compat()
+setup_printed_context()
 
 # required functions
 list(APPEND CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
@@ -418,20 +425,25 @@ list(REMOVE_ITEM CMAKE_REQUIRED_DEFINITIONS -D_DEFAULT_SOURCE)
 
 # libmongoc - optional
 if(ENABLE_DS_MONGO)
-    find_package(mongoc-1.0 1.24.0 CONFIG)
-    find_program(MONGOSH mongosh)
-    if(TARGET mongo::mongoc_shared AND MONGOSH)
+    find_package(mongoc 2.0.2 CONFIG)
+    if (NOT TARGET mongoc::shared)
+        find_package(mongoc-1.0 1.24.0 CONFIG)
+    endif()
+    find_program(MONGO_CLI_CMD mongosh)
+    if((TARGET mongoc::shared OR TARGET mongo::mongoc_shared) AND MONGO_CLI_CMD)
         # datastore plugin added if libraries exist
         list(APPEND LIB_SRC src/plugins/ds_mongo.c)
         set(SR_ENABLED_DS_PLG_MONGO 1)
         message(STATUS "Datastore plugin ds_mongo supported.")
 
         # try running a command in MongoDB database (should not be possible) and check authentication
-        execute_process(COMMAND ${MONGOSH} "--host" "${MONGO_HOST}" "--port" "${MONGO_PORT}" "--eval" "use sr_running" "--eval" "db.runCommand({usersInfo: 1})"
-                RESULT_VARIABLE MONGO_RETURN_CODE
-                ERROR_VARIABLE MONGO_STDERR
-                OUTPUT_QUIET)
-        if(${MONGO_RETURN_CODE} EQUAL "0")
+        if(MONGO_SOCKET)
+            set(MONGO_TMP_ARGS "mongodb://${MONGO_SOCKET}")
+        else()
+            set(MONGO_TMP_ARGS "--host" "${MONGO_HOST}" "--port" "${MONGO_PORT}")
+        endif()
+        execute_process(COMMAND ${MONGO_CLI_CMD} ${MONGO_TMP_ARGS} "--eval" "use sr_running" "--eval" "db.runCommand({usersInfo: 1})" RESULT_VARIABLE MONGO_RETURN_CODE ERROR_VARIABLE MONGO_STDERR OUTPUT_QUIET)
+        if(${MONGO_RETURN_CODE} EQUAL 0)
             message(WARNING "MongoDB authentication is NOT supported! Data stored by sysrepo in MongoDB will be accessible by anyone.")
         else()
             if("${MONGO_STDERR}" MATCHES "^MongoServerError: .*auth.*")
@@ -450,24 +462,28 @@ endif()
 # libhiredis - optional
 if(ENABLE_DS_REDIS)
     find_package(LibHiredis 1.1.0)
-    find_program(REDIS_CLI redis-cli)
-    if(LIBHIREDIS_FOUND AND REDIS_CLI)
+    find_program(REDIS_CLI_CMD redis-cli)
+    if(LIBHIREDIS_FOUND AND REDIS_CLI_CMD)
         # datastore plugin added if libraries exist
         list(APPEND LIB_SRC src/plugins/ds_redis.c)
         set(SR_ENABLED_DS_PLG_REDIS 1)
         message(STATUS "Datastore plugin ds_redis supported.")
 
         # try running a command in Redis database and check authentication
-        execute_process(COMMAND "echo" "ACL WHOAMI"
-                COMMAND "${REDIS_CLI}" "-h" "${REDIS_HOST}" "-p" "${REDIS_PORT}"
-                OUTPUT_VARIABLE REDIS_STDOUT
-                ERROR_VARIABLE REDIS_STDERR)
-        if("${REDIS_STDOUT}" MATCHES "^NOAUTH.*")
-            message(STATUS "Redis authentication is supported!")
-        elseif("${REDIS_STDERR}" MATCHES "^Could not connect to Redis.*")
+        if(REDIS_SOCKET)
+            set(REDIS_TMP_ARGS "-s" "${REDIS_SOCKET}")
+        else()
+            set(REDIS_TMP_ARGS "-h" "${REDIS_HOST}" "-p" "${REDIS_PORT}")
+        endif()
+        execute_process(COMMAND ${REDIS_CLI_CMD} ${REDIS_TMP_ARGS} "ACL" "WHOAMI" RESULT_VARIABLE REDIS_RETURN_CODE OUTPUT_VARIABLE REDIS_STDOUT ERROR_VARIABLE REDIS_STDERR)
+        if (${REDIS_RETURN_CODE} GREATER 0)
             message(WARNING "Redis authentication cannot be checked - a request to Redis failed with: ${REDIS_STDERR}")
         else()
-            message(WARNING "Redis authentication is NOT supported! Data stored by sysrepo in Redis will be accessible by anyone.")
+            if("${REDIS_STDOUT}" MATCHES "^NOAUTH.*")
+                message(STATUS "Redis authentication is supported!")
+            else()
+                message(WARNING "Redis authentication is NOT supported! Data stored by sysrepo in Redis will be accessible by anyone.")
+            endif()
         endif()
     else()
         message(STATUS "Datastore plugin ds_redis not supported.")
@@ -477,8 +493,8 @@ else()
 endif()
 
 # common database utility functions - optional
-if((TARGET mongo::mongoc_shared AND MONGOSH) OR (LIBHIREDIS_FOUND AND REDIS_CLI))
-    # common utilities added if at least one library exists
+if(SR_ENABLED_DS_PLG_MONGO OR SR_ENABLED_DS_PLG_REDIS)
+    # common utilities added if at least one library exists and the plugin is enabled
     list(APPEND LIB_SRC src/plugins/common_db.c)
 endif()
 
@@ -491,10 +507,19 @@ set_target_properties(sysrepo PROPERTIES VERSION ${SYSREPO_SOVERSION_FULL} SOVER
 if(SR_ENABLED_DS_PLG_MONGO)
     # cannot separately include and link mongoc library, thus add include to srobj and link with sysrepo
     # to add include directories
-    get_target_property(BSON_INTERFACE_INCLUDE_DIR mongo::bson_shared INTERFACE_INCLUDE_DIRECTORIES)
-    get_target_property(MONGOC_INTERFACE_INCLUDE_DIR mongo::mongoc_shared INTERFACE_INCLUDE_DIRECTORIES)
+    if (TARGET mongoc::shared)
+        get_target_property(BSON_INTERFACE_INCLUDE_DIR bson::shared INTERFACE_INCLUDE_DIRECTORIES)
+        get_target_property(MONGOC_INTERFACE_INCLUDE_DIR mongoc::shared INTERFACE_INCLUDE_DIRECTORIES)
+    elseif(TARGET mongo::mongoc_shared)
+        get_target_property(BSON_INTERFACE_INCLUDE_DIR mongo::bson_shared INTERFACE_INCLUDE_DIRECTORIES)
+        get_target_property(MONGOC_INTERFACE_INCLUDE_DIR mongo::mongoc_shared INTERFACE_INCLUDE_DIRECTORIES)
+    endif()
     set_property(TARGET srobj APPEND PROPERTY INCLUDE_DIRECTORIES ${BSON_INTERFACE_INCLUDE_DIR} ${MONGOC_INTERFACE_INCLUDE_DIR})
-    target_link_libraries(sysrepo mongo::mongoc_shared)
+    if (TARGET mongoc::shared)
+        target_link_libraries(sysrepo mongoc::shared)
+    elseif(TARGET mongo::mongoc_shared)
+        target_link_libraries(sysrepo mongo::mongoc_shared)
+    endif()
 endif()
 if (SR_ENABLED_DS_PLG_REDIS)
     # to add include directories
@@ -527,17 +552,9 @@ include_directories(${PROJECT_BINARY_DIR})
 
 # dependencies
 # libatomic
-check_library_exists(atomic __atomic_fetch_add_4 "" LIBATOMIC)
-if(LIBATOMIC)
-    target_link_libraries(sysrepo atomic)
-else()
-    # we may need to link it explicitly
-    list(APPEND CMAKE_REQUIRED_LIBRARIES atomic)
-    check_library_exists(atomic __atomic_fetch_add_4 "" LIBATOMIC)
-    list(REMOVE_ITEM CMAKE_REQUIRED_LIBRARIES atomic)
-    if(LIBATOMIC)
-        target_link_libraries(sysrepo atomic)
-    endif()
+find_library(LIBATOMIC_LIBRARIES NAMES libatomic.so libatomic.so.1)
+if(LIBATOMIC_LIBRARIES)
+    target_link_libraries(sysrepo ${LIBATOMIC_LIBRARIES})
 endif()
 
 # librt (shm_open, shm_unlink, not required on QNX or OSX)
@@ -636,7 +653,7 @@ if(INSTALL_SYSCTL_CONF)
 endif()
 
 # tests
-if(ENABLE_TESTS OR ENABLE_PERF_TESTS)
+if(ENABLE_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
@@ -656,7 +673,7 @@ endif()
 
 # generate API/ABI report
 if("${BUILD_TYPE_UPPER}" STREQUAL "ABICHECK")
-    lib_abi_check(sysrepo "${LIB_MAIN_HEADERS};${LIB_UTIL_HEADERS}" ${SYSREPO_SOVERSION_FULL} 5accdd96d9d59ac60e975b0c8e8cc9e83911451e)
+    lib_abi_check(sysrepo "${LIB_MAIN_HEADERS};${LIB_UTIL_HEADERS}" ${SYSREPO_SOVERSION_FULL} 0232c2fad78281e7577271c61a0031cc3c0307e1)
 endif()
 
 # source files to be covered by the 'format' target and a test with 'format-check' target
@@ -678,24 +695,31 @@ add_custom_target(sr_clean
 
 # flush all sysrepo related data from mongo
 if(SR_ENABLED_DS_PLG_MONGO)
-    add_custom_target(sr_mongo_clean
-        COMMAND "mongosh" "--host" "${MONGO_HOST}" "--port" "${MONGO_PORT}"
-                        "--eval" "use sr_startup" "--eval" "\"db.dropDatabase()\""
-                        "--eval" "use sr_running" "--eval" "\"db.dropDatabase()\""
-                        "--eval" "use sr_candidate" "--eval" "\"db.dropDatabase()\""
-                        "--eval" "use sr_operational" "--eval" "\"db.dropDatabase()\""
-                        "--eval" "use sr_factory-default" "--eval" "\"db.dropDatabase()\""
-                        "1>/dev/null"
-    )
+    if (MONGO_SOCKET)
+        set(MONGO_TMP_ARGS "mongodb://${MONGO_SOCKET}")
+    else()
+        set(MONGO_TMP_ARGS "--host" "${MONGO_HOST}" "--port" "${MONGO_PORT}")
+    endif()
+    list(APPEND MONGO_TMP_ARGS )
+    add_custom_target(sr_mongo_clean COMMAND ${MONGO_CLI_CMD} ${MONGO_TMP_ARGS}
+                            "--eval" "use sr_startup" "--eval" "\"db.dropDatabase()\""
+                            "--eval" "use sr_running" "--eval" "\"db.dropDatabase()\""
+                            "--eval" "use sr_candidate" "--eval" "\"db.dropDatabase()\""
+                            "--eval" "use sr_operational" "--eval" "\"db.dropDatabase()\""
+                            "--eval" "use sr_factory-default" "--eval" "\"db.dropDatabase()\""
+                            "1>" "/dev/null")
     add_dependencies(sr_clean sr_mongo_clean)
 endif()
 
 # flush all sysrepo related data from redis
 if(SR_ENABLED_DS_PLG_REDIS)
-    add_custom_target(sr_redis_clean
-        COMMAND "redis-cli" "-h" "${REDIS_HOST}" "-p" "${REDIS_PORT}" "-e"
-                "--eval" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/deleteAllSysrepoDataInRedis.lua" "1>/dev/null"
-    )
+    set(REDIS_SCRIPT "local reply = redis.pcall('FT._LIST'); if reply['err'] ~= nil then return reply['err']; end local n = table.getn(reply); local reply2; local index; for i=1,n do index = ''; for k,v in pairs(reply[i]) do index = index..v; end if string.sub(index,1,3) == 'sr:' then reply2 = redis.pcall('FT.DROPINDEX', index, 'DD'); if reply2['err'] ~= nil then return reply2['err']; end end end reply = redis.pcall('SCAN', '0', 'MATCH', 'sr:*', 'COUNT', '50000'); if reply['err'] ~= nil then return reply['err']; end while 1 do n = table.getn(reply[2]); for i=1,n do reply2 = redis.pcall('DEL', reply[2][i]); if reply2 ~= 1 then return reply2['err']; end end if reply[1] == '0' then break end reply = redis.pcall('SCAN', reply[1], 'MATCH', 'sr:*', 'COUNT', '50000'); if reply['err'] ~= nil then return reply['err']; end end return 0;")
+    if(REDIS_SOCKET)
+        set(REDIS_TMP_ARGS "-s" "${REDIS_SOCKET}")
+    else()
+        set(REDIS_TMP_ARGS "-h" "${REDIS_HOST}" "-p" "${REDIS_PORT}")
+    endif()
+    add_custom_target(sr_redis_clean COMMAND ${REDIS_CLI_CMD} ${REDIS_TMP_ARGS} "EVAL" "${REDIS_SCRIPT}" "0" "1>" "/dev/null" VERBATIM)
     add_dependencies(sr_clean sr_redis_clean)
 endif()
 

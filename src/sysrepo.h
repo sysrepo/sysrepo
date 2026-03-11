@@ -121,7 +121,7 @@ void sr_log_set_cb(sr_log_cb log_callback);
  * @param[out] conn Created connection.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn);
+int sr_connect(const uint32_t opts, sr_conn_ctx_t **conn);
 
 /**
  * @brief Disconnect from the sysrepo datastore.
@@ -137,12 +137,41 @@ int sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn);
 int sr_disconnect(sr_conn_ctx_t *conn);
 
 /**
+ * @brief Enable or disable caching running datastore data for all connections.
+ *
+ * Caching the running data makes its repeated retrieval much faster, but it also
+ * consumes more memory.
+ *
+ * Running cache is disabled by default.
+ *
+ * @param[in] enable Non-zero to enable caching, 0 to disable it.
+ */
+void sr_cache_running(int enable);
+
+/**
+ * @brief Set options for the YANG context.
+ *
+ * These options affect the global context, which is used and shared by all the connections of this process. The set
+ * options will overwrite the previous ones.
+ *
+ * If @p apply is set, requires CONTEXT WRITE LOCK.
+ *
+ * @param[in] opts New options to use, it is a bitwise OR of ::sr_context_flag_t flags.
+ * @param[in] apply Set to rebuild the context and apply @p opts immediately. If not set, the context options are
+ * applied the next time the context is changed (YANG modules added or removed, features changed, ...). If there is
+ * no connection created yet, the options are applied immediately disregarding the value of this flag.
+ * @param[out] prev_opts Optional previous context options.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_context_options(uint32_t opts, int apply, uint32_t *prev_opts);
+
+/**
  * @brief Get the _libyang_ context used by a connection. Can be used in an application for working with data
  * and schemas.
  *
- * @note This context **must not** be changed. Also, to prevent the context from being destroyed by sysrepo,
- * it is locked and after no longer needing the context ::sr_release_context() must be called. Otherwise,
- * API functions changing the context will fail with time out.
+ * This context **MUST NOT** be changed. Release the context with ::sr_release_context().
+ *
+ * Acquires and keeps CONTEXT READ LOCK.
  *
  * @param[in] conn Connection to use.
  * @return Const libyang context.
@@ -155,6 +184,8 @@ const struct ly_ctx *sr_acquire_context(sr_conn_ctx_t *conn);
  *
  * Similar to and interchangeable with ::sr_acquire_context().
  *
+ * Acquires and keeps CONTEXT READ LOCK.
+ *
  * @param[in] session Session whose connection to use.
  * @return Const libyang context.
  */
@@ -163,7 +194,9 @@ const struct ly_ctx *sr_session_acquire_context(sr_session_ctx_t *session);
 /**
  * @brief Release _libyang_ context obtained from a session/connection.
  *
- * @note Must be called for each ::sr_acquire_context() call.
+ * Must be called for each ::sr_acquire_context() call.
+ *
+ * Releases CONTEXT READ LOCK.
  *
  * @param[in] conn Connection to use.
  */
@@ -174,9 +207,18 @@ void sr_release_context(sr_conn_ctx_t *conn);
  *
  * Similar to and interchangeable with ::sr_release_context().
  *
+ * Releases CONTEXT READ LOCK.
+ *
  * @param[in] session Session whose connection to use.
  */
 void sr_session_release_context(sr_session_ctx_t *session);
+
+/**
+ * @brief Ext data callback for _libyang_ context that can be used by applications for their own context to get the same
+ * schema-mount functionality.
+ */
+LY_ERR sr_ly_ext_data_clb(const struct lysc_ext_instance *ext, const struct lyd_node *parent, void *user_data,
+        void **ext_data, ly_bool *ext_data_free);
 
 /**
  * @brief Get content ID of the current YANG module set. It conforms to the requirements for ietf-yang-library
@@ -203,6 +245,14 @@ int sr_get_plugins(sr_conn_ctx_t *conn, const char ***ds_plugins, const char ***
  * @return Sysrepo SU UID.
  */
 uid_t sr_get_su_uid(void);
+
+/**
+ * @brief Get the connection ID.
+ *
+ * @param[in] conn Connection to use.
+ * @return CID of the connection.
+ */
+sr_cid_t sr_get_cid(sr_conn_ctx_t *conn);
 
 /**
  * @brief Start a new session.
@@ -481,6 +531,8 @@ const char *sr_get_shm_prefix(void);
  *
  * For all datastores and notifications the default plugins are used.
  *
+ * Requires CONTEXT WRITE LOCK.
+ *
  * @param[in] conn Connection to use.
  * @param[in] schema_path Path to the new schema. Can have either YANG or YIN extension/format.
  * @param[in] search_dirs Optional search directories for import schemas, supports the format `<dir>[:<dir>]*`.
@@ -508,6 +560,8 @@ const sr_module_ds_t *sr_get_module_ds_default(void);
  * the datastore plugin will be used to get the initial data for each datastore, which should generally be empty
  * but may not be for custom DS plugins.
  *
+ * Requires CONTEXT WRITE LOCK.
+ *
  * @param[in] conn Connection to use.
  * @param[in] schema_path Path to the new schema. Can have either YANG or YIN extension/format.
  * @param[in] search_dirs Optional search directories for import schemas, supports the format `<dir>[:<dir>]*`.
@@ -532,6 +586,8 @@ int sr_install_module2(sr_conn_ctx_t *conn, const char *schema_path, const char 
  *
  * For all datastores and notifications the default plugins are used.
  *
+ * Requires CONTEXT WRITE LOCK.
+ *
  * @param[in] conn Connection to use.
  * @param[in] schema_paths Array of paths to the new schemas terminated by NULL. Can have either YANG or YIN extension/format.
  * @param[in] search_dirs Optional search directories for import schemas, supports the format `<dir>[:<dir>]*`.
@@ -547,6 +603,8 @@ int sr_install_modules(sr_conn_ctx_t *conn, const char **schema_paths, const cha
  * @brief Install new schemas (modules) into sysrepo in a batch with all the available options.
  *
  * See ::sr_install_module2 for details.
+ *
+ * Requires CONTEXT WRITE LOCK.
  *
  * @param[in] conn Connection to use.
  * @param[in] modules Array of new modules to be installed with all their information.
@@ -566,6 +624,8 @@ int sr_install_modules2(sr_conn_ctx_t *conn, const sr_install_mod_t *modules, ui
  *
  * Required WRITE access.
  *
+ * Requires CONTEXT WRITE LOCK.
+ *
  * @param[in] conn Connection to use.
  * @param[in] module_name Name of the module to remove.
  * @param[in] force If there are other installed modules depending on @p module_name, remove them, too.
@@ -577,6 +637,8 @@ int sr_remove_module(sr_conn_ctx_t *conn, const char *module_name, int force);
  * @brief Remove installed modules from sysrepo.
  *
  * Required WRITE access.
+ *
+ * Requires CONTEXT WRITE LOCK.
  *
  * @param[in] conn Connection to use.
  * @param[in] module_names Array of names of modules to remove terminated by NULL.
@@ -590,6 +652,8 @@ int sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
  *
  * Required WRITE access.
  *
+ * Requires CONTEXT WRITE LOCK.
+ *
  * @param[in] conn Connection to use.
  * @param[in] schema_path Path to the updated schema. Can have either YANG or YIN extension/format.
  * @param[in] search_dirs Optional search directories for import schemas, supports the format `<dir>[:<dir>]*`.
@@ -601,6 +665,8 @@ int sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *s
  * @brief Update installed schemas (modules) to new revisions in a batch.
  *
  * Required WRITE access.
+ *
+ * Requires CONTEXT WRITE LOCK.
  *
  * @param[in] conn Connection to use.
  * @param[in] schema_paths Array of paths to the new schemas terminated by NULL. Can have either YANG or YIN extension/format.
@@ -677,6 +743,8 @@ int sr_check_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int 
  *
  * Required WRITE access.
  *
+ * Requires CONTEXT WRITE LOCK.
+ *
  * @param[in] conn Connection to use.
  * @param[in] module_name Name of the module to change.
  * @param[in] feature_name Name of the feature to enable, "*" for all the features.
@@ -688,6 +756,8 @@ int sr_enable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const
  * @brief Disable a module feature.
  *
  * Required WRITE access.
+ *
+ * Requires CONTEXT WRITE LOCK.
  *
  * @param[in] conn Connection to use.
  * @param[in] module_name Name of the module to change.
@@ -768,15 +838,17 @@ int sr_get_item(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms
  * @param[out] value_cnt Number of returned elements in the values array.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, const sr_get_options_t opts,
+int sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, const uint32_t opts,
         sr_val_t **values, size_t *value_cnt);
 
 /**
  * @brief Acquire libyang data tree together with its context lock in a SR data structure.
  *
- * Before a libyang data tree used in sysrepo can be created, ::sr_acquire_context() must be called
+ * Before a libyang data tree used in sysrepo API can be created, ::sr_acquire_context() must be called
  * to get the connection context. If the created libyang data tree is then passed to this function,
  * it will handle the full cleanup of releasing the context and freeing the data.
+ *
+ * Acquires and keeps CONTEXT READ LOCK.
  *
  * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] tree libyang data tree, ownership is passed to @p data in all cases.
@@ -789,6 +861,8 @@ int sr_session_acquire_data(sr_session_ctx_t *session, struct lyd_node *tree, sr
  * @brief Acquire libyang data tree together with its context lock in a SR data structure.
  *
  * Similar functionality as ::sr_session_acquire_data().
+ *
+ * Acquires and keeps CONTEXT READ LOCK.
  *
  * @param[in] conn Connection to use.
  * @param[in] tree libyang data tree, ownership is passed to @p data in all cases.
@@ -807,6 +881,8 @@ int sr_acquire_data(sr_conn_ctx_t *conn, struct lyd_node *tree, sr_data_t **data
  * also preserves the hierarchical relationships between data elements.
  *
  * Required READ access, but if the access check fails, the module data are simply ignored without an error.
+ *
+ * Returned @p subtree holds CONTEXT READ LOCK.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] path [Path](@ref paths) selecting the root node of the subtree to be retrieved.
@@ -832,6 +908,8 @@ int sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout
  *
  * Required READ access, but if the access check fails, the module data are simply ignored without an error.
  *
+ * Returned @p data hold CONTEXT READ LOCK.
+ *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] xpath [XPath](@ref paths) selecting root nodes of subtrees to be retrieved.
  * @param[in] max_depth Maximum depth of the selected subtrees. 0 is unlimited, 1 will not return any
@@ -842,7 +920,7 @@ int sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout
  * @return Error code (::SR_ERR_OK on success, ::SR_ERR_NOT_FOUND if xpath is invalid - no nodes will ever match it).
  */
 int sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, uint32_t timeout_ms,
-        const sr_get_options_t opts, sr_data_t **data);
+        const uint32_t opts, sr_data_t **data);
 
 /**
  * @brief Retrieve a single value matching the provided XPath.
@@ -852,6 +930,8 @@ int sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth
  * only the selected node which is *disconnected* from its parents.
  *
  * Required READ access, but if the access check fails, the module data are simply ignored without an error.
+ *
+ * Returned @p node holds CONTEXT READ LOCK.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] path [Path](@ref paths) of the data element to be retrieved.
@@ -865,6 +945,8 @@ int sr_get_node(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms
 /**
  * @brief Release SR data structure, whoch consists of freeing the data tree, releasing the context,
  * and freeing the structure itself.
+ *
+ * Releases CONTEXT READ LOCK.
  *
  * @param[in] data SR data to release and free.
  */
@@ -918,13 +1000,15 @@ void sr_free_values(sr_val_t *values, size_t count);
  * Edits preserve their order only if ::SR_EDIT_ISOLATE is used and in some cases it may
  * affect the result.
  *
+ * When the first change is stored in @p session, acquires and keeps CONTEXT READ LOCK.
+ *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] path [Path](@ref paths) identifier of the data element to be set.
  * @param[in] value Value to be set. `xpath` member of the ::sr_val_t structure can be NULL.
  * @param[in] opts Options overriding default behavior of this call.
  * @return Error code (::SR_ERR_OK on success, ::SR_ERR_OPERATION_FAILED if the whole edit was discarded).
  */
-int sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, const sr_edit_options_t opts);
+int sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, const uint32_t opts);
 
 /**
  * @brief Prepare to set (create) the value of a leaf, leaf-list, list, or presence container.
@@ -932,6 +1016,8 @@ int sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *val
  * Data are represented as pairs of a path and string value.
  *
  * Function provides the same functionality as ::sr_set_item().
+ *
+ * When the first change is stored in @p session, acquires and keeps CONTEXT READ LOCK.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] path [Path](@ref paths) identifier of the data element to be set.
@@ -942,7 +1028,7 @@ int sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *val
  * @return Error code (::SR_ERR_OK on success, ::SR_ERR_OPERATION_FAILED if the whole edit was discarded).
  */
 int sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *value, const char *origin,
-        const sr_edit_options_t opts);
+        const uint32_t opts);
 
 /**
  * @brief Prepare to delete the nodes matching the specified xpath. These changes are applied only
@@ -958,17 +1044,19 @@ int sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *val
  * causing the function to return an error if the deleted nodes do not exist in the session push oper data.
  * If the path is invalid, an error is returned even without ::SR_EDIT_STRICT option.
  *
+ * When the first change is stored in @p session, acquires and keeps CONTEXT READ LOCK.
+ *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] path [Path](@ref paths) identifier of the data element to be deleted.
  * @param[in] opts Options overriding default behavior of this call.
  * @return Error code (::SR_ERR_OK on success, ::SR_ERR_OPERATION_FAILED if the whole edit was discarded).
  */
-int sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_options_t opts);
+int sr_delete_item(sr_session_ctx_t *session, const char *path, const uint32_t opts);
 
 /**
  * @brief Deprecated, not supported.
  */
-int sr_oper_delete_item_str(sr_session_ctx_t *session, const char *path, const char *value, const sr_edit_options_t opts);
+int sr_oper_delete_item_str(sr_session_ctx_t *session, const char *path, const char *value, const uint32_t opts);
 
 /**
  * @brief Prepare to discard nodes matching the specified xpath in the operational datastore before applying
@@ -982,6 +1070,8 @@ int sr_oper_delete_item_str(sr_session_ctx_t *session, const char *path, const c
  * It is recommended that 'order' is explicitly set by calling `sr_set_oper_changes_order()`
  * from all sessions that push operational data to the module to avoid different behaviour if a process restarts
  * and is automatically assigned a higher order.
+ *
+ * When the first change is stored in @p session, acquires and keeps CONTEXT READ LOCK.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] xpath [XPath](@ref paths) expression filtering the nodes to discard, all if NULL.
@@ -997,12 +1087,14 @@ int sr_discard_items(sr_session_ctx_t *session, const char *xpath);
  *
  * Only ::SR_EDIT_STRICT flag is allowed and if set, the specified 'discard-items' node must must exist.
  *
+ * If no changes remain in @p session, releases CONTEXT READ LOCK.
+ *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] xpath [XPath](@ref paths) expression set for 'discard-items'.
  * @param[in] opts Options overriding the default behavior of this call.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_delete_discard_items(sr_session_ctx_t *session, const char *xpath, const sr_edit_options_t opts);
+int sr_delete_discard_items(sr_session_ctx_t *session, const char *xpath, const uint32_t opts);
 
 /**
  * @brief Prepare to move/create the instance of an user-ordered list or leaf-list to the specified position.
@@ -1020,6 +1112,8 @@ int sr_delete_discard_items(sr_session_ctx_t *session, const char *xpath, const 
  * @note To determine current order, you can issue a ::sr_get_items() call
  * (without specifying keys of particular list).
  *
+ * When the first change is stored in @p session, acquires and keeps CONTEXT READ LOCK.
+ *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use
  * @param[in] path [Path](@ref paths) identifier of the data element to be moved.
  * @param[in] position Requested move direction.
@@ -1031,13 +1125,15 @@ int sr_delete_discard_items(sr_session_ctx_t *session, const char *xpath, const 
  * @return Error code (::SR_ERR_OK on success, ::SR_ERR_OPERATION_FAILED if the whole edit was discarded).
  */
 int sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_position_t position, const char *list_keys,
-        const char *leaflist_value, const char *origin, const sr_edit_options_t opts);
+        const char *leaflist_value, const char *origin, const uint32_t opts);
 
 /**
  * @brief Provide a prepared edit data tree to be applied.
  * These changes are applied only after calling ::sr_apply_changes().
  *
  * Only top-level operations `merge` and `replace` are allowed for ::SR_DS_OPERATIONAL.
+ *
+ * Until the changes are applied or discarded, acquires and keeps CONTEXT READ LOCK.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] edit Edit content, similar semantics to
@@ -1053,7 +1149,7 @@ int sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const 
  * @brief Perform the validation a datastore and any changes made in the current session, but do not
  * apply nor discard them.
  *
- * Provides only YANG validation, apply-changes **subscribers will not be notified** in this case.
+ * Provides only YANG validation, module-changes **subscribers will not be notified** in this case.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] module_name If specified, limits the validate operation only to this module and its dependencies.
@@ -1071,6 +1167,9 @@ int sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t tim
  * need to copy the config to _startup_ to make the changes persistent.
  *
  * Required WRITE access.
+ *
+ * If working with ::SR_DS_OPERATIONAL and schema-mount data, requires CONTEXT WRITE LOCK.
+ * If there are any changes in @p session, releases CONTEXT READ LOCK.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to apply changes of.
  * @param[in] timeout_ms Change callback timeout in milliseconds. If 0, default is used. Note that this timeout
@@ -1091,7 +1190,7 @@ int sr_has_changes(sr_session_ctx_t *session);
 /**
  * @brief Retrieve stored changes (prepared, not yet applied).
  *
- * Note: as soon as the changes get applied or discarded, the return value becomes invalid.
+ * As soon as the changes get applied or discarded, the return value becomes invalid.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to retrieve changes from.
  * @return The stored changes, or NULL, if there are none.
@@ -1101,6 +1200,8 @@ const struct lyd_node *sr_get_changes(sr_session_ctx_t *session);
 /**
  * @brief Discard prepared changes made in the current session.
  *
+ * If there are any changes in @p session, releases CONTEXT READ LOCK.
+ *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to discard changes from.
  * @return Error code (::SR_ERR_OK on success).
  */
@@ -1108,6 +1209,8 @@ int sr_discard_changes(sr_session_ctx_t *session);
 
 /**
  * @brief Discard prepared changes made in the current session matching an XPath expression.
+ *
+ * If all the changes in @p session are discarded, releases CONTEXT READ LOCK.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to discard changes from.
  * @param[in] xpath XPatch selecting the changes to discard, NULL to discard all the changes.
@@ -1153,13 +1256,14 @@ int sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datast
 /**
  * @brief Discard push operational changes of a module for a session.
  *
- * @param[in] conn Unused.
+ * If working with schema-mount data, requires CONTEXT WRITE LOCK.
+ *
  * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] module_name Optional module name that limits the operation only to this module.
  * @param[in] timeout_ms Module change callback timeout in millisecond. If 0, default is used.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_discard_oper_changes(sr_conn_ctx_t *conn, sr_session_ctx_t *session, const char *module_name, uint32_t timeout_ms);
+int sr_discard_oper_changes(sr_session_ctx_t *session, const char *module_name, uint32_t timeout_ms);
 
 /**
  * @brief Get stored push operational changes of a session.
@@ -1453,7 +1557,7 @@ int sr_module_change_get_order(sr_conn_ctx_t *conn, const char *module_name, sr_
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath,
-        sr_module_change_cb callback, void *private_data, uint32_t priority, sr_subscr_options_t opts,
+        sr_module_change_cb callback, void *private_data, uint32_t priority, uint32_t opts,
         sr_subscription_ctx_t **subscription);
 
 /**
@@ -1603,7 +1707,7 @@ const struct lyd_node *sr_get_change_diff(sr_session_ctx_t *session);
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callback, void *private_data,
-        uint32_t priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
+        uint32_t priority, uint32_t opts, sr_subscription_ctx_t **subscription);
 
 /**
  * @brief Subscribe for the delivery of an RPC/action. Data are represented as _libyang_ subtrees.
@@ -1621,7 +1725,7 @@ int sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb cal
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_rpc_subscribe_tree(sr_session_ctx_t *session, const char *xpath, sr_rpc_tree_cb callback,
-        void *private_data, uint32_t priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
+        void *private_data, uint32_t priority, uint32_t opts, sr_subscription_ctx_t **subscription);
 
 /**
  * @brief Send an RPC/action and wait for the result. Data are represented as ::sr_val_t structures.
@@ -1690,7 +1794,7 @@ int sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t
  */
 int sr_notif_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath,
         const struct timespec *start_time, const struct timespec *stop_time, sr_event_notif_cb callback,
-        void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
+        void *private_data, uint32_t opts, sr_subscription_ctx_t **subscription);
 
 /**
  * @brief Subscribes for the delivery of a notification(s). Data are represented as _libyang_ subtrees.
@@ -1711,7 +1815,7 @@ int sr_notif_subscribe(sr_session_ctx_t *session, const char *module_name, const
  */
 int sr_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_name, const char *xpath,
         const struct timespec *start_time, const struct timespec *stop_time, sr_event_notif_tree_cb callback,
-        void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
+        void *private_data, uint32_t opts, sr_subscription_ctx_t **subscription);
 
 /**
  * @brief Send a notification. Data are represented as ::sr_val_t structures. In case there are
@@ -1832,18 +1936,25 @@ int sr_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uint32_t 
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const char *path,
-        sr_oper_get_items_cb callback, void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
+        sr_oper_get_items_cb callback, void *private_data, uint32_t opts, sr_subscription_ctx_t **subscription);
 
 /**
  * @brief Start periodic retrieval and caching of operational data at the given path.
  *
  * The operational data are cached in the connection of @p session. When any session created on this connection
- * requires data of the cached operational get subscription at @p path, the callback is not called and the cached data
+ * requires data of the cached operational get subscriptions at @p path, the callback is not called and the cached data
  * are used instead. Additionally, if @p opts include ::SR_SUBSCR_OPER_POLL_DIFF, any changes detected on cache data
- * refresh are reported to corresponding subscribers. For an operational get subscription, there can only be a
- * __single__ operational poll subscription with this flag.
+ * refresh are reported to corresponding subscribers.
  *
  * Required READ access.
+ *
+ * @note For every operational get subscription, make sure there is only a __single__ operational poll subscription with
+ * the ::SR_SUBSCR_OPER_POLL_DIFF flag.
+ *
+ * @note As soon as the poll subscription is created, the operational data are cached even if there are no matching oper
+ * get subscriptions to cache. Meaning if the oper get subscription(s) are created after the oper poll subscription, the
+ * correct data are cached only after the next cache period elapses, empty data are used until then. Best to avoid this
+ * scenario by first creating oper get subscriptions and only then corresponding oper poll subscriptions.
  *
  * @note Be aware of some specific [threading limitations](@ref oper_subs). Especially note that you cannot have
  * an operational poll subscription in the same @p subscription structure as the operational get subscription being
@@ -1851,7 +1962,8 @@ int sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, co
  *
  * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] module_name Name of the affected module.
- * @param[in] path [Path](@ref paths) matching the operational get subscription(s) to poll.
+ * @param[in] path [Path](@ref paths) of the subtree with operational get subscription(s) to poll. Any oper get
+ * subscriptions matching @p path or nested in the path are cached.
  * @param[in] valid_ms Time the retrieved data are stored in cache until being considered invalid.
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
  * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
@@ -1859,7 +1971,7 @@ int sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, co
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_oper_poll_subscribe(sr_session_ctx_t *session, const char *module_name, const char *path, uint32_t valid_ms,
-        sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
+        uint32_t opts, sr_subscription_ctx_t **subscription);
 
 /** @} oper_subs */
 

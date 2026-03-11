@@ -117,21 +117,15 @@ typedef struct {
  * @brief Sysrepo connection.
  */
 struct sr_conn_ctx_s {
-    struct ly_ctx *ly_ctx;          /**< Libyang context, also available to user. */
-    uint32_t content_id;            /**< Connection context content id. */
-    sr_conn_options_t opts;         /**< Connection options. */
+    uint32_t opts;                  /**< Connection options. */
 
     pthread_mutex_t ptr_lock;       /**< Session-shared lock for accessing pointers to sessions. */
     sr_session_ctx_t **sessions;    /**< Array of sessions for this connection. */
     uint32_t session_count;         /**< Session count. */
     sr_cid_t cid;                   /**< Globally unique connection ID */
-    sr_rwlock_t ly_ext_data_lock;   /**< Session-shared lock for accessing ly_ext_data. */
-    struct lyd_node *ly_ext_data;   /**< Data for LY ext data callback set for ly_ctx. */
 
     int create_lock;                /**< Process-shared file lock for creating main/mod/ext SHM. */
     sr_shm_t main_shm;              /**< Main SHM structure. */
-    sr_rwlock_t mod_remap_lock;     /**< Session-shared lock only for remapping mod SHM. */
-    sr_shm_t mod_shm;               /**< Mod SHM structure. */
     sr_rwlock_t ext_remap_lock;     /**< Session-shared lock only for remapping ext SHM. */
     sr_shm_t ext_shm;               /**< External SHM structure. */
 
@@ -143,31 +137,11 @@ struct sr_conn_ctx_s {
     } *ds_handles;                  /**< Datastore implementation handles. */
     uint32_t ds_handle_count;       /**< Datastore implementaion handle count. */
 
-    struct lyd_node *run_cache_data;    /**< Cached running data of all the modules. */
-    struct sr_run_cache_s {
-        const struct lys_module *mod;   /**< Cached libyang module. */
-        uint32_t id;                    /**< Cached module data ID. */
-    } *run_cache_mods;
-    uint32_t run_cache_mod_count;
-    sr_rwlock_t run_cache_lock;     /**< Session-shared lock for accessing running data cache. */
-
     struct sr_ntf_handle_s {
         void *dl_handle;            /**< Handle from dlopen(3) call. */
         const struct srplg_ntf_s *plugin;   /**< Notification plugin. */
     } *ntf_handles;                 /**< Notification implementation handles. */
     uint32_t ntf_handle_count;      /**< Notification implementaion handle count. */
-
-    struct sr_oper_poll_cache_s {
-        uint32_t sub_id;            /**< Operational poll subscription ID. */
-        char *module_name;          /**< Operational poll subscription module name. */
-        char *path;                 /**< Operational poll/get subscription path. */
-
-        sr_rwlock_t data_lock;      /**< Lock for accessing the data and timestamp. */
-        struct lyd_node *data;      /**< Cached data of a single operational get subscription. */
-        struct timespec timestamp;  /**< Timestamp of the cached operational data. */
-    } *oper_caches;                 /**< Operational get subscription data caches. */
-    uint32_t oper_cache_count;      /**< Operational get subscription data cache count. */
-    sr_rwlock_t oper_cache_lock;    /**< Operational get subscription data cache lock. */
 };
 
 /**
@@ -210,7 +184,8 @@ struct sr_session_ctx_s {
         sr_data_t *edit;            /**< Prepared edit data tree. */
         struct lyd_node *diff;      /**< Diff data tree, used for module change iterator. */
     } dt[SR_DS_COUNT];              /**< Session-exclusive prepared changes. */
-    int oper_edit_fetched;         /**< If current operational ds edit has been fetched, even if session->dt[SR_DS_OPERATIONAL]->edit == NULL. */
+    int oper_edit_fetched;          /**< Marks whether the current operational ds edit has been fetched, even if
+                                         session->dt[SR_DS_OPERATIONAL]->edit == NULL. */
 
     struct sr_sess_notif_buf {
         int thread_running;         /**< Flag whether the notification buffering thread of this session is running. */
@@ -224,6 +199,7 @@ struct sr_session_ctx_s {
         } *first;                   /**< First stored notification buffer node. */
         struct sr_sess_notif_buf_node *last;    /**< Last stored notification buffer node. */
     } notif_buf;                    /**< Notification buffering attributes. */
+    uint32_t ds_locks;              /**< Count of datastore locks held by this session. */
 };
 
 /**
@@ -245,7 +221,7 @@ struct sr_subscription_ctx_s {
             uint32_t sub_id;        /**< Unique subscription ID. */
             char *xpath;            /**< Subscription XPath. */
             uint32_t priority;      /**< Subscription priority. */
-            sr_subscr_options_t opts;   /**< Subscription options. */
+            uint32_t sub_opts;      /**< Subscription options. */
             sr_module_change_cb cb; /**< Subscription callback. */
             void *private_data;     /**< Subscription callback private data. */
             sr_session_ctx_t *sess; /**< Subscription session. */
@@ -285,7 +261,7 @@ struct sr_subscription_ctx_s {
             uint32_t sub_id;        /**< Unique subscription ID. */
             char *path;             /**< Subscription path. */
             uint32_t valid_ms;      /**< Cached operational data validity interval in ms. */
-            sr_subscr_options_t opts;   /**< Subscription options. */
+            uint32_t sub_opts;      /**< Subscription options. */
             sr_session_ctx_t *sess; /**< Subscription session. */
             ATOMIC_T suspended;     /**< Whether the subscription is suspended. */
         } *subs;                    /**< Operational subscriptions for each XPath. */

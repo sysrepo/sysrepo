@@ -28,6 +28,11 @@
 typedef pthread_cond_t sr_cond_t;
 
 /**
+ * @brief Static initializer for #sr_cond_t.
+ */
+#define SR_COND_INITIALIZER PTHREAD_COND_INITIALIZER
+
+/**
  * @brief Wrapper for pthread_cond_init().
  *
  * @param[out] cond Condition variable to initialize.

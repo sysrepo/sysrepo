@@ -127,7 +127,7 @@ srpd_format_check(const char *file_name, time_t *file_time1, time_t *file_time2)
         return EXIT_FAILURE;
     }
     x = strchr(x + 1, '.');
-    time1 = strtoul(x + 1, &endptr, 10);
+    time1 = strtoll(x + 1, &endptr, 10);
     if (!strcmp(endptr, x + 1)) {
         return EXIT_FAILURE;
     }
@@ -135,7 +135,7 @@ srpd_format_check(const char *file_name, time_t *file_time1, time_t *file_time2)
     if (x == NULL) {
         return EXIT_FAILURE;
     }
-    time2 = strtoul(x + 1, &endptr, 10);
+    time2 = strtoll(x + 1, &endptr, 10);
     if (!strcmp(endptr, x + 1)) {
         return EXIT_FAILURE;
     }

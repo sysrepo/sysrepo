@@ -9,11 +9,13 @@ Source3: sysrepo-plugind.sysusers
 Source4: sysrepo-plugind.service
 License: BSD
 
+Provides: group(sysrepo)
+
 BuildRequires:  cmake
 BuildRequires:  gcc
 BuildRequires:  gcc-c++
 BuildRequires:  make
-BuildRequires:  pkgconfig(libyang) >= 2.2.0
+BuildRequires:  pkgconfig(libyang) >= 5.0.0
 # for tests
 BuildRequires:  pkgconfig(cmocka)
 # for sysrepo-plugind systemd support
@@ -29,6 +31,7 @@ Requires:  pkgconfig
 %package plugind
 Summary:   sysrepo plugin daemon
 Requires:  %{name}%{?_isa} = %{version}-%{release}
+Provides:  user(sysrepo-plugind)
 
 %package tools
 Summary:   sysrepo executable tools
@@ -102,10 +105,11 @@ rm -rf /dev/shm/srsub_*
 %license LICENSE
 %doc README.md
 %{_sysusersdir}/sysrepo.conf
-%{_libdir}/libsysrepo.so.7*
+%{_libdir}/libsysrepo.so.*
 %{_datadir}/yang/modules/sysrepo/*.yang
 %dir %{_datadir}/yang/modules/sysrepo/
 %dir %{_sysconfdir}/sysrepo
+%dir %{_libdir}/sysrepo
 %dir %{_libdir}/sysrepo/plugins
 %attr(0770,root,sysrepo) %{_sysconfdir}/sysrepo
 
@@ -121,6 +125,7 @@ rm -rf /dev/shm/srsub_*
 %{_sysusersdir}/sysrepo-plugind.conf
 %{_bindir}/sysrepo-plugind
 %{_datadir}/man/man8/sysrepo-plugind.8.gz
+%dir %{_libdir}/sysrepo-plugind
 %dir %{_libdir}/sysrepo-plugind/plugins
 
 %files tools

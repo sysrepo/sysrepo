@@ -82,6 +82,12 @@ module ops {
                         }
                     }
                 }
+
+                action act11;
+
+                leaf nl {
+                    type string;
+                }
             }
 
             action act2 {

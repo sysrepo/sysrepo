@@ -4,8 +4,8 @@
  * @brief common routines
  *
  * @copyright
- * Copyright (c) 2018 - 2024 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2024 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2025 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2025 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -48,6 +48,7 @@
 #include "common_types.h"
 #include "compat.h"
 #include "config.h"
+#include "context_change.h"
 #include "edit_diff.h"
 #include "log.h"
 #include "ly_wrap.h"
@@ -64,6 +65,8 @@
 #include "sysrepo.h"
 
 #define SR_IS_YANG_ID_CHAR(c) (isalpha(c) || isdigit(c) || ((c) == '_') || ((c) == '-') || ((c) == '.'))
+
+static sr_error_info_t *sr_xpath_get_text_pred_atoms(const char *xpath, char ***xp_atoms, uint32_t *xp_atom_count);
 
 /**
  * @brief Internal datastore plugin array.
@@ -108,6 +111,46 @@ const sr_module_ds_t sr_module_ds_disabled_run = {{
         SR_DEFAULT_FACTORY_DEFAULT_DS, /**< factory-default */
         SR_DEFAULT_NOTIFICATION_DS /**< notification */
     }};
+
+/**
+ * @brief Sysrepo YANG related context.
+ */
+struct sr_yang_ctx_s sr_yang_ctx = {
+    .content_id = 0,
+    .sm_data_id = 0,
+    .ly_ctx_shm = SR_SHM_INITIALIZER,
+    .ly_ctx = NULL,
+    .sr_opts = 0,
+    .mod_shm = SR_SHM_INITIALIZER,
+    .remap_lock = SR_RWLOCK_INITIALIZER,
+    .refcount = 0,
+    .create_lock = PTHREAD_MUTEX_INITIALIZER,
+};
+
+/**
+ * @brief Connection to use when getting schema-mount data in the ext_data callback.
+ */
+THREAD sr_conn_ctx_t *sr_available_conn;
+
+/**
+ * @brief Running data cache.
+ */
+sr_run_cache_t sr_run_cache = {
+    .enabled = 0,
+    .data = NULL,
+    .mods = NULL,
+    .mod_count = 0,
+    .lock = SR_RWLOCK_INITIALIZER,
+};
+
+/**
+ * @brief Operational data cache.
+ */
+sr_oper_cache_t sr_oper_cache = {
+    .subs = NULL,
+    .sub_count = 0,
+    .lock = SR_RWLOCK_INITIALIZER,
+};
 
 sr_error_info_t *
 sr_ptr_add(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *ptr_count, void *add_ptr)
@@ -578,12 +621,10 @@ sr_remove_module_yang_r(const struct lys_module *ly_mod, const struct ly_ctx *ne
         }
     }
 
-    pmod = ly_mod->parsed;
-
     /* remove all submodule files */
-    LY_ARRAY_FOR(pmod->includes, u) {
-        if ((err_info = sr_path_yang_file(pmod->includes[u].submodule->name,
-                pmod->includes[u].submodule->revs ? pmod->includes[u].submodule->revs[0].date : NULL, &path))) {
+    LY_ARRAY_FOR(ly_mod->submodules, u) {
+        if ((err_info = sr_path_yang_file(ly_mod->submodules[u].name,
+                ly_mod->submodules[u].revision, &path))) {
             goto cleanup;
         }
 
@@ -595,10 +636,14 @@ sr_remove_module_yang_r(const struct lys_module *ly_mod, const struct ly_ctx *ne
         free(path);
     }
 
-    /* remove all (unused) imports recursively */
-    LY_ARRAY_FOR(pmod->imports, u) {
-        if ((err_info = sr_remove_module_yang_r(pmod->imports[u].module, new_ctx, del_mod))) {
-            goto cleanup;
+    /* printed context doesnt have parsed data */
+    pmod = ly_mod->parsed;
+    if (pmod) {
+        /* remove all (unused) imports recursively */
+        LY_ARRAY_FOR(pmod->imports, u) {
+            if ((err_info = sr_remove_module_yang_r(pmod->imports[u].module, new_ctx, del_mod))) {
+                goto cleanup;
+            }
         }
     }
 
@@ -615,24 +660,18 @@ sr_ly_module_is_internal(const struct lys_module *ly_mod)
 
     if (!strcmp(ly_mod->name, "ietf-yang-metadata") && !strcmp(ly_mod->revision, "2016-08-05")) {
         return 1;
-    } else if (!strcmp(ly_mod->name, "yang") && !strcmp(ly_mod->revision, "2022-06-16")) {
+    } else if (!strcmp(ly_mod->name, "yang") && !strcmp(ly_mod->revision, "2025-01-29")) {
         return 1;
-    } else if (!strcmp(ly_mod->name, "ietf-inet-types") && !strcmp(ly_mod->revision, "2013-07-15")) {
+    } else if (!strcmp(ly_mod->name, "ietf-inet-types") && !strcmp(ly_mod->revision, "2025-12-22")) {
         return 1;
-    } else if (!strcmp(ly_mod->name, "ietf-yang-types") && !strcmp(ly_mod->revision, "2013-07-15")) {
+    } else if (!strcmp(ly_mod->name, "ietf-yang-types") && !strcmp(ly_mod->revision, "2025-12-22")) {
         return 1;
     }
 
     return 0;
 }
 
-/**
- * @brief Check whether a file exists.
- *
- * @param[in] path Path to the file.
- * @return 0 if file does not exist, non-zero if it exists.
- */
-static int
+int
 sr_file_exists(const char *path)
 {
     int ret;
@@ -988,6 +1027,11 @@ sr_module_has_data(const struct lys_module *ly_mod, int state_data)
 {
     const struct lysc_node *root;
 
+    if (!strcmp(ly_mod->name, "yang") || !strcmp(ly_mod->name, "ietf-netconf")) {
+        /* only internal data */
+        return 0;
+    }
+
     LY_LIST_FOR(ly_mod->compiled->data, root) {
         if (!(root->nodetype & (LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA | LYS_CHOICE))) {
             continue;
@@ -1067,6 +1111,19 @@ sr_path_mod_shm(char **path)
     sr_error_info_t *err_info = NULL;
 
     if (asprintf(path, "%s/%s_mod", sr_get_shm_path(), sr_get_shm_prefix()) == -1) {
+        SR_ERRINFO_MEM(&err_info);
+        *path = NULL;
+    }
+
+    return err_info;
+}
+
+sr_error_info_t *
+sr_path_ctx_shm(int tmp, char **path)
+{
+    sr_error_info_t *err_info = NULL;
+
+    if (asprintf(path, "%s/%s_ctx%s", sr_get_shm_path(), sr_get_shm_prefix(), tmp ? ".tmp" : "") == -1) {
         SR_ERRINFO_MEM(&err_info);
         *path = NULL;
     }
@@ -1308,7 +1365,7 @@ sr_perm_check(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_datastore
     int r, w;
 
     /* find the module in SHM */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), ly_mod->name);
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), ly_mod->name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     if ((ds == SR_DS_RUNNING) && !shm_mod->plugins[ds]) {
@@ -1317,7 +1374,7 @@ sr_perm_check(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_datastore
     }
 
     /* find the DS plugin */
-    if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &handle))) {
+    if ((err_info = sr_ds_handle_find(sr_yang_ctx.mod_shm.addr + shm_mod->plugins[ds], conn, &handle))) {
         goto cleanup;
     }
 
@@ -1851,7 +1908,8 @@ sr_mlock(pthread_mutex_t *lock, int timeout_ms, const char *func, sr_lock_recove
 
         SR_LOG_WRN("Recovered a lock with a dead owner (%s).", func);
     } else if (ret) {
-        SR_ERRINFO_LOCK(&err_info, func, ret);
+        sr_errinfo_new(&err_info, (ret == ETIMEDOUT) ? SR_ERR_TIME_OUT : SR_ERR_INTERNAL, "Locking a mutex failed (%s: %s).",
+                func, strerror(ret));
         return err_info;
     }
 
@@ -1908,8 +1966,10 @@ sr_rwlock_destroy(sr_rwlock_t *rwlock)
 static sr_error_info_t *
 sr_rwlock_reader_add(sr_rwlock_t *rwlock, sr_cid_t cid)
 {
-    sr_error_info_t *err_info = NULL;
+    sr_error_info_t *err_info = NULL, *tmp_err;
     uint32_t i;
+    int conn_alive;
+    pid_t pid;
 
     /* find this connection or first free item */
     for (i = 0; (i < SR_RWLOCK_READ_LIMIT) && rwlock->readers[i] && (rwlock->readers[i] != cid); ++i) {}
@@ -1926,8 +1986,17 @@ sr_rwlock_reader_add(sr_rwlock_t *rwlock, sr_cid_t cid)
     } else {
         /* recursive read lock on the connection */
         if (rwlock->read_count[i] == UINT8_MAX) {
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Recursive reader limit %" PRIu8
-                    " reached, possibly because of missing unlocks.", UINT8_MAX);
+            if ((tmp_err = sr_shmmain_conn_check(rwlock->readers[i], &conn_alive, &pid))) {
+                sr_errinfo_merge(&err_info, tmp_err);
+            } else if (conn_alive) {
+                sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Recursive reader limit %" PRIu8 " reached by running"
+                        " process %ld (CID %" PRIu32 "), possibly because of missing unlocks.", UINT8_MAX, (long)pid,
+                        rwlock->readers[i]);
+            } else {
+                /* ahould be unreachable and the readers recovered */
+                sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Recursive reader limit %" PRIu8 " reached by a dead"
+                        " process (CID %" PRIu32 "), possibly because of missing unlocks.", UINT8_MAX, rwlock->readers[i]);
+            }
             goto cleanup;
         }
         ++rwlock->read_count[i];
@@ -1942,47 +2011,48 @@ cleanup:
  *
  * @param[in] rwlock Lock to remove the reader lock from.
  * @param[in] i Index of the reader.
+ * @param[in] dead If the reader is dead and should be completely removed.
  */
 static void
-sr_rwlock_reader_del_(sr_rwlock_t *rwlock, uint32_t i)
+sr_rwlock_reader_del_(sr_rwlock_t *rwlock, uint32_t i, int dead)
 {
-    uint32_t move_count;
-    sr_cid_t last_reader;
-    uint8_t last_read_count;
+    uint32_t j;
 
-    /* decrease recursive read lock count */
-    assert(rwlock->read_count[i]);
-    --rwlock->read_count[i];
+    /* there should be at least 1 read_count or it must be a dead CID */
+    assert(rwlock->read_count[i] || dead);
+
+    if (dead) {
+        /* remove reader completely */
+        rwlock->read_count[i] = 0;
+    } else if (rwlock->read_count[i]) {
+        /* decrease recursive read lock count */
+        --rwlock->read_count[i];
+    }
 
     if (rwlock->read_count[i]) {
         /* read lock is still recursively held */
         return;
     }
 
-    /* move all the readers to replace the deleted one, avoid duplicates and try to keep the arrays consistent for
-     * sysrepo monitoring */
-    move_count = 0;
-    while ((move_count < SR_RWLOCK_READ_LIMIT - i - 1) && rwlock->readers[i + move_count + 1]) {
-        ++move_count;
+    /* find the last reader */
+    for (j = i + 1; j < SR_RWLOCK_READ_LIMIT && rwlock->readers[j]; j++) {}
+    j--;
+
+    /* swap last reader if it exists with deleted reader */
+    if (rwlock->readers[j]) {
+        /* first set read_count, and only then the reader CID. readers[i] holds deleted CID */
+        rwlock->read_count[i] = rwlock->read_count[j];
+        /* if we die now, recovery is easy as rwlock->readers[i] holds dead CID and will be removed. */
+
+        rwlock->readers[i] = rwlock->readers[j];
+        /* if we die now, recovery needs to delete the duplicated last reader */
+
+        rwlock->readers[j] = 0;
+        /* no recovery needed beyond this. */
+        rwlock->read_count[j] = 0;
+    } else {
+        rwlock->readers[i] = 0;
     }
-
-    /* temporarily remove the last reader to avoid duplicating it */
-    last_reader = rwlock->readers[i + move_count];
-    last_read_count = rwlock->read_count[i + move_count];
-    rwlock->readers[i + move_count] = 0;
-    rwlock->read_count[i + move_count] = 0;
-
-    if (!move_count) {
-        /* no readers left */
-        return;
-    }
-
-    memmove(&rwlock->readers[i], &rwlock->readers[i + 1], move_count * sizeof *rwlock->readers);
-    memmove(&rwlock->read_count[i], &rwlock->read_count[i + 1], move_count * sizeof *rwlock->read_count);
-
-    /* restore the last reader */
-    rwlock->readers[i + move_count - 1] = last_reader;
-    rwlock->read_count[i + move_count - 1] = last_read_count;
 }
 
 /**
@@ -2007,10 +2077,50 @@ sr_rwlock_reader_del(sr_rwlock_t *rwlock, sr_cid_t cid)
     }
 
     /* remove the CID */
-    sr_rwlock_reader_del_(rwlock, i);
+    sr_rwlock_reader_del_(rwlock, i, 0);
 
 cleanup:
     return err_info;
+}
+
+/**
+ * @brief Make sysrepo rwlock's reader and read_count arrays consistent.
+ * if a process crashed during sr_rwlock_reader_del_ it can leave the readers array
+ * with duplicated last elements.
+ *
+ * Mutex must be held!
+ * Although we run through readers array few times,
+ * this should not be more expensive than a single connection liveness check.
+ *
+ * @param[in] rwlock RW lock to recover.
+ * @param[in] func Lock caller function.
+ */
+static void
+sr_rwlock_recover_readers(sr_rwlock_t *rwlock, const char *func)
+{
+    uint32_t i, j;
+    sr_cid_t last_cid;
+
+    /* find last reader */
+    for (i = 0; (i < SR_RWLOCK_READ_LIMIT) && rwlock->readers[i]; i++) {}
+    if (!i) {
+        /* there are no readers */
+        return;
+    }
+    i--;
+
+    last_cid = rwlock->readers[i];
+
+    /* if a duplicate of the last_cid exists, then remove the last_cid */
+    for (j = 0; (j < i) && rwlock->readers[j]; j++) {
+        if (rwlock->readers[j] == last_cid) {
+            assert(rwlock->read_count[j] == rwlock->read_count[i]);
+            rwlock->readers[i] = 0;
+            rwlock->read_count[i] = 0;
+            SR_LOG_WRN("Removed duplicate last reader of CID %" PRIu32 " (%s).", last_cid, func);
+            break;
+        }
+    }
 }
 
 /**
@@ -2028,12 +2138,14 @@ sr_rwlock_recover(sr_rwlock_t *rwlock, const char *func, sr_lock_recover_cb cb, 
     uint32_t i = 0;
     sr_cid_t cid;
 
+    sr_rwlock_recover_readers(rwlock, func);
+
     /* readers */
     while ((i < SR_RWLOCK_READ_LIMIT) && rwlock->readers[i]) {
         if (!sr_conn_is_alive(rwlock->readers[i])) {
             /* remove the dead reader */
             cid = rwlock->readers[i];
-            sr_rwlock_reader_del_(rwlock, i);
+            sr_rwlock_reader_del_(rwlock, i, 1);
 
             /* recover */
             if (cb) {
@@ -2092,11 +2204,11 @@ sr_sub_rwlock(sr_rwlock_t *rwlock, struct timespec *timeout_abs, sr_lock_mode_t 
         /* make it consistent */
         ret = pthread_mutex_consistent(&rwlock->mutex);
 
-        /* recover the lock */
+        /* recover the lock readers and the lock */
         sr_rwlock_recover(rwlock, func, cb, cb_data);
         SR_CHECK_INT_RET(ret, err_info);
     } else if (ret) {
-        SR_ERRINFO_LOCK(&err_info, func, ret);
+        sr_errinfo_new_lock(&err_info, func, ret, rwlock);
         return err_info;
     }
 
@@ -2142,8 +2254,9 @@ sr_sub_rwlock(sr_rwlock_t *rwlock, struct timespec *timeout_abs, sr_lock_mode_t 
         ret = 0;
         wr_urged = 0;
         while (!ret && (rwlock->readers[0] || (rwlock->writer && !wr_urged))) {
-            if (!rwlock->writer) {
-                /* urge waiting for write lock */
+            if (!rwlock->writer && !rwlock->upgr) {
+                /* urge waiting for write lock, but let upgradeable read lock go first (to avoid dead-lock, it will not
+                 * release its write lock) */
                 rwlock->writer = cid;
                 wr_urged = 1;
             }
@@ -2210,7 +2323,7 @@ sr_sub_rwlock(sr_rwlock_t *rwlock, struct timespec *timeout_abs, sr_lock_mode_t 
         /* MUTEX UNLOCK */
         r = pthread_mutex_unlock(&rwlock->mutex);
         if (r) {
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unlocking a mutex in %s() failed (%s).", __func__, strerror(r));
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unlocking a mutex failed (%s: %s).", func, strerror(r));
         }
 
     } else {
@@ -2220,7 +2333,7 @@ sr_sub_rwlock(sr_rwlock_t *rwlock, struct timespec *timeout_abs, sr_lock_mode_t 
             sr_rwlock_recover(rwlock, func, cb, cb_data);
         }
 
-        /* wait until there is no writer waiting for lock */
+        /* wait until there is no writer waiting for lock and a readers are not full */
         ret = 0;
         while (!ret && (rwlock->readers[SR_RWLOCK_READ_LIMIT - 1] || rwlock->writer)) {
             /* COND WAIT */
@@ -2244,7 +2357,7 @@ sr_sub_rwlock(sr_rwlock_t *rwlock, struct timespec *timeout_abs, sr_lock_mode_t 
         /* MUTEX UNLOCK */
         r = pthread_mutex_unlock(&rwlock->mutex);
         if (r) {
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unlocking a mutex in %s() failed (%s).", __func__, strerror(r));
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unlocking a mutex failed (%s: %s).", func, strerror(r));
         }
     }
 
@@ -2256,7 +2369,7 @@ error_cond_unlock:
         pthread_mutex_unlock(&rwlock->mutex);
     }
 
-    SR_ERRINFO_COND(&err_info, func, ret);
+    sr_errinfo_new_lock(&err_info, func, ret, rwlock);
     return err_info;
 }
 
@@ -2296,11 +2409,11 @@ sr_rwlock_mutex_lock(sr_rwlock_t *rwlock, uint32_t timeout_ms, const char *func,
         /* make it consistent */
         ret = pthread_mutex_consistent(&rwlock->mutex);
 
-        /* recover the lock */
+        /* recover the lock readers and the lock */
         sr_rwlock_recover(rwlock, func, cb, cb_data);
         SR_CHECK_INT_RET(ret, err_info);
     } else if (ret) {
-        SR_ERRINFO_LOCK(&err_info, func, ret);
+        sr_errinfo_new_lock(&err_info, func, ret, rwlock);
         return err_info;
     }
 
@@ -2351,7 +2464,7 @@ sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
             }
         }
         if (ret) {
-            SR_ERRINFO_COND(&err_info, func, ret);
+            sr_errinfo_new_lock(&err_info, func, ret, rwlock);
             goto cleanup_unlock;
         }
 
@@ -2380,9 +2493,6 @@ sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
 
         /* consistency checks */
         assert(rwlock->upgr == cid);
-
-        /* clear the flag, wanting write now */
-        rwlock->upgr = 0;
 
         if (rwlock->readers[1] || (rwlock->read_count[0] > 1) || rwlock->writer) {
             /* instead of waiting, try to recover the lock immediately */
@@ -2415,9 +2525,8 @@ sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
             if (wr_urged) {
                 rwlock->writer = 0;
             }
-            rwlock->upgr = cid;
 
-            SR_ERRINFO_COND(&err_info, func, ret);
+            sr_errinfo_new_lock(&err_info, func, ret, rwlock);
             goto cleanup_unlock;
         }
 
@@ -2430,9 +2539,9 @@ sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
             if (wr_urged) {
                 rwlock->writer = 0;
             }
-            rwlock->upgr = cid;
             goto cleanup_unlock;
         }
+        rwlock->upgr = 0;
         if (!wr_urged) {
             rwlock->writer = cid;
         }
@@ -2521,7 +2630,7 @@ sr_rwunlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
             /* recover the lock, no CB needed since when we are unlocking, the state is expected to be valid and cleared */
             sr_rwlock_recover(rwlock, func, NULL, NULL);
         } else if (ret) {
-            SR_ERRINFO_LOCK(&err_info, func, ret);
+            sr_errinfo_new_lock(&err_info, func, ret, rwlock);
             sr_errinfo_free(&err_info);
         }
 
@@ -2544,9 +2653,11 @@ sr_rwunlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
     }
 
     /* write-unlock/last read-unlock, last read-unlock with read-upgr lock waiting for an upgrade,
-     * writer waiting, or upgradeable read-unlock (there may be another upgr-read-lock waiting) */
+     * writer waiting, or upgradeable read-unlock (there may be another upgr-read-lock waiting)
+     * or reader list was full, and one spot just opened up. */
     if (!rwlock->readers[0] || (!rwlock->readers[1] && (rwlock->read_count[0] == 1) && rwlock->upgr) ||
-            rwlock->writer || (mode == SR_LOCK_READ_UPGR)) {
+            rwlock->writer || (mode == SR_LOCK_READ_UPGR) ||
+            (rwlock->readers[SR_RWLOCK_READ_LIMIT - 2] && !rwlock->readers[SR_RWLOCK_READ_LIMIT - 1])) {
         /* broadcast on condition */
         sr_cond_broadcast(&rwlock->cond);
     }
@@ -2554,7 +2665,7 @@ sr_rwunlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
     /* MUTEX UNLOCK */
     ret = pthread_mutex_unlock(&rwlock->mutex);
     if (ret) {
-        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unlocking a mutex in %s() failed (%s).", __func__, strerror(ret));
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unlocking a mutex failed (%s: %s).", func, strerror(ret));
         sr_errinfo_free(&err_info);
     }
 }
@@ -2576,87 +2687,380 @@ sr_conn_is_alive(sr_cid_t cid)
 }
 
 sr_error_info_t *
-sr_conn_ext_data_update(sr_conn_ctx_t *conn)
+sr_schema_mount_data_get(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, const char *mp_path, struct lyd_node **sm_data)
 {
     sr_error_info_t *err_info = NULL;
-    const struct lys_module *ly_mod;
-    struct sr_mod_info_s mi;
-    struct lyd_node *yl_data = NULL, *new_ext_data = NULL;
+    struct sr_mod_info_s mod_info;
+    struct ly_set *set = NULL;
+    const struct lys_module *sm_mod, *yl_mod;
+    char *yl_mod_name = NULL;
+    struct lyd_node *root;
+    uint32_t i;
 
-    /* init mod info for cleanup */
-    SR_MODINFO_INIT(mi, conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, 0);
+    *sm_data = NULL;
 
-    /* manually get ietf-yang-schema-mount operational data but avoid recursive call of this function */
-    ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, "ietf-yang-schema-mount");
-    assert(ly_mod);
-    if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 1, &mi))) {
+    /* init modinfo */
+    sr_modinfo_init(&mod_info, conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, 0);
+
+    /* learn the module of the yang-library data */
+    if (mp_path) {
+        if ((err_info = sr_xpath_first_prefix(mp_path, &yl_mod_name))) {
+            goto cleanup;
+        }
+    }
+
+    /* get the modules */
+    yl_mod = ly_ctx_get_module_implemented(ly_ctx, yl_mod_name ? yl_mod_name : "ietf-yang-library");
+    sm_mod = ly_ctx_get_module_implemented(ly_ctx, "ietf-yang-schema-mount");
+    if (!yl_mod || !sm_mod) {
+        /* modules not found, they were not loaded yet */
         goto cleanup;
     }
-    if ((err_info = sr_modinfo_consolidate(&mi, SR_LOCK_READ, SR_MI_DATA_RO | SR_MI_PERM_READ, NULL,
+
+    /* add modules into mod_info */
+    if ((err_info = sr_modinfo_add(yl_mod, mp_path, 0, 0, 1, &mod_info))) {
+        goto cleanup;
+    }
+    if ((err_info = sr_modinfo_add(sm_mod, NULL, 0, 0, 1, &mod_info))) {
+        goto cleanup;
+    }
+
+    /* consolidate without data */
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_PERM_NO | SR_MI_DATA_NO, NULL,
             SR_OPER_CB_TIMEOUT, 0, 0))) {
         goto cleanup;
     }
 
-    if (mi.data && !(mi.data->flags & LYD_DEFAULT)) {
-        /* validate them for the parent reference prefixes to be resolved */
-        if ((err_info = sr_lyd_validate_module(&mi.data, mi.data->schema->module, 0, NULL))) {
-            goto cleanup;
-        }
+    /* get only push operational data to avoid reading running data with mounted data that cannot be parsed */
+    for (i = 0; i < mod_info.mod_count; ++i) {
+        if (!strcmp(mod_info.mods[i].ly_mod->name, "ietf-yang-library")) {
+            assert(!mp_path);
 
-        /* get ietf-yang-library operational data */
-        if ((err_info = sr_ly_ctx_get_yanglib_data(conn->ly_ctx, &yl_data, SR_CONN_MAIN_SHM(conn)->content_id))) {
+            /* append parent context ietf-yang-library operational data for an inline schema */
+            if ((err_info = sr_module_data_append_yanglib(mod_info.mods[i].ly_mod, &mod_info.data))) {
+                return err_info;
+            }
+        } else if ((err_info = sr_module_oper_data_load(&mod_info.mods[i], conn, NULL, NULL, &mod_info.data))) {
             goto cleanup;
         }
-
-        /* merge the data into one tree */
-        if ((err_info = sr_lyd_insert_sibling(yl_data, mi.data, &new_ext_data))) {
-            goto cleanup;
-        }
-        yl_data = NULL;
-        mi.data = NULL;
     }
 
-    /* LY EXT DATA WRITE LOCK */
-    if ((err_info = sr_rwlock(&conn->ly_ext_data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
-            __func__, NULL, NULL))) {
+    /* check there are explicit required data */
+    if ((err_info = sr_lyd_find_xpath(mod_info.data, mp_path ? mp_path : "/ietf-yang-library:yang-library", &set))) {
+        goto cleanup;
+    }
+    root = set->count ? set->dnodes[0] : NULL;
+    if (!root || (root->flags & LYD_DEFAULT)) {
+        goto cleanup;
+    }
+    if ((err_info = sr_lyd_find_path(mod_info.data, "/ietf-yang-schema-mount:schema-mounts", 0, &root))) {
+        goto cleanup;
+    }
+    if (!root || (root->flags & LYD_DEFAULT)) {
         goto cleanup;
     }
 
-    /* update LY ext data */
-    lyd_free_siblings(conn->ly_ext_data);
-    conn->ly_ext_data = new_ext_data;
-    new_ext_data = NULL;
+    /* validate the schema-mounts data to resolve the parent reference prefixes */
+    if ((err_info = sr_lyd_validate_module(&mod_info.data, sm_mod, LYD_VALIDATE_OPERATIONAL, NULL))) {
+        goto cleanup;
+    }
 
-    /* LY EXT DATA UNLOCK */
-    sr_rwunlock(&conn->ly_ext_data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    *sm_data = mod_info.data;
+    mod_info.data = NULL;
 
 cleanup:
     /* MODULES UNLOCK */
-    sr_shmmod_modinfo_unlock(&mi);
+    sr_shmmod_modinfo_unlock(&mod_info);
+    sr_modinfo_erase(&mod_info);
 
-    sr_modinfo_erase(&mi);
-    lyd_free_siblings(yl_data);
-    lyd_free_siblings(new_ext_data);
+    free(yl_mod_name);
+    ly_set_free(set, NULL);
     return err_info;
 }
 
 sr_error_info_t *
-sr_conn_oper_cache_add(sr_conn_ctx_t *conn, uint32_t sub_id, const char *module_name, const char *path)
+sr_schema_mount_create_contexts(struct ly_ctx *ly_ctx, const struct lyd_node *sr_data)
+{
+    sr_error_info_t *err_info = NULL;
+    struct ly_set *set = NULL;
+    struct lyd_node *sm_data;
+    const struct lysc_node *snode = NULL;
+    struct lysc_ext_instance *ext;
+    ly_bool sm_data_free;
+    LY_ARRAY_COUNT_TYPE u;
+    uint32_t i;
+
+    /* get all the extension instances */
+    if ((err_info = sr_lyd_find_xpath(sr_data, "module/schema-mount-ext-instance", &set))) {
+        goto cleanup;
+    }
+
+    for (i = 0; i < set->count; ++i) {
+        /* find the schema node based on the extension instance value */
+        if ((err_info = sr_lys_find_path(ly_ctx, lyd_get_value(set->dnodes[i]), NULL, &snode))) {
+            goto cleanup;
+        }
+
+        /* process all extensions of this node */
+        LY_ARRAY_FOR(snode->exts, u) {
+            ext = &snode->exts[u];
+            if (strcmp(ext->def->module->name, "ietf-yang-schema-mount") || strcmp(ext->def->name, "mount-point")) {
+                /* not a mount point extension */
+                continue;
+            }
+
+            if (sr_ly_ext_data_clb(ext, NULL, NULL, (void **)&sm_data, &sm_data_free)) {
+                sr_errinfo_new(&err_info, SR_ERR_INTERNAL,
+                        "Failed to get schema mount data for extension \"%s\" in module \"%s\".",
+                        ext->def->name, ext->def->module->name);
+                goto cleanup;
+            }
+
+            if (!sm_data) {
+                /* no ietf-yang-library or ietf-yang-schema-mount data set, wait with creating the shared sm contexts
+                 * until some data are set */
+                continue;
+            }
+
+            /* create shared context for this mount point */
+            err_info = sr_lyplg_ext_schema_mount_create_shared_context(ext, sm_data);
+            if (sm_data_free) {
+                lyd_free_all(sm_data);
+            }
+            if (err_info) {
+                goto cleanup;
+            }
+        }
+    }
+
+cleanup:
+    ly_set_free(set, NULL);
+    return err_info;
+}
+
+API LY_ERR
+sr_ly_ext_data_clb(const struct lysc_ext_instance *ext, const struct lyd_node *parent, void *UNUSED(user_data),
+        void **ext_data, ly_bool *ext_data_free)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *sm_data = NULL;
+    LY_ERR rc = LY_SUCCESS;
+    char *mp_path = NULL, *parent_path = NULL;
+    static THREAD int sr_schema_mount_cb_r = 0;
+
+    *ext_data = NULL;
+    *ext_data_free = 0;
+
+    if (sr_schema_mount_cb_r) {
+        /* recursive call, return no data */
+        goto cleanup;
+    } else if (strcmp(ext->def->module->name, "ietf-yang-schema-mount") || strcmp(ext->def->name, "mount-point")) {
+        rc = LY_EINVAL;
+        goto cleanup;
+    }
+
+    /* a connection must be set by any means prior to this call */
+    if (!sr_available_conn) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "No SR connection available.");
+        rc = LY_EINVAL;
+        goto cleanup;
+    }
+
+    if (parent) {
+        /* parsing data, use the data node */
+        parent_path = lyd_path(parent, LYD_PATH_STD, NULL, 0);
+    } else {
+        /* creating shared contexts or another use-case of working only with schema, use the ext schema parent node */
+        assert((ext->parent_stmt == LY_STMT_CONTAINER) || (ext->parent_stmt == LY_STMT_LIST));
+        parent_path = lysc_path(ext->parent, LYSC_PATH_DATA, NULL, 0);
+    }
+    if (!parent_path) {
+        rc = LY_EMEM;
+        goto cleanup;
+    }
+
+    /* create the path to the mount point's yang-library data */
+    if (asprintf(&mp_path, "%s/ietf-yang-library:yang-library", parent_path) == -1) {
+        SR_ERRINFO_MEM(&err_info);
+        rc = LY_EMEM;
+        goto cleanup;
+    }
+
+    /* get yang-library and schema-mounts from the operational ds */
+    sr_schema_mount_cb_r = 1;
+    err_info = sr_schema_mount_data_get(sr_available_conn, ext->module->ctx, mp_path, &sm_data);
+    sr_schema_mount_cb_r = 0;
+    if (err_info) {
+        rc = LY_EOTHER;
+        goto cleanup;
+    }
+
+    *ext_data = sm_data;
+    *ext_data_free = 1;
+
+cleanup:
+    free(parent_path);
+    free(mp_path);
+    sr_errinfo_free(&err_info);
+    return rc;
+}
+
+int
+sr_schema_mount_changed_oper_data(const struct lyd_node *oper_data)
+{
+    const struct lyd_node *root, *iter;
+
+    LY_LIST_FOR(oper_data, root) {
+        if (!strcmp(lyd_node_module(root)->name, "ietf-yang-schema-mount")) {
+            return 1;
+        }
+
+        /* check for mounted ietf-yang-library data */
+        LYD_TREE_DFS_BEGIN(root, iter) {
+            if ((iter->flags & LYD_EXT) && !strcmp(lyd_node_module(iter)->name, "ietf-yang-library")) {
+                return 1;
+            }
+
+            LYD_TREE_DFS_END(root, iter);
+        }
+    }
+
+    return 0;
+}
+
+sr_error_info_t *
+sr_schema_mount_ds_data_update(sr_conn_ctx_t *conn, struct sr_lycc_ds_data_set_s *data_old)
+{
+    sr_error_info_t *err_info = NULL, *tmp_err;
+    struct ly_ctx *new_ctx = NULL;
+    struct sr_lycc_info_s cc_info = {0};
+    sr_lock_mode_t ctx_mode = SR_LOCK_NONE;
+    int destroy_new_ctx = 0;
+
+    /* use and spend the old data */
+    cc_info.data_info.old = *data_old;
+    memset(data_old, 0, sizeof *data_old);
+
+    if (ly_ctx_is_printed(sr_yang_ctx.ly_ctx)) {
+        /* create a new temporary context */
+        if ((err_info = sr_ly_ctx_new(&new_ctx))) {
+            goto cleanup;
+        }
+        destroy_new_ctx = 1;
+
+        /* load all the current modules into the temporary context */
+        if ((err_info = sr_shmmod_ctx_load_modules(SR_CTX_MOD_SHM(sr_yang_ctx), new_ctx, NULL))) {
+            goto cleanup;
+        }
+    } else {
+        /* we can use our context */
+        new_ctx = sr_yang_ctx.ly_ctx;
+    }
+
+    /* parse current (old) module information, needed for schema mount data update */
+    if ((err_info = sr_lydmods_parse(sr_yang_ctx.ly_ctx, conn, NULL, &cc_info.sr_mods_old))) {
+        goto cleanup;
+    }
+
+    /* prepare DS data for a context update */
+    if ((err_info = sr_lycc_update_ds_data(new_ctx, NULL, 0, cc_info.sr_mods_old, &cc_info.data_info.old, NULL,
+            &cc_info.data_info.new))) {
+        goto cleanup;
+    }
+
+    /* SR mods are not changed so we can reuse them */
+    cc_info.sr_mods_new = cc_info.sr_mods_old;
+
+    /* CONTEXT UPGRADE */
+    if ((err_info = sr_lycc_relock(conn, SR_LOCK_WRITE, __func__))) {
+        goto cleanup;
+    }
+    ctx_mode = SR_LOCK_WRITE;
+
+    /* perform the update of datastore and SR data, update schema-mount contexts */
+    cc_info.ly_ctx_old = sr_yang_ctx.ly_ctx;
+    cc_info.ly_ctx_new = new_ctx;
+    if ((err_info = sr_lycc_update_data(conn, &cc_info, NULL))) {
+        goto cleanup;
+    }
+
+    /* update the schema mount data ID, no need to update content_id because it didnt change */
+    SR_CONN_MAIN_SHM(conn)->schema_mount_data_id++;
+
+    /* print the new context - new schema mount data will be obtained next time context is locked */
+    sr_lycc_store_context(&sr_yang_ctx.ly_ctx_shm, new_ctx);
+
+cleanup:
+    sr_lycc_clear_data(&cc_info);
+    if (destroy_new_ctx) {
+        ly_ctx_destroy(new_ctx);
+    }
+
+    /* CONTEXT DOWNGRADE - leave the unlock to the caller */
+    if (ctx_mode && (tmp_err = sr_lycc_relock(conn, SR_LOCK_READ_UPGR, __func__))) {
+        sr_errinfo_merge(&err_info, tmp_err);
+    }
+
+    return err_info;
+}
+
+int
+sr_schema_mount_session_have_oper_data_for_ctx_update(sr_session_ctx_t *sess, const char *mod_name)
+{
+    sr_mod_t *shm_mod;
+    uint32_t i;
+
+    for (i = 0; i < sess->oper_push_mod_count; ++i) {
+        if (!sess->oper_push_mods[i].has_data) {
+            /* no data to discard */
+            continue;
+        }
+
+        if (!strcmp(sess->oper_push_mods[i].name, "ietf-yang-schema-mount")) {
+            /* will always affect the schema-mount contexts */
+            return 1;
+        }
+
+        if (mod_name && strcmp(sess->oper_push_mods[i].name, mod_name)) {
+            /* data of this module will not be discarded */
+            continue;
+        }
+
+        /* find the SHM module */
+        shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), sess->oper_push_mods[i].name);
+        if (!shm_mod) {
+            /* module was removed but remained in the session, just skip */
+            continue;
+        }
+
+        if (shm_mod->sm_ext_path_count) {
+            /* there is a mount-point extension in the module */
+            return 1;
+        }
+
+    }
+
+    return 0;
+}
+
+sr_error_info_t *
+sr_oper_cache_add(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache, uint32_t sub_id, const char *module_name,
+        const char *path)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
     void *mem;
-    struct sr_oper_poll_cache_s *cache;
+    struct sr_oper_cache_sub_s *cache;
 
-    /* CONN OPER CACHE WRITE LOCK */
-    if ((err_info = sr_rwlock(&conn->oper_cache_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
-            __func__, NULL, NULL))) {
+    /* OPER CACHE WRITE LOCK */
+    if ((err_info = sr_rwlock(&oper_cache->lock, SR_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE,
+            conn->cid, __func__, NULL, NULL))) {
         return err_info;
     }
 
     /* look for a cache entry in the connection for the same path */
-    for (i = 0; i < conn->oper_cache_count; ++i) {
-        if (!strcmp(conn->oper_caches[i].path, path)) {
+    for (i = 0; i < oper_cache->sub_count; ++i) {
+        if (!strcmp(oper_cache->subs[i].path, path)) {
             sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Operational poll subscription for \"%s\" on the connection"
                     " already exists.", path);
             goto cleanup;
@@ -2664,10 +3068,10 @@ sr_conn_oper_cache_add(sr_conn_ctx_t *conn, uint32_t sub_id, const char *module_
     }
 
     /* add new cache entry */
-    mem = realloc(conn->oper_caches, (conn->oper_cache_count + 1) * sizeof *conn->oper_caches);
+    mem = realloc(oper_cache->subs, (oper_cache->sub_count + 1) * sizeof *oper_cache->subs);
     SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
-    conn->oper_caches = mem;
-    cache = &conn->oper_caches[conn->oper_cache_count];
+    oper_cache->subs = mem;
+    cache = &oper_cache->subs[oper_cache->sub_count];
     memset(cache, 0, sizeof *cache);
 
     /* fill */
@@ -2680,32 +3084,32 @@ sr_conn_oper_cache_add(sr_conn_ctx_t *conn, uint32_t sub_id, const char *module_
         goto cleanup;
     }
 
-    ++conn->oper_cache_count;
+    ++oper_cache->sub_count;
 
 cleanup:
-    /* CONN OPER CACHE UNLOCK */
-    sr_rwunlock(&conn->oper_cache_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    /* OPER CACHE WRITE UNLOCK */
+    sr_rwunlock(&oper_cache->lock, SR_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
     return err_info;
 }
 
 void
-sr_conn_oper_cache_del(sr_conn_ctx_t *conn, uint32_t sub_id)
+sr_oper_cache_del(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache, uint32_t sub_id)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
-    struct sr_oper_poll_cache_s *cache = NULL;
+    struct sr_oper_cache_sub_s *cache = NULL;
 
-    /* CONN OPER CACHE WRITE LOCK */
-    if ((err_info = sr_rwlock(&conn->oper_cache_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
-            __func__, NULL, NULL))) {
+    /* OPER CACHE WRITE LOCK */
+    if ((err_info = sr_rwlock(&oper_cache->lock, SR_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE,
+            conn->cid, __func__, NULL, NULL))) {
         /* should never happen */
         sr_errinfo_free(&err_info);
     }
 
     /* find the cache entry */
-    for (i = 0; i < conn->oper_cache_count; ++i) {
-        if (conn->oper_caches[i].sub_id == sub_id) {
-            cache = &conn->oper_caches[i];
+    for (i = 0; i < oper_cache->sub_count; ++i) {
+        if (oper_cache->subs[i].sub_id == sub_id) {
+            cache = &oper_cache->subs[i];
             break;
         }
     }
@@ -2718,55 +3122,72 @@ sr_conn_oper_cache_del(sr_conn_ctx_t *conn, uint32_t sub_id)
     lyd_free_siblings(cache->data);
 
     /* replace cache entry with the last */
-    if (i < conn->oper_cache_count - 1) {
-        memcpy(cache, &conn->oper_caches[conn->oper_cache_count - 1], sizeof *cache);
+    if (i < oper_cache->sub_count - 1) {
+        memcpy(cache, &oper_cache->subs[oper_cache->sub_count - 1], sizeof *cache);
     }
-    --conn->oper_cache_count;
+    --oper_cache->sub_count;
 
-    if (!conn->oper_cache_count) {
+    if (!oper_cache->sub_count) {
         /* no other cache entries */
-        free(conn->oper_caches);
-        conn->oper_caches = NULL;
+        free(oper_cache->subs);
+        oper_cache->subs = NULL;
     }
 
-    /* CONN OPER CACHE UNLOCK */
-    sr_rwunlock(&conn->oper_cache_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    /* OPER CACHE UNLOCK */
+    sr_rwunlock(&oper_cache->lock, SR_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
 }
 
-/**
- * @brief Replace cached schema-mount operational data (LY ext data) of a connection.
- *
- * @param[in] conn Connection to use.
- * @param[in] new_ext_data New LY ext data to use, may be NULL.
- */
-static void
-sr_conn_ext_data_replace(sr_conn_ctx_t *conn, struct lyd_node *new_ext_data)
+void
+sr_oper_cache_flush(sr_conn_ctx_t *conn, sr_oper_cache_t *oper_cache)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t i;
+    struct sr_oper_cache_sub_s *cache;
 
-    /* expected to be called with CTX LOCK so we can access the data */
-
-    /* LY EXT DATA WRITE LOCK */
-    err_info = sr_rwlock(&conn->ly_ext_data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
-            NULL, NULL);
-
-    /* replace LY ext data */
-    lyd_free_siblings(conn->ly_ext_data);
-    conn->ly_ext_data = new_ext_data;
-
-    if (!err_info) {
-        /* LY EXT DATA UNLOCK */
-        sr_rwunlock(&conn->ly_ext_data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    /* OPER CACHE READ LOCK */
+    if ((err_info = sr_rwlock(&oper_cache->lock, SR_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__, NULL,
+            NULL))) {
+        /* should never happen */
+        sr_errinfo_free(&err_info);
     }
-    sr_errinfo_free(&err_info);
+
+    for (i = 0; i < oper_cache->sub_count; ++i) {
+        cache = &oper_cache->subs[i];
+
+        /* CACHE DATA WRITE LOCK */
+        if ((err_info = sr_rwlock(&cache->data_lock, SR_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
+                __func__, NULL, NULL))) {
+            /* should never happen */
+            sr_errinfo_free(&err_info);
+        }
+
+        /* flush data */
+        lyd_free_siblings(cache->data);
+        cache->data = NULL;
+        memset(&cache->timestamp, 0, sizeof cache->timestamp);
+
+        /* CACHE DATA UNLOCK */
+        sr_rwunlock(&cache->data_lock, SR_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    }
+
+    /* OPER CACHE UNLOCK */
+    sr_rwunlock(&oper_cache->lock, SR_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+
+    /* remove oper push data cache from all sessions */
+
+    /* safe because context_lock or conn->mod_remap_lock is WRITE locked, preventing all other operations */
+    if ((err_info = sr_shmmain_oper_push_cache_flush())) {
+        sr_errinfo_free(&err_info);
+    }
 }
 
 sr_error_info_t *
-sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_info, sr_lock_mode_t has_lock)
+sr_run_cache_update(sr_conn_ctx_t *conn, sr_run_cache_t *run_cache, const struct sr_mod_info_s *mod_info,
+        sr_lock_mode_t has_lock)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     struct sr_mod_info_mod_s *mod;
-    struct sr_run_cache_s *cmod;
+    struct sr_run_cache_mod_s *cmod;
     struct lyd_node *mod_data;
     sr_datastore_t cache_ds;
     uint32_t i, j, cur_id;
@@ -2786,9 +3207,9 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
 
         /* find the cache mod */
         cmod = NULL;
-        for (j = 0; j < conn->run_cache_mod_count; ++j) {
-            if (mod->ly_mod == conn->run_cache_mods[j].mod) {
-                cmod = &conn->run_cache_mods[j];
+        for (j = 0; j < run_cache->mod_count; ++j) {
+            if (mod->ly_mod == run_cache->mods[j].mod) {
+                cmod = &run_cache->mods[j];
                 break;
             }
         }
@@ -2796,11 +3217,11 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
         if (!cmod) {
             if (has_lock != SR_LOCK_WRITE) {
                 /* CACHE READ UNLOCK */
-                sr_rwunlock(&conn->run_cache_lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+                sr_rwunlock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
                 has_lock = SR_LOCK_NONE;
 
                 /* CACHE WRITE LOCK */
-                if ((err_info = sr_rwlock(&conn->run_cache_lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE_URGE,
+                if ((err_info = sr_rwlock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE,
                         conn->cid, __func__, NULL, NULL))) {
                     goto cleanup;
                 }
@@ -2808,15 +3229,15 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
             }
 
             /* add the module into the cache */
-            mem = realloc(conn->run_cache_mods, (conn->run_cache_mod_count + 1) * sizeof *conn->run_cache_mods);
+            mem = realloc(run_cache->mods, (run_cache->mod_count + 1) * sizeof *run_cache->mods);
             SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
-            conn->run_cache_mods = mem;
+            run_cache->mods = mem;
 
-            cmod = &conn->run_cache_mods[conn->run_cache_mod_count];
+            cmod = &run_cache->mods[run_cache->mod_count];
             cmod->mod = mod->ly_mod;
             cmod->id = UINT32_MAX;
 
-            ++conn->run_cache_mod_count;
+            ++run_cache->mod_count;
         }
 
         /* check whether the data are current */
@@ -2834,22 +3255,22 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
 
         if (has_lock != SR_LOCK_WRITE) {
             /* CACHE READ UNLOCK */
-            sr_rwunlock(&conn->run_cache_lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+            sr_rwunlock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
             has_lock = SR_LOCK_NONE;
 
             /* CACHE WRITE LOCK */
-            if ((err_info = sr_rwlock(&conn->run_cache_lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE_URGE,
+            if ((err_info = sr_rwlock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE,
                     conn->cid, __func__, NULL, NULL))) {
                 goto cleanup;
             }
             has_lock = SR_LOCK_WRITE;
 
             /* update cmod, there may have been modules added (realloc) but not removed */
-            cmod = &conn->run_cache_mods[j];
+            cmod = &run_cache->mods[j];
         }
 
         /* remove old data */
-        mod_data = sr_module_data_unlink(&conn->run_cache_data, cmod->mod, 0);
+        mod_data = sr_module_data_unlink(&run_cache->data, cmod->mod, 0);
         lyd_free_siblings(mod_data);
 
         /* replace with loaded current data */
@@ -2858,7 +3279,7 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
             goto cleanup;
         }
         if (mod_data) {
-            lyd_insert_sibling(conn->run_cache_data, mod_data, &conn->run_cache_data);
+            lyd_insert_sibling(run_cache->data, mod_data, &run_cache->data);
         }
 
         /* update the cached data ID */
@@ -2868,14 +3289,14 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
 cleanup:
     if (has_lock == SR_LOCK_WRITE) {
         /* CACHE READ RELOCK */
-        if ((tmp_err = sr_rwrelock(&conn->run_cache_lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
-                __func__, NULL, NULL))) {
+        if ((tmp_err = sr_rwrelock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ,
+                conn->cid, __func__, NULL, NULL))) {
             sr_errinfo_merge(&err_info, tmp_err);
         }
     } else if (has_lock == SR_LOCK_NONE) {
         /* CACHE READ LOCK */
-        if ((tmp_err = sr_rwlock(&conn->run_cache_lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
-                __func__, NULL, NULL))) {
+        if ((tmp_err = sr_rwlock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ,
+                conn->cid, __func__, NULL, NULL))) {
             sr_errinfo_merge(&err_info, tmp_err);
         }
     }
@@ -2883,170 +3304,80 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_conn_run_cache_update_mod(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, uint32_t mod_cache_id,
-        struct lyd_node *mod_data)
+sr_run_cache_update_mod(sr_conn_ctx_t *conn, sr_run_cache_t *run_cache, const struct lys_module *ly_mod,
+        uint32_t mod_cache_id, struct lyd_node *mod_data)
 {
     sr_error_info_t *err_info = NULL;
-    struct sr_run_cache_s *cmod = NULL;
+    struct sr_run_cache_mod_s *cmod = NULL;
     struct lyd_node *old_data;
     uint32_t i;
 
     /* CACHE WRITE LOCK */
-    if ((err_info = sr_rwlock(&conn->run_cache_lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE_URGE,
+    if ((err_info = sr_rwlock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE,
             conn->cid, __func__, NULL, NULL))) {
         return err_info;
     }
 
-    /* find the cache mod, it must have been cached for this operation, if not before */
-    for (i = 0; i < conn->run_cache_mod_count; ++i) {
-        if (ly_mod == conn->run_cache_mods[i].mod) {
-            cmod = &conn->run_cache_mods[i];
+    /* find the cache mod */
+    for (i = 0; i < run_cache->mod_count; ++i) {
+        if (ly_mod == run_cache->mods[i].mod) {
+            cmod = &run_cache->mods[i];
             break;
         }
     }
-    assert(cmod);
+    if (!cmod) {
+        /* this can only mean that the cache was flushed for a CONTEXT update */
+        goto cleanup;
+    }
 
     /* the data are expected to be just modified, cannot yet be cached */
     assert(cmod->id != mod_cache_id);
 
     /* remove old data */
-    old_data = sr_module_data_unlink(&conn->run_cache_data, cmod->mod, 0);
+    old_data = sr_module_data_unlink(&run_cache->data, cmod->mod, 0);
     lyd_free_siblings(old_data);
 
     /* replace with current data */
     if (mod_data) {
-        lyd_insert_sibling(conn->run_cache_data, mod_data, &conn->run_cache_data);
+        lyd_insert_sibling(run_cache->data, mod_data, &run_cache->data);
+        mod_data = NULL;
     }
 
     /* update the cached data ID */
     cmod->id = mod_cache_id;
 
+cleanup:
     /* CACHE WRITE UNLOCK */
-    sr_rwunlock(&conn->run_cache_lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    sr_rwunlock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
 
+    lyd_free_siblings(mod_data);
     return err_info;
 }
 
 void
-sr_conn_run_cache_flush(sr_conn_ctx_t *conn)
+sr_run_cache_flush(sr_conn_ctx_t *conn, sr_run_cache_t *run_cache)
 {
     sr_error_info_t *err_info = NULL;
 
-    if (!(conn->opts & SR_CONN_CACHE_RUNNING)) {
-        return;
-    }
-    /* context will be destroyed, free the cache */
-
     /* CACHE WRITE LOCK */
-    err_info = sr_rwlock(&conn->run_cache_lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE_URGE, conn->cid, __func__,
-            NULL, NULL);
+    err_info = sr_rwlock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE,
+            conn->cid, __func__, NULL, NULL);
 
     /* nothing else to do but continue on error */
 
-    /* free the connection cache */
-    lyd_free_siblings(conn->run_cache_data);
-    conn->run_cache_data = NULL;
-    free(conn->run_cache_mods);
-    conn->run_cache_mods = NULL;
-    conn->run_cache_mod_count = 0;
+    /* free the running cache */
+    lyd_free_siblings(run_cache->data);
+    run_cache->data = NULL;
+    free(run_cache->mods);
+    run_cache->mods = NULL;
+    run_cache->mod_count = 0;
 
     if (!err_info) {
         /* CACHE WRITE UNLOCK */
-        sr_rwunlock(&conn->run_cache_lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+        sr_rwunlock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
     }
 
     sr_errinfo_free(&err_info);
-}
-
-/**
- * @brief Flush all cached oper data of a connection.
- *
- * Must be called only with WRITE mode context lock or conn->mod_remap_lock.
- *
- * @param[in] conn Connection to use.
- */
-static void
-sr_conn_oper_cache_flush(sr_conn_ctx_t *conn)
-{
-    sr_error_info_t *err_info = NULL;
-    uint32_t i, j;
-    struct sr_oper_poll_cache_s *cache;
-
-    /* CONN OPER CACHE READ LOCK */
-    if ((err_info = sr_rwlock(&conn->oper_cache_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
-            __func__, NULL, NULL))) {
-        /* should never happen */
-        sr_errinfo_free(&err_info);
-    }
-
-    for (i = 0; i < conn->oper_cache_count; ++i) {
-        cache = &conn->oper_caches[i];
-
-        /* CACHE DATA WRITE LOCK */
-        if ((err_info = sr_rwlock(&cache->data_lock, SR_CONN_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
-                __func__, NULL, NULL))) {
-            /* should never happen */
-            sr_errinfo_free(&err_info);
-        }
-
-        /* flush data */
-        lyd_free_siblings(cache->data);
-        cache->data = NULL;
-        memset(&cache->timestamp, 0, sizeof cache->timestamp);
-
-        /* CACHE DATA UNLOCK */
-        sr_rwunlock(&cache->data_lock, SR_CONN_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
-    }
-
-    /* CONN OPER CACHE UNLOCK */
-    sr_rwunlock(&conn->oper_cache_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
-
-    /* remove oper push data cache from all sessions */
-
-    /* safe because context_lock or conn->mod_remap_lock is WRITE locked, preventing all other operations */
-    /* conn->ptr_lock is always acquired after sr_lycc_lock, so conn->session_count cannot change */
-    for (i = 0; i < conn->session_count; i++) {
-        for (j = 0; j < conn->sessions[i]->oper_push_mod_count; j++) {
-            lyd_free_siblings(conn->sessions[i]->oper_push_mods[j].cache);
-            conn->sessions[i]->oper_push_mods[j].cache = NULL;
-        }
-    }
-}
-
-void
-sr_conn_ctx_switch(sr_conn_ctx_t *conn, struct ly_ctx **new_ctx, struct ly_ctx **old_ctx)
-{
-    sr_error_info_t *err_info = NULL;
-    struct lyd_node *new_ext_data = NULL;
-
-    assert(new_ctx);
-
-    if (conn->ly_ext_data) {
-        /* copy the ext data into the new context */
-        if ((err_info = sr_lyd_dup_siblings_to_ctx(conn->ly_ext_data, *new_ctx, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS,
-                &new_ext_data))) {
-            sr_errinfo_free(&err_info);
-        }
-    }
-
-    /* replace/flush caches before context destroy */
-    sr_conn_ext_data_replace(conn, new_ext_data);
-    sr_conn_run_cache_flush(conn);
-    sr_conn_oper_cache_flush(conn);
-
-    /* update content ID */
-    conn->content_id = SR_CONN_MAIN_SHM(conn)->content_id;
-
-    /* old ctx */
-    if (old_ctx) {
-        *old_ctx = conn->ly_ctx;
-    } else {
-        ly_ctx_destroy(conn->ly_ctx);
-    }
-
-    /* new ctx */
-    conn->ly_ctx = *new_ctx;
-    *new_ctx = NULL;
 }
 
 sr_error_info_t *
@@ -3059,7 +3390,7 @@ sr_conn_ds_init(sr_conn_ctx_t *conn)
     sr_datastore_t ds;
     uint32_t i;
 
-    mod_shm = SR_CONN_MOD_SHM(conn);
+    mod_shm = SR_CTX_MOD_SHM(sr_yang_ctx);
 
     /* go through all the SHM modules */
     for (i = 0; i < mod_shm->mod_count; ++i) {
@@ -3496,6 +3827,26 @@ sr_ds2ident(sr_datastore_t ds)
     return sr_mod_ds2ident(ds);
 }
 
+sr_error_info_t *
+sr_sizedarray2nullarray(const char **sa, const char ***na)
+{
+    sr_error_info_t *err_info = NULL;
+    LY_ARRAY_COUNT_TYPE c = LY_ARRAY_COUNT(sa);
+
+    if (!sa) {
+        *na = NULL;
+        return NULL;
+    }
+
+    *na = malloc((c + 1) * sizeof **na);
+    SR_CHECK_MEM_RET(!*na, err_info);
+
+    memcpy(*na, sa, c * sizeof **na);
+    (*na)[c] = NULL;
+
+    return NULL;
+}
+
 void
 sr_msleep(uint32_t msec)
 {
@@ -3664,7 +4015,6 @@ sr_val_ly2sr(const struct lyd_node *node, int with_origin, sr_val_t *sr_val)
     const struct lyd_node_term *leaf;
     const struct lyd_value *val;
     struct lyd_node_any *any;
-    struct lyd_node *tree;
 
     sr_val->xpath = lyd_path(node, LYD_PATH_STD, NULL, 0);
     SR_CHECK_MEM_GOTO(!sr_val->xpath, err_info, error);
@@ -3783,31 +4133,14 @@ store_value:
         any = (struct lyd_node_any *)node;
         ptr = NULL;
 
-        switch (any->value_type) {
-        case LYD_ANYDATA_STRING:
-        case LYD_ANYDATA_XML:
-        case LYD_ANYDATA_JSON:
-            if (any->value.str) {
-                ptr = strdup(any->value.str);
-                SR_CHECK_MEM_GOTO(!ptr, err_info, error);
-            }
-            break;
-        case LYD_ANYDATA_LYB:
-            /* try to convert into a data tree */
-            if ((err_info = sr_lyd_parse_data(LYD_CTX(node), any->value.mem, NULL, LYD_LYB, LYD_PARSE_STRICT, 0, &tree))) {
-                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Failed to convert LYB anyxml/anydata into XML.");
-                goto error;
-            }
-            free(any->value.mem);
-            any->value_type = LYD_ANYDATA_DATATREE;
-            any->value.tree = tree;
-        /* fallthrough */
-        case LYD_ANYDATA_DATATREE:
-            if ((err_info = sr_lyd_print_data(any->value.tree, LYD_XML, 0, -1, &ptr, NULL))) {
+        if (any->value) {
+            ptr = strdup(any->value);
+            SR_CHECK_MEM_GOTO(!ptr, err_info, error);
+        } else {
+            if ((err_info = sr_lyd_print_data(any->child, LYD_XML, 0, -1, &ptr, NULL))) {
                 sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Failed to print anyxml/anydata into XML.");
                 goto error;
             }
-            break;
         }
 
         if (node->schema->nodetype == LYS_ANYXML) {
@@ -4052,8 +4385,9 @@ sr_lyd_copy_config_np_cont_r(struct lyd_node **first, struct lyd_node *parent, c
             return err_info;
         }
 
-        /* set the default flag after all nested containers were copied */
-        node->flags |= LYD_DEFAULT;
+        /* copy the ext flag, if set */
+        assert(node->flags & LYD_DEFAULT);
+        node->flags |= src->flags & LYD_EXT;
     }
 
     return NULL;
@@ -4204,7 +4538,7 @@ sr_lyd_get_enabled_xpath(struct lyd_node **data, char **xpaths, uint16_t xp_coun
             /* duplicate only the parents */
             parent = NULL;
             if (src->parent) {
-                if ((err_info = sr_lyd_dup(&src->parent->node, NULL, LYD_DUP_WITH_PARENTS | LYD_DUP_WITH_FLAGS, 0, &parent))) {
+                if ((err_info = sr_lyd_dup(src->parent, NULL, LYD_DUP_WITH_PARENTS | LYD_DUP_WITH_FLAGS, 0, &parent))) {
                     goto cleanup;
                 }
             }
@@ -4255,8 +4589,9 @@ sr_lyd_get_enabled_xpath(struct lyd_node **data, char **xpaths, uint16_t xp_coun
         }
 
         /* find top-level root */
+        assert(root);
         while (root->parent) {
-            root = &root->parent->node;
+            root = root->parent;
         }
 
         /* add any state NP containers */
@@ -4365,10 +4700,9 @@ sr_xpath_trim_last_node(const char *xpath, char **trim_xpath)
     int skipping;
 
     *trim_xpath = NULL;
-    assert(xpath[0] == '/');
 
     skipping = 0;
-    for (ptr = xpath + strlen(xpath) - 1; skipping || (ptr[0] != '/'); --ptr) {
+    for (ptr = xpath + strlen(xpath) - 1; skipping || ((ptr[0] != '/') && (ptr != xpath)); --ptr) {
         if (skipping && (ptr[0] == skip_end)) {
             /* we found the character that started the subexpression */
             skipping = 0;
@@ -4577,6 +4911,28 @@ sr_xpath_refs_mod(const char *xpath, const char *mod_name)
     return found;
 }
 
+sr_error_info_t *
+sr_xpath_first_prefix(const char *xpath, char **prefix)
+{
+    sr_error_info_t *err_info = NULL;
+    const char *ptr1, *ptr2;
+
+    *prefix = NULL;
+
+    ptr1 = (xpath[0] == '/') ? xpath + 1 : xpath;
+    ptr2 = sr_xpath_next_identifier(ptr1, 0);
+
+    if (ptr2[0] != ':') {
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Failed to get the first prefix in XPath \"%s\".", xpath);
+        return err_info;
+    }
+
+    *prefix = strndup(ptr1, ptr2 - ptr1);
+    SR_CHECK_MEM_RET(!*prefix, err_info);
+
+    return NULL;
+}
+
 /**
  * @brief Comparison callback for lyd_node pointers.
  *
@@ -4643,6 +4999,122 @@ cleanup:
 }
 
 /**
+ * @brief Merge all subtrees in a set into a diff with 'none' operation, if did not exist before.
+ *
+ * @param[in] set Subtrees to merge.
+ * @param[in,out] diff Diff to merge into.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_xpath_merge_pred_diff_path(const struct ly_set *set, struct lyd_node **diff)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *top_parent, *node_parent, *match;
+    uint32_t i;
+
+    for (i = 0; i < set->count; ++i) {
+        /* create parents and/or find the subtree parent */
+        if ((err_info = sr_edit_diff_create_parents(set->dnodes[i], diff, &top_parent, &node_parent))) {
+            goto cleanup;
+        }
+
+        if (top_parent) {
+            /* first created parent, set 'none' operation */
+            if ((err_info = sr_diff_set_oper(top_parent, "none"))) {
+                goto cleanup;
+            }
+        }
+
+        /* try to find the node */
+        if ((err_info = sr_lyd_find_sibling_first(node_parent ? lyd_child(node_parent) : *diff, set->dnodes[i], &match))) {
+            goto cleanup;
+        }
+
+        if (match) {
+            /* already exists */
+            continue;
+        }
+
+        /* create the node, the subtree (if any) is not needed */
+        if ((err_info = sr_lyd_dup(set->dnodes[i], node_parent, 0, 0, &match))) {
+            goto cleanup;
+        }
+        if (!node_parent) {
+            if ((err_info = sr_lyd_insert_sibling(*diff, match, diff))) {
+                goto cleanup;
+            }
+        }
+
+        if (!top_parent) {
+            /* first created node, set 'none' operation */
+            if ((err_info = sr_diff_set_oper(match, "none"))) {
+                goto cleanup;
+            }
+        }
+
+        /* set 'orig-default' if a term node */
+        if (match->schema->nodetype & LYD_NODE_TERM) {
+            if ((err_info = sr_lyd_new_meta(match, NULL, "yang:orig-default", (match->flags & LYD_DEFAULT) ? "true" : "false"))) {
+                goto cleanup;
+            }
+        }
+    }
+
+cleanup:
+    return err_info;
+}
+
+sr_error_info_t *
+sr_xpath_merge_pred_diff(const struct lyd_node *mod_data, const char **xpaths, struct lyd_node **diff)
+{
+    sr_error_info_t *err_info = NULL;
+    char **atoms = NULL;
+    struct ly_set *set = NULL;
+    uint32_t atom_count = 0, i, j;
+
+    if (!mod_data || !xpaths) {
+        /* nothing to merge */
+        goto cleanup;
+    }
+
+    for (i = 0; xpaths[i]; ++i) {
+        /* free previous atoms */
+        for (j = 0; j < atom_count; ++j) {
+            free(atoms[j]);
+        }
+        free(atoms);
+        atoms = NULL;
+        atom_count = 0;
+
+        /* get text predicate atoms of the xpath */
+        if ((err_info = sr_xpath_get_text_pred_atoms(xpaths[i], &atoms, &atom_count))) {
+            goto cleanup;
+        }
+
+        for (j = 0; j < atom_count; ++j) {
+            /* get the data required to evaluate this atom */
+            ly_set_free(set, NULL);
+            if ((err_info = sr_lyd_find_xpath(mod_data, atoms[j], &set))) {
+                goto cleanup;
+            }
+
+            /* merge the required data into diff */
+            if ((err_info = sr_xpath_merge_pred_diff_path(set, diff))) {
+                goto cleanup;
+            }
+        }
+    }
+
+cleanup:
+    for (j = 0; j < atom_count; ++j) {
+        free(atoms[j]);
+    }
+    free(atoms);
+    ly_set_free(set, NULL);
+    return err_info;
+}
+
+/**
  * @brief Add a new atom if not present.
  *
  * @param[in,out] atom Atom to add, is spent and set to NULL.
@@ -4695,15 +5167,17 @@ static const char *xpath_ops[] = {"or ", "and ", "=", "!=", "<", ">", "<=", ">="
  * @param[in] xpath XPath to parse.
  * @param[in] prev_atom Atom of the previous expression (context node as a text atom).
  * @param[in] end_chars Array of chars ending this expression, NULL if only terminating zero is expected.
+ * @param[in] pred_only Whether to store only the nodes in the predicates.
+ * @param[in] pred_atom Whether to generate atoms with predicates or as simple paths for nodes in predicates.
  * @param[out] atoms Collected text atoms.
  * @param[out] atom_count Count of @p atoms.
- * @param[out] xpath_next Pointer to one of @p end_chars if found (optionall to '|' if @p end_chars is NULL),
+ * @param[out] xpath_next Pointer to one of @p end_chars if found (optionally to '|' if @p end_chars is NULL),
  * @p xpath if some unknown construct was encountered.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_xpath_text_atoms_expr(const char *xpath, const char *prev_atom, const char *end_chars, sr_xp_atoms_atom_t **atoms,
-        uint32_t *atom_count, const char **xpath_next)
+sr_xpath_text_atoms_expr(const char *xpath, const char *prev_atom, const char *end_chars, int pred_only, int pred_atom,
+        sr_xp_atoms_atom_t **atoms, uint32_t *atom_count, const char **xpath_next)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, prev_atom_count;
@@ -4742,8 +5216,9 @@ sr_xpath_text_atoms_expr(const char *xpath, const char *prev_atom, const char *e
             goto cleanup;
         }
     } else {
-        /* relative path */
-        if (!(cur_atom = strdup(prev_atom))) {
+        /* relative path, node expected at the end */
+        cur_atom = !strcmp(prev_atom, "/") ? strdup("") : strdup(prev_atom);
+        if (!cur_atom) {
             SR_ERRINFO_MEM(&err_info);
             goto cleanup;
         }
@@ -4781,7 +5256,7 @@ parse_name:
         /* function call, get atoms from subexpressions */
         do {
             next2 = next + 1;
-            if ((err_info = sr_xpath_text_atoms_expr(next2, cur_atom, ",)", atoms, atom_count, &next))) {
+            if ((err_info = sr_xpath_text_atoms_expr(next2, cur_atom, ",)", pred_only, pred_atom, atoms, atom_count, &next))) {
                 goto cleanup;
             } else if ((next2 == next) && !strchr(",)", next[0])) {
                 /* unknown expr */
@@ -4796,7 +5271,7 @@ parse_name:
         prev_atom_count = *atom_count;
         do {
             next2 = next + 1;
-            if ((err_info = sr_xpath_text_atoms_expr(next2, cur_atom, "]", atoms, atom_count, &next))) {
+            if ((err_info = sr_xpath_text_atoms_expr(next2, cur_atom, "]", 0, pred_atom, atoms, atom_count, &next))) {
                 goto cleanup;
             } else if ((next2 == next) && (next[0] != ']')) {
                 /* unknown expr */
@@ -4827,7 +5302,7 @@ parse_name:
     if ((!end_chars && (!next[0] || (next[0] == '|'))) || (end_chars && next[0] && strchr(end_chars, next[0]))) {
         /* finished with this (sub)expression, add new atom if any found (parsed) */
         parsed = 1;
-        if (!atom_stored && (strlen(prev_atom) < strlen(cur_atom)) &&
+        if (!pred_only && !atom_stored && (strlen(prev_atom) < strlen(cur_atom)) &&
                 (err_info = sr_xpath_text_atom_add(&cur_atom, !end_chars ? 1 : 0, atoms, atom_count))) {
             goto cleanup;
         }
@@ -4852,9 +5327,16 @@ parse_name:
                     /* parse and store the literal */
                     assert(strlen(prev_atom) < strlen(cur_atom));
                     len = (strchr(next2 + 1, next2[0]) - next2) + 1;
-                    if (asprintf(&tmp, "%s[%s=%.*s]", prev_atom, cur_atom + strlen(prev_atom) + 1, len, next2) == -1) {
-                        SR_ERRINFO_MEM(&err_info);
-                        goto cleanup;
+                    if (pred_atom) {
+                        if (asprintf(&tmp, "%s[%s=%.*s]", prev_atom, cur_atom + strlen(prev_atom) + 1, len, next2) == -1) {
+                            SR_ERRINFO_MEM(&err_info);
+                            goto cleanup;
+                        }
+                    } else {
+                        if (asprintf(&tmp, "%s/%s", prev_atom, cur_atom + strlen(prev_atom) + 1) == -1) {
+                            SR_ERRINFO_MEM(&err_info);
+                            goto cleanup;
+                        }
                     }
                     next2 += len;
 
@@ -4875,7 +5357,7 @@ parse_name:
                     }
                     next2 += op_len;
                 }
-            } else if (!atom_stored && (strlen(prev_atom) < strlen(cur_atom))) {
+            } else if (!pred_only && !atom_stored && (strlen(prev_atom) < strlen(cur_atom))) {
                 /* add a new atom if a new one */
                 if ((err_info = sr_xpath_text_atom_add(&cur_atom, 0, atoms, atom_count))) {
                     goto cleanup;
@@ -4883,7 +5365,8 @@ parse_name:
             }
 
             /* parse the following expression */
-            if ((err_info = sr_xpath_text_atoms_expr(next2, prev_atom, end_chars, atoms, atom_count, &next))) {
+            if ((err_info = sr_xpath_text_atoms_expr(next2, prev_atom, end_chars, pred_only, pred_atom, atoms,
+                    atom_count, &next))) {
                 goto cleanup;
             }
             parsed = 1;
@@ -4913,7 +5396,7 @@ sr_xpath_get_text_atoms(const char *xpath, sr_xp_atoms_t **xp_atoms)
         /* get atoms for the expression, for relative paths we can use '/' because the context node is root node */
         atoms = NULL;
         atom_count = 0;
-        err_info = sr_xpath_text_atoms_expr(xpath, "/", NULL, &atoms, &atom_count, &next);
+        err_info = sr_xpath_text_atoms_expr(xpath, "/", NULL, 0, 1, &atoms, &atom_count, &next);
 
         if (err_info || (xpath == next)) {
             /* error or unknown expr */
@@ -4945,6 +5428,73 @@ cleanup:
     if (err_info) {
         sr_xpath_atoms_free(*xp_atoms);
         *xp_atoms = NULL;
+    }
+    return err_info;
+}
+
+/**
+ * @brief Get all text atoms (simple paths) for all XPath predicate nodes.
+ *
+ * @param[in] xpath XPath to parse.
+ * @param[out] xp_atoms Array of collected text predicate atoms.
+ * @param[out] xp_atom_count Count of @p xp_atoms.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_xpath_get_text_pred_atoms(const char *xpath, char ***xp_atoms, uint32_t *xp_atom_count)
+{
+    sr_error_info_t *err_info = NULL;
+    const char *next;
+    sr_xp_atoms_atom_t *atoms;
+    uint32_t i, atom_count;
+    void *mem;
+
+    assert(xpath);
+
+    *xp_atoms = NULL;
+    *xp_atom_count = 0;
+
+    do {
+        /* get atoms for the expression, for relative paths we can use '/' because the context node is root node */
+        atoms = NULL;
+        atom_count = 0;
+        err_info = sr_xpath_text_atoms_expr(xpath, "/", NULL, 1, 0, &atoms, &atom_count, &next);
+
+        if (err_info || (xpath == next)) {
+            /* error or unknown expr */
+            for (i = 0; i < atom_count; ++i) {
+                free(atoms[i].atom);
+            }
+            free(atoms);
+            goto cleanup;
+        }
+
+        if (atom_count) {
+            /* add a new atom */
+            mem = realloc(*xp_atoms, (*xp_atom_count + atom_count) * sizeof **xp_atoms);
+            SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
+            *xp_atoms = mem;
+
+            for (i = 0; i < atom_count; ++i) {
+                (*xp_atoms)[*xp_atom_count] = atoms[i].atom;
+                ++(*xp_atom_count);
+                atoms[i].atom = NULL;
+            }
+            free(atoms);
+        }
+
+        /* move to expr after the union */
+        xpath = next + 1;
+    } while (next[0] == '|');
+
+cleanup:
+    if (err_info) {
+        for (i = 0; i < *xp_atom_count; ++i) {
+            free((*xp_atoms)[i]);
+        }
+        free(*xp_atoms);
+        *xp_atoms = NULL;
+        *xp_atom_count = 0;
     }
     return err_info;
 }
@@ -5041,17 +5591,17 @@ sr_ly_find_last_parent(struct lyd_node **parent, int nodetype)
 }
 
 const char *
-sr_userord_anchor_meta_name(const struct lysc_node *schema)
+sr_userord_anchor_meta_name(const struct lysc_node *schema, int old_inst)
 {
     assert(lysc_is_userordered(schema));
 
     if (lysc_is_dup_inst_list(schema)) {
-        return "yang:position";
+        return old_inst ? "yang:orig-position" : "yang:position";
     } else if (schema->nodetype == LYS_LEAFLIST) {
-        return "yang:value";
+        return old_inst ? "yang:orig-value" : "yang:value";
     } else {
         assert(schema->nodetype == LYS_LIST);
-        return "yang:key";
+        return old_inst ? "yang:orig-key" : "yang:key";
     }
 }
 
@@ -5098,15 +5648,17 @@ sr_module_data_unlink(struct lyd_node **data, const struct lys_module *ly_mod, i
 
 sr_error_info_t *
 sr_module_file_data_append(const struct lys_module *ly_mod, const struct sr_ds_handle_s *ds_handle[], sr_datastore_t ds,
-        sr_cid_t cid, uint32_t sid, const char **xpaths, uint32_t xpath_count, struct lyd_node **data)
+        sr_cid_t cid, uint32_t sid, const struct sr_mod_info_xpath_s *xpaths, uint32_t xpath_count, struct lyd_node **data)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *mod_data;
     int modified;
+    const char **xps = NULL;
+    uint32_t i;
 
     if (ds == SR_DS_CANDIDATE) {
         if ((err_info = ds_handle[ds]->plugin->candidate_modified_cb(ly_mod, ds_handle[ds]->plg_data, &modified))) {
-            return err_info;
+            goto cleanup;
         }
 
         if (!modified) {
@@ -5120,10 +5672,17 @@ sr_module_file_data_append(const struct lys_module *ly_mod, const struct sr_ds_h
         ds = SR_DS_STARTUP;
     }
 
+    /* create an array of xpaths for the callback */
+    xps = malloc(xpath_count * sizeof *xps);
+    SR_CHECK_MEM_GOTO(!xps, err_info, cleanup);
+    for (i = 0; i < xpath_count; ++i) {
+        xps[i] = xpaths[i].xpath;
+    }
+
     /* get the data */
-    if ((err_info = ds_handle[ds]->plugin->load_cb(ly_mod, ds, cid, sid, xpaths, xpath_count, ds_handle[ds]->plg_data,
+    if ((err_info = ds_handle[ds]->plugin->load_cb(ly_mod, ds, cid, sid, xps, xpath_count, ds_handle[ds]->plg_data,
             &mod_data))) {
-        return err_info;
+        goto cleanup;
     }
 
     /* append module data */
@@ -5131,7 +5690,9 @@ sr_module_file_data_append(const struct lys_module *ly_mod, const struct sr_ds_h
         lyd_insert_sibling(*data, mod_data, data);
     }
 
-    return NULL;
+cleanup:
+    free(xps);
+    return err_info;
 }
 
 sr_error_info_t *
@@ -5241,6 +5802,82 @@ cleanup:
         }
         *count = 0;
     }
+    return err_info;
+}
+
+sr_error_info_t *
+sr_module_data_append_yanglib(const struct lys_module *ly_mod, struct lyd_node **data)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *mod_data;
+    uint32_t content_id, i;
+    struct ly_set *set = NULL;
+
+    /* get content-id */
+    content_id = ly_ctx_get_modules_hash(ly_mod->ctx);
+
+    /* get the data from libyang */
+    if ((err_info = sr_ly_ctx_get_yanglib_data(ly_mod->ctx, &mod_data, content_id))) {
+        goto cleanup;
+    }
+
+    if (!strcmp(ly_mod->revision, "2019-01-04")) {
+        assert(!strcmp(mod_data->schema->name, "yang-library"));
+
+        /* add supported datastores */
+        if ((err_info = sr_lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:running']/schema", "complete",
+                0, NULL, NULL))) {
+            goto cleanup;
+        }
+        if ((err_info = sr_lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:candidate']/schema", "complete",
+                0, NULL, NULL))) {
+            goto cleanup;
+        }
+        if ((err_info = sr_lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:startup']/schema", "complete",
+                0, NULL, NULL))) {
+            goto cleanup;
+        }
+        if ((err_info = sr_lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:operational']/schema", "complete",
+                0, NULL, NULL))) {
+            goto cleanup;
+        }
+    } else if (!strcmp(ly_mod->revision, "2016-06-21")) {
+        assert(!strcmp(mod_data->schema->name, "modules-state"));
+
+        /* all data should already be there */
+    } else {
+        /* no other revision is supported */
+        SR_ERRINFO_INT(&err_info);
+        goto cleanup;
+    }
+
+    /* add missing 'location' and 'schema' nodes */
+    if ((err_info = sr_lyd_find_xpath(mod_data, "/ietf-yang-library:yang-library/module-set/module[not(location)] | "
+            "/ietf-yang-library:yang-library/module-set/import-only-module[not(location)]", &set))) {
+        goto cleanup;
+    }
+    for (i = 0; i < set->count; ++i) {
+        if ((err_info = sr_lyd_new_term(set->dnodes[i], NULL, "location", "file://@internal"))) {
+            goto cleanup;
+        }
+    }
+    ly_set_free(set, NULL);
+    if ((err_info = sr_lyd_find_xpath(mod_data, "/ietf-yang-library:modules-state/module[not(schema)]", &set))) {
+        goto cleanup;
+    }
+    for (i = 0; i < set->count; ++i) {
+        if ((err_info = sr_lyd_new_term(set->dnodes[i], NULL, "schema", "file://@internal"))) {
+            goto cleanup;
+        }
+    }
+
+    /* connect to the rest of data */
+    if ((err_info = sr_lyd_merge(data, mod_data, 1, LYD_MERGE_DESTRUCT))) {
+        goto cleanup;
+    }
+
+cleanup:
+    ly_set_free(set, NULL);
     return err_info;
 }
 
@@ -5354,7 +5991,7 @@ sr_generate_notif_module_change_installed(sr_conn_ctx_t *conn, sr_int_install_mo
     int subs_or_replay;
 
     /* get this module */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), "sysrepo-notifications");
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), "sysrepo-notifications");
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     /* check whether to even generate any notifications */
@@ -5364,7 +6001,7 @@ sr_generate_notif_module_change_installed(sr_conn_ctx_t *conn, sr_int_install_mo
 
     for (i = 0; i < new_mod_count; ++i) {
         /* generate the notifcation */
-        if ((err_info = sr_lyd_new_path(NULL, conn->ly_ctx, "/sysrepo-notifications:module-change", NULL, 0, NULL,
+        if ((err_info = sr_lyd_new_path(NULL, sr_yang_ctx.ly_ctx, "/sysrepo-notifications:module-change", NULL, 0, NULL,
                 &notif))) {
             goto cleanup;
         }
@@ -5403,7 +6040,7 @@ sr_generate_notif_module_change_uninstalled(sr_conn_ctx_t *conn, struct ly_set *
     int subs_or_replay;
 
     /* get this module */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), "sysrepo-notifications");
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), "sysrepo-notifications");
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     /* check whether to even generate any notifications */
@@ -5415,7 +6052,7 @@ sr_generate_notif_module_change_uninstalled(sr_conn_ctx_t *conn, struct ly_set *
         ly_mod = mod_set->objs[i];
 
         /* generate the notifcation */
-        if ((err_info = sr_lyd_new_path(NULL, conn->ly_ctx, "/sysrepo-notifications:module-change", NULL, 0, NULL,
+        if ((err_info = sr_lyd_new_path(NULL, sr_yang_ctx.ly_ctx, "/sysrepo-notifications:module-change", NULL, 0, NULL,
                 &notif))) {
             goto cleanup;
         }
@@ -5454,7 +6091,7 @@ sr_generate_notif_module_change_updated(sr_conn_ctx_t *conn, struct ly_set *old_
     int subs_or_replay;
 
     /* get this module */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), "sysrepo-notifications");
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), "sysrepo-notifications");
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     /* check whether to even generate any notifications */
@@ -5466,7 +6103,7 @@ sr_generate_notif_module_change_updated(sr_conn_ctx_t *conn, struct ly_set *old_
         ly_mod = upd_mod_set->objs[i];
 
         /* generate the notifcation */
-        if ((err_info = sr_lyd_new_path(NULL, conn->ly_ctx, "/sysrepo-notifications:module-change", NULL, 0, NULL,
+        if ((err_info = sr_lyd_new_path(NULL, sr_yang_ctx.ly_ctx, "/sysrepo-notifications:module-change", NULL, 0, NULL,
                 &notif))) {
             goto cleanup;
         }
@@ -5510,7 +6147,7 @@ sr_generate_notif_module_change_feature(sr_conn_ctx_t *conn, const struct lys_mo
     uint32_t i;
 
     /* get this module */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), "sysrepo-notifications");
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), "sysrepo-notifications");
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     /* check whether to even generate any notifications */
@@ -5521,7 +6158,7 @@ sr_generate_notif_module_change_feature(sr_conn_ctx_t *conn, const struct lys_mo
     for (i = 0; i < feat_set->count; ++i) {
         if (!feat_name) {
             /* generate the notifcation */
-            if ((err_info = sr_lyd_new_path(NULL, conn->ly_ctx, "/sysrepo-notifications:module-change", NULL, 0, NULL,
+            if ((err_info = sr_lyd_new_path(NULL, sr_yang_ctx.ly_ctx, "/sysrepo-notifications:module-change", NULL, 0, NULL,
                     &notif))) {
                 goto cleanup;
             }

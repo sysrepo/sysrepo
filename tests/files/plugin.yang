@@ -102,12 +102,49 @@ module plugin {
         }
 
         container simple-cont4 {
-            choice rand-type {
-                default random;
-                case random {
-                    leaf random {
-                        type uint32;
-                    }
+            presence "Do not include empty containers from this container by default.";
+
+            leaf leaf-prefix {
+                description "Deletion of this leaf should not impact leaf-prefix2.";
+                type string;
+            }
+
+            leaf leaf-prefix2 {
+                description "I should not be impacted by leaf-prefix.";
+                type string;
+            }
+
+            container prefix {
+                presence "Do not include empty containers from this container by default.";
+                description "Deletion of this container should not impact prefix2.";
+                leaf l {
+                    type string;
+                }
+            }
+
+            container prefix2 {
+                presence "Do not include empty containers from this container by default.";
+                description "I should not be impacted by prefix.";
+                leaf l {
+                    type string;
+                }
+            }
+
+            container state-prefix {
+                presence "Do not include empty containers from this container by default.";
+                description "Deletion of this container should not impact state-prefix2.";
+                config false;
+                leaf l {
+                    type string;
+                }
+            }
+
+            container state-prefix2 {
+                presence "Do not include empty containers from this container by default.";
+                description "I should not be impacted by state-prefix.";
+                config false;
+                leaf l {
+                    type string;
                 }
             }
         }

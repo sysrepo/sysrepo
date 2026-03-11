@@ -39,10 +39,11 @@
 sr_error_info_t *
 sr_subscr_change_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session_ctx_t *sess, const char *mod_name,
         const char *xpath, sr_module_change_cb change_cb, void *private_data, uint32_t priority,
-        sr_subscr_options_t sub_opts, sr_lock_mode_t has_subs_lock)
+        uint32_t sub_opts, sr_lock_mode_t has_subs_lock)
 {
     sr_error_info_t *err_info = NULL;
     struct modsub_change_s *change_sub = NULL;
+    sr_sub_shm_t *sub_shm;
     uint32_t i;
     void *mem[4] = {NULL};
     int new_sub = 0;
@@ -100,10 +101,21 @@ sr_subscr_change_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_sess
         change_sub->subs[change_sub->sub_count].xpath = mem[3];
     }
     change_sub->subs[change_sub->sub_count].priority = priority;
-    change_sub->subs[change_sub->sub_count].opts = sub_opts;
+    change_sub->subs[change_sub->sub_count].sub_opts = sub_opts;
     change_sub->subs[change_sub->sub_count].cb = change_cb;
     change_sub->subs[change_sub->sub_count].private_data = private_data;
     change_sub->subs[change_sub->sub_count].sess = sess;
+
+    sub_shm = (sr_sub_shm_t *)(change_sub->sub_shm.addr);
+
+    /* notify event pipe again, if there is an ongoing event to be processed, the originator expects it */
+    if (ATOMIC_LOAD_RELAXED(sub_shm->subscriber_count)) {
+        if ((sub_opts & SR_SUBSCR_ENABLED) && (ATOMIC_LOAD_RELAXED(sub_shm->event) == SR_SUB_EV_DONE)) {
+            /* ENABLED event already contains the data of this DONE event, remember to skip callback. */
+            change_sub->subs[change_sub->sub_count].request_id = ATOMIC_LOAD_RELAXED(sub_shm->request_id);
+        }
+        sr_shmsub_notify_evpipe(subscr->evpipe_num, 0, NULL);
+    }
 
     ++change_sub->sub_count;
 
@@ -306,7 +318,7 @@ sr_subscr_oper_get_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id)
 
 sr_error_info_t *
 sr_subscr_oper_poll_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session_ctx_t *sess, const char *mod_name,
-        const char *path, uint32_t valid_ms, sr_subscr_options_t sub_opts, sr_lock_mode_t has_subs_lock)
+        const char *path, uint32_t valid_ms, uint32_t sub_opts, sr_lock_mode_t has_subs_lock)
 {
     sr_error_info_t *err_info = NULL;
     struct modsub_operpoll_s *oper_poll_sub = NULL;
@@ -361,7 +373,7 @@ sr_subscr_oper_poll_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_s
     SR_CHECK_MEM_GOTO(!mem[3], err_info, error);
     oper_poll_sub->subs[oper_poll_sub->sub_count].path = mem[3];
     oper_poll_sub->subs[oper_poll_sub->sub_count].valid_ms = valid_ms;
-    oper_poll_sub->subs[oper_poll_sub->sub_count].opts = sub_opts;
+    oper_poll_sub->subs[oper_poll_sub->sub_count].sub_opts = sub_opts;
     oper_poll_sub->subs[oper_poll_sub->sub_count].sess = sess;
 
     ++oper_poll_sub->sub_count;
@@ -947,7 +959,7 @@ sr_change_sub_del(sr_subscription_ctx_t *subscr, uint32_t idx1, uint32_t idx2, s
     sub_id = change_sub->subs[idx2].sub_id;
 
     /* find module */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(subscr->conn), change_sub->module_name);
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), change_sub->module_name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     /* keep lock order */
@@ -1043,7 +1055,7 @@ sr_oper_get_sub_del(sr_subscription_ctx_t *subscr, uint32_t idx1, uint32_t idx2,
     sub_id = oper_get_sub->subs[idx2].sub_id;
 
     /* find module */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(subscr->conn), oper_get_sub->module_name);
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), oper_get_sub->module_name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     /* keep lock order */
@@ -1142,7 +1154,7 @@ sr_oper_poll_sub_del(sr_subscription_ctx_t *subscr, uint32_t idx1, uint32_t idx2
     sub_id = oper_poll_sub->subs[idx2].sub_id;
 
     /* find module */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(subscr->conn), oper_poll_sub->module_name);
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), oper_poll_sub->module_name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     /* keep lock order */
@@ -1182,8 +1194,8 @@ sr_oper_poll_sub_del(sr_subscription_ctx_t *subscr, uint32_t idx1, uint32_t idx2
     /* remove the subscription from the subscription structure */
     sr_subscr_oper_poll_sub_del(subscr, sub_id);
 
-    /* remove the oper cache entry from the connection after the subscription was removed from the structure */
-    sr_conn_oper_cache_del(subscr->conn, sub_id);
+    /* remove the oper cache entry after the subscription was removed from the structure */
+    sr_oper_cache_del(subscr->conn, &sr_oper_cache, sub_id);
 
 cleanup_unlock:
     /* OPER POLL SUB WRITE UNLOCK */
@@ -1240,7 +1252,7 @@ sr_notif_sub_del(sr_subscription_ctx_t *subscr, uint32_t idx1, uint32_t idx2, sr
     sub_id = notif_sub->subs[idx2].sub_id;
 
     /* find module */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(subscr->conn), notif_sub->module_name);
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), notif_sub->module_name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     /* keep lock order */
@@ -1341,7 +1353,7 @@ sr_rpc_sub_del(sr_subscription_ctx_t *subscr, uint32_t idx1, uint32_t idx2, sr_l
         mod_name = sr_get_first_ns(rpc_sub->path);
 
         /* find module */
-        shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(subscr->conn), mod_name);
+        shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), mod_name);
         SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
         /* keep lock order */
@@ -1364,7 +1376,7 @@ sr_rpc_sub_del(sr_subscription_ctx_t *subscr, uint32_t idx1, uint32_t idx2, sr_l
         subs_lock = SR_LOCK_WRITE;
     } else {
         /* find RPC/action */
-        shm_rpc = sr_shmmod_find_rpc(SR_CONN_MOD_SHM(subscr->conn), rpc_sub->path);
+        shm_rpc = sr_shmmod_find_rpc(SR_CTX_MOD_SHM(sr_yang_ctx), rpc_sub->path);
         SR_CHECK_INT_GOTO(!shm_rpc, err_info, cleanup);
 
         /* keep lock order */
@@ -1784,7 +1796,7 @@ sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, sr_mod_notif
     sr_cid_t cid = 0;
     uint32_t i;
 
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), mod_name);
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), mod_name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
     *notif_subs = (sr_mod_notif_sub_t *)(conn->ext_shm.addr + shm_mod->notif_subs);

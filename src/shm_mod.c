@@ -200,7 +200,7 @@ sr_shmmod_fill(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_node *sr_
     sr_mod_t *smod;
     struct lyd_node *sr_child;
     off_t *shm_features;
-    const char *name;
+    const char *name, *rev;
     char *shm_end;
     size_t feat_i, feat_names_len, ds_plugin_names_len, old_shm_size;
     sr_datastore_t ds;
@@ -220,7 +220,9 @@ sr_shmmod_fill(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_node *sr_
             name = lyd_get_value(sr_child);
         } else if (!strcmp(sr_child->schema->name, "revision")) {
             /* copy revision */
-            strcpy(smod->rev, lyd_get_value(sr_child));
+            rev = lyd_get_value(sr_child);
+            assert(strlen(rev) < sizeof(smod->rev));
+            strcpy(smod->rev, rev);
         } else if (!strcmp(sr_child->schema->name, "replay-support")) {
             /* set replay-support flag */
             smod->replay_supp = 1;
@@ -772,6 +774,68 @@ sr_shmmod_add_notifs(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_nod
     return NULL;
 }
 
+/**
+ * @brief Add schema mount extension instance paths into mod SHM.
+ *
+ * @param[in,out] shm_mod Mod SHM structure to remap and append the data to.
+ * @param[in] shm_mod_idx Mod SHM mod index of @p sr_mod.
+ * @param[in] sr_mod Module to read the information from.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_shmmod_add_sm_ext_paths(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_node *sr_mod)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *sr_child;
+    sr_mod_t *smod;
+    char *shm_end;
+    size_t sm_ext_i, old_shm_size;
+    off_t *shm_sm_ext_paths;
+    size_t paths_len = 0;
+
+    smod = SR_SHM_MOD_IDX(shm_mod->addr, shm_mod_idx);
+
+    assert(!smod->sm_ext_path_count);
+
+    /* count schema mount extension instace paths */
+    LY_LIST_FOR(lyd_child(sr_mod), sr_child) {
+        if (!strcmp(sr_child->schema->name, "schema-mount-ext-instance")) {
+            /* another mount-point */
+            ++smod->sm_ext_path_count;
+            paths_len += sr_strshmlen(lyd_get_value(sr_child));
+        }
+    }
+
+    /* remember mod SHM size */
+    old_shm_size = shm_mod->size;
+
+    /* enlarge and possibly remap mod SHM */
+    if ((err_info = sr_shm_remap(shm_mod,
+            shm_mod->size + paths_len + SR_SHM_SIZE(smod->sm_ext_path_count * sizeof(off_t))))) {
+        return err_info;
+    }
+    smod = SR_SHM_MOD_IDX(shm_mod->addr, shm_mod_idx);
+    shm_end = shm_mod->addr + old_shm_size;
+
+    /* allocate schema mount extensions */
+    smod->sm_ext_paths = sr_shmcpy(shm_mod->addr, NULL, smod->sm_ext_path_count * sizeof(off_t), &shm_end);
+    shm_sm_ext_paths = (off_t *)(shm_mod->addr + smod->sm_ext_paths);
+
+    sm_ext_i = 0;
+    LY_LIST_FOR(lyd_child(sr_mod), sr_child) {
+        if (!strcmp(sr_child->schema->name, "schema-mount-ext-instance")) {
+            /* copy mount-point extension instance path */
+            shm_sm_ext_paths[sm_ext_i] = sr_shmstrcpy(shm_mod->addr, lyd_get_value(sr_child), &shm_end);
+            ++sm_ext_i;
+        }
+    }
+    SR_CHECK_INT_RET(sm_ext_i != smod->sm_ext_path_count, err_info);
+
+    /* mod SHM size must be exactly what we allocated */
+    assert(shm_end == shm_mod->addr + shm_mod->size);
+    return NULL;
+}
+
 sr_error_info_t *
 sr_shmmod_store_modules(sr_shm_t *shm_mod, const struct lyd_node *sr_mods)
 {
@@ -834,6 +898,9 @@ sr_shmmod_store_modules(sr_shm_t *shm_mod, const struct lyd_node *sr_mods)
         if ((err_info = sr_shmmod_add_notifs(shm_mod, i, sr_mod))) {
             goto cleanup;
         }
+        if ((err_info = sr_shmmod_add_sm_ext_paths(shm_mod, i, sr_mod))) {
+            goto cleanup;
+        }
     }
 
     /* finally initialize all the locks after mod SHM size and address are final */
@@ -868,38 +935,21 @@ sr_shmmod_del_module_sess_oper_data(sr_conn_ctx_t *conn, const struct lys_module
 {
     sr_error_info_t *err_info = NULL;
     const struct sr_ds_handle_s *oper_ds_handle;
-    struct lyd_node *mod_diff = NULL, *node;
 
     if (has_data) {
         /* get DS handle */
-        if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[SR_DS_OPERATIONAL], conn,
+        if ((err_info = sr_ds_handle_find(sr_yang_ctx.mod_shm.addr + shm_mod->plugins[SR_DS_OPERATIONAL], conn,
                 &oper_ds_handle))) {
             goto cleanup;
         }
 
-        /* create a diff only if the plugin requires it to store new data */
-        if (oper_ds_handle->plugin->oper_store_require_diff) {
-            /* load oper data */
-            if ((err_info = oper_ds_handle->plugin->load_cb(ly_mod, SR_DS_OPERATIONAL, cid, sid, NULL, 0, oper_ds_handle->plg_data,
-                    &mod_diff))) {
-                goto cleanup;
-            }
-
-            /* make into diff */
-            LY_LIST_FOR(mod_diff, node) {
-                if ((err_info = sr_diff_set_oper(node, "delete"))) {
-                    goto cleanup;
-                }
-            }
-        }
-
         /* store the empty data */
-        if ((err_info = oper_ds_handle->plugin->store_prepare_cb(ly_mod, SR_DS_OPERATIONAL, cid, sid, mod_diff,
+        if ((err_info = oper_ds_handle->plugin->store_prepare_cb(ly_mod, SR_DS_OPERATIONAL, cid, sid, NULL,
                 NULL, oper_ds_handle->plg_data))) {
             goto cleanup;
         }
 
-        if ((err_info = oper_ds_handle->plugin->store_commit_cb(ly_mod, SR_DS_OPERATIONAL, cid, sid, mod_diff,
+        if ((err_info = oper_ds_handle->plugin->store_commit_cb(ly_mod, SR_DS_OPERATIONAL, cid, sid, NULL,
                 NULL, oper_ds_handle->plg_data))) {
             goto cleanup;
         }
@@ -911,7 +961,6 @@ sr_shmmod_del_module_sess_oper_data(sr_conn_ctx_t *conn, const struct lys_module
     }
 
 cleanup:
-    lyd_free_siblings(mod_diff);
     return err_info;
 }
 
@@ -930,7 +979,7 @@ sr_shmmod_del_module_oper_data(sr_conn_ctx_t *conn, const struct lys_module *ly_
 
     /* find SHM mod */
     if (!shm_mod) {
-        shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), ly_mod->name);
+        shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), ly_mod->name);
         SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
     }
     shm_lock = &shm_mod->data_lock_info[SR_DS_OPERATIONAL];
@@ -1155,11 +1204,11 @@ sr_shmmod_collect_deps_lref(const char *target_path, const char *target_module, 
     const struct lys_module *ly_mod;
 
     /* find ly module */
-    ly_mod = ly_ctx_get_module_implemented(mod_info->conn->ly_ctx, target_module);
+    ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, target_module);
     SR_CHECK_INT_RET(!ly_mod, err_info);
 
     /* add dependency */
-    if ((err_info = sr_modinfo_add(ly_mod, target_path, 0, 0, mod_info))) {
+    if ((err_info = sr_modinfo_add(ly_mod, target_path, 0, 0, 0, mod_info))) {
         return err_info;
     }
 
@@ -1199,23 +1248,23 @@ sr_shmmod_collect_deps_instid(const char *source_path, const char *default_targe
             /* get target module name from the value */
             val_str = lyd_get_value(set->dnodes[i]);
             str = sr_get_first_ns(val_str);
-            ly_mod = ly_ctx_get_module_implemented(mod_info->conn->ly_ctx, str);
+            ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, str);
             free(str);
             SR_CHECK_INT_GOTO(!ly_mod, err_info, cleanup);
 
             /* add module */
-            if ((err_info = sr_modinfo_add(ly_mod, val_str, 0, 0, mod_info))) {
+            if ((err_info = sr_modinfo_add(ly_mod, val_str, 0, 0, 0, mod_info))) {
                 goto cleanup;
             }
         }
     } else if (default_target_path) {
         /* assume a default value will be used even though it may not be */
         str = sr_get_first_ns(default_target_path);
-        ly_mod = ly_ctx_get_module_implemented(mod_info->conn->ly_ctx, str);
+        ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, str);
         free(str);
         SR_CHECK_INT_GOTO(!ly_mod, err_info, cleanup);
 
-        if ((err_info = sr_modinfo_add(ly_mod, default_target_path, 0, 0, mod_info))) {
+        if ((err_info = sr_modinfo_add(ly_mod, default_target_path, 0, 0, 0, mod_info))) {
             goto cleanup;
         }
     }
@@ -1246,11 +1295,11 @@ sr_shmmod_collect_deps_xpath(const char *expr, char *mod_shm_addr, off_t *target
     /* add dependencies for all the modules */
     for (i = 0; i < target_mod_count; ++i) {
         /* find ly module */
-        ly_mod = ly_ctx_get_module_implemented(mod_info->conn->ly_ctx, mod_shm_addr + target_modules[i]);
+        ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, mod_shm_addr + target_modules[i]);
         SR_CHECK_INT_RET(!ly_mod, err_info);
 
         /* add dependency */
-        if ((err_info = sr_modinfo_add(ly_mod, expr, 0, 0, mod_info))) {
+        if ((err_info = sr_modinfo_add(ly_mod, expr, 0, 0, 0, mod_info))) {
             return err_info;
         }
     }
@@ -1309,7 +1358,7 @@ sr_shmmod_lock(struct sr_mod_lock_s *shm_lock, uint32_t timeout_ms, sr_lock_mode
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     int ds_locked;
-    uint32_t sleep_ms;
+    uint32_t sleep_ms, ds_lock_sid = 0;
     sr_cid_t dead_cid;
 
     if (!timeout_ms) {
@@ -1351,6 +1400,8 @@ ds_lock_retry:
 
             ds_locked = 0;
         }
+
+        ds_lock_sid = shm_lock->ds_lock_sid;
 
         /* DS UNLOCK */
         sr_munlock(&shm_lock->ds_lock);
@@ -1395,7 +1446,7 @@ revert_lock:
     } else {
         /* timeout elapsed */
         sr_errinfo_new(&err_info, SR_ERR_LOCKED, "Module \"%s\" is DS-locked by session %" PRIu32 ".",
-                mod_name, shm_lock->ds_lock_sid);
+                mod_name, ds_lock_sid);
     }
 
 cleanup:
@@ -1616,9 +1667,9 @@ sr_shmmod_release_locks(sr_conn_ctx_t *conn, uint32_t sid)
     int ds_locked;
     uint32_t i;
 
-    for (i = 0; i < SR_CONN_MOD_SHM(conn)->mod_count; ++i) {
-        smod = SR_SHM_MOD_IDX(conn->mod_shm.addr, i);
-        ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, conn->mod_shm.addr + smod->name);
+    for (i = 0; i < SR_CTX_MOD_SHM(sr_yang_ctx)->mod_count; ++i) {
+        smod = SR_SHM_MOD_IDX(sr_yang_ctx.mod_shm.addr, i);
+        ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, sr_yang_ctx.mod_shm.addr + smod->name);
         assert(ly_mod);
         for (ds = 0; ds < SR_DS_COUNT; ++ds) {
             shm_lock = &smod->data_lock_info[ds];
@@ -1644,7 +1695,7 @@ sr_shmmod_release_locks(sr_conn_ctx_t *conn, uint32_t sid)
 
             if (ds_locked && (ds == SR_DS_CANDIDATE)) {
                 /* find DS plugin */
-                if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + smod->plugins[ds], conn, &ds_handle))) {
+                if ((err_info = sr_ds_handle_find(sr_yang_ctx.mod_shm.addr + smod->plugins[ds], conn, &ds_handle))) {
                     sr_errinfo_free(&err_info);
                     continue;
                 }
@@ -1725,7 +1776,7 @@ sr_shmmod_copy_mod(const struct lys_module *ly_mod, const struct sr_ds_handle_s 
     }
 
     /* get data diff */
-    if ((err_info = sr_lyd_diff_siblings(r_mod_data, s_mod_data, LYD_DIFF_DEFAULTS, &mod_diff))) {
+    if ((err_info = sr_lyd_diff_siblings(r_mod_data, s_mod_data, LYD_DIFF_DEFAULTS, NULL, &mod_diff))) {
         goto cleanup;
     } else if (!mod_diff) {
         /* no data changes */
@@ -1775,7 +1826,7 @@ sr_shmmod_reboot_init(sr_conn_ctx_t *conn, int initialized)
     sr_datastore_t ds;
     uint32_t i;
 
-    mod_shm = SR_CONN_MOD_SHM(conn);
+    mod_shm = SR_CTX_MOD_SHM(sr_yang_ctx);
     smods = malloc(mod_shm->mod_count * sizeof *smods);
     SR_CHECK_MEM_GOTO(!smods, err_info, cleanup);
 
@@ -1789,7 +1840,7 @@ sr_shmmod_reboot_init(sr_conn_ctx_t *conn, int initialized)
 
     for (i = 0; i < mod_shm->mod_count; ++i) {
         /* find LY module */
-        ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, ((char *)mod_shm) + smods[i]->name);
+        ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, ((char *)mod_shm) + smods[i]->name);
         assert(ly_mod);
 
         /* find DS plugins and init them */
@@ -1838,7 +1889,7 @@ sr_shmmod_change_prio(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_d
     assert((!prio && prio_p) || !prio_p);
 
     /* find the module in SHM */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), ly_mod->name);
+    shm_mod = sr_shmmod_find_module(SR_CTX_MOD_SHM(sr_yang_ctx), ly_mod->name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
     /* use read lock for getting, write lock for setting */

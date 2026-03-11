@@ -4,8 +4,8 @@
  * @brief test of getting data
  *
  * @copyright
- * Copyright (c) 2018 - 2021 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2025 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2025 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -35,9 +35,7 @@
 
 struct state {
     sr_conn_ctx_t *conn;
-    sr_conn_ctx_t *cconn;
     sr_session_ctx_t *sess;
-    sr_session_ctx_t *csess;
 };
 
 static int
@@ -55,10 +53,10 @@ setup(void **state)
     st = calloc(1, sizeof *st);
     *state = st;
 
+    /* use running cache */
+    sr_cache_running(1);
+
     if (sr_connect(0, &st->conn) != SR_ERR_OK) {
-        return 1;
-    }
-    if (sr_connect(SR_CONN_CACHE_RUNNING, &st->cconn) != SR_ERR_OK) {
         return 1;
     }
 
@@ -67,9 +65,6 @@ setup(void **state)
     }
 
     if (sr_session_start(st->conn, SR_DS_RUNNING, &st->sess) != SR_ERR_OK) {
-        return 1;
-    }
-    if (sr_session_start(st->cconn, SR_DS_RUNNING, &st->csess) != SR_ERR_OK) {
         return 1;
     }
 
@@ -91,7 +86,6 @@ teardown(void **state)
     sr_remove_modules(st->conn, module_names, 0);
 
     sr_disconnect(st->conn);
-    sr_disconnect(st->cconn);
     free(st);
     return 0;
 }
@@ -118,41 +112,41 @@ test_cached_datastore(void **state)
     int ret;
 
     /* try to get RUNNING data */
-    ret = sr_get_data(st->csess, "/*", 0, 0, 0, &data);
+    ret = sr_get_data(st->sess, "/*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     assert_non_null(data);
     sr_release_data(data);
 
     /* try to get STARTUP data */
-    ret = sr_session_switch_ds(st->csess, SR_DS_STARTUP);
+    ret = sr_session_switch_ds(st->sess, SR_DS_STARTUP);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_data(st->csess, "/*", 0, 0, 0, &data);
+    ret = sr_get_data(st->sess, "/*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     assert_non_null(data);
     sr_release_data(data);
 
     /* try to get CANDIDATE data */
-    ret = sr_session_switch_ds(st->csess, SR_DS_CANDIDATE);
+    ret = sr_session_switch_ds(st->sess, SR_DS_CANDIDATE);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_data(st->csess, "/*", 0, 0, 0, &data);
+    ret = sr_get_data(st->sess, "/*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     assert_non_null(data);
     sr_release_data(data);
 
     /* try to get OPERATIONAL data */
-    ret = sr_session_switch_ds(st->csess, SR_DS_OPERATIONAL);
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_data(st->csess, "/*", 0, 0, 0, &data);
+    ret = sr_get_data(st->sess, "/*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     assert_non_null(data);
     sr_release_data(data);
 
     /* switch DS back */
-    ret = sr_session_switch_ds(st->csess, SR_DS_RUNNING);
+    ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
     assert_int_equal(ret, SR_ERR_OK);
 }
 
@@ -215,7 +209,7 @@ test_cached_thread(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     for (i = 0; i < loop_count; ++i) {
-        ret = sr_connect(SR_CONN_CACHE_RUNNING, &conn);
+        ret = sr_connect(0, &conn);
         assert_int_equal(ret, SR_ERR_OK);
 
         pthread_create(&tid[0], NULL, cached_thread1, conn);
@@ -269,9 +263,9 @@ test_enable_cached_get(void **state)
     int ret;
 
     /* subscribe to both modules with enabled flag */
-    ret = sr_module_change_subscribe(st->csess, "simple", NULL, enable_cached_get_cb, NULL, 0, SR_SUBSCR_ENABLED, &sub);
+    ret = sr_module_change_subscribe(st->sess, "simple", NULL, enable_cached_get_cb, NULL, 0, SR_SUBSCR_ENABLED, &sub);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_module_change_subscribe(st->csess, "simple-aug", NULL, enable_cached_get_cb, NULL, 0,
+    ret = sr_module_change_subscribe(st->sess, "simple-aug", NULL, enable_cached_get_cb, NULL, 0,
             SR_SUBSCR_ENABLED, &sub);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -293,18 +287,18 @@ test_no_read_access(void **state)
     }
 
     /* set no permissions for default module */
-    ret = sr_set_module_ds_access(st->cconn, "defaults", SR_DS_RUNNING, NULL, NULL, 00200);
+    ret = sr_set_module_ds_access(st->conn, "defaults", SR_DS_RUNNING, NULL, NULL, 00200);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* try to get its data */
-    ret = sr_get_data(st->csess, "/defaults:*", 0, 0, 0, &data);
+    ret = sr_get_data(st->sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* no data should be returned, not even defaults */
     assert_null(data);
 
     /* try to get all data */
-    ret = sr_get_data(st->csess, "/*", 0, 0, 0, &data);
+    ret = sr_get_data(st->sess, "/*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* only some default values */
@@ -313,7 +307,7 @@ test_no_read_access(void **state)
     sr_release_data(data);
 
     /* set permissions back so that it can be removed */
-    ret = sr_set_module_ds_access(st->cconn, "defaults", SR_DS_RUNNING, NULL, NULL, 00600);
+    ret = sr_set_module_ds_access(st->conn, "defaults", SR_DS_RUNNING, NULL, NULL, 00600);
     assert_int_equal(ret, SR_ERR_OK);
 }
 
@@ -501,16 +495,16 @@ test_union(void **state)
     ret = sr_get_data(st->sess, "/simple:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
     str2 =
-            "<ac1 xmlns=\"s\">\n"
-            "  <acd1 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">true</acd1>\n"
-            "  <bauga1 xmlns=\"sa\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\""
-            " ncwd:default=\"true\">true</bauga1>\n"
-            "  <bauga2 xmlns=\"sa\">val</bauga2>\n"
+            "<ac1 xmlns=\"urn:s\">\n"
+            "  <acd1 xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">true</acd1>\n"
+            "  <bauga1 xmlns=\"urn:sa\" xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\""
+            " dflt:default=\"true\">true</bauga1>\n"
+            "  <bauga2 xmlns=\"urn:sa\">val</bauga2>\n"
             "</ac1>\n";
 
     assert_string_equal(str1, str2);
@@ -519,13 +513,13 @@ test_union(void **state)
     ret = sr_get_data(st->sess, "/simple-aug:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
     str2 =
-            "<bc1 xmlns=\"sa\">\n"
-            "  <bcd1 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">true</bcd1>\n"
+            "<bc1 xmlns=\"urn:sa\">\n"
+            "  <bcd1 xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">true</bcd1>\n"
             "  <bcl1>\n"
             "    <bcs1>key</bcs1>\n"
             "  </bcl1>\n"
@@ -538,19 +532,19 @@ test_union(void **state)
     ret = sr_get_data(st->sess, "/simple-aug:* | /simple:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
     str2 =
-            "<ac1 xmlns=\"s\">\n"
-            "  <acd1 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">true</acd1>\n"
-            "  <bauga1 xmlns=\"sa\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\""
-            " ncwd:default=\"true\">true</bauga1>\n"
-            "  <bauga2 xmlns=\"sa\">val</bauga2>\n"
+            "<ac1 xmlns=\"urn:s\">\n"
+            "  <acd1 xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">true</acd1>\n"
+            "  <bauga1 xmlns=\"urn:sa\" xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\""
+            " dflt:default=\"true\">true</bauga1>\n"
+            "  <bauga2 xmlns=\"urn:sa\">val</bauga2>\n"
             "</ac1>\n"
-            "<bc1 xmlns=\"sa\">\n"
-            "  <bcd1 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">true</bcd1>\n"
+            "<bc1 xmlns=\"urn:sa\">\n"
+            "  <bcd1 xmlns:dflt=\"urn:ietf:params:xml:ns:netconf:default:1.0\" dflt:default=\"true\">true</bcd1>\n"
             "  <bcl1>\n"
             "    <bcs1>key</bcs1>\n"
             "  </bcl1>\n"
@@ -563,15 +557,15 @@ test_union(void **state)
     ret = sr_get_data(st->sess, "/simple-aug:bc1/bcl1 | /simple:ac1/simple-aug:bauga2", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
     str2 =
-            "<ac1 xmlns=\"s\">\n"
-            "  <bauga2 xmlns=\"sa\">val</bauga2>\n"
+            "<ac1 xmlns=\"urn:s\">\n"
+            "  <bauga2 xmlns=\"urn:sa\">val</bauga2>\n"
             "</ac1>\n"
-            "<bc1 xmlns=\"sa\">\n"
+            "<bc1 xmlns=\"urn:sa\">\n"
             "  <bcl1>\n"
             "    <bcs1>key</bcs1>\n"
             "  </bcl1>\n"
@@ -605,7 +599,7 @@ test_key(void **state)
     ret = sr_get_data(st->sess, "/defaults:l1[k='val']/k", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
@@ -659,7 +653,7 @@ test_factory_default(void **state)
     sr_session_switch_ds(st->sess, SR_DS_FACTORY_DEFAULT);
     ret = sr_get_data(st->sess, "/example-module:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
     str2 = init_data;
@@ -670,7 +664,7 @@ test_factory_default(void **state)
     sr_session_switch_ds(st->sess, SR_DS_STARTUP);
     ret = sr_get_data(st->sess, "/example-module:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
     str2 =
@@ -690,9 +684,11 @@ test_factory_default(void **state)
     free(str1);
 
     /* cleanup */
+    sr_session_switch_ds(st->sess, SR_DS_RUNNING);
     sr_remove_module(st->conn, "example-module", 0);
 }
 
+/* TEST */
 static void
 test_subtree2xpath(void **state)
 {
@@ -751,7 +747,7 @@ test_subtree2xpath(void **state)
     /* get data by xpath */
     ret = sr_get_data(st->sess, filter_str, 0, 0, 0, &get_tree);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&get_str, get_tree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&get_str, get_tree->tree, LYD_XML, LYD_PRINT_SIBLINGS);
     assert_int_equal(ret, 0);
     exp =
             "<container xmlns=\"urn:mod\">\n"
@@ -770,6 +766,115 @@ test_subtree2xpath(void **state)
     lyd_free_all(edit_tree);
 }
 
+/* TEST */
+static void
+test_max_depth(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_data_t *data;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    /*
+     * test get data
+     */
+    ret = sr_get_data(st->sess, "/mod:container", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
+    sr_release_data(data);
+    assert_int_equal(ret, 0);
+    str2 =
+            "<container xmlns=\"urn:mod\">\n"
+            "  <list-entry>\n"
+            "    <name>k1</name>\n"
+            "    <leaf-bool>true</leaf-bool>\n"
+            "  </list-entry>\n"
+            "  <list-entry>\n"
+            "    <name>k2</name>\n"
+            "    <leaf-bool>false</leaf-bool>\n"
+            "  </list-entry>\n"
+            "</container>\n";
+    assert_string_equal(str2, str1);
+    free(str1);
+
+    ret = sr_get_data(st->sess, "/mod:container", 1, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_EMPTY_CONT);
+    sr_release_data(data);
+    assert_int_equal(ret, 0);
+    str2 =
+            "<container xmlns=\"urn:mod\"/>\n";
+    assert_string_equal(str2, str1);
+    free(str1);
+
+    ret = sr_get_data(st->sess, "/mod:container", 2, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
+    sr_release_data(data);
+    assert_int_equal(ret, 0);
+    str2 =
+            "<container xmlns=\"urn:mod\">\n"
+            "  <list-entry>\n"
+            "    <name>k1</name>\n"
+            "  </list-entry>\n"
+            "  <list-entry>\n"
+            "    <name>k2</name>\n"
+            "  </list-entry>\n"
+            "</container>\n";
+    assert_string_equal(str2, str1);
+    free(str1);
+
+    /*
+     * same test but with cached data
+     */
+    ret = sr_get_data(st->sess, "/mod:container", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
+    sr_release_data(data);
+    assert_int_equal(ret, 0);
+    str2 =
+            "<container xmlns=\"urn:mod\">\n"
+            "  <list-entry>\n"
+            "    <name>k1</name>\n"
+            "    <leaf-bool>true</leaf-bool>\n"
+            "  </list-entry>\n"
+            "  <list-entry>\n"
+            "    <name>k2</name>\n"
+            "    <leaf-bool>false</leaf-bool>\n"
+            "  </list-entry>\n"
+            "</container>\n";
+    assert_string_equal(str2, str1);
+    free(str1);
+
+    ret = sr_get_data(st->sess, "/mod:container", 1, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS | LYD_PRINT_EMPTY_CONT);
+    sr_release_data(data);
+    assert_int_equal(ret, 0);
+    str2 =
+            "<container xmlns=\"urn:mod\"/>\n";
+    assert_string_equal(str2, str1);
+    free(str1);
+
+    ret = sr_get_data(st->sess, "/mod:container", 2, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
+    sr_release_data(data);
+    assert_int_equal(ret, 0);
+    str2 =
+            "<container xmlns=\"urn:mod\">\n"
+            "  <list-entry>\n"
+            "    <name>k1</name>\n"
+            "  </list-entry>\n"
+            "  <list-entry>\n"
+            "    <name>k2</name>\n"
+            "  </list-entry>\n"
+            "</container>\n";
+    assert_string_equal(str2, str1);
+    free(str1);
+}
+
 int
 main(void)
 {
@@ -785,6 +890,7 @@ main(void)
         cmocka_unit_test(test_key),
         cmocka_unit_test(test_factory_default),
         cmocka_unit_test(test_subtree2xpath),
+        cmocka_unit_test(test_max_depth),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
