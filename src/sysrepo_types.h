@@ -118,8 +118,9 @@ typedef enum {
     SR_CTX_DEFAULT = 0x0,           /**< No special behaviour. */
     SR_CTX_NO_PRINTED = 0x1,        /**< Do not print nor use printed context even if available. Can be used to keep
                                          parsed modules in the context. */
-    SR_CTX_SET_PRIV_PARSED = 0x2    /**< Use LY_CTX_SET_PRIV_PARSED libyang option for the context. Affects only
+    SR_CTX_SET_PRIV_PARSED = 0x2,   /**< Use LY_CTX_SET_PRIV_PARSED libyang option for the context. Affects only
                                          non-printed context. */
+    SR_CTX_COMPILE_OBSOLETE = 0x3   /**< Use LY_CTX_COMPILE_OBSOLETE libyang option for the context. */
 } sr_context_flag_t;
 
 /**
