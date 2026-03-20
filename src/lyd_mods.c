@@ -916,7 +916,7 @@ sr_lydmods_print(struct lyd_node **sr_mods)
     sr_error_info_t *err_info = NULL;
     const struct lys_module *sr_ly_mod;
     struct lyd_node *node;
-    uint32_t hash;
+    char num_str[11];
 
     assert(sr_mods && *sr_mods && !strcmp((*sr_mods)->schema->module->name, "sysrepo"));
 
@@ -932,8 +932,8 @@ sr_lydmods_print(struct lyd_node **sr_mods)
     if ((err_info = sr_lyd_find_path(*sr_mods, "/sysrepo:sysrepo-modules/content-id", 0, &node))) {
         return err_info;
     }
-    hash = ly_ctx_get_modules_hash(sr_ly_mod->ctx);
-    lyd_change_term_bin(node, &hash, sizeof hash * 8);
+    sprintf(num_str, "%" PRIu32, ly_ctx_get_modules_hash(sr_ly_mod->ctx));
+    lyd_change_term(node, num_str);
 
     /* store the data using the internal JSON plugin */
     if ((err_info = srpds_json.store_prepare_cb(sr_ly_mod, SR_DS_STARTUP, 0, 0, NULL, *sr_mods, NULL))) {
