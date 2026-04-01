@@ -53,8 +53,9 @@ typedef enum {
     SR_ERR_LOCKED,             /**< Requested resource is already locked. */
     SR_ERR_TIME_OUT,           /**< Time out has expired. */
     SR_ERR_CALLBACK_FAILED,    /**< User callback failure caused the operation to fail. */
-    SR_ERR_CALLBACK_SHELVE     /**< User callback has not processed the event and will do so
+    SR_ERR_CALLBACK_SHELVE,    /**< User callback has not processed the event and will do so
                                     on some future event processing. */
+    SR_ERR_OK_CALLBACK_FAILED  /**< User callback failed but the operation succeeded. */
 } sr_error_t;
 
 /**
@@ -500,13 +501,12 @@ typedef enum {
                         in this phase by returning an error from the callback. */
     SR_EV_DONE,    /**< Occurs just after the changes have been successfully committed to the datastore,
                         the subscriber can apply the changes now, but it cannot deny the changes in this
-                        phase anymore (any returned errors are just logged and ignored). */
+                        phase anymore even if it returns an error. */
     SR_EV_ABORT,   /**< Occurs in case that the commit transaction has failed because one of the verifiers
                         has denied the change (returned an error). The subscriber is supposed to return the managed
-                        application to the state before the commit. Any returned errors are just logged and ignored.
-                        This event is also generated for RPC subscriptions when a later callback has failed and
-                        this one has already successfully processed ::SR_EV_RPC. The callback that failed will __never__
-                        get this event! */
+                        application to the state before the commit. This event is also generated for RPC subscriptions
+                        when a later callback has failed and this one has already successfully processed ::SR_EV_RPC.
+                        The callback that failed will __never__ get this event! */
     SR_EV_ENABLED, /**< Occurs for subscriptions with the flag ::SR_SUBSCR_ENABLED and is normally followed by
                         ::SR_EV_DONE. It can fail and will also be triggered even when there is no startup configuration
                         (which is different from the ::SR_EV_CHANGE event). Also note that the callback on this event

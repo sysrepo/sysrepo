@@ -1396,7 +1396,7 @@ test_fail(void **state)
 
     /* read all data from operational, fails */
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
-    assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+    assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     /* read all data from operational, succeeds */
