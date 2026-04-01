@@ -1137,7 +1137,6 @@ sr_xpath_oper_data_get(struct sr_mod_info_mod_s *mod, const char *xpath, const c
     /* return callback error if some was generated */
     if (cb_err_info) {
         sr_errinfo_merge(&err_info, cb_err_info);
-        sr_errinfo_new(&err_info, SR_ERR_CALLBACK_FAILED, "User callback failed.");
         goto cleanup;
     }
 

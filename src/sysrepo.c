@@ -4528,7 +4528,7 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
     }
     if (*err_info2) {
         /* "change" event failed, publish "abort" event and finish */
-        err_info = sr_shmsub_change_notify_change_abort(mod_info, orig_name, orig_data, timeout_ms);
+        err_info = sr_shmsub_change_notify_change_abort(mod_info, orig_name, orig_data, timeout_ms, err_info2);
         goto cleanup;
     }
 
@@ -4559,7 +4559,7 @@ store:
     }
 
     /* publish "done" event, all changes were applied */
-    if ((err_info = sr_shmsub_change_notify_change_done(mod_info, orig_name, orig_data, timeout_ms))) {
+    if ((err_info = sr_shmsub_change_notify_change_done(mod_info, orig_name, orig_data, timeout_ms, err_info2))) {
         goto cleanup;
     }
 
@@ -7509,8 +7509,8 @@ _sr_rpc_send_tree(sr_session_ctx_t *session, struct sr_mod_info_s *mod_info, con
 
     if (cb_err_info) {
         /* "rpc" event failed, publish "abort" event and finish */
-        err_info = sr_shmsub_rpc_notify_abort(session->conn, &shm_rpc->subs, &shm_rpc->sub_count, path,
-                input, session->orig_name, session->orig_data, mod_info->operation_id, timeout_ms, request_id);
+        err_info = sr_shmsub_rpc_notify_abort(session->conn, &shm_rpc->subs, &shm_rpc->sub_count, path, input,
+                session->orig_name, session->orig_data, mod_info->operation_id, timeout_ms, request_id, &cb_err_info);
         goto cleanup_rpcsub_unlock;
     }
 
@@ -7629,7 +7629,7 @@ _sr_rpc_ext_send_tree(sr_session_ctx_t *session, const struct lyd_node *ext_pare
     if (cb_err_info) {
         /* "rpc" event failed, publish "abort" event and finish */
         err_info = sr_shmsub_rpc_notify_abort(session->conn, &shm_mod->rpc_ext_subs, &shm_mod->rpc_ext_sub_count, path,
-                input, session->orig_name, session->orig_data, mod_info->operation_id, timeout_ms, request_id);
+                input, session->orig_name, session->orig_data, mod_info->operation_id, timeout_ms, request_id, &cb_err_info);
         goto cleanup_rpcsub_unlock;
     }
 

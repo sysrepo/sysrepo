@@ -57,6 +57,7 @@ static const char * const sr_errlist[] = {
     "Timeout expired",                          /* SR_ERR_TIME_OUT */
     "User callback failed",                     /* SR_ERR_CALLBACK_FAILED */
     "User callback shelved",                    /* SR_ERR_CALLBACK_SHELVE */
+    "Secondary user callback failed",           /* SR_ERR_OK_CALLBACK_FAILED */
 };
 
 struct sr_error_info_err2_s {

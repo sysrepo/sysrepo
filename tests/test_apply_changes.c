@@ -5791,7 +5791,7 @@ apply_done_timeout_thread(void *arg)
 
     /* perform the change, time out (subscription is not handling events) */
     ret = sr_apply_changes(sess, 1);
-    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(ret, SR_ERR_OK_CALLBACK_FAILED);
 
     /* sync #1 */
     pthread_barrier_wait(&st->barrier);
@@ -5800,7 +5800,7 @@ apply_done_timeout_thread(void *arg)
     ret = sr_set_item_str(sess, "/test:test-leaf", "31", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 100);
-    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(ret, SR_ERR_OK_CALLBACK_FAILED);
 
     /* unstuck the callback so it finishes */
     pthread_barrier_wait(&st->barrier2);
@@ -7436,7 +7436,7 @@ test_done_timeout_priority(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_apply_changes(sess, 100);
-    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(ret, SR_ERR_OK_CALLBACK_FAILED);
 
     sr_unsubscribe(subscr1);
     sr_unsubscribe(subscr2);

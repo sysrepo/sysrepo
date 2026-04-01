@@ -4,8 +4,8 @@
  * @brief subscription SHM routines
  *
  * @copyright
- * Copyright (c) 2018 - 2025 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2025 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2026 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2026 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -1775,13 +1775,13 @@ cleanup:
 
 sr_error_info_t *
 sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, const char *orig_name, const void *orig_data,
-        uint32_t timeout_ms)
+        uint32_t timeout_ms, sr_error_info_t **cb_err_info)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod = NULL;
     uint32_t notify_count = 0, max_priority, cur_mpriority, full_diff_lyb_len, diff_lyb_len, *aux = NULL, i, subscriber_count;
     struct sr_shmsub_many_info_change_s *notify_subs = NULL, *nsub;
-    char *full_diff_lyb = NULL, *diff_lyb = NULL;
+    char *full_diff_lyb = NULL, *diff_lyb = NULL, *msg;
     int opts, pending_events, free_diff = 0;
     sr_cid_t cid;
 
@@ -1923,12 +1923,26 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, const char *
             sr_rwunlock(&nsub->sub_shm->lock, 0, SR_LOCK_WRITE, cid, __func__);
             nsub->lock = SR_LOCK_NONE;
 
-            /* we do not care about an error */
-            sr_errinfo_free(&nsub->cb_err_info);
+            if (nsub->cb_err_info) {
+                /* failed callback or timeout */
+                SR_LOG_WRN("EV ORIGIN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " failed (%s).",
+                        nsub->mod->ly_mod->name, sr_ev2str(SR_SUB_EV_DONE), mod_info->operation_id, nsub->cur_priority,
+                        sr_strerror(nsub->cb_err_info->err[0].err_code));
 
-            SR_LOG_DBG("EV ORIGIN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " succeeded.",
-                    nsub->mod->ly_mod->name, sr_ev2str(SR_SUB_EV_DONE), mod_info->operation_id, nsub->cur_priority);
+                /* merge the error */
+                sr_errinfo_merge(cb_err_info, nsub->cb_err_info);
+                nsub->cb_err_info = NULL;
 
+                /* add another error, do not print */
+                if (asprintf(&msg, "Callback for \"%s\" \"%s\" failed but the data were written.", nsub->mod->ly_mod->name,
+                        sr_ev2str(SR_SUB_EV_DONE)) != -1) {
+                    sr_errinfo_add(cb_err_info, SR_ERR_OK_CALLBACK_FAILED, NULL, NULL, msg, NULL);
+                    free(msg);
+                }
+            } else {
+                SR_LOG_DBG("EV ORIGIN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " succeeded.",
+                        nsub->mod->ly_mod->name, sr_ev2str(SR_SUB_EV_DONE), mod_info->operation_id, nsub->cur_priority);
+            }
             nsub->pending_event = 0;
         }
     } while (1);
@@ -1959,7 +1973,7 @@ cleanup:
 
 sr_error_info_t *
 sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, const char *orig_name, const void *orig_data,
-        uint32_t timeout_ms)
+        uint32_t timeout_ms, sr_error_info_t **cb_err_info)
 {
     sr_error_info_t *err_info = NULL;
     sr_sub_shm_t *sub_shm;
@@ -2173,12 +2187,19 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, const char 
             sr_rwunlock(&nsub->sub_shm->lock, 0, SR_LOCK_WRITE, cid, __func__);
             nsub->lock = SR_LOCK_NONE;
 
-            /* we do not care about an error */
-            sr_errinfo_free(&nsub->cb_err_info);
+            if (nsub->cb_err_info) {
+                /* failed callback or timeout */
+                SR_LOG_WRN("EV ORIGIN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " failed (%s).",
+                        nsub->mod->ly_mod->name, sr_ev2str(SR_SUB_EV_ABORT), mod_info->operation_id, nsub->cur_priority,
+                        sr_strerror(nsub->cb_err_info->err[0].err_code));
 
-            SR_LOG_DBG("EV ORIGIN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " succeeded.",
-                    nsub->mod->ly_mod->name, sr_ev2str(SR_SUB_EV_ABORT), mod_info->operation_id, nsub->cur_priority);
-
+                /* merge the error */
+                sr_errinfo_merge(cb_err_info, nsub->cb_err_info);
+                nsub->cb_err_info = NULL;
+            } else {
+                SR_LOG_DBG("EV ORIGIN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " succeeded.",
+                        nsub->mod->ly_mod->name, sr_ev2str(SR_SUB_EV_ABORT), mod_info->operation_id, nsub->cur_priority);
+            }
             nsub->pending_event = 0;
         }
     } while (!last_priority);
@@ -2994,9 +3015,9 @@ cleanup:
 sr_error_info_t *
 sr_shmsub_rpc_notify_abort(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count, const char *path,
         const struct lyd_node *input, const char *orig_name, const void *orig_data, uint32_t operation_id,
-        uint32_t timeout_ms, uint32_t request_id)
+        uint32_t timeout_ms, uint32_t request_id, sr_error_info_t **cb_err_info)
 {
-    sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
+    sr_error_info_t *err_info = NULL;
     char *input_lyb = NULL;
     uint32_t i, input_lyb_len, cur_priority, err_priority, subscriber_count, err_subscriber_count;
     struct sr_sub_evpipe_s *evpipes = NULL;
@@ -3086,16 +3107,13 @@ clear_shm:
 
         /* wait until the event is processed */
         if ((err_info = sr_shmsub_notify_wait_wr(sub_shm, SR_SUB_EV_FINISHED, 1, conn->cid, operation_id, &shm_data_sub,
-                timeout_ms, &lock_lost, &cb_err_info))) {
+                timeout_ms, &lock_lost, cb_err_info))) {
             if (lock_lost) {
                 goto cleanup;
             } else {
                 goto cleanup_wrunlock;
             }
         }
-
-        /* we do not care about an error */
-        sr_errinfo_free(&cb_err_info);
 
         if (err_priority == cur_priority) {
             /* last priority subscribers handled */
@@ -4175,10 +4193,11 @@ finish_iter:
             }
             sr_errinfo_free(&cb_err_info);
 
-            /* publish "done" event */
-            if ((err_info = sr_shmsub_change_notify_change_done(&mod_info, NULL, NULL, SR_CHANGE_CB_TIMEOUT))) {
+            /* publish "done" event, ignore error */
+            if ((err_info = sr_shmsub_change_notify_change_done(&mod_info, NULL, NULL, SR_CHANGE_CB_TIMEOUT, &cb_err_info))) {
                 goto cleanup_unlock;
             }
+            sr_errinfo_free(&cb_err_info);
 
             lyd_free_siblings(mod_info.notify_diff);
             mod_info.notify_diff = NULL;
