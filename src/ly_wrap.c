@@ -234,6 +234,10 @@ sr_ly_ctx_new(struct ly_ctx **ly_ctx)
         ctx_opts |= LY_CTX_SET_PRIV_PARSED;
     }
 
+    if (ATOMIC_LOAD_RELAXED(sr_yang_ctx.sr_opts) & SR_CTX_COMPILE_OBSOLETE) {
+        ctx_opts |= LY_CTX_COMPILE_OBSOLETE;
+    }
+
     sr_ly_log_setup();
 
     /* create new context */
