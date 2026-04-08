@@ -863,11 +863,6 @@ sr_store_module_yang_r(const struct lys_module *ly_mod)
     sr_error_info_t *err_info = NULL;
     LY_ARRAY_COUNT_TYPE u, v;
 
-    if (sr_ly_module_is_internal(ly_mod)) {
-        /* no need to store internal modules */
-        return NULL;
-    }
-
     /* store module file */
     if ((err_info = sr_store_module_yang(ly_mod, NULL))) {
         return err_info;
