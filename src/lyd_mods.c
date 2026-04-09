@@ -1024,8 +1024,16 @@ sr_lydmods_create(sr_conn_ctx_t *conn, struct ly_ctx *ly_ctx, struct lyd_node **
     /* for internal libyang and sysrepo modules create files and store in the persistent module data tree */
     i = 0;
     while ((ly_mod = ly_ctx_get_module_iter(ly_ctx, &i))) {
-        /* no "sysrepo" and module must be implemented */
-        if (!ly_mod->implemented || !strcmp(ly_mod->name, "sysrepo")) {
+        if (!strcmp(ly_mod->name, "sysrepo")) {
+            /* no "sysrepo" module */
+            continue;
+        }
+
+        if (!ly_mod->implemented) {
+            /* only print the YANG module */
+            if ((err_info = sr_store_module_yang_r(ly_mod))) {
+                goto cleanup;
+            }
             continue;
         }
 
