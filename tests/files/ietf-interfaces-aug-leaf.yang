@@ -6,6 +6,7 @@ module ietf-interfaces-aug-leaf {
 
     import ietf-interfaces {
         prefix if;
+        revision-date 2014-05-08;
     }
 
     leaf test-leaf {

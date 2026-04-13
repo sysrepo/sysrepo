@@ -1417,7 +1417,7 @@ test_input_parameters(void **state)
     struct ly_ctx *ctx;
     struct lys_module *mod;
 
-    assert_int_equal(LY_SUCCESS, ly_ctx_new(TESTS_SRC_DIR "/files/", 0, &ctx));
+    assert_int_equal(LY_SUCCESS, ly_ctx_new(ly_yang_module_dir(), 0, &ctx));
     assert_int_equal(LY_SUCCESS, lys_parse_path(ctx, TESTS_SRC_DIR "/files/simple.yang", LYS_IN_YANG, &mod));
     assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, ctx, "/simple:ac1", NULL, 0, 0, 0, NULL, &input_op));
     ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
@@ -2219,6 +2219,6 @@ main(void)
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
-    test_log_init();
+    test_init();
     return cmocka_run_group_tests(tests, setup, teardown);
 }

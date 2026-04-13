@@ -9,6 +9,7 @@ module ietf-ip {
 
     import ietf-interfaces {
       prefix if;
+      revision-date 2014-05-08;
     }
     import ietf-inet-types {
       prefix inet;

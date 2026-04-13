@@ -108,6 +108,8 @@ help_print(void)
             "                       plugin initialization is finished.\n"
             "  -f, --fatal-plugin-fail\n"
             "                       If any plugin initialization fails, terminate sysrepo-plugind.\n"
+            "  -s, --search-dir <dir>\n"
+            "                       Directory to search in for the internal sysrepo modules.\n"
             "\n"
             "Environment variable $SRPD_PLUGINS_PATH overwrites the default plugins directory.\n"
             "\n");
@@ -482,12 +484,13 @@ main(int argc, char **argv)
         {"plugin-install",    required_argument, NULL, 'P'},
         {"pid-file",          required_argument, NULL, 'p'},
         {"fatal-plugin-fail", no_argument,       NULL, 'f'},
+        {"search-dir",        required_argument, NULL, 's'},
         {NULL,                0,                 NULL, 0},
     };
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hVv:dP:p:f", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hVv:dP:p:fs:", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
             version_print();
@@ -539,6 +542,9 @@ main(int argc, char **argv)
             break;
         case 'f':
             fatal_fail = 1;
+            break;
+        case 's':
+            sr_set_yang_module_dir(optarg);
             break;
         default:
             error_print(0, "Invalid option or missing argument: -%c", optopt);

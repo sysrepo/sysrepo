@@ -219,11 +219,10 @@ sr_error_info_t *
 sr_ly_ctx_new(struct ly_ctx **ly_ctx)
 {
     sr_error_info_t *err_info = NULL;
-    char *yang_dir;
+    char *yang_dir = NULL;
     const char *factory_default_features[] = {"factory-default-datastore", NULL};
     uint16_t ctx_opts;
     struct ly_in *in = NULL;
-    LY_ERR lyrc;
 
     /* context options */
     ctx_opts = LY_CTX_NO_YANGLIBRARY | LY_CTX_DISABLE_SEARCHDIR_CWD | LY_CTX_REF_IMPLEMENTED |
@@ -240,47 +239,53 @@ sr_ly_ctx_new(struct ly_ctx **ly_ctx)
 
     sr_ly_log_setup();
 
-    /* create new context */
-    if ((err_info = sr_path_yang_dir(&yang_dir))) {
-        goto cleanup;
-    }
-    lyrc = ly_ctx_new(yang_dir, ctx_opts, ly_ctx);
-    free(yang_dir);
-    if (lyrc) {
+    /* create a new context */
+    if (ly_ctx_new(ly_yang_module_dir(), ctx_opts, ly_ctx)) {
         sr_errinfo_new_ly(&err_info, SR_ERR_LY);
         sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Failed to create a new libyang context.");
         goto cleanup;
     }
 
-    /* load just the internal datastores modules and the "sysrepo" module */
-    if (lys_parse_mem(*ly_ctx, ietf_datastores_yang, LYS_IN_YANG, NULL)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
-        goto cleanup;
-    }
-    if (lys_parse_mem(*ly_ctx, sysrepo_yang, LYS_IN_YANG, NULL)) {
-        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
-        goto cleanup;
-    }
-    if (lys_parse_mem(*ly_ctx, ietf_netconf_acm_yang, LYS_IN_YANG, NULL)) {
+    /* set search path for the internal YANG modules */
+    if (ly_ctx_set_searchdir(*ly_ctx, sr_yang_module_dir())) {
         sr_errinfo_new_ly(&err_info, SR_ERR_LY);
         goto cleanup;
     }
 
-    if (ly_in_new_memory(ietf_factory_default_yang, &in)) {
+    /* load just the internal datastores modules and the "sysrepo" module */
+    if (!ly_ctx_load_module(*ly_ctx, "ietf-datastores", "2018-02-14", NULL)) {
         sr_errinfo_new_ly(&err_info, SR_ERR_LY);
         goto cleanup;
     }
-    if (lys_parse(*ly_ctx, in, LYS_IN_YANG, factory_default_features, NULL)) {
+    if (!ly_ctx_load_module(*ly_ctx, "sysrepo", "2025-04-04", NULL)) {
         sr_errinfo_new_ly(&err_info, SR_ERR_LY);
         goto cleanup;
     }
-    if (lys_parse_mem(*ly_ctx, sysrepo_factory_default_yang, LYS_IN_YANG, NULL)) {
+    if (!ly_ctx_load_module(*ly_ctx, "ietf-netconf-acm", "2018-02-14", NULL)) {
+        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        goto cleanup;
+    }
+
+    if (!ly_ctx_load_module(*ly_ctx, "ietf-factory-default", "2020-08-31", factory_default_features)) {
+        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        goto cleanup;
+    }
+    if (!ly_ctx_load_module(*ly_ctx, "sysrepo-factory-default", "2025-03-18", NULL)) {
         sr_errinfo_new_ly(&err_info, SR_ERR_LY);
         goto cleanup;
     }
 
     /* compile the final context */
     if ((err_info = sr_ly_ctx_compile(*ly_ctx))) {
+        goto cleanup;
+    }
+
+    /* set the repo search path yang dir */
+    if ((err_info = sr_path_yang_dir(&yang_dir))) {
+        goto cleanup;
+    }
+    if (ly_ctx_set_searchdir(*ly_ctx, yang_dir)) {
+        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
         goto cleanup;
     }
 
@@ -293,6 +298,7 @@ cleanup:
         *ly_ctx = NULL;
     }
     sr_ly_log_revert();
+    free(yang_dir);
     ly_in_free(in, 0);
     return err_info;
 }

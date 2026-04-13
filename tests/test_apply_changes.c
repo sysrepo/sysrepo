@@ -108,6 +108,11 @@ setup(void **state)
         return 1;
     }
     if (sr_set_item_str(st->sm_sess,
+            "/sm:root/ietf-yang-library:yang-library/module-set[name='mp']/module[name='ietf-interfaces']/revision",
+            "2014-05-08", NULL, 0)) {
+        return 1;
+    }
+    if (sr_set_item_str(st->sm_sess,
             "/sm:root/ietf-yang-library:yang-library/module-set[name='mp']/module[name='iana-if-type']/namespace",
             "urn:ietf:params:xml:ns:yang:iana-if-type", NULL, 0)) {
         return 1;
@@ -8487,6 +8492,6 @@ main(void)
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
-    test_log_init();
+    test_init();
     return cmocka_run_group_tests(tests, setup, teardown);
 }

@@ -1516,6 +1516,6 @@ main(void)
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
-    test_log_init();
+    test_init();
     return cmocka_run_group_tests(tests, setup_f, teardown_f);
 }

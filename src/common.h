@@ -193,12 +193,7 @@ struct srplg_ntf_s;
  * Internal declarations + definitions
  */
 
-extern char ietf_datastores_yang[];
-extern char sysrepo_yang[];
-extern char ietf_netconf_acm_yang[];
-extern char ietf_factory_default_yang[];
-extern char sysrepo_factory_default_yang[];
-
+extern char sr_internal_yang_module_dir[];
 extern const struct srplg_ds_s *sr_internal_ds_plugins[];
 extern const struct srplg_ntf_s *sr_internal_ntf_plugins[];
 

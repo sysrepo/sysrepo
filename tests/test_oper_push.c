@@ -2397,6 +2397,7 @@ test_schema_mount(void **state)
             "      </module>\n"
             "      <module>\n"
             "        <name>ietf-interfaces</name>\n"
+            "        <revision>2014-05-08</revision>\n"
             "        <namespace>urn:ietf:params:xml:ns:yang:ietf-interfaces</namespace>\n"
             "      </module>\n"
             "      <module>\n"
@@ -3358,6 +3359,6 @@ main(void)
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
-    test_log_init();
+    test_init();
     return cmocka_run_group_tests(tests, setup, teardown);
 }

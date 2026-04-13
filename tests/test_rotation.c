@@ -295,7 +295,8 @@ setup(void **state)
     /* Run archivation loop */
     data->pid = fork();
     if (data->pid == 0) {
-        if (execl(SR_BINARY_DIR "/sysrepo-plugind", SR_BINARY_DIR "/sysrepo-plugind", "-v3", "-d", "-p", data->pidfile, NULL)) {
+        if (execl(SR_BINARY_DIR "/sysrepo-plugind", SR_BINARY_DIR "/sysrepo-plugind", "-v3", "-d", "-p", data->pidfile,
+                "-s", TESTS_SRC_DIR "/../modules", NULL)) {
             print_error("Execl failed\n");
             exit(1);
         }
@@ -545,6 +546,6 @@ main(void)
     };
 
     setenv("SRPD_PLUGINS_PATH", TESTS_REPO_DIR "/srpd_plugins", 1);
-    test_log_init();
+    test_init();
     return cmocka_run_group_tests(tests, setup, teardown);
 }

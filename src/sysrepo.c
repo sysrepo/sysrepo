@@ -4,8 +4,8 @@
  * @brief sysrepo API routines
  *
  * @copyright
- * Copyright (c) 2018 - 2025 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2025 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2026 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2026 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -599,6 +599,38 @@ sr_get_cid(sr_conn_ctx_t *conn)
     }
 
     return conn->cid;
+}
+
+API const char *
+sr_yang_module_dir(void)
+{
+    if (sr_internal_yang_module_dir[0]) {
+        return sr_internal_yang_module_dir;
+    } else {
+        return SR_YANG_MODULE_PATH;
+    }
+}
+
+API int
+sr_set_yang_module_dir(const char *path)
+{
+    sr_error_info_t *err_info = NULL;
+
+    if (!path) {
+        /* clear the path */
+        sr_internal_yang_module_dir[0] = '\0';
+        goto cleanup;
+    }
+
+    if (strlen(path) > SR_PATH_MAX - 1) {
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Path exceeded max length %d.", SR_PATH_MAX - 1);
+        goto cleanup;
+    }
+
+    strncpy(sr_internal_yang_module_dir, path, SR_PATH_MAX - 1);
+
+cleanup:
+    return sr_api_ret(NULL, err_info);
 }
 
 /**
