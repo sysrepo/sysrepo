@@ -1,9 +1,10 @@
 /**
  * @file tcommon.c
  * @author Irfan
+ * @author Michal vasko <mvasko@cesnet.cz>
  * @brief common header file for all tests to facilitate uniform logging format
  *
- * @copyright
+ * Copyright (c) 2018 - 2026 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -66,9 +67,11 @@ _test_sr_log_cb(sr_log_level_t level, const char *message)
 }
 
 void
-test_log_init(void)
+test_init(void)
 {
     sr_log_set_cb(_test_sr_log_cb);
+
+    sr_set_yang_module_dir(TESTS_SRC_DIR "/../modules");
 }
 
 void

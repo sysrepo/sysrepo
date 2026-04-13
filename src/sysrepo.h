@@ -4,8 +4,8 @@
  * @brief public API sysrepo header
  *
  * @copyright
- * Copyright (c) 2018 - 2025 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2025 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2026 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2026 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -253,6 +253,22 @@ uid_t sr_get_su_uid(void);
  * @return CID of the connection.
  */
 sr_cid_t sr_get_cid(sr_conn_ctx_t *conn);
+
+/**
+ * @brief Get the directory with internal sysrepo YANG modules.
+ *
+ * @return YANG module dir.
+ */
+const char *sr_yang_module_dir(void);
+
+/**
+ * @brief Set the directory with internal sysrepo YANG modules.
+ *
+ * Normally, when sysrepo is installed on a system, the default directory should work.
+ *
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_set_yang_module_dir(const char *path);
 
 /**
  * @brief Start a new session.

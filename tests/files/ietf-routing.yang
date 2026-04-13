@@ -6,7 +6,7 @@
 
     import ietf-yang-types { prefix "yang"; }
 
-    import ietf-interfaces { prefix "if"; }
+    import ietf-interfaces { prefix "if"; revision-date 2014-05-08; }
 
 
     organization

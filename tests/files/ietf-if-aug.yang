@@ -5,6 +5,7 @@ module ietf-if-aug {
 
   import ietf-interfaces {
     prefix if;
+    revision-date 2014-05-08;
   }
 
   import iana-if-type {

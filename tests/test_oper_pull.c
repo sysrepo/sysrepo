@@ -260,22 +260,22 @@ test_yang_lib(void **state)
     ret = sr_get_data(st->sess, "/ietf-yang-library:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-#if SR_YANGLIB_REVISION == 2019 - 01 - 04
-    assert_non_null(data);
-    assert_string_equal(data->tree->schema->name, "yang-library");
-    assert_string_equal(lyd_child(data->tree)->schema->name, "module-set");
-    assert_string_equal(lyd_child(data->tree)->next->schema->name, "schema");
-    assert_string_equal(lyd_child(data->tree)->next->next->schema->name, "datastore");
-    assert_string_equal(lyd_child(data->tree)->next->next->next->schema->name, "datastore");
-    assert_string_equal(lyd_child(data->tree)->next->next->next->next->schema->name, "datastore");
-    assert_string_equal(lyd_child(data->tree)->next->next->next->next->next->schema->name, "datastore");
-    assert_string_equal(lyd_child(data->tree)->next->next->next->next->next->next->schema->name, "content-id");
-    assert_string_equal(data->tree->next->schema->name, "modules-state");
-#else
-    assert_non_null(data);
-    assert_string_equal(data->tree->schema->name, "modules-state");
-    assert_string_equal(lyd_child(data->tree)->prev->schema->name, "module-set-id");
-#endif
+    if (!strcmp(data->tree->schema->module->revision, "2019-01-04")) {
+        assert_non_null(data);
+        assert_string_equal(data->tree->schema->name, "yang-library");
+        assert_string_equal(lyd_child(data->tree)->schema->name, "module-set");
+        assert_string_equal(lyd_child(data->tree)->next->schema->name, "schema");
+        assert_string_equal(lyd_child(data->tree)->next->next->schema->name, "datastore");
+        assert_string_equal(lyd_child(data->tree)->next->next->next->schema->name, "datastore");
+        assert_string_equal(lyd_child(data->tree)->next->next->next->next->schema->name, "datastore");
+        assert_string_equal(lyd_child(data->tree)->next->next->next->next->next->schema->name, "datastore");
+        assert_string_equal(lyd_child(data->tree)->next->next->next->next->next->next->schema->name, "content-id");
+        assert_string_equal(data->tree->next->schema->name, "modules-state");
+    } else {
+        assert_non_null(data);
+        assert_string_equal(data->tree->schema->name, "modules-state");
+        assert_string_equal(lyd_child(data->tree)->prev->schema->name, "module-set-id");
+    }
     sr_release_data(data);
 
     /* subscribe as dummy state data provider, they should get deleted */
@@ -3960,6 +3960,6 @@ main(void)
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
-    test_log_init();
+    test_init();
     return cmocka_run_group_tests(tests, setup, teardown);
 }

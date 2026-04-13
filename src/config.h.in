@@ -69,7 +69,7 @@
 #define SR_NACM_RECOVERY_USER "@NACM_RECOVERY_USER@"
 
 /** implemented ietf-yang-library revision */
-#define SR_YANGLIB_REVISION @YANGLIB_REVISION@
+#define SR_YANGLIB_REVISION "@YANGLIB_REVISION@"
 
 /** main sysrepo repository path; prefix of all other paths by default */
 #define SR_REPO_PATH "@REPO_PATH@"
@@ -210,8 +210,11 @@
  * recommended to choose the address carefully and
  * disable ASLR (Address Space Layout Randomization) in such cases.
  */
-#define MAP_FIXED_NOREPLACE MAP_FIXED
+# define MAP_FIXED_NOREPLACE MAP_FIXED
 
 #endif
+
+/** directory with all the installed YANG modules */
+#define SR_YANG_MODULE_PATH "@YANG_MODULE_DIR@"
 
 #endif /* _CONFIG_H */

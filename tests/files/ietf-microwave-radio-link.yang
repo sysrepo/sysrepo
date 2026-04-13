@@ -13,6 +13,7 @@ module ietf-microwave-radio-link {
   }
   import ietf-interfaces {
     prefix if;
+    revision-date 2014-05-08;
     reference
       "RFC 8343";
   }

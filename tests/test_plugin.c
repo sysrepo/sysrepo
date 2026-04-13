@@ -1531,7 +1531,7 @@ main(void)
     uint32_t plgnum = sr_ds_plugin_int_count();
     struct timeval start, end;
 
-    test_log_init();
+    test_init();
     for (i = 0; i < plgnum; ++i) {
         plg_name = sr_internal_ds_plugins[i]->name;
         printf("\nTesting plugin %s\n", plg_name);

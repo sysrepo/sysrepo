@@ -1761,7 +1761,7 @@ main(void)
         {"recover-notif-sub", test_recover_notif_sub_send, test_recover_notif_sub, setup, teardown},
     };
 
-    test_log_init();
+    test_init();
     run_tests(tests, sizeof tests / sizeof *tests);
     return 0;
 }

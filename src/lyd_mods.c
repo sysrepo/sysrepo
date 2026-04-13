@@ -46,28 +46,6 @@
 #include "replay.h"
 #include "shm_mod.h"
 
-#include "../modules/ietf_datastores_yang.h"
-#include "../modules/ietf_factory_default_yang.h"
-#include "../modules/ietf_netconf_acm_yang.h"
-#include "../modules/sysrepo_factory_default_yang.h"
-#include "../modules/sysrepo_yang.h"
-
-#if SR_YANGLIB_REVISION == 2019 - 01 - 04
-# include "../modules/ietf_yang_library@2019_01_04_yang.h"
-#elif SR_YANGLIB_REVISION == 2016 - 06 - 21
-# include "../modules/ietf_yang_library@2016_06_21_yang.h"
-#else
-# error "Unknown yang-library revision!"
-#endif
-
-#include "../modules/ietf_netconf_notifications_yang.h"
-#include "../modules/ietf_netconf_with_defaults_yang.h"
-#include "../modules/ietf_netconf_yang.h"
-#include "../modules/ietf_origin_yang.h"
-#include "../modules/sysrepo_monitoring_yang.h"
-#include "../modules/sysrepo_notifications_yang.h"
-#include "../modules/sysrepo_plugind_yang.h"
-
 /**
  * @brief Add module into sysrepo module data.
  *
@@ -991,15 +969,15 @@ static sr_error_info_t *
 sr_lydmods_create(sr_conn_ctx_t *conn, struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
 {
     sr_error_info_t *err_info = NULL;
-    struct lys_module *ly_mod;
+    const struct lys_module *ly_mod;
     struct lyd_node *sr_mods = NULL, *init_data = NULL;
     sr_int_install_mod_t *new_mods = NULL;
     uint32_t i, new_mod_count = 0;
     struct sr_lycc_ds_data_s data_info = {0};
     const char *mod_origin;
 
-#define SR_INSTALL_INT_MOD(ctx, yang_mod, dep, new_mods, new_mod_count) \
-    if ((err_info = sr_lys_parse(ctx, yang_mod, NULL, LYS_IN_YANG, NULL, &ly_mod))) { \
+#define SR_INSTALL_INT_MOD(ctx, mod_name, revision, dep, new_mods, new_mod_count) \
+    if ((err_info = sr_ly_ctx_load_module(ctx, mod_name, revision, NULL, &ly_mod))) { \
         goto cleanup; \
     } \
     if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, sr_lydmods_int_mod_ds(ly_mod->name), NULL, \
@@ -1047,26 +1025,26 @@ sr_lydmods_create(sr_conn_ctx_t *conn, struct ly_ctx *ly_ctx, struct lyd_node **
     }
 
     /* install ietf-yang-library */
-    SR_INSTALL_INT_MOD(ly_ctx, ietf_yang_library_yang, 0, new_mods, new_mod_count);
+    SR_INSTALL_INT_MOD(ly_ctx, "ietf-yang-library", SR_YANGLIB_REVISION, 0, new_mods, new_mod_count);
 
     /* install sysrepo-monitoring */
-    SR_INSTALL_INT_MOD(ly_ctx, sysrepo_monitoring_yang, 0, new_mods, new_mod_count);
+    SR_INSTALL_INT_MOD(ly_ctx, "sysrepo-monitoring", "2023-08-11", 0, new_mods, new_mod_count);
 
     /* install sysrepo-plugind */
-    SR_INSTALL_INT_MOD(ly_ctx, sysrepo_plugind_yang, 0, new_mods, new_mod_count);
+    SR_INSTALL_INT_MOD(ly_ctx, "sysrepo-plugind", "2022-08-26", 0, new_mods, new_mod_count);
 
     /* install sysrepo-notifications */
-    SR_INSTALL_INT_MOD(ly_ctx, sysrepo_notifications_yang, 0, new_mods, new_mod_count);
+    SR_INSTALL_INT_MOD(ly_ctx, "sysrepo-notifications", "2025-01-10", 0, new_mods, new_mod_count);
 
     /* install ietf-netconf (implemented dependency) and ietf-netconf-with-defaults */
-    SR_INSTALL_INT_MOD(ly_ctx, ietf_netconf_yang, 1, new_mods, new_mod_count);
-    SR_INSTALL_INT_MOD(ly_ctx, ietf_netconf_with_defaults_yang, 0, new_mods, new_mod_count);
+    SR_INSTALL_INT_MOD(ly_ctx, "ietf-netconf", "2013-09-29", 1, new_mods, new_mod_count);
+    SR_INSTALL_INT_MOD(ly_ctx, "ietf-netconf-with-defaults", "2011-06-01", 0, new_mods, new_mod_count);
 
     /* install ietf-netconf-notifications */
-    SR_INSTALL_INT_MOD(ly_ctx, ietf_netconf_notifications_yang, 0, new_mods, new_mod_count);
+    SR_INSTALL_INT_MOD(ly_ctx, "ietf-netconf-notifications", "2012-02-06", 0, new_mods, new_mod_count);
 
     /* install ietf-origin */
-    SR_INSTALL_INT_MOD(ly_ctx, ietf_origin_yang, 0, new_mods, new_mod_count);
+    SR_INSTALL_INT_MOD(ly_ctx, "ietf-origin", "2018-02-14", 0, new_mods, new_mod_count);
 
     /* compile all */
     if ((err_info = sr_ly_ctx_compile(ly_ctx))) {

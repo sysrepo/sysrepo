@@ -969,6 +969,6 @@ main(void)
         cmocka_unit_test_setup_teardown(test_nacm_yp_onchange, setup_nacm, teardown_nacm),
     };
 
-    test_log_init();
+    test_init();
     return cmocka_run_group_tests(tests, setup, teardown);
 }
