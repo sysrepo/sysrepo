@@ -568,16 +568,26 @@ sr_shmmain_oper_push_cache_flush(void)
 
     for (ptr = conn_proc.list_head; ptr; ptr = ptr->_next) {
         conn = ptr->conn;
+
+        /* PTR LOCK */
+        if ((err_info = sr_mlock(&conn->ptr_lock, -1, __func__, NULL, NULL))) {
+            goto cleanup_unlock;
+        }
+
         for (i = 0; i < conn->session_count; i++) {
             for (j = 0; j < conn->sessions[i]->oper_push_mod_count; j++) {
                 lyd_free_siblings(conn->sessions[i]->oper_push_mods[j].cache);
                 conn->sessions[i]->oper_push_mods[j].cache = NULL;
             }
         }
+
+        /* PTR UNLOCK */
+        sr_munlock(&conn->ptr_lock);
     }
 
+cleanup_unlock:
     /* CONN LIST UNLOCK */
     sr_munlock(&conn_proc.list_lock);
 
-    return NULL;
+    return err_info;
 }
