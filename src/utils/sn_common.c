@@ -251,13 +251,13 @@ srsn_filter_xpath_print_node_module(const struct lyd_node *node, const struct ly
         switch (opaq->format) {
         case LY_VALUE_XML:
             /* one in schema dict, other in data dict, need strcmp */
-            if (!strcmp(m->ns, opaq->name.module_ns)) {
+            if (opaq->name.module_ns && !strcmp(m->ns, opaq->name.module_ns)) {
                 return NULL;
             }
             break;
         case LY_VALUE_JSON:
             /* one in schema dict, other in data dict, need strcmp */
-            if (!strcmp(m->name, opaq->name.module_name)) {
+            if (opaq->name.module_name && !strcmp(m->name, opaq->name.module_name)) {
                 return NULL;
             }
             break;
@@ -271,7 +271,7 @@ srsn_filter_xpath_print_node_module(const struct lyd_node *node, const struct ly
         opaq2 = (struct lyd_node_opaq *)parent;
 
         /* in data dict, can compare ptrs */
-        if (opaq->name.module_ns == opaq2->name.module_ns) {
+        if (opaq->name.module_ns && opaq2->name.module_ns && (opaq->name.module_ns == opaq2->name.module_ns)) {
             return NULL;
         }
     }
@@ -282,17 +282,19 @@ srsn_filter_xpath_print_node_module(const struct lyd_node *node, const struct ly
         m = node->schema->module;
     } else {
         opaq = (struct lyd_node_opaq *)node;
-        if (opaq->name.module_ns) {
-            switch (opaq->format) {
-            case LY_VALUE_XML:
+        switch (opaq->format) {
+        case LY_VALUE_XML:
+            if (opaq->name.module_ns) {
                 m = ly_ctx_get_module_implemented_ns(LYD_CTX(node), opaq->name.module_ns);
-                break;
-            case LY_VALUE_JSON:
-                m = ly_ctx_get_module_implemented(LYD_CTX(node), opaq->name.module_name);
-                break;
-            default:
-                break;
             }
+            break;
+        case LY_VALUE_JSON:
+            if (opaq->name.module_name) {
+                m = ly_ctx_get_module_implemented(LYD_CTX(node), opaq->name.module_name);
+            }
+            break;
+        default:
+            break;
         }
     }
 
