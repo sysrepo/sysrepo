@@ -99,7 +99,7 @@ cleanup:
  *
  * @param[in] cand_node Conflicting node from the private candidate datastore.
  * @param[in] run_node Conflicting node from the running datastore.
- * @param[in] privcand Private candidate datastore structure.
+ * @param[in] conflict_resolution Conflict resolution strategy.
  * @param[in] type Type of conflict.
  * @param[in] dup Wheter to duplicate @p run_node and @p cand_node into conflicts.
  *                If zero, the function will assign pointers without duplication.
@@ -107,14 +107,14 @@ cleanup:
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-pc_add_conflict(struct lyd_node *cand_node, struct lyd_node *run_node, sr_priv_cand_t *privcand, sr_pc_conflict_type_t type,
-        int dup, sr_pc_conflict_set_t **conflict_set)
+pc_add_conflict(struct lyd_node *cand_node, struct lyd_node *run_node, sr_pc_conflict_resolution_t conflict_resolution,
+        sr_pc_conflict_type_t type, int dup, sr_pc_conflict_set_t **conflict_set)
 {
     sr_error_info_t *err_info = NULL;
     sr_pc_conflict_info_t *c_info = NULL, *tmp;
 
     /* no need to store conflicts for other resolutions */
-    if (privcand->conflict_resolution != SR_PC_REVERT_ON_CONFLICT) {
+    if (conflict_resolution != SR_PC_REVERT_ON_CONFLICT) {
         goto cleanup;
     }
 
@@ -350,13 +350,13 @@ cleanup:
  *
  * @param[in] run_diff Running datastore's diff subtree.
  * @param[in,out] cand_diff Candidate's diff subtree.
- * @param[in] privcand Private candidate datastore structure.
+ * @param[in] conflict_resolution Conflict resolution strategy.
  * @param[out] conflict_set List of conflicts which are not resolved yet.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-pc_process_userord_conflict(struct lyd_node *run_diff, struct lyd_node **cand_diff, sr_priv_cand_t *privcand,
-        sr_pc_conflict_set_t **conflict_set)
+pc_process_userord_conflict(struct lyd_node *run_diff, struct lyd_node **cand_diff,
+        sr_pc_conflict_resolution_t conflict_resolution, sr_pc_conflict_set_t **conflict_set)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *tmp, *list_entry_siblings = NULL, *list_order_siblings = NULL;
@@ -364,7 +364,7 @@ pc_process_userord_conflict(struct lyd_node *run_diff, struct lyd_node **cand_di
     struct lyd_node *iter, *next;
     enum edit_op op;
 
-    switch (privcand->conflict_resolution) {
+    switch (conflict_resolution) {
     case SR_PC_REVERT_ON_CONFLICT:
         /* sort nodes into categories based on conflict they cause */
         if ((err_info = pc_userord_conflict_types(run_diff, *cand_diff, &list_entry_siblings, &list_order_siblings,
@@ -380,7 +380,7 @@ pc_process_userord_conflict(struct lyd_node *run_diff, struct lyd_node **cand_di
         }
 
         if (list_order_siblings) {
-            if ((err_info = pc_add_conflict(cand_conflict_siblings, list_order_siblings, privcand,
+            if ((err_info = pc_add_conflict(cand_conflict_siblings, list_order_siblings, conflict_resolution,
                     pc_get_conflict_type(run_diff->schema->nodetype, EDIT_REPLACE, EDIT_REPLACE), 0, conflict_set))) {
                 goto cleanup;
             }
@@ -389,7 +389,7 @@ pc_process_userord_conflict(struct lyd_node *run_diff, struct lyd_node **cand_di
         if (list_entry_siblings) {
             /* use the duplicate only if it exists, otherwise use the original node */
             tmp = cand_conflict_siblings_dup ? cand_conflict_siblings_dup : cand_conflict_siblings;
-            if ((err_info = pc_add_conflict(tmp, list_entry_siblings, privcand,
+            if ((err_info = pc_add_conflict(tmp, list_entry_siblings, conflict_resolution,
                     pc_get_conflict_type(run_diff->schema->nodetype, EDIT_CREATE, EDIT_CREATE), 0, conflict_set))) {
                 goto cleanup;
             }
@@ -432,21 +432,21 @@ cleanup:
  * @param[in,out] cand_diff Candidate's diff subtree.
  * @param[in] cand_op Diff operation applied to the candidate node.
  * @param[in] run_op Diff operation applied to the running node.
- * @param[in] privcand Private candidate datastore structure.
+ * @param[in] conflict_resolution Conflict resolution strategy.
  * @param[out] conflict_set List of conflicts which are not resolved yet.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 pc_resolve_conflict(struct lyd_node *run_diff, struct lyd_node **cand_diff, enum edit_op run_op, enum edit_op cand_op,
-        sr_priv_cand_t *privcand, sr_pc_conflict_set_t **conflict_set)
+        sr_pc_conflict_resolution_t conflict_resolution, sr_pc_conflict_set_t **conflict_set)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *remove_node;
 
     /* no need to store conflicts besides revert_on_conflcit */
-    switch (privcand->conflict_resolution) {
+    switch (conflict_resolution) {
     case SR_PC_REVERT_ON_CONFLICT:
-        if ((err_info = pc_add_conflict(*cand_diff, run_diff, privcand,
+        if ((err_info = pc_add_conflict(*cand_diff, run_diff, conflict_resolution,
                 pc_get_conflict_type(run_diff->schema->nodetype, cand_op, run_op), 1, conflict_set))) {
             goto cleanup;
         }
@@ -479,21 +479,21 @@ cleanup:
  * @param[in] run_op Diff operation applied to the running node.
  * @param[in] cand_op Diff operation applied to the candidate node.
  * @param[in,out] userord_conflict_stored Flag whether userdered list conflict was stored.
- * @param[in] privcand Private candidate datastore structure.
+ * @param[in] conflict_resolution Conflict resolution strategy.
  * @param[out] conflict_set List of conflicts.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 pc_process_diff_trees_lists(struct lyd_node **run_diff, struct lyd_node **cand_diff, struct lyd_node *cand_iter,
-        enum edit_op run_op, enum edit_op cand_op, int *userord_conflict_stored, sr_priv_cand_t *privcand,
-        sr_pc_conflict_set_t **conflict_set)
+        enum edit_op run_op, enum edit_op cand_op, int *userord_conflict_stored,
+        sr_pc_conflict_resolution_t conflict_resolution, sr_pc_conflict_set_t **conflict_set)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node **cand_target;
 
     if (!lysc_is_userordered((*run_diff)->schema)) {
         cand_target = (cand_iter == *cand_diff) ? cand_diff : &cand_iter;
-        if ((err_info = pc_resolve_conflict(*run_diff, cand_target, run_op, cand_op, privcand, conflict_set))) {
+        if ((err_info = pc_resolve_conflict(*run_diff, cand_target, run_op, cand_op, conflict_resolution, conflict_set))) {
             goto cleanup;
         }
         goto cleanup;
@@ -507,7 +507,7 @@ pc_process_diff_trees_lists(struct lyd_node **run_diff, struct lyd_node **cand_d
         }
 
         cand_target = (cand_iter == *cand_diff) ? cand_diff : &cand_iter;
-        if ((err_info = pc_process_userord_conflict(*run_diff, cand_target, privcand, conflict_set))) {
+        if ((err_info = pc_process_userord_conflict(*run_diff, cand_target, conflict_resolution, conflict_set))) {
             goto cleanup;
         }
 
@@ -550,12 +550,13 @@ cleanup:
  * @param[in] run_diff Running datastore's diff tree.
  * @param[in,out] cand_diff Candidate's diff tree.
  * @param[in] privcand Private candidate datastore structure.
+ * @param[in] conflict_resolution Conflict resolution strategy.
  * @param[out] conflict_set List of conflicts which are not resolved yet.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 pc_process_diff_trees_r(const struct lyd_node *run_diff, struct lyd_node **cand_diff, sr_priv_cand_t *privcand,
-        sr_pc_conflict_set_t **conflict_set)
+        sr_pc_conflict_resolution_t conflict_resolution, sr_pc_conflict_set_t **conflict_set)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *cand_iter = NULL, *run_iter, *cand_child, **cand_target;
@@ -581,7 +582,8 @@ pc_process_diff_trees_r(const struct lyd_node *run_diff, struct lyd_node **cand_
         if (((run_op == EDIT_NONE) || (run_op == 0)) && (((cand_op == EDIT_NONE) || (cand_op == 0)))) {
             if (cand_iter && (run_iter->schema->nodetype & LYD_NODE_INNER)) {
                 cand_child = lyd_child_no_keys(cand_iter);
-                if ((err_info = pc_process_diff_trees_r(lyd_child_no_keys(run_iter), &cand_child, privcand, conflict_set))) {
+                if ((err_info = pc_process_diff_trees_r(lyd_child_no_keys(run_iter), &cand_child, privcand,
+                        conflict_resolution, conflict_set))) {
                     goto cleanup;
                 }
             } else {
@@ -595,14 +597,16 @@ pc_process_diff_trees_r(const struct lyd_node *run_diff, struct lyd_node **cand_
                 ((run_op == EDIT_DELETE) && (cand_iter && ((cand_op == EDIT_NONE) || (cand_op == 0))))) {
             /* the parent node was deleted in one datastore, while in the other datastore the modification happened on its child */
             if (run_iter->schema->nodetype & LYD_NODE_INNER) {
-                if (privcand->conflict_resolution == SR_PC_REVERT_ON_CONFLICT) {
+                if (conflict_resolution == SR_PC_REVERT_ON_CONFLICT) {
                     cand_child = lyd_child_no_keys(cand_iter);
-                    if ((err_info = pc_process_diff_trees_r(lyd_child_no_keys(run_iter), &cand_child, privcand, conflict_set))) {
+                    if ((err_info = pc_process_diff_trees_r(lyd_child_no_keys(run_iter), &cand_child, privcand,
+                            conflict_resolution, conflict_set))) {
                         goto cleanup;
                     }
                 } else {
                     /* no need to find child where conflict occurs */
-                    if ((err_info = pc_resolve_conflict(run_iter, cand_diff, run_op, cand_op, privcand, conflict_set))) {
+                    if ((err_info = pc_resolve_conflict(run_iter, cand_diff, run_op, cand_op, conflict_resolution,
+                            conflict_set))) {
                         goto cleanup;
                     }
                     cand_iter = NULL;
@@ -654,8 +658,8 @@ pc_process_diff_trees_r(const struct lyd_node *run_diff, struct lyd_node **cand_
                 break;
             }
 
-            if ((err_info = pc_process_diff_trees_lists(&run_iter, cand_diff, cand_iter, run_op, cand_op, &userord_conflict_stored,
-                    privcand, conflict_set))) {
+            if ((err_info = pc_process_diff_trees_lists(&run_iter, cand_diff, cand_iter, run_op, cand_op,
+                    &userord_conflict_stored, conflict_resolution, conflict_set))) {
                 goto cleanup;
             }
 
@@ -673,7 +677,7 @@ pc_process_diff_trees_r(const struct lyd_node *run_diff, struct lyd_node **cand_
             }
 
             cand_target = (cand_iter == *cand_diff) ? cand_diff : &cand_iter;
-            if ((err_info = pc_resolve_conflict(run_iter, cand_target, run_op, cand_op, privcand, conflict_set))) {
+            if ((err_info = pc_resolve_conflict(run_iter, cand_target, run_op, cand_op, conflict_resolution, conflict_set))) {
                 goto cleanup;
             }
 
@@ -693,25 +697,27 @@ cleanup:
  * @brief Update private candidate datastore structure.
  *
  * @param[in,out] privcand Private candidate datastore structure.
+ * @param[in] conflict_resolution Conflict resolution strategy.
  * @param[in,out] conflict_set List of conflicts which will be resolved.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-pc_update_diff_privcand(sr_priv_cand_t *privcand, sr_pc_conflict_set_t **conflict_set)
+pc_update_diff_privcand(sr_priv_cand_t *privcand, sr_pc_conflict_resolution_t conflict_resolution,
+        sr_pc_conflict_set_t **conflict_set)
 {
     sr_error_info_t *err_info = NULL;
 
     /* user resolves the conflicts by himself */
-    if ((privcand->conflict_resolution == SR_PC_REVERT_ON_CONFLICT) && conflict_set && (*conflict_set)) {
+    if ((conflict_resolution == SR_PC_REVERT_ON_CONFLICT) && conflict_set && (*conflict_set)) {
         goto cleanup;
     }
 
     /* already up to date */
-    if ((privcand->conflict_resolution == SR_PC_REVERT_ON_CONFLICT) && !privcand->diff_run) {
+    if ((conflict_resolution == SR_PC_REVERT_ON_CONFLICT) && !privcand->diff_run) {
         goto cleanup;
     }
 
-    switch (privcand->conflict_resolution) {
+    switch (conflict_resolution) {
     case SR_PC_PREFER_RUNNING:
         lyd_free_all(privcand->diff_run);
         privcand->diff_run = NULL;
@@ -790,7 +796,8 @@ cleanup:
 }
 
 API int
-sr_pc_create_ds(sr_session_ctx_t *session, uint32_t subscription_opts, sr_subscription_ctx_t **subscription, sr_priv_cand_t **privcand)
+sr_pc_create_ds(sr_session_ctx_t *session, uint32_t subscription_opts, sr_subscription_ctx_t **subscription,
+        sr_priv_cand_t **privcand)
 {
     sr_error_info_t *err_info = NULL;
     struct lys_module *mod;
@@ -810,6 +817,13 @@ sr_pc_create_ds(sr_session_ctx_t *session, uint32_t subscription_opts, sr_subscr
     /* allocate and initialize the private candidate structure */
     *privcand = calloc(1, sizeof(**privcand));
     SR_CHECK_MEM_GOTO(!*privcand, err_info, cleanup);
+
+    /* CONTEXT LOCK */
+    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
+        goto cleanup;
+    }
+
+    (*privcand)->has_ctx_lock = 1;
 
     /* temporarily switch to the running datastore to subscribe */
     session->ds = SR_DS_RUNNING;
@@ -854,28 +868,23 @@ sr_pc_create_ds(sr_session_ctx_t *session, uint32_t subscription_opts, sr_subscr
 
 cleanup:
     /* clean up on error: unsubscribe from any modules */
-    if ((err_info || ret) && (*privcand)->subscription) {
-        sr_unsubscribe((*privcand)->subscription);
+    if ((err_info || ret) && *privcand) {
+        sr_pc_destroy_ds(session, *privcand);
+        (*privcand) = NULL;
     }
+
     /* restore the original datastore */
     session->ds = datastore;
     return ret ? ret : sr_api_ret(session, err_info);
 }
 
-API void
-sr_pc_set_conflict_resolution(sr_priv_cand_t *privcand, sr_pc_conflict_resolution_t new_conflict_resolution)
-{
-    if (!privcand) {
-        return;
-    }
-
-    privcand->conflict_resolution = new_conflict_resolution;
-}
-
 API int
-sr_pc_destroy_ds(sr_priv_cand_t *privcand)
+sr_pc_destroy_ds(sr_session_ctx_t *session, sr_priv_cand_t *privcand)
 {
+    sr_error_info_t *err_info = NULL;
     int ret = SR_ERR_OK;
+
+    SR_CHECK_ARG_APIRET(!session, session, err_info);
 
     if (!privcand) {
         return ret;
@@ -885,11 +894,15 @@ sr_pc_destroy_ds(sr_priv_cand_t *privcand)
         if ((ret = sr_unsubscribe(privcand->subscription))) {
             goto cleanup;
         }
-
     }
 
     lyd_free_all(privcand->diff_run);
     lyd_free_all(privcand->diff_privcand);
+
+    if (privcand->has_ctx_lock) {
+        /* CONTEXT UNLOCK */
+        sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
+    }
 
     free(privcand);
 
@@ -919,21 +932,16 @@ sr_pc_free_conflicts(sr_pc_conflict_set_t *conflict_set)
  * @brief Updates the private candidate datastore.
  *
  * @param[in,out] privcand Private candidate structure to update.
+ * @param[in] conflict_resolution Conflict resolution strategy.
  * @param[out] conflict_set List of conflicts.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-_sr_pc_update(sr_priv_cand_t *privcand, sr_pc_conflict_set_t **conflict_set)
+_sr_pc_update(sr_priv_cand_t *privcand, sr_pc_conflict_resolution_t conflict_resolution, sr_pc_conflict_set_t **conflict_set)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *running_changes_diff;
+    struct lyd_node *running_changes_diff = NULL;
     struct lyd_node *diff_run_backup = NULL, *diff_privcand_backup = NULL;
-
-    /* Avoid unnecessary processing if no changes were made in the private candidate */
-    if (!privcand->diff_privcand) {
-        lyd_free_all(privcand->diff_run);
-        privcand->diff_run = NULL;
-    }
 
     /* new update will discard old conflicts */
     if (conflict_set && *conflict_set) {
@@ -941,11 +949,18 @@ _sr_pc_update(sr_priv_cand_t *privcand, sr_pc_conflict_set_t **conflict_set)
         (*conflict_set) = NULL;
     }
 
+    /* avoid unnecessary processing if no changes were made in the private candidate */
+    if (!privcand->diff_privcand) {
+        lyd_free_all(privcand->diff_run);
+        privcand->diff_run = NULL;
+        goto cleanup;
+    }
+
     if ((err_info = sr_lyd_diff_reverse_all(privcand->diff_run, &running_changes_diff))) {
         goto cleanup;
     }
 
-    if ((privcand->conflict_resolution == SR_PC_REVERT_ON_CONFLICT) && privcand->diff_run) {
+    if ((conflict_resolution == SR_PC_REVERT_ON_CONFLICT) && privcand->diff_run) {
         if ((err_info = sr_lyd_dup(privcand->diff_privcand, NULL, LYD_DUP_RECURSIVE, 1, &diff_privcand_backup))) {
             goto cleanup;
         }
@@ -956,12 +971,13 @@ _sr_pc_update(sr_priv_cand_t *privcand, sr_pc_conflict_set_t **conflict_set)
     }
 
     /* prepare running and private candidate diff for merge */
-    if ((err_info = pc_process_diff_trees_r(running_changes_diff, &privcand->diff_privcand, privcand, conflict_set))) {
+    if ((err_info = pc_process_diff_trees_r(running_changes_diff, &privcand->diff_privcand, privcand, conflict_resolution,
+            conflict_set))) {
         goto cleanup;
     }
 
     if (!(conflict_set && (*conflict_set))) {
-        if ((err_info = pc_update_diff_privcand(privcand, conflict_set))) {
+        if ((err_info = pc_update_diff_privcand(privcand, conflict_resolution, conflict_set))) {
             goto cleanup;
         }
     } else {
@@ -987,13 +1003,14 @@ cleanup:
 }
 
 API int
-sr_pc_update(sr_session_ctx_t *session, sr_priv_cand_t *privcand, sr_pc_conflict_set_t **conflict_set)
+sr_pc_update(sr_session_ctx_t *session, sr_priv_cand_t *privcand, sr_pc_conflict_resolution_t conflict_resolution,
+        sr_pc_conflict_set_t **conflict_set)
 {
     sr_error_info_t *err_info = NULL;
 
-    SR_CHECK_ARG_APIRET(!privcand, NULL, err_info);
+    SR_CHECK_ARG_APIRET(!privcand || !conflict_set, NULL, err_info);
 
-    err_info = _sr_pc_update(privcand, conflict_set);
+    err_info = _sr_pc_update(privcand, conflict_resolution, conflict_set);
 
     return sr_api_ret(session, err_info);
 }
@@ -1004,11 +1021,10 @@ sr_pc_commit(sr_session_ctx_t *session, sr_priv_cand_t *privcand, sr_pc_conflict
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_s mod_info;
     struct lyd_node *tree_privcand = NULL;
-    sr_pc_conflict_resolution_t conflict_resolution_backup;
     sr_datastore_t datastore;
     int ret = SR_ERR_OK;
 
-    SR_CHECK_ARG_APIRET(!session || !privcand, NULL, err_info);
+    SR_CHECK_ARG_APIRET(!session || !privcand || !conflict_set, NULL, err_info);
 
     /* backup datastore */
     datastore = session->ds;
@@ -1016,17 +1032,13 @@ sr_pc_commit(sr_session_ctx_t *session, sr_priv_cand_t *privcand, sr_pc_conflict
     /* temporarily switch to the running datastore */
     session->ds = SR_DS_RUNNING;
 
-    /* implicit <update> operation always has a resolution of revert_on_conflict */
-    conflict_resolution_backup = privcand->conflict_resolution;
-    privcand->conflict_resolution = SR_PC_REVERT_ON_CONFLICT;
-
     /* if there are no changes in the private candidate diff, nothing to commit */
     if (!privcand->diff_privcand) {
         goto cleanup;
     }
 
-    /* check for conflicts before committing */
-    if ((err_info = _sr_pc_update(privcand, conflict_set))) {
+    /* check for conflicts before committing, implicit <update> operation always has a resolution of revert_on_conflict */
+    if ((err_info = _sr_pc_update(privcand, SR_PC_REVERT_ON_CONFLICT, conflict_set))) {
         goto cleanup;
     }
 
@@ -1037,11 +1049,6 @@ sr_pc_commit(sr_session_ctx_t *session, sr_priv_cand_t *privcand, sr_pc_conflict
 
     /* initialize mod_info structure to collect affected modules for the commit */
     sr_modinfo_init(&mod_info, session->conn, session->ds, session->ds, 0);
-
-    /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
-        goto cleanup_unlock;
-    }
 
     /* adding all modules from diffs into mod_info */
     if ((err_info = sr_modinfo_collect_edit(privcand->diff_privcand, &mod_info))) {
@@ -1064,9 +1071,6 @@ sr_pc_commit(sr_session_ctx_t *session, sr_priv_cand_t *privcand, sr_pc_conflict
 
     sr_modinfo_erase(&mod_info);
 
-    /* CONTEXT UNLOCK */
-    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
-
     /* prepare edit tree for commit */
     if ((ret = sr_edit_batch(session, tree_privcand, "replace"))) {
         goto cleanup;
@@ -1083,16 +1087,12 @@ cleanup_unlock:
     sr_shmmod_modinfo_unlock(&mod_info);
     sr_modinfo_erase(&mod_info);
 
-    /* CONTEXT UNLOCK */
-    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
-
 cleanup:
     lyd_free_all(tree_privcand);
     lyd_free_all(privcand->diff_run);
     privcand->diff_run = NULL;
     lyd_free_all(privcand->diff_privcand);
     privcand->diff_privcand = NULL;
-    privcand->conflict_resolution = conflict_resolution_backup;
     /* restore the original datastore */
     session->ds = datastore;
 
@@ -1100,7 +1100,8 @@ cleanup:
 }
 
 API int
-sr_pc_edit_config(sr_session_ctx_t *session, sr_priv_cand_t *privcand, const struct lyd_node *edit, const char *default_operation)
+sr_pc_edit_config(sr_session_ctx_t *session, sr_priv_cand_t *privcand, const struct lyd_node *edit,
+        const char *default_operation)
 {
     sr_error_info_t *err_info = NULL, *err_info2 = NULL;
     struct sr_mod_info_s mod_info = {0};
@@ -1118,11 +1119,6 @@ sr_pc_edit_config(sr_session_ctx_t *session, sr_priv_cand_t *privcand, const str
             sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Edit must be a top-level data tree.");
             return sr_api_ret(session, err_info);
         }
-    }
-
-    /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
-        return sr_api_ret(session, err_info);
     }
 
     if (sr_yang_ctx.ly_ctx != LYD_CTX(edit)) {
@@ -1188,9 +1184,6 @@ cleanup:
     lyd_free_all(final_diff);
     lyd_free_all(dup_edit);
 
-    /* CONTEXT UNLOCK */
-    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
-
     if (err_info2) {
         sr_errinfo_merge(&err_info, err_info2);
     }
@@ -1211,7 +1204,7 @@ sr_pc_discard_changes(sr_priv_cand_t *privcand)
 
 API int
 sr_pc_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, const uint32_t opts,
-        sr_priv_cand_t *privcand, sr_data_t **data)
+        const sr_priv_cand_t *privcand, sr_data_t **data)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *final_diff = NULL;
@@ -1244,16 +1237,10 @@ sr_pc_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth,
         goto cleanup;
     }
 
-    if (final_diff) {
-        if ((err_info = sr_modinfo_collect_edit(final_diff, &mod_info))) {
-            goto cleanup;
-        }
-    } else {
-        /* collect all required modules */
-        if ((err_info = sr_modinfo_collect_xpath(sr_yang_ctx.ly_ctx, xpath, session->ds, session,
-                MOD_INFO_XPATH_STORE_SESSION_CHANGES, &mod_info))) {
-            goto cleanup;
-        }
+    /* collect all required modules */
+    if ((err_info = sr_modinfo_collect_xpath(sr_yang_ctx.ly_ctx, xpath, session->ds, session,
+            MOD_INFO_XPATH_STORE_SESSION_CHANGES, &mod_info))) {
+        goto cleanup;
     }
 
     if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_PERM_NO, session, 0, 0, 0))) {
@@ -1293,6 +1280,199 @@ cleanup:
         sr_release_data(*data);
         *data = NULL;
     }
+
+    return sr_api_ret(session, err_info);
+}
+
+API int
+sr_pc_backup_privcand(sr_session_ctx_t *session, sr_priv_cand_t *privcand, sr_priv_cand_t **privcand_backup)
+{
+    sr_error_info_t *err_info = NULL;
+
+    SR_CHECK_ARG_APIRET(!session || !privcand || !privcand_backup, session, err_info);
+
+    *privcand_backup = calloc(1, sizeof(**privcand_backup));
+    SR_CHECK_MEM_GOTO(!*privcand_backup, err_info, cleanup);
+
+    /* subscription is not copied */
+    (*privcand_backup)->subscription = NULL;
+
+    if (privcand->diff_run) {
+        if ((err_info = sr_lyd_dup(privcand->diff_run, NULL, LYD_DUP_RECURSIVE, 1, &(*privcand_backup)->diff_run))) {
+            goto cleanup;
+        }
+    }
+
+    if (privcand->diff_privcand) {
+        if ((err_info = sr_lyd_dup(privcand->diff_privcand, NULL, LYD_DUP_RECURSIVE, 1, &(*privcand_backup)->diff_privcand))) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    return sr_api_ret(session, err_info);
+}
+
+API void
+sr_pc_restore_privcand(sr_priv_cand_t *privcand_backup, sr_priv_cand_t *privcand_target)
+{
+    if (!privcand_backup || !privcand_target) {
+        return;
+    }
+
+    /* free the existing data in the target */
+    lyd_free_all(privcand_target->diff_run);
+    lyd_free_all(privcand_target->diff_privcand);
+
+    /* replace the data in the target */
+    privcand_target->diff_run = privcand_backup->diff_run;
+    privcand_target->diff_privcand = privcand_backup->diff_privcand;
+    privcand_backup->diff_run = NULL;
+    privcand_backup->diff_privcand = NULL;
+
+    free(privcand_backup);
+}
+
+API int
+sr_pc_validate(sr_session_ctx_t *session, const char *module_name, const sr_priv_cand_t *privcand)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_data_t *data = NULL;
+    char *xpath = NULL;
+    int ret = SR_ERR_OK;
+    int r;
+
+    SR_CHECK_ARG_APIRET(!session || !privcand, session, err_info);
+
+    /* get filter xpath */
+    if (module_name) {
+        r = asprintf(&xpath, "/%s:*", module_name);
+    } else {
+        r = asprintf(&xpath, "/*");
+    }
+    SR_CHECK_MEM_GOTO(r == -1, err_info, cleanup);
+
+    if ((ret = sr_pc_get_data(session, xpath, 0, 0, privcand, &data))) {
+        goto cleanup;
+    }
+
+    if ((err_info = sr_lyd_validate_all(&data->tree, sr_yang_ctx.ly_ctx, LYD_VALIDATE_PRESENT | LYD_VALIDATE_NO_STATE))) {
+        goto cleanup;
+    }
+
+cleanup:
+    free(xpath);
+    sr_release_data(data);
+
+    return ret ? ret : sr_api_ret(session, err_info);
+}
+
+API int
+sr_pc_replace_trg_config(sr_session_ctx_t *session, sr_priv_cand_t *privcand, const char *module_name,
+        const struct lyd_node *src_config)
+{
+    sr_error_info_t *err_info = NULL;
+    struct sr_mod_info_s mod_info;
+    const struct lys_module *ly_mod = NULL;
+    struct lyd_node *iter, *next, *diff = NULL;
+
+    SR_CHECK_ARG_APIRET(!session || !privcand, session, err_info);
+
+    if (!src_config) {
+        sr_pc_discard_changes(privcand);
+        return sr_api_ret(session, NULL);
+    }
+
+    /* init modinfo */
+    sr_modinfo_init(&mod_info, session->conn, SR_DS_RUNNING, SR_DS_RUNNING, 0);
+
+    if (sr_yang_ctx.ly_ctx != LYD_CTX(src_config)) {
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Data trees must be created using the session connection libyang context.");
+        goto cleanup;
+    }
+
+    /* find first sibling */
+    src_config = lyd_first_sibling(src_config);
+
+    if (module_name) {
+        /* try to find this module */
+        ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, module_name);
+        if (!ly_mod) {
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
+            goto cleanup;
+        } else if (!strcmp(ly_mod->name, "sysrepo")) {
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Data of internal module \"sysrepo\" cannot be modified.");
+            goto cleanup;
+        }
+
+        /* check that all nodes are from the specified module */
+        LY_LIST_FOR((struct lyd_node *)src_config, iter) {
+            if (lyd_owner_module(iter) != ly_mod) {
+                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Data contain nodes from module \"%s\" but expected only \"%s\".",
+                        lyd_owner_module(iter)->name, module_name);
+                goto cleanup;
+            }
+        }
+    }
+
+    if (ly_mod) {
+        if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, 0, &mod_info))) {
+            goto cleanup;
+        }
+
+        /* add modules with dependencies into mod_info */
+        if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_PERM_NO, session, 0, 0, 0))) {
+            goto cleanup;
+        }
+
+        /* get data tree (of specific module) of running ds when private canidate was created */
+        if ((err_info = sr_lyd_diff_apply_module(&mod_info.data, privcand->diff_run, ly_mod, NULL))) {
+            goto cleanup;
+        }
+
+        /* unlink and free nodes of the specified module in private candidate */
+        LY_LIST_FOR_SAFE(privcand->diff_privcand, next, iter) {
+            if (lyd_owner_module(iter) == ly_mod) {
+                sr_lyd_free_tree_safe(iter, &privcand->diff_privcand);
+            }
+        }
+
+        if ((err_info = sr_lyd_diff_siblings(mod_info.data, src_config, LYD_DIFF_DEFAULTS, NULL, &diff))) {
+            goto cleanup;
+        }
+
+        if ((err_info = sr_lyd_diff_merge_all(&privcand->diff_privcand, diff))) {
+            goto cleanup;
+        }
+
+    } else {
+        if ((err_info = sr_modinfo_add_all_modules_with_data(sr_yang_ctx.ly_ctx, 0, &mod_info))) {
+            goto cleanup;
+        }
+
+        /* add modules with dependencies into mod_info */
+        if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_PERM_NO, session, 0, 0, 0))) {
+            goto cleanup;
+        }
+
+        /* get data tree of running ds when private canidate was created */
+        if ((err_info = sr_lyd_diff_apply_all(&mod_info.data, privcand->diff_run))) {
+            goto cleanup;
+        }
+
+        lyd_free_siblings(privcand->diff_privcand);
+        privcand->diff_privcand = NULL;
+
+        if ((err_info = sr_lyd_diff_siblings(mod_info.data, src_config, LYD_DIFF_DEFAULTS, NULL, &privcand->diff_privcand))) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    sr_shmmod_modinfo_unlock(&mod_info);
+    sr_modinfo_erase(&mod_info);
+
+    lyd_free_all(diff);
 
     return sr_api_ret(session, err_info);
 }

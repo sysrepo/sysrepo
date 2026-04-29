@@ -153,6 +153,19 @@ clear_test_module_ordered_num_and_user(void **state)
     return 0;
 }
 
+static int
+clear_test_module_interface_and_user(void **state)
+{
+    struct state *st = (struct state *)*state;
+
+    sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+    sr_delete_item(st->sess, "/test-module:interface", 0);
+    sr_delete_item(st->sess, "/test-module:user", 0);
+    sr_apply_changes(st->sess, 0);
+
+    return 0;
+}
+
 static void
 test_draft(void **state, sr_pc_conflict_resolution_t conflict_resolution)
 {
@@ -191,8 +204,6 @@ test_draft(void **state, sr_pc_conflict_resolution_t conflict_resolution)
     ret = sr_pc_create_ds(st->sess, 0, NULL, &private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 
-    sr_pc_set_conflict_resolution(private_ds, conflict_resolution);
-
     edit_xml =
             "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\" "
             "            xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\" "
@@ -222,7 +233,7 @@ test_draft(void **state, sr_pc_conflict_resolution_t conflict_resolution)
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_pc_update(st->sess, private_ds, &conflict_set);
+    ret = sr_pc_update(st->sess, private_ds, conflict_resolution, &conflict_set);
 
     if (conflict_resolution == SR_PC_REVERT_ON_CONFLICT) {
         assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
@@ -303,7 +314,7 @@ test_draft(void **state, sr_pc_conflict_resolution_t conflict_resolution)
     sr_release_data(data);
 
     sr_pc_free_conflicts(conflict_set);
-    ret = sr_pc_destroy_ds(private_ds);
+    ret = sr_pc_destroy_ds(st->sess, private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 }
 
@@ -355,8 +366,6 @@ test_draft2(void **state, sr_pc_conflict_resolution_t conflict_resolution)
     ret = sr_pc_create_ds(st->sess, 0, NULL, &private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 
-    sr_pc_set_conflict_resolution(private_ds, conflict_resolution);
-
     edit_xml =
             "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\" "
             "            xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\" "
@@ -394,7 +403,7 @@ test_draft2(void **state, sr_pc_conflict_resolution_t conflict_resolution)
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_pc_update(st->sess, private_ds, &conflict_set);
+    ret = sr_pc_update(st->sess, private_ds, conflict_resolution, &conflict_set);
 
     if (conflict_resolution == SR_PC_REVERT_ON_CONFLICT) {
         assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
@@ -456,7 +465,7 @@ test_draft2(void **state, sr_pc_conflict_resolution_t conflict_resolution)
     sr_release_data(data);
 
     sr_pc_free_conflicts(conflict_set);
-    ret = sr_pc_destroy_ds(private_ds);
+    ret = sr_pc_destroy_ds(st->sess, private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 }
 
@@ -513,8 +522,6 @@ test_conflict_value_change(void **state, sr_pc_conflict_resolution_t conflict_re
     ret = sr_pc_create_ds(st->sess, 0, NULL, &private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 
-    sr_pc_set_conflict_resolution(private_ds, conflict_resolution);
-
     edit_xml =
             "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\" "
             "            xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\" "
@@ -542,7 +549,7 @@ test_conflict_value_change(void **state, sr_pc_conflict_resolution_t conflict_re
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_pc_update(st->sess, private_ds, &conflict_set);
+    ret = sr_pc_update(st->sess, private_ds, conflict_resolution, &conflict_set);
 
     if (conflict_resolution == SR_PC_REVERT_ON_CONFLICT) {
         assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
@@ -596,7 +603,7 @@ test_conflict_value_change(void **state, sr_pc_conflict_resolution_t conflict_re
     free(str);
 
     sr_pc_free_conflicts(conflict_set);
-    ret = sr_pc_destroy_ds(private_ds);
+    ret = sr_pc_destroy_ds(st->sess, private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 }
 
@@ -636,8 +643,6 @@ test_conflict_list_entry(void **state, sr_pc_conflict_resolution_t conflict_reso
     ret = sr_pc_create_ds(st->sess, 0, NULL, &private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 
-    sr_pc_set_conflict_resolution(private_ds, conflict_resolution);
-
     edit_xml =
             "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\" "
             "      xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\" "
@@ -662,7 +667,7 @@ test_conflict_list_entry(void **state, sr_pc_conflict_resolution_t conflict_reso
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_pc_update(st->sess, private_ds, &conflict_set);
+    ret = sr_pc_update(st->sess, private_ds, conflict_resolution, &conflict_set);
 
     if (conflict_resolution == SR_PC_REVERT_ON_CONFLICT) {
         assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
@@ -704,7 +709,7 @@ test_conflict_list_entry(void **state, sr_pc_conflict_resolution_t conflict_reso
     }
 
     sr_pc_free_conflicts(conflict_set);
-    ret = sr_pc_destroy_ds(private_ds);
+    ret = sr_pc_destroy_ds(st->sess, private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 }
 
@@ -755,8 +760,6 @@ test_conflict_ordered_list_change(void **state, sr_pc_conflict_resolution_t conf
 
     ret = sr_pc_create_ds(st->sess, 0, NULL, &private_ds);
     assert_int_equal(ret, SR_ERR_OK);
-
-    sr_pc_set_conflict_resolution(private_ds, conflict_resolution);
 
     edit_xml =
             "<university xmlns=\"urn:ietf:params:xml:ns:yang:test-module\" "
@@ -817,7 +820,7 @@ test_conflict_ordered_list_change(void **state, sr_pc_conflict_resolution_t conf
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_pc_update(st->sess, private_ds, &conflict_set);
+    ret = sr_pc_update(st->sess, private_ds, conflict_resolution, &conflict_set);
 
     if (conflict_resolution == SR_PC_REVERT_ON_CONFLICT) {
         assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
@@ -882,7 +885,7 @@ test_conflict_ordered_list_change(void **state, sr_pc_conflict_resolution_t conf
     }
 
     sr_pc_free_conflicts(conflict_set);
-    ret = sr_pc_destroy_ds(private_ds);
+    ret = sr_pc_destroy_ds(st->sess, private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 }
 
@@ -931,8 +934,6 @@ test_conflict_presence_container(void **state, sr_pc_conflict_resolution_t confl
     ret = sr_pc_create_ds(st->sess, 0, NULL, &private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 
-    sr_pc_set_conflict_resolution(private_ds, conflict_resolution);
-
     edit_xml =
             "<list xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">"
             "  <key>A</key>"
@@ -956,7 +957,7 @@ test_conflict_presence_container(void **state, sr_pc_conflict_resolution_t confl
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_pc_update(st->sess, private_ds, &conflict_set);
+    ret = sr_pc_update(st->sess, private_ds, conflict_resolution, &conflict_set);
 
     if (conflict_resolution == SR_PC_REVERT_ON_CONFLICT) {
         assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
@@ -1001,7 +1002,7 @@ test_conflict_presence_container(void **state, sr_pc_conflict_resolution_t confl
     }
 
     sr_pc_free_conflicts(conflict_set);
-    ret = sr_pc_destroy_ds(private_ds);
+    ret = sr_pc_destroy_ds(st->sess, private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 }
 
@@ -1047,8 +1048,6 @@ test_conflict_leaf_list_member_change(void **state, sr_pc_conflict_resolution_t 
     ret = sr_pc_create_ds(st->sess, 0, NULL, &private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 
-    sr_pc_set_conflict_resolution(private_ds, conflict_resolution);
-
     edit_xml =
             "<main xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">"
             "  <numbers>20</numbers>"
@@ -1075,7 +1074,7 @@ test_conflict_leaf_list_member_change(void **state, sr_pc_conflict_resolution_t 
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_pc_update(st->sess, private_ds, &conflict_set);
+    ret = sr_pc_update(st->sess, private_ds, conflict_resolution, &conflict_set);
 
     if (conflict_resolution == SR_PC_REVERT_ON_CONFLICT) {
         assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
@@ -1115,7 +1114,7 @@ test_conflict_leaf_list_member_change(void **state, sr_pc_conflict_resolution_t 
     }
 
     sr_pc_free_conflicts(conflict_set);
-    ret = sr_pc_destroy_ds(private_ds);
+    ret = sr_pc_destroy_ds(st->sess, private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 }
 
@@ -1167,8 +1166,6 @@ test_conflict_leaf_list_order_change(void **state, sr_pc_conflict_resolution_t c
     ret = sr_pc_create_ds(st->sess, 0, NULL, &private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 
-    sr_pc_set_conflict_resolution(private_ds, conflict_resolution);
-
     edit_xml =
             "<ordered-numbers xmlns=\"urn:ietf:params:xml:ns:yang:test-module\" "
             "                 xmlns:yang=\"urn:ietf:params:xml:ns:yang:1\" "
@@ -1206,7 +1203,7 @@ test_conflict_leaf_list_order_change(void **state, sr_pc_conflict_resolution_t c
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_pc_update(st->sess, private_ds, &conflict_set);
+    ret = sr_pc_update(st->sess, private_ds, conflict_resolution, &conflict_set);
 
     if (conflict_resolution == SR_PC_REVERT_ON_CONFLICT) {
         assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
@@ -1245,7 +1242,7 @@ test_conflict_leaf_list_order_change(void **state, sr_pc_conflict_resolution_t c
     }
 
     sr_pc_free_conflicts(conflict_set);
-    ret = sr_pc_destroy_ds(private_ds);
+    ret = sr_pc_destroy_ds(st->sess, private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 }
 
@@ -1294,8 +1291,6 @@ test_conflict_leaf_existence(void **state, sr_pc_conflict_resolution_t conflict_
     ret = sr_pc_create_ds(st->sess, 0, NULL, &private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 
-    sr_pc_set_conflict_resolution(private_ds, conflict_resolution);
-
     edit_xml =
             "<main xmlns=\"urn:ietf:params:xml:ns:yang:test-module\" "
             "       xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\"> "
@@ -1317,7 +1312,7 @@ test_conflict_leaf_existence(void **state, sr_pc_conflict_resolution_t conflict_
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_pc_update(st->sess, private_ds, &conflict_set);
+    ret = sr_pc_update(st->sess, private_ds, conflict_resolution, &conflict_set);
 
     if (conflict_resolution == SR_PC_REVERT_ON_CONFLICT) {
         assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
@@ -1357,7 +1352,7 @@ test_conflict_leaf_existence(void **state, sr_pc_conflict_resolution_t conflict_
     }
 
     sr_pc_free_conflicts(conflict_set);
-    ret = sr_pc_destroy_ds(private_ds);
+    ret = sr_pc_destroy_ds(st->sess, private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 }
 
@@ -1416,8 +1411,6 @@ test_conflict_anyxml(void **state, sr_pc_conflict_resolution_t conflict_resoluti
     ret = sr_pc_create_ds(st->sess, 0, NULL, &private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 
-    sr_pc_set_conflict_resolution(private_ds, conflict_resolution);
-
     edit_anyxml =
             "<main xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">"
             "  <xml-data>"
@@ -1453,7 +1446,7 @@ test_conflict_anyxml(void **state, sr_pc_conflict_resolution_t conflict_resoluti
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_pc_update(st->sess, private_ds, &conflict_set);
+    ret = sr_pc_update(st->sess, private_ds, conflict_resolution, &conflict_set);
 
     if (conflict_resolution == SR_PC_REVERT_ON_CONFLICT) {
         assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
@@ -1496,7 +1489,7 @@ test_conflict_anyxml(void **state, sr_pc_conflict_resolution_t conflict_resoluti
     }
 
     sr_pc_free_conflicts(conflict_set);
-    ret = sr_pc_destroy_ds(private_ds);
+    ret = sr_pc_destroy_ds(st->sess, private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 }
 
@@ -1557,8 +1550,6 @@ test_conflict_anydata(void **state, sr_pc_conflict_resolution_t conflict_resolut
     ret = sr_pc_create_ds(st->sess, 0, NULL, &private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 
-    sr_pc_set_conflict_resolution(private_ds, conflict_resolution);
-
     edit_anydata =
             "<main xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">"
             "  <any-data>"
@@ -1598,7 +1589,7 @@ test_conflict_anydata(void **state, sr_pc_conflict_resolution_t conflict_resolut
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_pc_update(st->sess, private_ds, &conflict_set);
+    ret = sr_pc_update(st->sess, private_ds, conflict_resolution, &conflict_set);
 
     if (conflict_resolution == SR_PC_REVERT_ON_CONFLICT) {
         assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
@@ -1645,7 +1636,7 @@ test_conflict_anydata(void **state, sr_pc_conflict_resolution_t conflict_resolut
     }
 
     sr_pc_free_conflicts(conflict_set);
-    ret = sr_pc_destroy_ds(private_ds);
+    ret = sr_pc_destroy_ds(st->sess, private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 }
 
@@ -1697,8 +1688,6 @@ test_conflict_ordered_list_multi_entry(void **state, sr_pc_conflict_resolution_t
 
     ret = sr_pc_create_ds(st->sess, 0, NULL, &private_ds);
     assert_int_equal(ret, SR_ERR_OK);
-
-    sr_pc_set_conflict_resolution(private_ds, conflict_resolution);
 
     edit_xml =
             "<university xmlns=\"urn:ietf:params:xml:ns:yang:test-module\" "
@@ -1763,7 +1752,7 @@ test_conflict_ordered_list_multi_entry(void **state, sr_pc_conflict_resolution_t
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_pc_update(st->sess, private_ds, &conflict_set);
+    ret = sr_pc_update(st->sess, private_ds, conflict_resolution, &conflict_set);
 
     if (conflict_resolution == SR_PC_REVERT_ON_CONFLICT) {
         assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
@@ -1834,7 +1823,7 @@ test_conflict_ordered_list_multi_entry(void **state, sr_pc_conflict_resolution_t
     free(str);
 
     sr_pc_free_conflicts(conflict_set);
-    ret = sr_pc_destroy_ds(private_ds);
+    ret = sr_pc_destroy_ds(st->sess, private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 }
 
@@ -1890,8 +1879,6 @@ test_conflict_leaflist_multi_entry(void **state, sr_pc_conflict_resolution_t con
     ret = sr_pc_create_ds(st->sess, 0, NULL, &private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 
-    sr_pc_set_conflict_resolution(private_ds, conflict_resolution);
-
     edit_xml =
             "<ordered-numbers xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">3</ordered-numbers>"
             "<ordered-numbers xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">4</ordered-numbers>"
@@ -1918,7 +1905,7 @@ test_conflict_leaflist_multi_entry(void **state, sr_pc_conflict_resolution_t con
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_pc_update(st->sess, private_ds, &conflict_set);
+    ret = sr_pc_update(st->sess, private_ds, conflict_resolution, &conflict_set);
 
     if (conflict_resolution == SR_PC_REVERT_ON_CONFLICT) {
         assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
@@ -1963,7 +1950,7 @@ test_conflict_leaflist_multi_entry(void **state, sr_pc_conflict_resolution_t con
     }
 
     sr_pc_free_conflicts(conflict_set);
-    ret = sr_pc_destroy_ds(private_ds);
+    ret = sr_pc_destroy_ds(st->sess, private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 }
 
@@ -2015,8 +2002,6 @@ test_conflict_ordered_list_compact(void **state, sr_pc_conflict_resolution_t con
 
     ret = sr_pc_create_ds(st->sess, 0, NULL, &private_ds);
     assert_int_equal(ret, SR_ERR_OK);
-
-    sr_pc_set_conflict_resolution(private_ds, conflict_resolution);
 
     edit_xml =
             "<university xmlns=\"urn:ietf:params:xml:ns:yang:test-module\" "
@@ -2120,7 +2105,7 @@ test_conflict_ordered_list_compact(void **state, sr_pc_conflict_resolution_t con
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_pc_update(st->sess, private_ds, &conflict_set);
+    ret = sr_pc_update(st->sess, private_ds, conflict_resolution, &conflict_set);
 
     if (conflict_resolution == SR_PC_REVERT_ON_CONFLICT) {
         assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
@@ -2195,7 +2180,7 @@ test_conflict_ordered_list_compact(void **state, sr_pc_conflict_resolution_t con
     free(str);
 
     sr_pc_free_conflicts(conflict_set);
-    ret = sr_pc_destroy_ds(private_ds);
+    ret = sr_pc_destroy_ds(st->sess, private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 }
 
@@ -2291,8 +2276,6 @@ test_correct_conflict_generation(void **state, sr_pc_conflict_resolution_t confl
     ret = sr_pc_create_ds(st->sess, 0, NULL, &private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 
-    sr_pc_set_conflict_resolution(private_ds, conflict_resolution);
-
     edit_xml =
             "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">"
             "  <name>alice</name>"
@@ -2368,7 +2351,7 @@ test_correct_conflict_generation(void **state, sr_pc_conflict_resolution_t confl
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_pc_update(st->sess, private_ds, &conflict_set);
+    ret = sr_pc_update(st->sess, private_ds, conflict_resolution, &conflict_set);
 
     if (conflict_resolution == SR_PC_REVERT_ON_CONFLICT) {
         assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
@@ -2471,7 +2454,7 @@ test_correct_conflict_generation(void **state, sr_pc_conflict_resolution_t confl
     }
 
     sr_pc_free_conflicts(conflict_set);
-    ret = sr_pc_destroy_ds(private_ds);
+    ret = sr_pc_destroy_ds(st->sess, private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 }
 
@@ -2542,8 +2525,6 @@ test_correct_conflict_generation2(void **state, sr_pc_conflict_resolution_t conf
     ret = sr_pc_create_ds(st->sess, 0, NULL, &private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 
-    sr_pc_set_conflict_resolution(private_ds, conflict_resolution);
-
     edit_xml =
             "<ordered-numbers xmlns=\"urn:ietf:params:xml:ns:yang:test-module\" "
             "                 xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\" "
@@ -2600,7 +2581,7 @@ test_correct_conflict_generation2(void **state, sr_pc_conflict_resolution_t conf
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_pc_update(st->sess, private_ds, &conflict_set);
+    ret = sr_pc_update(st->sess, private_ds, conflict_resolution, &conflict_set);
 
     if (conflict_resolution == SR_PC_REVERT_ON_CONFLICT) {
         assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
@@ -2670,7 +2651,7 @@ test_correct_conflict_generation2(void **state, sr_pc_conflict_resolution_t conf
     }
 
     sr_pc_free_conflicts(conflict_set);
-    ret = sr_pc_destroy_ds(private_ds);
+    ret = sr_pc_destroy_ds(st->sess, private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 }
 
@@ -2741,8 +2722,6 @@ test_correct_conflict_generation3(void **state, sr_pc_conflict_resolution_t conf
     ret = sr_pc_create_ds(st->sess, 0, NULL, &private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 
-    sr_pc_set_conflict_resolution(private_ds, conflict_resolution);
-
     edit_xml =
             "<ordered-numbers xmlns=\"urn:ietf:params:xml:ns:yang:test-module\" "
             "                 xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\" "
@@ -2797,7 +2776,7 @@ test_correct_conflict_generation3(void **state, sr_pc_conflict_resolution_t conf
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_pc_update(st->sess, private_ds, &conflict_set);
+    ret = sr_pc_update(st->sess, private_ds, conflict_resolution, &conflict_set);
 
     if (conflict_resolution == SR_PC_REVERT_ON_CONFLICT) {
         assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
@@ -2868,7 +2847,7 @@ test_correct_conflict_generation3(void **state, sr_pc_conflict_resolution_t conf
     }
 
     sr_pc_free_conflicts(conflict_set);
-    ret = sr_pc_destroy_ds(private_ds);
+    ret = sr_pc_destroy_ds(st->sess, private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 }
 
@@ -2939,8 +2918,6 @@ test_correct_conflict_generation4(void **state, sr_pc_conflict_resolution_t conf
     ret = sr_pc_create_ds(st->sess, 0, NULL, &private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 
-    sr_pc_set_conflict_resolution(private_ds, conflict_resolution);
-
     edit_xml =
             "<ordered-numbers xmlns=\"urn:ietf:params:xml:ns:yang:test-module\" "
             "                 xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\" "
@@ -2996,7 +2973,7 @@ test_correct_conflict_generation4(void **state, sr_pc_conflict_resolution_t conf
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_pc_update(st->sess, private_ds, &conflict_set);
+    ret = sr_pc_update(st->sess, private_ds, conflict_resolution, &conflict_set);
 
     if (conflict_resolution == SR_PC_REVERT_ON_CONFLICT) {
         assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
@@ -3067,7 +3044,7 @@ test_correct_conflict_generation4(void **state, sr_pc_conflict_resolution_t conf
     }
 
     sr_pc_free_conflicts(conflict_set);
-    ret = sr_pc_destroy_ds(private_ds);
+    ret = sr_pc_destroy_ds(st->sess, private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 }
 
@@ -3138,8 +3115,6 @@ test_no_conflicts(void **state, sr_pc_conflict_resolution_t conflict_resolution)
     ret = sr_pc_create_ds(st->sess, 0, NULL, &private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 
-    sr_pc_set_conflict_resolution(private_ds, conflict_resolution);
-
     edit_xml =
             "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\" "
             "      xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\" "
@@ -3192,7 +3167,7 @@ test_no_conflicts(void **state, sr_pc_conflict_resolution_t conflict_resolution)
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_pc_update(st->sess, private_ds, &conflict_set);
+    ret = sr_pc_update(st->sess, private_ds, conflict_resolution, &conflict_set);
 
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -3226,7 +3201,7 @@ test_no_conflicts(void **state, sr_pc_conflict_resolution_t conflict_resolution)
     free(str2);
 
     sr_pc_free_conflicts(conflict_set);
-    ret = sr_pc_destroy_ds(private_ds);
+    ret = sr_pc_destroy_ds(st->sess, private_ds);
     assert_int_equal(ret, SR_ERR_OK);
 }
 
@@ -3246,6 +3221,99 @@ static void
 test_no_conflicts_run(void **state)
 {
     test_no_conflicts(state, SR_PC_PREFER_RUNNING);
+}
+
+static void
+test_replace_config(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_priv_cand_t *private_ds = NULL;
+    const char *edit_xml, *str1;
+    struct lyd_node *edit;
+    sr_data_t *data;
+    char *str2;
+    int ret;
+
+    ret = sr_pc_create_ds(st->sess, 0, NULL, &private_ds);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='intf_one']/description",
+            "Link to London", NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='intf_one']/type",
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(st->sess, "/test-module:user[name='alice']/type", "admin", NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    edit_xml =
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\" "
+            "            xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\" "
+            "            nc:operation=\"merge\">"
+            "  <interface>"
+            "    <name>intf_two</name>"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "  </interface>"
+            "</interfaces>"
+            "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\" "
+            "      xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\" "
+            "      nc:operation=\"create\">"
+            "  <name>bob</name>"
+            "  <type>admin</type>"
+            "  <full-name>bob builder</full-name>"
+            "</user>";
+
+    ret = lyd_parse_data_mem(sr_acquire_context(st->conn), edit_xml, LYD_XML, LYD_PARSE_ONLY, 0, &edit);
+    assert_int_equal(ret, LY_SUCCESS);
+
+    ret = sr_pc_edit_config(st->sess, private_ds, edit, "replace");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    lyd_free_all(edit);
+    sr_release_context(st->conn);
+
+    ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_pc_replace_trg_config(st->sess, private_ds, "ietf-interfaces", data->tree);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_release_data(data);
+
+    ret = sr_pc_get_data(st->sess, "/*", 0, 0, private_ds, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    lyd_print_mem(&str2, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
+
+    str1 =
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
+            "  <interface>\n"
+            "    <name>intf_one</name>\n"
+            "    <description>Link to London</description>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "  </interface>\n"
+            "</interfaces>\n"
+            "<user xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">\n"
+            "  <name>bob</name>\n"
+            "  <type>admin</type>\n"
+            "  <full-name>bob builder</full-name>\n"
+            "</user>\n";
+
+    assert_string_equal(str1, str2);
+
+    sr_release_data(data);
+    free(str2);
+
+    ret = sr_pc_destroy_ds(st->sess, private_ds);
+    assert_int_equal(ret, SR_ERR_OK);
 }
 
 /* There is not standardized way to change metadata in datastore, thus not implemented */
@@ -3329,9 +3397,11 @@ main(void)
         cmocka_unit_test_teardown(test_no_conflicts_revert, clear_test_module_ordered_num_and_user),
         cmocka_unit_test_teardown(test_no_conflicts_cand, clear_test_module_ordered_num_and_user),
         cmocka_unit_test_teardown(test_no_conflicts_run, clear_test_module_ordered_num_and_user),
+
+        cmocka_unit_test_teardown(test_replace_config, clear_test_module_interface_and_user),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
-    test_log_init();
+    test_init();
     return cmocka_run_group_tests(tests, setup_f, teardown_f);
 }
