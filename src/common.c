@@ -813,7 +813,7 @@ sr_store_module_yang(const struct lys_module *ly_mod, const struct lysp_submodul
     gid_t gid;
 
     if (lysp_submod) {
-        if ((err_info = sr_path_yang_file(lysp_submod->name, lysp_submod->revs ? lysp_submod->revs[0].date : NULL, &path))) {
+        if ((err_info = sr_path_yang_file(lysp_submod->name, lysp_submodule_revision(lysp_submod), &path))) {
             return err_info;
         }
     } else {
