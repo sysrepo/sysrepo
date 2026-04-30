@@ -223,6 +223,7 @@ sr_ly_ctx_new(struct ly_ctx **ly_ctx)
     const char *factory_default_features[] = {"factory-default-datastore", NULL};
     uint16_t ctx_opts;
     struct ly_in *in = NULL;
+    LY_ERR r;
 
     /* context options */
     ctx_opts = LY_CTX_NO_YANGLIBRARY | LY_CTX_DISABLE_SEARCHDIR_CWD | LY_CTX_REF_IMPLEMENTED |
@@ -247,7 +248,8 @@ sr_ly_ctx_new(struct ly_ctx **ly_ctx)
     }
 
     /* set search path for the internal YANG modules */
-    if (ly_ctx_set_searchdir(*ly_ctx, sr_yang_module_dir())) {
+    r = ly_ctx_set_searchdir(*ly_ctx, sr_yang_module_dir());
+    if (r && (r != LY_EEXIST)) {
         sr_errinfo_new_ly(&err_info, SR_ERR_LY);
         goto cleanup;
     }
@@ -284,7 +286,8 @@ sr_ly_ctx_new(struct ly_ctx **ly_ctx)
     if ((err_info = sr_path_yang_dir(&yang_dir))) {
         goto cleanup;
     }
-    if (ly_ctx_set_searchdir(*ly_ctx, yang_dir)) {
+    r = ly_ctx_set_searchdir(*ly_ctx, yang_dir);
+    if (r && (r != LY_EEXIST)) {
         sr_errinfo_new_ly(&err_info, SR_ERR_LY);
         goto cleanup;
     }
