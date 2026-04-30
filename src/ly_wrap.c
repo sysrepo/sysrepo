@@ -1372,6 +1372,23 @@ cleanup:
 }
 
 sr_error_info_t *
+sr_lyd_diff_apply_all(struct lyd_node **data, const struct lyd_node *diff)
+{
+    sr_error_info_t *err_info = NULL;
+
+    sr_ly_log_setup();
+
+    if (lyd_diff_apply_all(data, diff)) {
+        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        goto cleanup;
+    }
+
+cleanup:
+    sr_ly_log_revert();
+    return err_info;
+}
+
+sr_error_info_t *
 sr_lyd_diff_apply_module(struct lyd_node **data, const struct lyd_node *diff, const struct lys_module *mod,
         lyd_diff_cb diff_cb)
 {
