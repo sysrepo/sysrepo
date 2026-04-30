@@ -615,6 +615,15 @@ sr_error_info_t *sr_lyd_diff_siblings(const struct lyd_node *target, const struc
         int *snode_not_found, struct lyd_node **diff);
 
 /**
+ * @brief Apply the whole diff tree on a data tree.
+ *
+ * @param[in,out] data Data to apply the diff on.
+ * @param[in] diff Diff to apply.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lyd_diff_apply_all(struct lyd_node **data, const struct lyd_node *diff);
+
+/**
  * @brief Apply diff of a specific module on data.
  *
  * @param[in,out] data Data to modify.

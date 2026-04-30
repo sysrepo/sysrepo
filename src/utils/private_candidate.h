@@ -1,0 +1,251 @@
+/**
+ * @file private_candidate.h
+ * @author Juraj Budai <budai@cesnet.cz>
+ * @brief Private candidate datastore header
+ *
+ * @copyright
+ * Copyright (c) 2025 - 2026 Deutsche Telekom AG.
+ * Copyright (c) 2025 - 2026 CESNET, z.s.p.o.
+ *
+ * This source code is licensed under BSD 3-Clause License (the "License").
+ * You may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://opensource.org/licenses/BSD-3-Clause
+ */
+
+#ifndef SYSREPO_PRIVATE_CANDIDATE_H_
+#define SYSREPO_PRIVATE_CANDIDATE_H_
+
+#include <libyang/libyang.h>
+
+#include "sysrepo.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ * @brief Strategies for resolving configuration conflicts when merging candidate and running datastores.
+ *
+ * The semantics of these conflict‑resolution strategies are defined in
+ * [draft‑ietf‑netconf‑privcand](https://datatracker.ietf.org/doc/html/draft-ietf-netconf-privcand-07#name-conflict-resolution)
+ */
+typedef enum {
+    SR_PC_REVERT_ON_CONFLICT,
+    SR_PC_PREFER_RUNNING,
+    SR_PC_PREFER_CANDIDATE
+} sr_pc_conflict_resolution_t;
+
+/**
+ * @brief Types of conflicts that may occur during private candidate datastore <update>.
+ *
+ * [See draft: What is a conflict](https://datatracker.ietf.org/doc/html/draft-ietf-netconf-privcand-07#name-what-is-a-conflict)
+ */
+typedef enum {
+    SR_PC_CONFLICT_VALUE_CHANGE,        /**< Conflict caused by different value changes on a single node
+                                             (e.g., leaf, anydata, or anyxml). */
+    SR_PC_CONFLICT_LIST_ENTRY,          /**<Conflict affecting a list instance; the list is treated as a whole, not
+                                             individual children or keys. */
+    SR_PC_CONFLICT_LIST_ORDER,          /**< Conflict due to different ordering of user-ordered list entries. */
+    SR_PC_CONFLICT_PRESENCE_CONTAINER,  /**< Conflict caused by the presence or absence of a presence container node. */
+    SR_PC_CONFLICT_LEAFLIST_ITEM,       /**< Conflict affecting a leaf-list instance; the entire leaf-list is considered,
+                                             not individual items. */
+    SR_PC_CONFLICT_LEAFLIST_ORDER,     /**< Conflict due to differing order of user-ordered leaf-list items. */
+    SR_PC_CONFLICT_LEAF_EXISTENCE      /**< Conflict caused by addition or removal of a leaf node (existence differs). */
+} sr_pc_conflict_type_t;
+
+/**
+ * @brief Stores information about conflicts.
+ *
+ * Each conflict is represented by a pair of diff trees — @p run_diff and @p pc_diff showing the conflicting data and
+ * the operations that led to the conflict. Both diff trees include the complete parent hierarchy.
+ * In case of a conflict on a list or leaf-list node, the entire list (including sibling instances)
+ * is considered as the conflicting part.
+ */
+typedef struct {
+    struct lyd_node *run_diff;  /**< Copy of diff tree or node from the running datastore where the conflict was detected. */
+    struct lyd_node *pc_diff;   /**< Copy of diff tree or node from the private candidate datastore where the conflict was detected. */
+    sr_pc_conflict_type_t type; /**< Type of conflict detected between the running and private candidate datastore */
+} sr_pc_conflict_info_t;
+
+/**
+ * @brief Structure representing a set of detected conflicts between the running and private candidate datastores.
+ */
+typedef struct {
+    sr_pc_conflict_info_t *conflicts;   /**< Array of detected conflicts */
+    uint32_t conflict_count;            /**< Number of detected conflicts in the array. */
+} sr_pc_conflict_set_t;
+
+/**
+ * @brief Creates a private candidate datastore structure.
+ *
+ * Sets up subscriptions for all YANG modules present in the running datastore. If the context changes (YANG modules are
+ * added or removed), the existing subscriptions are not automatically updated and remain in their original state.
+ *
+ * @note The default value of ::sr_pc_conflict_resolution_t is ::SR_REVERT_ON_CONFLICT.
+ * This behavior can be changed using ::sr_pc_set_conflict_resolution().
+ *
+ * @note The subscription is always tied to the @p session. Do not free the session
+ * before calling ::sr_pc_destroy_ds().
+ *
+ * @param[in] session Sysrepo session.
+ * @param[in] subscription_opts Options overriding default behavior of the subscription.
+ * If @p subscription is non-NULL, the only allowed value in @p subscription_opts is ::SR_SUBSCR_NO_THREAD (or 0).
+ * Ignored if @p subscription is NULL.
+ * @param[in,out] subscription Optional pointer for managing the subscription context by the user.
+ * If `NULL`, the subscription context is created and managed internally. If the user provides an existing subscription,
+ * it will be used, but initialization and cleanup must be managed by the user.
+ * @param[out] private_candidate_ds Created structure for private candidate datastore.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_pc_create_ds(sr_session_ctx_t *session, uint32_t subscription_opts, sr_subscription_ctx_t **subscription,
+        sr_priv_cand_t **private_candidate_ds);
+
+/**
+ * @brief Destroys the private candidate datastore structure.
+ *
+ * @param[in] session Sysrepo session.
+ * @param[in] private_candidate_ds Pointer to the private candidate structure to be destroyed.
+ * @return ::SR_ERR_OK on success.
+ * @return ::SR_ERR_TIME_OUT on unsubscribe timeout, the function should be retried.
+ */
+int sr_pc_destroy_ds(sr_session_ctx_t *session, sr_priv_cand_t *privcand);
+
+/**
+ * @brief Remove and free all conflict data.
+ *
+ * @param[in] conflict_set List of conflicts generated by <update> or <commit>.
+ */
+void sr_pc_free_conflicts(sr_pc_conflict_set_t *conflict_set);
+
+/**
+ * @brief Performs <update> operation on private candidate datastore.
+ *
+ * Applies any relevant changes from the running datastore to the private candidate, according to the selected conflict
+ * resolution strategy (::sr_pc_conflict_resolution_t).
+ * [See draft: Private candidate update behavior](https://datatracker.ietf.org/doc/html/draft-ietf-netconf-private_candidate_ds-07#name-when-is-a-private-candidate-u)
+ *
+ * @param[in] session Sysrepo session. Optional, only for logs.
+ * @param[in,out] private_candidate_ds Pointer to the private candidate structure to update.
+ * @param[in] conflict_resolution Conflict resolution strategy to use for this update.
+ * @param[out] conflict_set List of found conflicts, if ::SR_ERR_OPERATIONAL_FAILED is returned.
+ * @return ::SR_ERR_OK on success,
+ * @return ::SR_ERR_OPERATION_FAILED if conflicts are found (only possible with ::SR_PC_REVERT_ON_CONFLICT),
+ * @return other error codes on failure.
+ */
+int sr_pc_update(sr_session_ctx_t *session, sr_priv_cand_t *private_candidate_ds, sr_pc_conflict_resolution_t conflict_resolution,
+        sr_pc_conflict_set_t **conflict_set);
+
+/**
+ * @brief Performs <commit> operation on private candidate datastore.
+ *
+ * The <commit> operation performs copy of the private candidate datastore into running datastore.
+ * The <update> operation is implicitly triggered. This implicit <update> operation always has a resolution
+ * mode of ::SR_PC_REVERT_ON_CONFLICT.
+ *
+ * @param[in] session Sysrepo session.
+ * @param[in,out] private_candidate_ds Pointer to the private candidate structure.
+ * @param[out] conflict_set List of found conflicts, if ::SR_ERR_OPERATIONAL_FAILED is returned.
+ * @return ::SR_ERR_OK on success,
+ * @return ::SR_ERR_OPERATION_FAILED if conflicts are found,
+ * @return other error codes on failure.
+ */
+int sr_pc_commit(sr_session_ctx_t *session, sr_priv_cand_t *private_candidate_ds, sr_pc_conflict_set_t **conflict_set);
+
+/**
+ * @brief Performs <edit-config> operation on private candidate datastore.
+ *
+ * The semantics of the @p edit and @p default_operation parameters are the same as in ::sr_edit_batch. The changes are
+ * applied immediately to the private candidate datastore, so there is no need to call sr_apply_changes.
+ *
+ * @param[in] session Sysrepo session.
+ * @param[in,out] private_candidate_ds Private candidate datastore.
+ * @param[in] edit Edit content (see ::sr_edit_batch for details).
+ * @param[in] default_operation Default operation (see ::sr_edit_batch for details).
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_pc_edit_config(sr_session_ctx_t *session, sr_priv_cand_t *private_candidate_ds, const struct lyd_node *edit,
+        const char *default_operation);
+
+/**
+ * @brief Retrieve a tree whose root nodes match the provided XPath.
+ * Data are represented as _libyang_ subtrees.
+ *
+ * Top-level trees are always returned so if an inner node is selected, all of its descendants
+ * and its direct parents (lists also with keys) are returned.
+ *
+ * @param[in] session Sysrepo session.
+ * @param[in] xpath XPath expression used to filter data.
+ * @param[in] max_depth Maximum depth of nodes to retrieve (0 = unlimited).
+ * @param[in] opts Data retrieval options. (see ::sr_get_oper_flag_t and ::sr_get_flag_t)
+ * @param[in] private_candidate_ds Private candidate structure.
+ * @param[out] data SR data with connected top-level data trees of all the requested data. NULL if none found.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_pc_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, const uint32_t opts,
+        const sr_priv_cand_t *private_candidate_ds, sr_data_t **data);
+
+/**
+ * @brief Performs <discard-changes> operation on private candidate datastore.
+ *
+ * This operation removes all uncommitted changes made by the user in the
+ * private candidate datastore, restoring it to its previous state.
+ *
+ * [See draft: Private candidate discard-changes behavior](https://datatracker.ietf.org/doc/html/draft-ietf-netconf-private_candidate_ds-07#section-4.8.2.11)
+ *
+ * @param[in,out] private_candidate_ds private candidate datastore structure.
+ */
+void sr_pc_discard_changes(sr_priv_cand_t *private_candidate_ds);
+
+/**
+ * @brief Make a backup copy of the private candidate datastore structure.
+ *
+ * @note The subscription context is not duplicated.
+ *
+ * @param[in] session Sysrepo session.
+ * @param[in] privcand Private candidate datastore structure to duplicate.
+ * @param[out] privcand_backup Duplicated private candidate datastore structure.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_pc_backup_privcand(sr_session_ctx_t *session, sr_priv_cand_t *privcand, sr_priv_cand_t **privcand_backup);
+
+/**
+ * @brief Replaces the content of private candidate structure with the content of another private candidate structure.
+ *
+ * @note Subscription context is not replaced.
+ *
+ * @param[in] privcand_target Target private candidate datastore structure.
+ * @param[in,out] privcand_backup Backup private candidate datastore structure. Is freed by this function.
+ */
+void sr_pc_restore_privcand(sr_priv_cand_t *privcand_target, sr_priv_cand_t *privcand_backup);
+
+/**
+ * @brief Perform the validation of private candidate datastore.
+ *
+ * @param[in] session Session to use.
+ * @param[in] module_name If specified, limits the validate operation only to this module and its dependencies.
+ * @param[in] privcand Private candidate structure.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_pc_validate(sr_session_ctx_t *session, const char *module_name, const sr_priv_cand_t *privcand);
+
+/**
+ * @brief Replaces private candidate datastore with the contents of another conventional datastore.
+ *
+ * @param[in] session Session to use.
+ * @param[in] privcand Private candidate structure.
+ * @param[in] module_name If specified, limits the replace operation only to this module. Otherwise operation is performed
+ * on all modules.
+ * @param[in] src_config Source configuration to replace the private candidate with. The data tree must be created using
+ * the same libyang context as the session connection.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_pc_replace_trg_config(sr_session_ctx_t *session, sr_priv_cand_t *privcand, const char *module_name,
+        const struct lyd_node *src_config);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* SYSREPO_PRIVATE_CANDIDATE_H_ */
