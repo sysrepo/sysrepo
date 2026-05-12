@@ -40,7 +40,7 @@ extern "C" {
 /**
  * @brief Notification plugin API version
  */
-#define SRPLG_NTF_API_VERSION 4
+#define SRPLG_NTF_API_VERSION 5
 
 /**
  * @brief Initialize notification storage for a specific module.
@@ -98,11 +98,27 @@ typedef sr_error_info_t *(*srntf_replay_next)(const struct lys_module *mod, cons
  * Is called even before ::srntf_enable().
  *
  * @param[in] mod Specific module.
+ * @param[in] after Optional, get the earliest notification stored at or after this time.
  * @param[out] ts Timestamp of the earliest notification, zeroed if there are none.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
-typedef sr_error_info_t *(*srntf_earliest_get)(const struct lys_module *mod, struct timespec *ts);
+typedef sr_error_info_t *(*srntf_earliest_get)(const struct lys_module *mod, const struct timespec *after,
+        struct timespec *ts);
+
+/**
+ * @brief Get the timestamp when replay was enabled for the module.
+ *
+ * This timestamp corresponds to the creation time of the replay log and is used
+ * to populate `replay-log-creation-time` in ietf-subscribed-notifications.
+ * Is called even before ::srntf_enable().
+ *
+ * @param[in] mod Specific module.
+ * @param[out] ts Timestamp when replay was enabled, zeroed if replay was never enabled.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+typedef sr_error_info_t *(*srntf_replay_start_get)(const struct lys_module *mod, struct timespec *ts);
 
 /**
  * @brief Set access permissions for notification data of a module.
@@ -157,6 +173,7 @@ struct srplg_ntf_s {
     srntf_store store_cb;           /**< store a notification for replay */
     srntf_replay_next replay_next_cb;   /**< replay next notification in order */
     srntf_earliest_get earliest_get_cb; /**< get the timestamp of the earliest stored notification */
+    srntf_replay_start_get replay_start_get_cb; /**< get the timestamp when replay was enabled */
     srntf_access_set access_set_cb; /**< callback for setting access rights for notification data */
     srntf_access_get access_get_cb; /**< callback got getting access rights for notification data */
     srntf_access_check access_check_cb; /**< callback for checking user access to notificaion data */

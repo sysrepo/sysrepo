@@ -809,7 +809,7 @@ srsn_oper_data_streams_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), co
     uint32_t idx = 0;
     char *buf;
     int enabled, rc;
-    struct timespec earliest_notif;
+    struct timespec replay_start;
 
     /* context locked while the callback is executing */
     conn = sr_session_get_connection(session);
@@ -850,7 +850,7 @@ srsn_oper_data_streams_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), co
         }
 
         /* learn whether replay is supported */
-        if (sr_get_module_replay_support(conn, ly_mod->name, &earliest_notif, &enabled)) {
+        if (sr_get_module_replay_support(conn, ly_mod->name, NULL, &enabled)) {
             SR_ERRINFO_INT(&err_info);
             goto cleanup;
         }
@@ -858,7 +858,11 @@ srsn_oper_data_streams_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), co
             if ((err_info = sr_lyd_new_term(stream, NULL, "replay-support", NULL))) {
                 goto cleanup;
             }
-            ly_time_ts2str(&earliest_notif, &buf);
+            if ((rc = sr_get_module_replay_start(conn, ly_mod->name, NULL, NULL, &replay_start))) {
+                SR_ERRINFO_INT(&err_info);
+                goto cleanup;
+            }
+            ly_time_ts2str(&replay_start, &buf);
             if ((err_info = sr_lyd_new_term(stream, NULL, "replay-log-creation-time", buf))) {
                 free(buf);
                 goto cleanup;

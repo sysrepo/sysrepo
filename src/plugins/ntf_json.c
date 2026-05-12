@@ -368,37 +368,131 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Ensure that JSON notification directory exists.
+ *
+ * @param[out] dir_path Optional directory path.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+srpntf_ensure_dir(char **dir_path)
+{
+    sr_error_info_t *err_info = NULL;
+    int r;
+    char *path = NULL;
+
+    /* notif dir */
+    if ((err_info = srpjson_get_notif_dir(srpntf_name, &path))) {
+        goto cleanup;
+    }
+    if (((r = access(path, F_OK)) == -1) && (errno != ENOENT)) {
+        srplg_log_errinfo(&err_info, srpntf_name, NULL, SR_ERR_SYS, "Access on \"%s\" failed (%s).", path, strerror(errno));
+        goto cleanup;
+    }
+    if (r && (err_info = srpjson_mkpath(srpntf_name, path, SRPJSON_DIR_PERM))) {
+        goto cleanup;
+    }
+
+    if (dir_path) {
+        *dir_path = path;
+        path = NULL;
+    }
+
+cleanup:
+    free(path);
+    return err_info;
+}
+
+/**
+ * @brief Get path to a module replay file.
+ *
+ * @param[in] mod_name Module name.
+ * @param[out] path Generated file path.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+srpntf_get_replay_path(const char *mod_name, char **path)
+{
+    sr_error_info_t *err_info = NULL;
+    char *dir_path = NULL;
+    int r;
+
+    if ((err_info = srpjson_get_notif_dir(srpntf_name, &dir_path))) {
+        return err_info;
+    }
+
+    r = asprintf(path, "%s/%s.replay", dir_path, mod_name);
+    free(dir_path);
+    if (r == -1) {
+        srplg_log_errinfo(&err_info, srpntf_name, NULL, SR_ERR_NO_MEMORY, "Memory allocation failed.");
+    }
+    return err_info;
+}
+
 static sr_error_info_t *
 srpntf_json_enable(const struct lys_module *mod)
 {
     sr_error_info_t *err_info = NULL;
-    int r;
-    char *dir_path = NULL;
+    char *path = NULL;
+    int fd = -1;
+    struct timespec ts;
 
-    (void)mod;
-
-    /* notif dir */
-    if ((err_info = srpjson_get_notif_dir(srpntf_name, &dir_path))) {
+    /* ensure notif directory exists */
+    if ((err_info = srpntf_ensure_dir(NULL))) {
         goto cleanup;
     }
-    if (((r = access(dir_path, F_OK)) == -1) && (errno != ENOENT)) {
-        srplg_log_errinfo(&err_info, srpntf_name, NULL, SR_ERR_SYS, "Access on \"%s\" failed (%s).", dir_path, strerror(errno));
+
+    if ((err_info = srpntf_get_replay_path(mod->name, &path))) {
         goto cleanup;
     }
-    if (r && (err_info = srpjson_mkpath(srpntf_name, dir_path, SRPJSON_DIR_PERM))) {
+
+    /* create the replay file only if it does not exist yet */
+    fd = srpjson_open(srpntf_name, path, O_WRONLY | O_CREAT | O_EXCL, SRPJSON_NOTIF_PERM);
+    if (fd == -1) {
+        if (errno == EEXIST) {
+            /* already enabled, nothing to do */
+            goto cleanup;
+        }
+        err_info = srpjson_open_error(srpntf_name, path);
+        goto cleanup;
+    }
+
+    SRPLG_LOG_INF(srpntf_name, "Replay file \"%s\" created.", strrchr(path, '/') + 1);
+
+    /* write the current real time */
+    clock_gettime(CLOCK_REALTIME, &ts);
+    if (write(fd, &ts, sizeof ts) != (ssize_t) sizeof ts) {
+        srplg_log_errinfo(&err_info, srpntf_name, NULL, SR_ERR_SYS, "Writing replay time failed (%s).", strerror(errno));
+        goto cleanup;
+    }
+
+    if (fsync(fd) == -1) {
+        srplg_log_errinfo(&err_info, srpntf_name, NULL, SR_ERR_SYS, "Fsync failed (%s).", strerror(errno));
         goto cleanup;
     }
 
 cleanup:
-    free(dir_path);
+    if (fd > -1) {
+        close(fd);
+    }
+    free(path);
     return err_info;
 }
 
 static sr_error_info_t *
 srpntf_json_disable(const struct lys_module *mod)
 {
+    sr_error_info_t *err_info = NULL;
+    char *path = NULL;
+
     (void)mod;
 
+    if ((err_info = srpntf_get_replay_path(mod->name, &path))) {
+        return err_info;
+    }
+
+    unlink(path);
+    free(path);
     return NULL;
 }
 
@@ -602,18 +696,20 @@ cleanup:
 }
 
 static sr_error_info_t *
-srpntf_json_earliest_get(const struct lys_module *mod, struct timespec *ts)
+srpntf_json_earliest_get(const struct lys_module *mod, const struct timespec *after, struct timespec *ts)
 {
     sr_error_info_t *err_info = NULL;
     int fd = -1;
     time_t file_from, file_to;
 
     /* create directory in case does not exist */
-    if ((err_info = srpntf_json_enable(mod))) {
+    if ((err_info = srpntf_ensure_dir(NULL))) {
         goto cleanup;
     }
 
-    if ((err_info = srpntf_find_file(mod->name, 1, 0, &file_from, &file_to))) {
+    /* find the earliest file possibly containing notification after 'after' */
+    if ((err_info = srpntf_find_file(mod->name,
+            (after && (after->tv_sec || after->tv_nsec)) ? after->tv_sec : 1, 0, &file_from, &file_to))) {
         goto cleanup;
     }
     if (!file_from) {
@@ -622,17 +718,87 @@ srpntf_json_earliest_get(const struct lys_module *mod, struct timespec *ts)
         goto cleanup;
     }
 
-    /* open the file */
-    if ((err_info = srpntf_open_file(mod->name, file_from, file_to, O_RDONLY, &fd))) {
+    while (file_from && file_to) {
+        /* open the file */
+        if ((err_info = srpntf_open_file(mod->name, file_from, file_to, O_RDONLY, &fd))) {
+            goto cleanup;
+        }
+
+        /* read timestamps and skip notifications until one after 'after' is found */
+        while (1) {
+            if ((err_info = srpntf_read_ts(fd, ts))) {
+                goto cleanup;
+            }
+            if (!ts->tv_sec) {
+                /* EOF, no more notifications in this file */
+                break;
+            }
+            if (!after || (!after->tv_sec && !after->tv_nsec) || (srpjson_time_cmp(ts, after) >= 0)) {
+                /* found a notification after 'after', or no filter */
+                goto cleanup;
+            }
+
+            /* skip the notification data */
+            if ((err_info = srpntf_skip_notif(fd))) {
+                goto cleanup;
+            }
+        }
+
+        /* close this file and try next */
+        close(fd);
+        fd = -1;
+
+        /* find next notification file */
+        if ((err_info = srpntf_find_file(mod->name, file_from, file_to, &file_from, &file_to))) {
+            goto cleanup;
+        }
+    }
+
+    /* no notification found after 'after' */
+    memset(ts, 0, sizeof *ts);
+
+cleanup:
+    if (fd > -1) {
+        close(fd);
+    }
+    return err_info;
+}
+
+static sr_error_info_t *
+srpntf_json_replay_start_get(const struct lys_module *mod, struct timespec *ts)
+{
+    sr_error_info_t *err_info = NULL;
+    char *path = NULL;
+    int fd = -1;
+    ssize_t r;
+
+    /* create directory in case does not exist */
+    if ((err_info = srpntf_ensure_dir(NULL))) {
         goto cleanup;
     }
 
-    /* read first notif timestamp */
-    if ((err_info = srpntf_read_ts(fd, ts))) {
+    if ((err_info = srpntf_get_replay_path(mod->name, &path))) {
         goto cleanup;
     }
-    if (!ts->tv_sec) {
-        srplg_log_errinfo(&err_info, srpntf_name, NULL, SR_ERR_INTERNAL, "Unexpected notification file EOF.");
+
+    fd = open(path, O_RDONLY);
+    if (fd == -1) {
+        if (errno == ENOENT) {
+            /* replay was never enabled */
+            memset(ts, 0, sizeof *ts);
+            goto cleanup;
+        }
+        srplg_log_errinfo(&err_info, srpntf_name, NULL, SR_ERR_SYS, "Opening \"%s\" failed (%s).", path, strerror(errno));
+        goto cleanup;
+    }
+
+    /* read replay timestamp */
+    r = read(fd, ts, sizeof *ts);
+    if (r == -1) {
+        srplg_log_errinfo(&err_info, srpntf_name, NULL, SR_ERR_SYS, "Reading \"%s\" failed (%s).", path, strerror(errno));
+        goto cleanup;
+    } else if (r != (ssize_t) sizeof *ts) {
+        srplg_log_errinfo(&err_info, srpntf_name, NULL, SR_ERR_INTERNAL, "Unexpected replay file size.");
         goto cleanup;
     }
 
@@ -640,6 +806,7 @@ cleanup:
     if (fd > -1) {
         close(fd);
     }
+    free(path);
     return err_info;
 }
 
@@ -829,6 +996,12 @@ srpntf_json_destroy(const struct lys_module *mod)
     }
 
 cleanup:
+    /* remove replay file */
+    if (!srpntf_get_replay_path(mod->name, &path)) {
+        unlink(path);
+        free(path);
+    }
+
     srplg_errinfo_free(&err_info);
 }
 
@@ -839,6 +1012,7 @@ const struct srplg_ntf_s srpntf_json = {
     .store_cb = srpntf_json_store,
     .replay_next_cb = srpntf_json_replay_next,
     .earliest_get_cb = srpntf_json_earliest_get,
+    .replay_start_get_cb = srpntf_json_replay_start_get,
     .access_set_cb = srpntf_json_access_set,
     .access_get_cb = srpntf_json_access_get,
     .access_check_cb = srpntf_json_access_check,

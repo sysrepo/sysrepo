@@ -166,7 +166,7 @@ sr_conn_free(sr_conn_ctx_t *conn)
         /* destroy lyctx */
         sr_yang_ctx.content_id = 0;
         sr_yang_ctx.sm_data_id = 0;
-        ly_ctx_destroy(sr_yang_ctx.ly_ctx);
+        sr_ly_ctx_destroy(sr_yang_ctx.ly_ctx);
         sr_yang_ctx.ly_ctx = NULL;
 
         /* destroy shm */
@@ -1691,7 +1691,7 @@ cleanup:
     }
 
     sr_lycc_clear_data(&cc_info);
-    ly_ctx_destroy(new_ctx);
+    sr_ly_ctx_destroy(new_ctx);
     free(mod_name);
 
     /* CONTEXT UNLOCK */
@@ -1977,7 +1977,7 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
 cleanup:
     sr_lycc_clear_data(&cc_info);
     lyd_free_siblings(sr_del_mods);
-    ly_ctx_destroy(new_ctx);
+    sr_ly_ctx_destroy(new_ctx);
 
     /* CONTEXT UNLOCK */
     sr_lycc_unlock(conn, ctx_mode, 1, __func__);
@@ -2209,7 +2209,7 @@ sr_update_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *se
 
 cleanup:
     sr_lycc_clear_data(&cc_info);
-    ly_ctx_destroy(new_ctx);
+    sr_ly_ctx_destroy(new_ctx);
 
     /* CONTEXT UNLOCK */
     sr_lycc_unlock(conn, ctx_mode, 1, __func__);
@@ -2268,19 +2268,30 @@ cleanup:
     return sr_api_ret(NULL, err_info);
 }
 
-API int
-sr_get_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, struct timespec *earliest_notif, int *enabled)
+/**
+ * @brief Get module replay details.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] module_name Module name to get the details for.
+ * @param[in] after Optional, get the earliest stored notification exactly at or after this time.
+ * @param[out] earliest_notif Optional timestamp of the earliest stored notification (at or after @p after),
+ * zeroed if none are stored. Can be set even if replay is disabled when it was enabled in the past.
+ * @param[out] replay_start Optional timestamp when replay was enabled, zeroed if replay is currently disabled.
+ * @param[out] enabled Optional whether replay is currently enabled for this module.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_get_module_replay_info(sr_conn_ctx_t *conn, const char *module_name, const struct timespec *after,
+        struct timespec *earliest_notif, struct timespec *replay_start, int *enabled)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
     const struct lys_module *ly_mod;
     const struct sr_ntf_handle_s *ntf_handle;
 
-    SR_CHECK_ARG_APIRET(!conn || !module_name || !enabled, NULL, err_info);
-
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
-        return sr_api_ret(NULL, err_info);
+        return err_info;
     }
 
     /* try to find this module */
@@ -2291,20 +2302,33 @@ sr_get_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, struc
     }
 
     /* read replay support */
-    *enabled = shm_mod->replay_supp;
+    if (enabled) {
+        *enabled = shm_mod->replay_supp;
+    }
+
+    if (!earliest_notif && !replay_start) {
+        /* nothing more to read */
+        goto cleanup;
+    }
+
+    /* find LY module */
+    ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, module_name);
+    assert(ly_mod);
+
+    /* find NTF plugin handle */
+    if ((err_info = sr_ntf_handle_find(sr_yang_ctx.mod_shm.addr + shm_mod->plugins[SR_MOD_DS_NOTIF], conn, &ntf_handle))) {
+        goto cleanup;
+    }
 
     if (earliest_notif) {
-        /* find LY module */
-        ly_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, module_name);
-        assert(ly_mod);
-
-        /* find NTF plugin handle */
-        if ((err_info = sr_ntf_handle_find(sr_yang_ctx.mod_shm.addr + shm_mod->plugins[SR_MOD_DS_NOTIF], conn, &ntf_handle))) {
+        /* get earliest notif timestamp (optionally @p after the given time) */
+        if ((err_info = ntf_handle->plugin->earliest_get_cb(ly_mod, after, earliest_notif))) {
             goto cleanup;
         }
-
-        /* get earliest notif timestamp */
-        if ((err_info = ntf_handle->plugin->earliest_get_cb(ly_mod, earliest_notif))) {
+    }
+    if (replay_start) {
+        /* get replay start timestamp */
+        if ((err_info = ntf_handle->plugin->replay_start_get_cb(ly_mod, replay_start))) {
             goto cleanup;
         }
     }
@@ -2313,6 +2337,30 @@ cleanup:
     /* CONTEXT UNLOCK */
     sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
 
+    return err_info;
+}
+
+API int
+sr_get_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, struct timespec *earliest_notif,
+        int *enabled)
+{
+    sr_error_info_t *err_info = NULL;
+
+    SR_CHECK_ARG_APIRET(!conn || !module_name || !enabled, NULL, err_info);
+
+    err_info = sr_get_module_replay_info(conn, module_name, NULL, earliest_notif, NULL, enabled);
+    return sr_api_ret(NULL, err_info);
+}
+
+API int
+sr_get_module_replay_start(sr_conn_ctx_t *conn, const char *module_name, const struct timespec *after,
+        struct timespec *earliest_notif, struct timespec *replay_start)
+{
+    sr_error_info_t *err_info = NULL;
+
+    SR_CHECK_ARG_APIRET(!conn || !module_name || (!earliest_notif && !replay_start), NULL, err_info);
+
+    err_info = sr_get_module_replay_info(conn, module_name, after, earliest_notif, replay_start, NULL);
     return sr_api_ret(NULL, err_info);
 }
 
@@ -2750,7 +2798,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
 cleanup:
     free(features);
     sr_lycc_clear_data(&cc_info);
-    ly_ctx_destroy(new_ctx);
+    sr_ly_ctx_destroy(new_ctx);
 
     /* CONTEXT UNLOCK */
     sr_lycc_unlock(conn, ctx_mode, 1, __func__);
