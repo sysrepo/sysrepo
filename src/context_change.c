@@ -161,7 +161,7 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
          * so it needs to be done now to avoid context data collision, see ::sr_lycc_store_context() */
         sr_yang_ctx.content_id = 0;
         sr_yang_ctx.sm_data_id = 0;
-        ly_ctx_destroy(sr_yang_ctx.ly_ctx);
+        sr_ly_ctx_destroy(sr_yang_ctx.ly_ctx);
         sr_yang_ctx.ly_ctx = NULL;
 
         /* get the printed context from the SHM if it is supported/available */
@@ -207,7 +207,7 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
     sr_available_conn = conn;
 
 cleanup_unlock:
-    ly_ctx_destroy(new_ctx);
+    sr_ly_ctx_destroy(new_ctx);
     if (err_info) {
         if (remap_mode) {
             /* MOD REMAP UNLOCK */
@@ -1273,7 +1273,7 @@ sr_lycc_store_context(sr_shm_t *shm, struct ly_ctx *ctx)
      * doing it now avoids a context data collision with the new context */
     sr_yang_ctx.content_id = 0;
     sr_yang_ctx.sm_data_id = 0;
-    ly_ctx_destroy(sr_yang_ctx.ly_ctx);
+    sr_ly_ctx_destroy(sr_yang_ctx.ly_ctx);
     sr_yang_ctx.ly_ctx = NULL;
 
 cleanup:

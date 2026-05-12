@@ -306,6 +306,16 @@ cleanup:
     return err_info;
 }
 
+void
+sr_ly_ctx_destroy(struct ly_ctx *ly_ctx)
+{
+    sr_ly_log_setup();
+
+    ly_ctx_destroy(ly_ctx);
+
+    sr_ly_log_revert();
+}
+
 sr_error_info_t *
 sr_lys_parse(struct ly_ctx *ctx, const char *data, const char *path, LYS_INFORMAT format, const char **features,
         struct lys_module **ly_mod)

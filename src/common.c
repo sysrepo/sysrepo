@@ -3301,7 +3301,7 @@ sr_schema_mount_ds_data_update(sr_conn_ctx_t *conn, struct sr_lycc_ds_data_set_s
 cleanup:
     sr_lycc_clear_data(&cc_info);
     if (destroy_new_ctx) {
-        ly_ctx_destroy(new_ctx);
+        sr_ly_ctx_destroy(new_ctx);
     }
 
     /* CONTEXT DOWNGRADE - leave the unlock to the caller */
