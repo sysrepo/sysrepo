@@ -380,8 +380,9 @@ test_replay_start_time(void **state)
     /* subscribe to notifs with start-time */
     assert_int_equal(SR_ERR_OK, srsn_subscribe(st->sess, "NETCONF", NULL, NULL, &ts, 0, NULL, &replay_start_time, &fd, &sub_id));
 
-    /* there are notifs from time earlier than the start time */
-    assert_int_equal(replay_start_time.tv_sec, 0);
+    /* replay must start after it was enabled for the 2nd module */
+    assert_true(replay_start_time.tv_sec > ts.tv_sec ||
+            (replay_start_time.tv_sec == ts.tv_sec && replay_start_time.tv_nsec > ts.tv_nsec));
 
     /* read replayed notification */
     assert_int_equal(SR_ERR_OK, srsn_poll(fd, 1000));

@@ -1543,8 +1543,8 @@ srsn_sn_sr_subscribe(sr_session_ctx_t *sess, struct srsn_sub *sub, int sub_no_th
     const sr_error_info_t *tmp_err;
     const struct ly_ctx *ly_ctx;
     const struct lys_module *ly_mod;
-    int rc = SR_ERR_OK, enabled;
-    struct timespec ts;
+    int rc = SR_ERR_OK;
+    struct timespec earliest_notif, rpl_start;
     struct ly_set *mod_set = NULL;
     uint32_t idx;
 
@@ -1568,16 +1568,21 @@ srsn_sn_sr_subscribe(sr_session_ctx_t *sess, struct srsn_sub *sub, int sub_no_th
     for (idx = 0; idx < mod_set->count; ++idx) {
         ly_mod = mod_set->objs[idx];
 
-        /* learn earliest stored notif */
-        if ((rc = sr_get_module_replay_support(sr_session_get_connection(sess), ly_mod->name, &ts, &enabled))) {
+        /* learn replay start time */
+        if ((rc = sr_get_module_replay_start(sr_session_get_connection(sess), ly_mod->name, &sub->start_time, &earliest_notif, &rpl_start))) {
             sr_session_get_error(sess, &tmp_err);
             sr_errinfo_new(&err_info, tmp_err->err[0].err_code, "%s", tmp_err->err[0].message);
             goto error;
         }
 
-        /* update the earliest stored notif */
-        if (!replay_start->tv_sec || (ts.tv_sec && (sr_time_cmp(replay_start, &ts) > 0))) {
-            *replay_start = ts;
+        /* update the earliest replay start time, if:
+         * 1) the module's replay is enabled, there is a notif stored after sub->start_time (time from which
+         *    the user wants to receive notifications) and the replay was enabled prior to storing the earliest notif,
+         * 2) the found notification is earlier than the current one (find minimum). */
+        if (rpl_start.tv_sec && earliest_notif.tv_sec && (sr_time_cmp(&rpl_start, &earliest_notif) <= 0)) {
+            if (!replay_start->tv_sec || (sr_time_cmp(replay_start, &rpl_start) > 0)) {
+                *replay_start = rpl_start;
+            }
         }
 
         /* subscribe to the module */
@@ -1591,12 +1596,6 @@ srsn_sn_sr_subscribe(sr_session_ctx_t *sess, struct srsn_sub *sub, int sub_no_th
 
         /* add new sub ID */
         sub->sr_sub_ids[idx] = sr_subscription_get_last_sub_id(sub->sr_sub);
-    }
-
-    if (sub->start_time.tv_sec && (sr_time_cmp(replay_start, &sub->start_time) <= 0)) {
-        /* there are earlier stored notifications
-         * TODO not accurate, the earliest stored notification is often not when the replay has actually been enabled */
-        memset(replay_start, 0, sizeof *replay_start);
     }
 
     goto cleanup;

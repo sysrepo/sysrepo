@@ -1523,7 +1523,7 @@ sr_lydmods_update_replay_support_module(const struct lys_module *ly_mod, struct 
         }
 
         /* use earliest stored notification timestamp or use current time */
-        if ((err_info = ntf_handle->plugin->earliest_get_cb(ly_mod, &ts))) {
+        if ((err_info = ntf_handle->plugin->earliest_get_cb(ly_mod, NULL, &ts))) {
             return err_info;
         }
         if (SR_TS_IS_ZERO(ts)) {
