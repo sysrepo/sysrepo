@@ -34,6 +34,13 @@
 sr_error_info_t *sr_ly_ctx_new(struct ly_ctx **ly_ctx);
 
 /**
+ * @brief Destroy a libyang context.
+ *
+ * @param[in] ly_ctx Context to destroy.
+ */
+void sr_ly_ctx_destroy(struct ly_ctx *ly_ctx);
+
+/**
  * @brief Parse a YANG module.
  *
  * @param[in] ctx Context to use.
