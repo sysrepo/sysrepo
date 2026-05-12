@@ -97,6 +97,7 @@ option(ENABLE_DS_REDIS "Enable Redis datastore plugin" OFF)
 option(ENABLE_SYSREPOCTL "Build binary tool 'sysrepoctl'" ON)
 option(ENABLE_SYSREPOCFG "Build binary tool 'sysrepocfg'" ON)
 option(ENABLE_SYSREPO_PLUGIND "Build binary daemon 'sysrepo-plugind'" ON)
+option(ENABLE_SYSREPO_NOTIFD "Build binary daemon 'sysrepo-notifd'" ON)
 option(BUILD_SHARED_LIBS "By default, shared libs are enabled. Turn off for a static build." ON)
 option(INSTALL_SYSCTL_CONF "Install sysctl conf file to allow shared access to SHM files." OFF)
 set(YANG_MODULE_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}/yang/modules/sysrepo" CACHE STRING "Directory where to copy the YANG modules to.")
@@ -286,6 +287,12 @@ set(SYSREPOPLUGIND_SRC
     src/executables/srpd_common.c
     src/executables/sysrepo-plugind.c)
 
+set(SYSREPONOTIFD_SRC
+    src/executables/sysrepo-notifd/main.c
+    src/executables/sysrepo-notifd/notifd_config.c
+    src/executables/sysrepo-notifd/notifd_runtime.c
+    src/executables/sysrepo-notifd/notifd_udp.c)
+
 # public headers to check API/ABI on
 set(LIB_MAIN_HEADERS
     src/sysrepo.h
@@ -323,6 +330,8 @@ set(FORMAT_SOURCES
     src/*.h
     src/executables/*.c
     src/executables/*.h*
+    src/executables/sysrepo-notifd/*.c
+    src/executables/sysrepo-notifd/*.h*
     src/plugins/*.c
     src/plugins/*.h*
     src/utils/*
@@ -536,6 +545,12 @@ if(ENABLE_SYSREPO_PLUGIND)
     target_link_libraries(sysrepo-plugind sysrepo)
 endif()
 
+if(ENABLE_SYSREPO_NOTIFD)
+    # sysrepo-notifd daemon
+    add_executable(sysrepo-notifd ${SYSREPONOTIFD_SRC} ${compatsrc})
+    target_link_libraries(sysrepo-notifd sysrepo)
+endif()
+
 # include repository files with highest priority
 include_directories("${PROJECT_SOURCE_DIR}/src")
 include_directories("${PROJECT_SOURCE_DIR}/src/plugins")
@@ -574,6 +589,9 @@ if(LIBSYSTEMD_FOUND)
     set(SR_HAVE_SYSTEMD 1)
     if(ENABLE_SYSREPO_PLUGIND)
         target_link_libraries(sysrepo-plugind ${LIBSYSTEMD_LIBRARIES})
+    endif()
+    if(ENABLE_SYSREPO_NOTIFD)
+        target_link_libraries(sysrepo-notifd ${LIBSYSTEMD_LIBRARIES})
     endif()
     include_directories(${LIBSYSTEMD_INCLUDE_DIRS})
     message(STATUS "systemd system service unit path: ${SYSTEMD_UNIT_DIR}")
@@ -631,6 +649,9 @@ if(ENABLE_SYSREPO_PLUGIND)
     install(TARGETS sysrepo-plugind DESTINATION ${CMAKE_INSTALL_BINDIR})
     install(FILES ${PROJECT_SOURCE_DIR}/src/executables/sysrepo-plugind.8 DESTINATION ${CMAKE_INSTALL_MANDIR}/man8)
     install(DIRECTORY DESTINATION ${SRPD_PLUGINS_PATH})
+endif()
+if(ENABLE_SYSREPO_NOTIFD)
+    install(TARGETS sysrepo-notifd DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 if(SR_HAVE_DLOPEN)
     install(DIRECTORY DESTINATION ${SR_PLUGINS_PATH})
