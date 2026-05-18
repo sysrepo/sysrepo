@@ -35,9 +35,6 @@
 /** permissions of new notification files */
 #define SRPJSON_NOTIF_PERM 00600
 
-/** notification file will never exceed this size (kB) */
-#define SRPJSON_NOTIF_FILE_MAX_SIZE 1024
-
 /**
  * @brief Wrapper for writev().
  *

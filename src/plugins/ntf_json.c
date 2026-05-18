@@ -34,6 +34,7 @@
 #include <libyang/libyang.h>
 
 #include "common_json.h"
+#include "config.h"
 #include "sysrepo.h"
 
 #define srpntf_name "JSON notif" /**< plugin name */

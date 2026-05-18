@@ -123,6 +123,7 @@ else()
     set(INTERNAL_MODULE_DATA_FORMAT LYD_XML)
 endif()
 set(INTERNAL_MODULE_DISABLED_RUNNING "" CACHE STRING "List of internal sysrepo or libyang modules that will have their 'running' datastores disabled (always mirroring 'startup'), separated by space. Use '*' for all the modules.")
+set(JSON_NOTIF_FILE_MAX_SIZE 1024 CACHE STRING "Notification file will never exceed this size (kB).")
 
 # default datastore plugins
 set(DEFAULT_STARTUP_DS_PLG "JSON DS file" CACHE STRING "Default datastore plugin for storing startup data.")
