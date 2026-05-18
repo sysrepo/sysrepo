@@ -217,4 +217,7 @@
 /** directory with all the installed YANG modules */
 #define SR_YANG_MODULE_PATH "@YANG_MODULE_DIR@"
 
+/** notification file will never exceed this size (kB) */
+#define SRPJSON_NOTIF_FILE_MAX_SIZE @JSON_NOTIF_FILE_MAX_SIZE@
+
 #endif /* _CONFIG_H */
