@@ -109,7 +109,8 @@ cleanup:
 static int
 srpd_format_check(const char *file_name, time_t *file_time1, time_t *file_time2)
 {
-    char *x = NULL, *endptr = NULL;
+    const char *x = NULL;
+    char *endptr = NULL;
     time_t time1, time2;
     char buf[7];
 

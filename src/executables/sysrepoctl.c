@@ -295,7 +295,7 @@ set_datastore(const char *optarg, int *mod_ds)
 static int
 set_module_ds(const char *optarg, sr_module_ds_t *module_ds)
 {
-    char *ptr;
+    const char *ptr;
     int module_ds_idx;
 
     if (!(ptr = strchr(optarg, ':'))) {

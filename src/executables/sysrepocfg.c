@@ -731,7 +731,7 @@ arg_get_ds(const char *optarg, sr_datastore_t *ds)
 static LYD_FORMAT
 learn_lyd_format(const char *file_path)
 {
-    char *ptr = NULL;
+    const char *ptr = NULL;
     LYD_FORMAT format = SRCFG_DEFAULT_FORMAT;
 
     /* learn format */

@@ -68,7 +68,7 @@ srpd_mkpath(const char *path, mode_t mode, char **err_dir)
 size_t
 srpd_path_len_no_ext(const char *path)
 {
-    char *dot;
+    const char *dot;
 
     dot = strrchr(path, '.');
 
