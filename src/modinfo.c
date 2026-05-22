@@ -4002,9 +4002,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
                         sid, mod_diff, mod_data, mod->ds_handle[store_ds]->plg_data);
             }
             if (err_info) {
-                lyd_free_siblings(mod_diff);
-                lyd_free_siblings(mod_data);
-                goto cleanup;
+                goto reconnect;
             }
 
             if (commit && (mod_info->ds == SR_DS_RUNNING)) {
@@ -4056,6 +4054,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
                 }
             }
 
+reconnect:
             /* connect them back */
             if (mod_diff) {
                 lyd_insert_sibling(mod_info->ds_diff, mod_diff, &mod_info->ds_diff);
@@ -4066,6 +4065,10 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
             }
             if (mod_data) {
                 lyd_insert_sibling(mod_info->data, mod_data, &mod_info->data);
+            }
+
+            if (err_info) {
+                goto cleanup;
             }
         }
     }
