@@ -23,8 +23,8 @@
 #include <string.h>
 #include <time.h>
 
-#include "common.h"
 #include "notifd.h"
+#include "notifd_common.h"
 #include "utils/subscribed_notifications.h"
 
 #include <libyang/libyang.h>

@@ -27,9 +27,9 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "common.h"
 #include "compat.h"
 #include "notifd.h"
+#include "notifd_common.h"
 
 #include <libyang/libyang.h>
 

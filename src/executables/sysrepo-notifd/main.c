@@ -30,8 +30,8 @@
 #include <unistd.h>
 
 #include "../bin_common.h"
-#include "common.h"
 #include "notifd.h"
+#include "notifd_common.h"
 #include "utils/subscribed_notifications.h"
 
 #ifdef SR_HAVE_SYSTEMD

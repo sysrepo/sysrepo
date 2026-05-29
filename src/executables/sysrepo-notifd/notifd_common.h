@@ -1,5 +1,5 @@
 /**
- * @file common.h
+ * @file notifd_common.h
  * @author Roman Janota <Roman.Janota@cesnet.cz>
  * @brief common declarations shared between sysrepo-notifd source files
  *
