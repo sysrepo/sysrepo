@@ -5975,7 +5975,7 @@ sr_module_file_data_append(const struct lys_module *ly_mod, const struct sr_ds_h
         sr_cid_t cid, uint32_t sid, const struct sr_mod_info_xpath_s *xpaths, uint32_t xpath_count, struct lyd_node **data)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *mod_data;
+    struct lyd_node *mod_data = NULL;
     int modified;
     const char **xps = NULL;
     uint32_t i;
