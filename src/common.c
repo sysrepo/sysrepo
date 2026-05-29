@@ -3577,6 +3577,11 @@ sr_run_cache_update(sr_conn_ctx_t *conn, sr_run_cache_t *run_cache, const struct
             cmod = &run_cache->mods[j];
         }
 
+        /* cache lock released, check again */
+        if (cmod->id == cur_id) {
+            continue;
+        }
+
         /* remove old data */
         mod_data = sr_module_data_unlink(&run_cache->data, cmod->mod, 0);
         lyd_free_siblings(mod_data);
@@ -3612,8 +3617,8 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_run_cache_update_mod(sr_conn_ctx_t *conn, sr_run_cache_t *run_cache, const struct lys_module *ly_mod,
-        uint32_t mod_cache_id, struct lyd_node *mod_data)
+sr_run_cache_update_mod(sr_conn_ctx_t *conn, sr_run_cache_t *run_cache, struct sr_mod_info_mod_s *mod,
+        struct lyd_node *mod_data)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_run_cache_mod_s *cmod = NULL;
@@ -3626,9 +3631,17 @@ sr_run_cache_update_mod(sr_conn_ctx_t *conn, sr_run_cache_t *run_cache, const st
         return err_info;
     }
 
+    /* update the cache ID because data were modified, ignored if data_version callback is used instead */
+    mod->shm_mod->run_cache_id++;
+
+    if (!ATOMIC_LOAD_RELAXED(sr_run_cache.enabled)) {
+        /* run cache disabled */
+        goto cleanup;
+    }
+
     /* find the cache mod */
     for (i = 0; i < run_cache->mod_count; ++i) {
-        if (ly_mod == run_cache->mods[i].mod) {
+        if (mod->ly_mod == run_cache->mods[i].mod) {
             cmod = &run_cache->mods[i];
             break;
         }
@@ -3639,7 +3652,7 @@ sr_run_cache_update_mod(sr_conn_ctx_t *conn, sr_run_cache_t *run_cache, const st
     }
 
     /* the data are expected to be just modified, cannot yet be cached */
-    assert(cmod->id != mod_cache_id);
+    assert(cmod->id != mod->shm_mod->run_cache_id);
 
     /* remove old data */
     old_data = sr_module_data_unlink(&run_cache->data, cmod->mod, 0);
@@ -3652,13 +3665,16 @@ sr_run_cache_update_mod(sr_conn_ctx_t *conn, sr_run_cache_t *run_cache, const st
     }
 
     /* update the cached data ID */
-    cmod->id = mod_cache_id;
+    cmod->id = mod->shm_mod->run_cache_id;
 
 cleanup:
     /* CACHE WRITE UNLOCK */
     sr_rwunlock(&run_cache->lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
 
+    /* mod data always spent */
     lyd_free_siblings(mod_data);
+    mod->state &= ~MOD_INFO_DATA;
+
     return err_info;
 }
 
