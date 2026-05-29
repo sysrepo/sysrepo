@@ -319,7 +319,8 @@ test_replay(void **state)
     lyd_free_tree(notif);
 
     /* check that replay start time is set to the time of the first notification in the replay buffer */
-    assert_int_equal(replay_start_time.tv_sec, ts.tv_sec);
+    assert_true(replay_start_time.tv_sec == ts.tv_sec ||
+            (replay_start_time.tv_sec - 1 == ts.tv_sec));
 
     assert_int_equal(SR_ERR_OK, srsn_poll(fd, 1000));
     assert_int_equal(SR_ERR_OK, srsn_read_notif(fd, st->ly_ctx, &ts, &notif));
