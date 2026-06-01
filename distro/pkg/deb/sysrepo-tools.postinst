@@ -1,0 +1,26 @@
+#!/bin/sh
+
+set -e
+
+case "$1" in
+    configure)
+	env - \
+	    SR_NOTIFD_MODULE_DIR=/usr/share/yang/modules/sysrepo \
+	    SR_NOTIFD_MODULE_PERMS=660 \
+	    SR_NOTIFD_MODULE_OWNER=root \
+	    SR_NOTIFD_MODULE_GROUP=sysrepo \
+	    bash /usr/share/sysrepo/scripts/setup_notifd.sh
+    ;;
+
+    abort-upgrade|abort-remove|abort-deconfigure)
+    ;;
+
+    *)
+        echo "postinst called with unknown argument \`$1'" >&2
+        exit 1
+    ;;
+esac
+
+#DEBHELPER#
+
+exit 0

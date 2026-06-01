@@ -19,7 +19,8 @@ override_dh_auto_configure:
 		-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
 		-DSYSREPO_UMASK=007 \
 		-DSYSREPO_GROUP=sysrepo \
-		-DNACM_SRMON_DATA_PERM=660
+		-DNACM_SRMON_DATA_PERM=660 \
+		-DNOTIFD_SETUP=OFF
 
 override_dh_auto_test:
 	LD_LIBRARY_PATH="$(SR_BUILD_DIR)" make -C obj-$(DEB_HOST_GNU_TYPE) test ARGS=' -j $(NPROCS) -V'
