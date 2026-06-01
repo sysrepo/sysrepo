@@ -7,3 +7,4 @@ usr/share/man/man8
 usr/lib/*/sysrepo-plugind/plugins
 usr/lib/systemd/system/sysrepo-plugind.service
 usr/lib/systemd/system/sysrepo-notifd.service
+usr/share/sysrepo/scripts

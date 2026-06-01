@@ -38,6 +38,7 @@ Provides:  user(sysrepo-plugind)
 %package notifd
 Summary:   sysrepo notification daemon
 Requires:  %{name}%{?_isa} = %{version}-%{release}
+Requires:  %{name}-tools%{?_isa} = %{version}-%{release}
 Provides:  user(sysrepo-notifd)
 
 %package tools
@@ -75,7 +76,7 @@ Executable tools for sysrepo:
 %autosetup -p1
 
 %build
-%cmake -DCMAKE_BUILD_TYPE=RELWITHDEBINFO -DSYSREPO_UMASK=007 -DSYSREPO_GROUP=sysrepo -DNACM_SRMON_DATA_PERM=660
+%cmake -DCMAKE_BUILD_TYPE=RELWITHDEBINFO -DSYSREPO_UMASK=007 -DSYSREPO_GROUP=sysrepo -DNACM_SRMON_DATA_PERM=660 -DNOTIFD_SETUP=OFF
 %cmake_build
 
 %install
@@ -120,7 +121,17 @@ rm -rf /dev/shm/srsub_*
 %endif
 
 %post notifd
+export SR_NOTIFD_MODULE_DIR=%{_datadir}/yang/modules/sysrepo
+export SR_NOTIFD_MODULE_PERMS=660
+export SR_NOTIFD_MODULE_OWNER=root
+export SR_NOTIFD_MODULE_GROUP=sysrepo
+bash %{_datadir}/sysrepo/scripts/setup_notifd.sh
 %systemd_post %{name}-notifd.service
+
+%preun notifd
+if [ $1 -eq 0 ]; then
+    bash %{_datadir}/sysrepo/scripts/remove_notifd.sh
+fi
 
 %postun notifd
 %systemd_postun_with_restart %{name}-notifd.service
@@ -158,6 +169,7 @@ rm -rf /dev/shm/srsub_*
 %{_sysusersdir}/sysrepo-notifd.conf
 %{_bindir}/sysrepo-notifd
 %{_datadir}/man/man8/sysrepo-notifd.8.gz
+%{_datadir}/sysrepo/scripts
 
 %files tools
 %{_bindir}/sysrepocfg
