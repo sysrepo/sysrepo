@@ -100,7 +100,29 @@ option(ENABLE_SYSREPO_PLUGIND "Build binary daemon 'sysrepo-plugind'" ON)
 option(ENABLE_SYSREPO_NOTIFD "Build binary daemon 'sysrepo-notifd'" ON)
 option(BUILD_SHARED_LIBS "By default, shared libs are enabled. Turn off for a static build." ON)
 option(INSTALL_SYSCTL_CONF "Install sysctl conf file to allow shared access to SHM files." OFF)
+# notifd setup options
+option(NOTIFD_SETUP "Install required modules with their default configuration into sysrepo using a script" ON)
+set(NOTIFD_MODULE_PERMS 600 CACHE STRING "File access permissions set for the notifd modules")
+if(NOT NOTIFD_MODULE_OWNER)
+    execute_process(COMMAND id -un RESULT_VARIABLE RET
+    OUTPUT_VARIABLE NOTIFD_MODULE_OWNER OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_VARIABLE ERROR_STR OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(RET)
+        message(WARNING "Learning notifd module user failed (${ERROR_STR}), the current user will be used.")
+    endif()
+endif()
+set(NOTIFD_MODULE_OWNER "${NOTIFD_MODULE_OWNER}" CACHE STRING "System user that will become the owner of notifd modules, empty means the current user")
+if(NOT NOTIFD_MODULE_GROUP AND NOTIFD_MODULE_OWNER)
+    execute_process(COMMAND id -gn ${NOTIFD_MODULE_OWNER} RESULT_VARIABLE RET
+    OUTPUT_VARIABLE NOTIFD_MODULE_GROUP OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_VARIABLE ERROR_STR OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(RET)
+        message(WARNING "Learning notifd module group failed (${ERROR_STR}), the current user group will be used.")
+    endif()
+endif()
+set(NOTIFD_MODULE_GROUP "${NOTIFD_MODULE_GROUP}" CACHE STRING "System group that the notifd modules will belong to, empty means the current user group")
 set(YANG_MODULE_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}/yang/modules/sysrepo" CACHE STRING "Directory where to copy the YANG modules to.")
+set(DATA_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}/sysrepo" CACHE STRING "Directory with shared sysrepo data.")
 set(INTERNAL_MODULE_DATA_PATH "" CACHE STRING "Path to a file with startup and factory-default data of internal modules. Contents of the file are compiled into the library.")
 if(INTERNAL_MODULE_DATA_PATH)
     if(NOT EXISTS "${INTERNAL_MODULE_DATA_PATH}")
@@ -611,6 +633,21 @@ if(NOT TAR_BINARY)
     message(FATAL_ERROR "tar binary was not found.")
 endif()
 
+if(NOTIFD_SETUP)
+    if(ENABLE_SYSREPOCTL)
+        # use the just-built sysrepoctl
+        set(SYSREPOCTL_EXECUTABLE "${PROJECT_BINARY_DIR}/sysrepoctl")
+    else()
+        # find sysrepoctl on the system
+        if(NOT SYSREPOCTL_EXECUTABLE)
+            find_program(SYSREPOCTL_EXECUTABLE sysrepoctl)
+        endif()
+        if(NOT SYSREPOCTL_EXECUTABLE)
+            message(FATAL_ERROR "Unable to find sysrepoctl, set SYSREPOCTL_EXECUTABLE manually to be able to setup sysrepo-notifd.")
+        endif()
+    endif()
+endif()
+
 # generate files
 configure_file("${PROJECT_SOURCE_DIR}/src/config.h.in" "${PROJECT_BINARY_DIR}/config.h" ESCAPE_QUOTES @ONLY)
 configure_file("${PROJECT_SOURCE_DIR}/sysrepo.pc.in" "${PROJECT_BINARY_DIR}/sysrepo.pc" @ONLY)
@@ -627,6 +664,7 @@ file(GLOB yangs "${PROJECT_SOURCE_DIR}/modules/*.yang")
 install(FILES ${yangs} DESTINATION ${YANG_MODULE_DIR})
 file(GLOB sn_yangs "${PROJECT_SOURCE_DIR}/modules/subscribed_notifications/*.yang")
 install(FILES ${sn_yangs} DESTINATION ${YANG_MODULE_DIR})
+install(DIRECTORY "${PROJECT_SOURCE_DIR}/scripts/" DESTINATION ${DATA_DIR}/scripts USE_SOURCE_PERMISSIONS)
 
 install(TARGETS sysrepo DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(FILES ${PROJECT_BINARY_DIR}/include/sysrepo.h ${PROJECT_BINARY_DIR}/include/sysrepo_types.h
@@ -668,6 +706,30 @@ endif()
 
 if(INSTALL_SYSCTL_CONF)
     install(FILES "${PROJECT_SOURCE_DIR}/zz-sysrepo-disable-fs-protected_regular.conf" DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/sysctl.d/")
+endif()
+
+if (NOTIFD_SETUP)
+    install(CODE "
+        message(STATUS \"Installing notifd sysrepo modules (setup_notifd.sh)...\")
+        set(ENV{SR_NOTIFD_MODULE_DIR} \"${YANG_MODULE_DIR}\")
+        set(ENV{SR_NOTIFD_MODULE_PERMS} \"${NOTIFD_MODULE_PERMS}\")
+        set(ENV{SR_NOTIFD_MODULE_OWNER} \"${NOTIFD_MODULE_OWNER}\")
+        set(ENV{SR_NOTIFD_MODULE_GROUP} \"${NOTIFD_MODULE_GROUP}\")
+        set(ENV{SYSREPOCTL_EXECUTABLE} \"${SYSREPOCTL_EXECUTABLE}\")
+        execute_process(COMMAND \"\$ENV{DESTDIR}${DATA_DIR}/scripts/setup_notifd.sh\"
+                RESULT_VARIABLE CMD_RES
+                OUTPUT_VARIABLE CMD_OUT
+                ERROR_VARIABLE CMD_ERR
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+                ERROR_STRIP_TRAILING_WHITESPACE)
+        if(NOT CMD_RES EQUAL 0)
+            string(REPLACE \"\\n\" \"\\n \" CMD_OUT_F \"\${CMD_OUT}\")
+            string(REPLACE \"\\n\" \"\\n \" CMD_ERR_F \"\${CMD_ERR}\")
+            message(FATAL_ERROR \" OUTPUT:\\n \${CMD_OUT_F}\\n ERROR:\\n \${CMD_ERR_F}\")
+        endif()
+    ")
+else()
+    message(WARNING "sysrepo-notifd will refuse to start if the modules are not installed!")
 endif()
 
 # tests
@@ -743,7 +805,13 @@ endif()
 
 # uninstall
 if(ENABLE_COMMON_TARGETS)
-    add_custom_target(uninstall "${CMAKE_COMMAND}" -P "${CMAKE_MODULE_PATH}/uninstall.cmake")
+    if(NOTIFD_SETUP)
+        add_custom_target(uninstall ${DATA_DIR}/scripts/remove_notifd.sh
+            COMMAND "${CMAKE_COMMAND}" -P "${CMAKE_MODULE_PATH}/uninstall.cmake"
+            COMMENT "Removing notifd modules from sysrepo...")
+    else()
+        add_custom_target(uninstall "${CMAKE_COMMAND}" -P "${CMAKE_MODULE_PATH}/uninstall.cmake")
+    endif()
 endif()
 add_custom_target(uninstall_with_repo "${CMAKE_COMMAND}" -P "${CMAKE_MODULE_PATH}/uninstall.cmake"
     COMMAND rm -rf ${REPO_PATH})
