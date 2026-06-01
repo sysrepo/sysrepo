@@ -1,0 +1,14 @@
+[Unit]
+Description=Sysrepo notification daemon
+After=sysrepo-plugind.service
+
+[Service]
+User=sysrepo-notifd
+Type=notify
+ExecStart=/usr/bin/sysrepo-notifd -d -v2
+Restart=always
+SystemCallArchitectures=native
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target

@@ -7,6 +7,8 @@ Source: %{url}/archive/v%{version}/%{name}-%{version}.tar.gz
 Source2: sysrepo.sysusers
 Source3: sysrepo-plugind.sysusers
 Source4: sysrepo-plugind.service
+Source5: sysrepo-notifd.sysusers
+Source6: sysrepo-notifd.service
 License: BSD
 
 Provides: group(sysrepo)
@@ -33,6 +35,11 @@ Summary:   sysrepo plugin daemon
 Requires:  %{name}%{?_isa} = %{version}-%{release}
 Provides:  user(sysrepo-plugind)
 
+%package notifd
+Summary:   sysrepo notification daemon
+Requires:  %{name}%{?_isa} = %{version}-%{release}
+Provides:  user(sysrepo-notifd)
+
 %package tools
 Summary:   sysrepo executable tools
 Requires:  %{name}%{?_isa} = %{version}-%{release}
@@ -54,6 +61,9 @@ Headers of sysrepo library.
 %description plugind
 Sysrepo plugin daemon and service.
 
+%description notifd
+Sysrepo notification daemon implementing RFC 8639 configured subscriptions and service.
+
 %description tools
 Executable tools for sysrepo:
 
@@ -73,6 +83,8 @@ Executable tools for sysrepo:
 install -D -p -m 0644 %{SOURCE2} %{buildroot}%{_sysusersdir}/sysrepo.conf
 install -D -p -m 0644 %{SOURCE3} %{buildroot}%{_sysusersdir}/sysrepo-plugind.conf
 install -D -p -m 0644 %{SOURCE4} %{buildroot}%{_unitdir}/sysrepo-plugind.service
+install -D -p -m 0644 %{SOURCE5} %{buildroot}%{_sysusersdir}/sysrepo-notifd.conf
+install -D -p -m 0644 %{SOURCE6} %{buildroot}%{_unitdir}/sysrepo-notifd.service
 mkdir -p -m=770 %{buildroot}%{_sysconfdir}/sysrepo
 
 %pre
@@ -99,6 +111,19 @@ rm -rf /dev/shm/srsub_*
 
 %postun plugind
 %systemd_postun_with_restart %{name}-plugind.service
+
+%pre notifd
+%if 0%{?fedora}
+    %sysusers_create_compat %{SOURCE5}
+%else
+    getent passwd sysrepo-notifd 1>/dev/null || useradd -r -M -s /sbin/nologin -c "sysrepo notifd user" -g sysrepo sysrepo-notifd
+%endif
+
+%post notifd
+%systemd_post %{name}-notifd.service
+
+%postun notifd
+%systemd_postun_with_restart %{name}-notifd.service
 
 
 %files
@@ -127,6 +152,12 @@ rm -rf /dev/shm/srsub_*
 %{_datadir}/man/man8/sysrepo-plugind.8.gz
 %dir %{_libdir}/sysrepo-plugind
 %dir %{_libdir}/sysrepo-plugind/plugins
+
+%files notifd
+%{_unitdir}/sysrepo-notifd.service
+%{_sysusersdir}/sysrepo-notifd.conf
+%{_bindir}/sysrepo-notifd
+%{_datadir}/man/man8/sysrepo-notifd.8.gz
 
 %files tools
 %{_bindir}/sysrepocfg

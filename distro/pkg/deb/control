@@ -54,4 +54,5 @@ Description: YANG-based configuration and operational data store - executable to
  This package provides the "sysrepoctl" and "sysrepocfg" tools which can be used
  for manipulation of installed YANG modules and their YANG data, respectively.
  There is also "sysrepo-plugind" that is a simple daemon grouping all installed
- sysrepo plugins in a single process.
+ sysrepo plugins in a single process and "sysrepo-notifd" that is a notification
+ daemon implementing RFC 8639 configured subscriptions.
