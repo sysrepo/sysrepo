@@ -1,0 +1,13 @@
+[Unit]
+Description=Sysrepo notification daemon
+After=sysrepo-plugind.service
+
+[Service]
+Type=notify
+ExecStart=@CMAKE_INSTALL_PREFIX@/@CMAKE_INSTALL_BINDIR@/sysrepo-notifd -d -v2
+Restart=always
+SystemCallArchitectures=native
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target

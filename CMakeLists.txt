@@ -616,6 +616,7 @@ configure_file("${PROJECT_SOURCE_DIR}/src/config.h.in" "${PROJECT_BINARY_DIR}/co
 configure_file("${PROJECT_SOURCE_DIR}/sysrepo.pc.in" "${PROJECT_BINARY_DIR}/sysrepo.pc" @ONLY)
 configure_file("${PROJECT_SOURCE_DIR}/src/executables/bin_common.h.in" "${PROJECT_BINARY_DIR}/bin_common.h" ESCAPE_QUOTES @ONLY)
 configure_file("${PROJECT_SOURCE_DIR}/src/executables/sysrepo-plugind.service.in" "${PROJECT_BINARY_DIR}/sysrepo-plugind.service" @ONLY)
+configure_file("${PROJECT_SOURCE_DIR}/src/executables/sysrepo-notifd/sysrepo-notifd.service.in" "${PROJECT_BINARY_DIR}/sysrepo-notifd.service" @ONLY)
 
 # copy public headers
 file(COPY ${LIB_MAIN_HEADERS} DESTINATION "${PROJECT_BINARY_DIR}/include")
@@ -652,12 +653,17 @@ if(ENABLE_SYSREPO_PLUGIND)
 endif()
 if(ENABLE_SYSREPO_NOTIFD)
     install(TARGETS sysrepo-notifd DESTINATION ${CMAKE_INSTALL_BINDIR})
+    install(FILES ${PROJECT_SOURCE_DIR}/src/executables/sysrepo-notifd/sysrepo-notifd.8
+            DESTINATION ${CMAKE_INSTALL_MANDIR}/man8)
 endif()
 if(SR_HAVE_DLOPEN)
     install(DIRECTORY DESTINATION ${SR_PLUGINS_PATH})
 endif()
 if(SR_HAVE_SYSTEMD AND ENABLE_SYSREPO_PLUGIND)
     install(FILES ${PROJECT_BINARY_DIR}/sysrepo-plugind.service DESTINATION ${SYSTEMD_UNIT_DIR})
+endif()
+if(SR_HAVE_SYSTEMD AND ENABLE_SYSREPO_NOTIFD)
+    install(FILES ${PROJECT_BINARY_DIR}/sysrepo-notifd.service DESTINATION ${SYSTEMD_UNIT_DIR})
 endif()
 
 if(INSTALL_SYSCTL_CONF)
