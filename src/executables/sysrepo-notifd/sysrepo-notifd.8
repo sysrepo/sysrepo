@@ -1,0 +1,59 @@
+.\" Manpage for sysrepo-notifd.
+.\" Process this file with
+.\" groff -man -Tascii sysrepo-notifd.8
+.\"
+
+.TH SYSREPO-NOTIFD 8 "2026-05-29" "sysrepo"
+.SH NAME
+sysrepo-notifd \- sysrepo notification daemon
+.
+.SH SYNOPSIS
+.B sysrepo-notifd
+[\fB\-h\fP] [\fB\-v\fP \fILEVEL\fP] [\fB\-d\fP] [\fB\-p\fP \fIPATH\fP] [\fB\-s\fP \fIDIR\fP]
+.br
+.
+.SH DESCRIPTION
+\fBsysrepo-notifd\fP is a daemon implementing RFC 8639 configured subscriptions.
+It reads the \fIietf-subscribed-notifications\fP configuration and manages the
+lifecycle of subscriptions and their receivers, delivering notifications from
+filterable event streams over configurable transports (UDP out of the box).
+On startup it requires both \fIietf-subscribed-notifications\fP and
+\fIietf-subscribed-notif-receivers\fP modules to be installed.
+.
+.SH OPTIONS
+.TP
+.BR "\-h\fR,\fP \-\^\-help"
+Prints usage help.
+.TP
+.BR "\-V\fR,\fP \-\^\-version"
+Prints only information about sysrepo version.
+.TP
+.BR "\-v\fR,\fP \-\^\-verbosity \fILEVEL\fP"
+Change verbosity to a level. \fILEVEL\fP can be a string or a number:
+ \[bu] \fBnone\fP/\fB0\fP
+ \[bu] \fBerror\fP/\fB1\fP (default)
+ \[bu] \fBwarning\fP/\fB2\fP
+ \[bu] \fBinfo\fP/\fB3\fP
+ \[bu] \fBverbose\fP/\fB4\fP
+ \[bu] \fBdebug\fP/\fB5\fP
+.TP
+.BR "\-d\fR,\fP \-\^\-debug"
+Debug mode - is not daemonized and logs to stderr instead of syslog.
+.TP
+.BR "\-p\fR,\fP \-\^\-pid\-file \fIPATH\fP"
+Create a PID file at the specified path with the PID written only once
+initialization is finished.
+.TP
+.BR "\-s\fR,\fP \-\^\-schema\-dir \fIDIR\fP"
+Set the directory with internal sysrepo YANG modules.
+.
+.SH SEE ALSO
+https://www.sysrepo.org (sysrepo home page)
+.TP
+https://github.com/sysrepo/sysrepo (sysrepo Git repository)
+.
+.SH AUTHORS
+Roman Janota <Roman.Janota@cesnet.cz>
+.
+.SH COPYRIGHT
+Copyright \(co 2026 CESNET, z.s.p.o.
