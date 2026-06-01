@@ -1,0 +1,3 @@
+# Type Name             ID      GECOS                   Home directory        Shell
+u      sysrepo-notifd   -       "sysrepo notifd user"   /run/sysrepo-notifd   /sbin/nologin
+m      sysrepo-notifd   sysrepo
