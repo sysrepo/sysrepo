@@ -348,6 +348,7 @@ set(FORMAT_SOURCES
     compat/*.h*
     examples/*.c
     examples/plugin/*.c
+    examples/notifd/*.c
     src/*.c
     src/*.h
     src/executables/*.c
