@@ -456,7 +456,7 @@ sub_invalidate(notif_sub_t *sub, const char *reason)
 {
     sub->state = NOTIF_SUB_STATE_INVALID;
     if (!sub->modif_err_reason) {
-        sub->modif_err_reason = reason ? reason : "ietf-subscribed-notifications:insufficient-resources";
+        sub->modif_err_reason = reason ? reason : "ietf-subscribed-notifications:no-such-subscription";
     }
 }
 
@@ -610,7 +610,7 @@ handle_encoding(notif_sub_t *sub, const struct lyd_node *node, sr_change_oper_t 
     if ((op == SR_OP_CREATED) || (op == SR_OP_MODIFIED)) {
         /* switch to the new value */
         if ((rc = notif_encoding_parse(node, &sub->encoding))) {
-            sub->modif_err_reason = "ietf-subscribed-notifications:encoding-unsupported";
+            sub->modif_err_reason = "ietf-subscribed-notifications:no-such-subscription";
             goto cleanup;
         }
     } else if (op == SR_OP_DELETED) {
@@ -1380,7 +1380,7 @@ process_modified_subscriptions(notifd_ctx_t *notifd_ctx)
                 /* valid modification => subscription-modified */
                 subscription_modified_notif_send(notifd_ctx, *sub, NULL);
             } else if ((*sub)->state == NOTIF_SUB_STATE_INVALID) {
-                /* invalid modification => subscription-terminated */
+                /* invalid modification => subscription-modified with reason + subscription-terminated */
                 subscription_terminated_notif_send(notifd_ctx, *sub, NULL, (*sub)->modif_err_reason);
             }
 
@@ -1448,7 +1448,7 @@ handle_stream_filter(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, int 
             if (is_subtree) {
                 /* subtree filter reference, convert to xpath, subtree is anydata, so use lyd_child_any() to get it */
                 if ((r = srsn_filter_subtree2xpath(lyd_child_any(node), notifd_ctx->sr_sess, &new_filter))) {
-                    (*sub)->modif_err_reason = "ietf-subscribed-notifications:filter-unsupported";
+                    (*sub)->modif_err_reason = "ietf-subscribed-notifications:no-such-subscription";
                     rc = r;
                 }
             } else {
@@ -1456,7 +1456,7 @@ handle_stream_filter(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, int 
                 new_filter = strdup(lyd_get_value(node));
                 if (!new_filter) {
                     r = rc = SR_ERR_NO_MEMORY;
-                    (*sub)->modif_err_reason = "ietf-subscribed-notifications:insufficient-resources";
+                    (*sub)->modif_err_reason = "ietf-subscribed-notifications:no-such-subscription";
                 }
             }
 
