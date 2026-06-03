@@ -395,6 +395,7 @@ check_required_modules(sr_conn_ctx_t *conn)
     const char *required_modules[] = {
         "ietf-subscribed-notifications",
         "ietf-subscribed-notif-receivers",
+        "ietf-udp-notif-transport",
         NULL
     };
     const struct ly_ctx *ly_ctx = NULL;

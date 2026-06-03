@@ -17,8 +17,9 @@ sysrepo-notifd \- sysrepo notification daemon
 It reads the \fIietf-subscribed-notifications\fP configuration and manages the
 lifecycle of subscriptions and their receivers, delivering notifications from
 filterable event streams over configurable transports (UDP out of the box).
-On startup it requires both \fIietf-subscribed-notifications\fP and
-\fIietf-subscribed-notif-receivers\fP modules to be installed.
+On startup it requires these three modules to be installed:
+\fIietf-subscribed-notifications\fP, \fIietf-subscribed-notif-receivers\fP
+and \fIietf-udp-notif-transport\fP.
 .
 .SH OPTIONS
 .TP
