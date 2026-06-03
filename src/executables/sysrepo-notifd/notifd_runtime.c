@@ -567,7 +567,7 @@ notification_dispatch_start(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_re
             &receiver->srsn_data.sr_subscr, &sub->replay_start_time, &receiver->srsn_data.fd, &receiver->srsn_data.sub_id))) {
         SRNTF_LOG_ERR("Failed to subscribe for notifications for subscription ID %" PRIu32 " and receiver \"%s\".",
                 sub->id, receiver->name);
-        sub->modif_err_reason = "ietf-subscribed-notifications:insufficient-resources";
+        sub->modif_err_reason = "ietf-subscribed-notifications:no-such-subscription";
         goto cleanup;
     }
 
@@ -581,7 +581,7 @@ notification_dispatch_start(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_re
     if ((rc = srsn_read_dispatch_add(receiver->srsn_data.fd, &receiver->cb_data))) {
         SRNTF_LOG_ERR("Failed to add notification dispatch for subscription ID %" PRIu32 " and receiver \"%s\".",
                 sub->id, receiver->name);
-        sub->modif_err_reason = "ietf-subscribed-notifications:insufficient-resources";
+        sub->modif_err_reason = "ietf-subscribed-notifications:no-such-subscription";
         goto cleanup;
     }
 
