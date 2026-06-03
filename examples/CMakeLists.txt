@@ -15,6 +15,10 @@ foreach(app_name IN LISTS examples)
     target_link_libraries(${app_name} sysrepo)
 endforeach(app_name)
 
+# notifd client (in subdirectory, needs separate build)
+add_executable(notifd_client notifd/notifd_client.c)
+target_link_libraries(notifd_client sysrepo)
+
 # oven plugin
 add_library(oven MODULE plugin/oven.c)
 set_target_properties(oven PROPERTIES PREFIX "")
