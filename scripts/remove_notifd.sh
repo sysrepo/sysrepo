@@ -18,6 +18,7 @@ fi
 MODULES=(
 "ietf-subscribed-notif-receivers"
 "ietf-subscribed-notifications"
+"ietf-udp-notif-transport"
 )
 
 # get current modules

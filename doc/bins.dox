@@ -32,7 +32,7 @@ Plugins can be installed by manually copying them into this path or directly usi
 _sysrepo-notifd_ implements [RFC 8639](https://www.rfc-editor.org/rfc/rfc8639) configured subscriptions. It reads the
 `ietf-subscribed-notifications` configuration and manages the lifecycle of subscriptions and their receivers,
 delivering notifications from filterable event streams over configurable transports (UDP out of the box).
-On startup it requires both `ietf-subscribed-notifications` and `ietf-subscribed-notif-receivers` modules to be
-installed.
+On startup it requires the following modules to be installed:
+`ietf-subscribed-notifications`, `ietf-subscribed-notif-receivers` and `ietf-udp-notif-transport`.
 
 */

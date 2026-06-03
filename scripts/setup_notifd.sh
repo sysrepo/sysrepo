@@ -34,6 +34,7 @@ SCTL_MODULES=`$SYSREPOCTL -l`
 MODULES=(
 "ietf-subscribed-notifications@2019-09-09.yang -e configured -e replay -e subtree -e xpath"
 "ietf-subscribed-notif-receivers@2024-02-01.yang"
+"ietf-udp-notif-transport@2025-06-04.yang"
 )
 
 # the install command will be stored in this variable
