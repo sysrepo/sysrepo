@@ -766,6 +766,18 @@ pc_update_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *UNU
     struct lyd_node *reversed_diff;
     sr_error_t ret = SR_ERR_OK;
 
+    if (ATOMIC_LOAD_RELAXED(privcand->commit_orig_sid) == sr_session_get_orig_sid(session)) {
+        /* ignore module changes triggered by an ongoing private-candidate commit */
+        return SR_ERR_OK;
+    }
+
+    /* PRIVCAND LOCK */
+    if ((err_info = sr_mlock(&privcand->diff_lock, SR_PRIVCAND_LOCK_TIMEOUT, __func__, NULL, NULL))) {
+        ret = err_info->err[0].err_code;
+        sr_errinfo_free(&err_info);
+        return ret;
+    }
+
     /* obtain the diff of changes applied to the running datastore */
     diff = sr_get_change_diff(session);
 
@@ -784,6 +796,9 @@ pc_update_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *UNU
     reversed_diff = NULL;
 
 cleanup:
+    /* PRIVCAND UNLOCK */
+    sr_munlock(&privcand->diff_lock);
+
     lyd_free_all(reversed_diff);
 
     if (err_info) {
@@ -817,6 +832,9 @@ sr_pc_create_ds(sr_session_ctx_t *session, uint32_t subscription_opts, sr_subscr
     /* allocate and initialize the private candidate structure */
     *privcand = calloc(1, sizeof(**privcand));
     SR_CHECK_MEM_GOTO(!*privcand, err_info, cleanup);
+    if ((err_info = sr_mutex_init(&(*privcand)->diff_lock, 0))) {
+        goto cleanup;
+    }
 
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
@@ -898,6 +916,7 @@ sr_pc_destroy_ds(sr_session_ctx_t *session, sr_priv_cand_t *privcand)
 
     lyd_free_all(privcand->diff_run);
     lyd_free_all(privcand->diff_privcand);
+    pthread_mutex_destroy(&privcand->diff_lock);
 
     if (privcand->has_ctx_lock) {
         /* CONTEXT UNLOCK */
@@ -1010,7 +1029,15 @@ sr_pc_update(sr_session_ctx_t *session, sr_priv_cand_t *privcand, sr_pc_conflict
 
     SR_CHECK_ARG_APIRET(!privcand || !conflict_set, NULL, err_info);
 
+    /* PRIVCAND LOCK */
+    if ((err_info = sr_mlock(&privcand->diff_lock, SR_PRIVCAND_LOCK_TIMEOUT, __func__, NULL, NULL))) {
+        return sr_api_ret(session, err_info);
+    }
+
     err_info = _sr_pc_update(privcand, conflict_resolution, conflict_set);
+
+    /* PRIVCAND UNLOCK */
+    sr_munlock(&privcand->diff_lock);
 
     return sr_api_ret(session, err_info);
 }
@@ -1025,6 +1052,11 @@ sr_pc_commit(sr_session_ctx_t *session, sr_priv_cand_t *privcand, sr_pc_conflict
     int ret = SR_ERR_OK;
 
     SR_CHECK_ARG_APIRET(!session || !privcand || !conflict_set, NULL, err_info);
+
+    /* PRIVCAND LOCK */
+    if ((err_info = sr_mlock(&privcand->diff_lock, SR_PRIVCAND_LOCK_TIMEOUT, __func__, NULL, NULL))) {
+        return sr_api_ret(session, err_info);
+    }
 
     /* backup datastore */
     datastore = session->ds;
@@ -1076,7 +1108,8 @@ sr_pc_commit(sr_session_ctx_t *session, sr_priv_cand_t *privcand, sr_pc_conflict
         goto cleanup;
     }
 
-    /* perform the actual commit in the datastore */
+    /* perform the actual commit in the datastore, ignore the module changes triggered */
+    ATOMIC_STORE_RELAXED(privcand->commit_orig_sid, sr_session_get_id(session));
     if ((ret = sr_apply_changes(session, 0))) {
         goto cleanup;
     }
@@ -1093,6 +1126,11 @@ cleanup:
     privcand->diff_run = NULL;
     lyd_free_all(privcand->diff_privcand);
     privcand->diff_privcand = NULL;
+    ATOMIC_STORE_RELAXED(privcand->commit_orig_sid, 0);
+
+    /* PRIVCAND UNLOCK */
+    sr_munlock(&privcand->diff_lock);
+
     /* restore the original datastore */
     session->ds = datastore;
 
@@ -1119,6 +1157,11 @@ sr_pc_edit_config(sr_session_ctx_t *session, sr_priv_cand_t *privcand, const str
             sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Edit must be a top-level data tree.");
             return sr_api_ret(session, err_info);
         }
+    }
+
+    /* PRIVCAND LOCK */
+    if ((err_info = sr_mlock(&privcand->diff_lock, SR_PRIVCAND_LOCK_TIMEOUT, __func__, NULL, NULL))) {
+        return sr_api_ret(session, err_info);
     }
 
     if (sr_yang_ctx.ly_ctx != LYD_CTX(edit)) {
@@ -1178,6 +1221,9 @@ sr_pc_edit_config(sr_session_ctx_t *session, sr_priv_cand_t *privcand, const str
     }
 
 cleanup:
+    /* PRIVCAND UNLOCK */
+    sr_munlock(&privcand->diff_lock);
+
     sr_shmmod_modinfo_unlock(&mod_info);
     sr_modinfo_erase(&mod_info);
 
@@ -1194,12 +1240,23 @@ cleanup:
 API void
 sr_pc_discard_changes(sr_priv_cand_t *privcand)
 {
-    if (!privcand || !privcand->diff_privcand) {
+    sr_error_info_t *err_info = NULL;
+
+    if (!privcand) {
+        return;
+    }
+
+    /* PRIVCAND LOCK */
+    if ((err_info = sr_mlock(&privcand->diff_lock, SR_PRIVCAND_LOCK_TIMEOUT, __func__, NULL, NULL))) {
+        sr_errinfo_free(&err_info);
         return;
     }
 
     lyd_free_all(privcand->diff_privcand);
     privcand->diff_privcand = NULL;
+
+    /* PRIVCAND UNLOCK */
+    sr_munlock(&privcand->diff_lock);
 }
 
 API int
@@ -1218,6 +1275,11 @@ sr_pc_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth,
 
     /* init modinfo */
     sr_modinfo_init(&mod_info, session->conn, session->ds, session->ds, 0);
+
+    /* PRIVCAND LOCK */
+    if ((err_info = sr_mlock((pthread_mutex_t *)&privcand->diff_lock, SR_PRIVCAND_LOCK_TIMEOUT, __func__, NULL, NULL))) {
+        return sr_api_ret(session, err_info);
+    }
 
     /* collect all required modules */
     if ((err_info = sr_modinfo_collect_xpath(sr_yang_ctx.ly_ctx, xpath, session->ds, session,
@@ -1271,6 +1333,9 @@ sr_pc_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth,
     mod_info.data = NULL;
 
 cleanup:
+    /* PRIVCAND UNLOCK */
+    sr_munlock((pthread_mutex_t *)&privcand->diff_lock);
+
     lyd_free_all(final_diff);
     ly_set_free(set, NULL);
 
@@ -1293,6 +1358,11 @@ sr_pc_backup_privcand(sr_session_ctx_t *session, sr_priv_cand_t *privcand, sr_pr
 
     SR_CHECK_ARG_APIRET(!session || !privcand || !privcand_backup, session, err_info);
 
+    /* PRIVCAND LOCK */
+    if ((err_info = sr_mlock(&privcand->diff_lock, SR_PRIVCAND_LOCK_TIMEOUT, __func__, NULL, NULL))) {
+        return sr_api_ret(session, err_info);
+    }
+
     *privcand_backup = calloc(1, sizeof(**privcand_backup));
     SR_CHECK_MEM_GOTO(!*privcand_backup, err_info, cleanup);
 
@@ -1309,6 +1379,9 @@ sr_pc_backup_privcand(sr_session_ctx_t *session, sr_priv_cand_t *privcand, sr_pr
     }
 
 cleanup:
+    /* PRIVCAND UNLOCK */
+    sr_munlock(&privcand->diff_lock);
+
     if (err_info && *privcand_backup) {
         lyd_free_all((*privcand_backup)->diff_run);
         lyd_free_all((*privcand_backup)->diff_privcand);
@@ -1322,7 +1395,15 @@ cleanup:
 API void
 sr_pc_restore_privcand(sr_priv_cand_t *privcand_target, sr_priv_cand_t *privcand_backup)
 {
+    sr_error_info_t *err_info = NULL;
+
     if (!privcand_backup || !privcand_target) {
+        return;
+    }
+
+    /* PRIVCAND LOCK */
+    if ((err_info = sr_mlock(&privcand_target->diff_lock, SR_PRIVCAND_LOCK_TIMEOUT, __func__, NULL, NULL))) {
+        sr_errinfo_free(&err_info);
         return;
     }
 
@@ -1337,6 +1418,9 @@ sr_pc_restore_privcand(sr_priv_cand_t *privcand_target, sr_priv_cand_t *privcand
     privcand_backup->diff_privcand = NULL;
 
     free(privcand_backup);
+
+    /* PRIVCAND UNLOCK */
+    sr_munlock(&privcand_target->diff_lock);
 }
 
 API int
@@ -1391,6 +1475,11 @@ sr_pc_replace_trg_config(sr_session_ctx_t *session, sr_priv_cand_t *privcand, co
 
     /* init modinfo */
     sr_modinfo_init(&mod_info, session->conn, SR_DS_RUNNING, SR_DS_RUNNING, 0);
+
+    /* PRIVCAND LOCK */
+    if ((err_info = sr_mlock(&privcand->diff_lock, SR_PRIVCAND_LOCK_TIMEOUT, __func__, NULL, NULL))) {
+        return sr_api_ret(session, err_info);
+    }
 
     if (sr_yang_ctx.ly_ctx != LYD_CTX(src_config)) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Data trees must be created using the session connection libyang context.");
@@ -1475,6 +1564,9 @@ sr_pc_replace_trg_config(sr_session_ctx_t *session, sr_priv_cand_t *privcand, co
     }
 
 cleanup:
+    /* PRIVCAND UNLOCK */
+    sr_munlock(&privcand->diff_lock);
+
     sr_shmmod_modinfo_unlock(&mod_info);
     sr_modinfo_erase(&mod_info);
 

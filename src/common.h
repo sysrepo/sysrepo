@@ -131,6 +131,9 @@ struct srplg_ntf_s;
 /** default timeout for notification subscrption callback (ms) */
 #define SR_NOTIF_CB_TIMEOUT 2000
 
+/** timeout of waiting for a privcand structure lock (ms) */
+#define SR_PRIVCAND_LOCK_TIMEOUT 5000
+
 /** timeout step for parallel subscription active polling loop */
 #define SR_SHMSUB_MANY_EVENT_TIMEOUT_STEP_MS 1
 
