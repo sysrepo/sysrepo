@@ -1070,6 +1070,7 @@ cleanup:
  * @param[in] xpath XPath of the provided data.
  * @param[in] request_xpaths XPaths based on which these data are required, if NULL the complete module data are needed.
  * @param[in] req_xpath_count Count of @p request_xpaths.
+ * @param[in] orig_sid Event originator session ID.
  * @param[in] orig_name Event originator name.
  * @param[in] orig_data Event originator data.
  * @param[in] operation_id Operation ID.
@@ -1083,7 +1084,7 @@ cleanup:
  */
 static sr_error_info_t *
 sr_xpath_oper_data_get(struct sr_mod_info_mod_s *mod, const char *xpath, const char **request_xpaths,
-        uint32_t req_xpath_count, const char *orig_name, const void *orig_data, uint32_t operation_id,
+        uint32_t req_xpath_count, uint32_t orig_sid, const char *orig_name, const void *orig_data, uint32_t operation_id,
         sr_mod_oper_get_sub_t *shm_subs, uint32_t idx1, const struct lyd_node *parent, uint32_t timeout_ms,
         sr_conn_ctx_t *conn, struct lyd_node **oper_data)
 {
@@ -1128,8 +1129,8 @@ sr_xpath_oper_data_get(struct sr_mod_info_mod_s *mod, const char *xpath, const c
     request_xpath = (req_xpath_count == 1) ? request_xpaths[0] : NULL;
 
     /* get data from client */
-    if ((err_info = sr_shmsub_oper_get_notify(mod, xpath, request_xpath, parent_dup, orig_name, orig_data, operation_id,
-            shm_subs, idx1, timeout_ms, conn, oper_data, &cb_err_info))) {
+    if ((err_info = sr_shmsub_oper_get_notify(mod, xpath, request_xpath, parent_dup, orig_sid, orig_name, orig_data,
+            operation_id, shm_subs, idx1, timeout_ms, conn, oper_data, &cb_err_info))) {
         sr_errinfo_merge(&err_info, cb_err_info);
         goto cleanup;
     }
@@ -1504,7 +1505,7 @@ cleanup:
  * @brief Update (replace or append) operational data for a specific module.
  *
  * @param[in] mod Mod info module to process.
- * @param[in] oper_mode Current lock mode of @p mod for ::SR_DS_OPERATIONAL.
+ * @param[in] orig_sid Event originator session ID.
  * @param[in] orig_name Event originator name.
  * @param[in] orig_data Event originator data.
  * @param[in] operation_id Operation ID.
@@ -1515,7 +1516,7 @@ cleanup:
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name, const void *orig_data,
+sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, uint32_t orig_sid, const char *orig_name, const void *orig_data,
         uint32_t operation_id, sr_conn_ctx_t *conn, uint32_t timeout_ms, sr_get_oper_flag_t get_oper_opts,
         struct lyd_node **data)
 {
@@ -1634,8 +1635,8 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
             /* nested data */
             for (j = 0; j < set->count; ++j) {
                 /* get oper data from the client */
-                if ((err_info = sr_xpath_oper_data_get(mod, sub_xpath, request_xpaths, req_xpath_count, orig_name,
-                        orig_data, operation_id, shm_subs, i, set->dnodes[j], timeout_ms, conn, &oper_data))) {
+                if ((err_info = sr_xpath_oper_data_get(mod, sub_xpath, request_xpaths, req_xpath_count, orig_sid,
+                        orig_name, orig_data, operation_id, shm_subs, i, set->dnodes[j], timeout_ms, conn, &oper_data))) {
                     goto cleanup_opergetsub_ext_unlock;
                 }
 
@@ -1654,7 +1655,7 @@ next_iter:
             set = NULL;
         } else {
             /* top-level data */
-            if ((err_info = sr_xpath_oper_data_get(mod, sub_xpath, request_xpaths, req_xpath_count, orig_name,
+            if ((err_info = sr_xpath_oper_data_get(mod, sub_xpath, request_xpaths, req_xpath_count, orig_sid, orig_name,
                     orig_data, operation_id, shm_subs, i, NULL, timeout_ms, conn, &oper_data))) {
                 goto cleanup_opergetsub_ext_unlock;
             }
@@ -2663,7 +2664,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
     sr_conn_ctx_t *conn = mod_info->conn;
     struct lyd_node *mod_data = NULL;
     struct sr_mod_info_xpath_s *xpaths;
-    uint32_t xpath_count;
+    uint32_t xpath_count, orig_sid = 0;
     int modified, has_data;
     char *orig_name = NULL;
     void *orig_data = NULL;
@@ -2693,6 +2694,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
 
     /* get session info */
     if (sess) {
+        orig_sid = sess->sid;
         orig_name = sess->orig_name;
         orig_data = sess->orig_data;
     }
@@ -2789,8 +2791,8 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
         }
 
         /* append any operational data provided by clients */
-        if ((err_info = sr_module_oper_data_update(mod, orig_name, orig_data, mod_info->operation_id, conn, timeout_ms,
-                get_oper_opts, &mod_info->data))) {
+        if ((err_info = sr_module_oper_data_update(mod, orig_sid, orig_name, orig_data, mod_info->operation_id, conn,
+                timeout_ms, get_oper_opts, &mod_info->data))) {
             return err_info;
         }
     }
@@ -3566,20 +3568,22 @@ sr_modinfo_change_notify_update(struct sr_mod_info_s *mod_info, sr_session_ctx_t
     struct lyd_node *update_edit = NULL, *old_diff = NULL, *new_diff = NULL;
     char *orig_name = NULL;
     void *orig_data = NULL;
-    uint32_t mi_opts, err_count;
+    uint32_t mi_opts, err_count, sid = 0;
 
     assert(mod_info->notify_diff);
     assert(*change_sub_lock == SR_LOCK_READ);
 
     /* get session info */
     if (session) {
+        sid = session->sid;
         orig_name = session->orig_name;
         orig_data = session->orig_data;
     }
 
     /* publish current diff in an "update" event for the subscribers to update it */
     err_count = *err_info2 ? (*err_info2)->err_count : 0;
-    if ((err_info = sr_shmsub_change_notify_update(mod_info, orig_name, orig_data, timeout_ms, &update_edit, err_info2))) {
+    if ((err_info = sr_shmsub_change_notify_update(mod_info, sid, orig_name, orig_data, timeout_ms, &update_edit,
+            err_info2))) {
         goto cleanup;
     }
     if (*err_info2 && ((*err_info2)->err_count > err_count)) {
@@ -3862,8 +3866,8 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     sr_realtime_get(&notif_ts_real);
 
     /* send the notification (non-validated, if everything works correctly it must be valid) */
-    err_info = sr_shmsub_notif_notify(mod_info->conn, notif, notif_ts_mono, notif_ts_real, session->orig_name,
-            session->orig_data, mod_info->operation_id, 0, 0);
+    err_info = sr_shmsub_notif_notify(mod_info->conn, notif, notif_ts_mono, notif_ts_real, session->sid,
+            session->orig_name, session->orig_data, mod_info->operation_id, 0, 0);
 
     /* NOTIF SUB READ UNLOCK */
     sr_rwunlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, mod_info->conn->cid, __func__);

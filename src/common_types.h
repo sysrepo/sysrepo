@@ -171,6 +171,7 @@ struct sr_session_ctx_s {
     sr_sub_event_t ev;              /**< Event of a callback session. ::SR_SUB_EV_NONE for standard user sessions. */
 
     struct {
+        uint32_t orig_sid;          /**< Originator session ID. */
         char *orig_name;            /**< Set originator name by the event originator. */
         void *orig_data;            /**< Set originator data by the event originator. */
     } ev_data;                      /**< Event data from the originator. Valid only if ev is not ::SR_SUB_EV_NONE. */

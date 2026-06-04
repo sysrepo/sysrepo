@@ -6287,7 +6287,7 @@ sr_generate_notif_send(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const struct lyd_
     operation_id = ATOMIC_INC_RELAXED(SR_CONN_MAIN_SHM(conn)->new_operation_id);
 
     /* send the notification (non-validated, must be valid) */
-    err_info = sr_shmsub_notif_notify(conn, notif, notif_ts_mono, notif_ts_real, NULL, NULL, operation_id, 0, 0);
+    err_info = sr_shmsub_notif_notify(conn, notif, notif_ts_mono, notif_ts_real, 0, NULL, NULL, operation_id, 0, 0);
 
     /* NOTIF SUB READ UNLOCK */
     sr_rwunlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);

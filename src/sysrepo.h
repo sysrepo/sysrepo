@@ -339,6 +339,16 @@ int sr_session_switch_ds(sr_session_ctx_t *session, sr_datastore_t ds);
 sr_datastore_t sr_session_get_ds(sr_session_ctx_t *session);
 
 /**
+ * @brief Get event originator session ID.
+ *
+ * Allows to map specific callback events to their originators in a simple way.
+ *
+ * @param[in] session Implicit session provided in a callback.
+ * @return Originator session ID if any, 0 otherwise.
+ */
+uint32_t sr_session_get_orig_sid(sr_session_ctx_t *session);
+
+/**
  * @brief Set event originator name used for all events sent on this session.
  * It can then be read from the implicit event session in the callbacks using ::sr_session_get_orig_name().
  * This name should be used for interpreting the data set by ::sr_session_push_orig_data().

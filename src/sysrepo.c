@@ -637,12 +637,13 @@ cleanup:
  * @brief Set originator name and data for a session.
  *
  * @param[in] sess Session to use.
+ * @param[in] orig_sid Pointer to the originator session ID.
  * @param[in] orig_name Originator name.
  * @param[in] orig_data Originator data.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_session_set_orig(sr_session_ctx_t *sess, const char *orig_name, const void *orig_data)
+sr_session_set_orig(sr_session_ctx_t *sess, const uint32_t *orig_sid, const char *orig_name, const void *orig_data)
 {
     sr_error_info_t *err_info = NULL;
     const uint32_t empty_data[] = {0};
@@ -653,6 +654,9 @@ sr_session_set_orig(sr_session_ctx_t *sess, const char *orig_name, const void *o
     if (!orig_data) {
         orig_data = empty_data;
     }
+
+    /* orig SID */
+    sess->ev_data.orig_sid = *orig_sid;
 
     /* orig name */
     sess->ev_data.orig_name = strdup(orig_name);
@@ -671,6 +675,7 @@ _sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_sub_ev
         sr_session_ctx_t **session)
 {
     sr_error_info_t *err_info = NULL;
+    char *orig_data;
     uid_t uid;
 
     assert(conn && session);
@@ -700,9 +705,13 @@ _sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_sub_ev
     (*session)->ds = datastore;
     (*session)->ev = event;
     if (shm_data_ptr) {
-        if ((err_info = sr_session_set_orig(*session, *shm_data_ptr, (*shm_data_ptr) + sr_strshmlen(*shm_data_ptr)))) {
+        orig_data = *shm_data_ptr + SR_SHM_SIZE(sizeof(uint32_t));
+        if ((err_info = sr_session_set_orig(*session, (uint32_t *)*shm_data_ptr, orig_data,
+                orig_data + sr_strshmlen(orig_data)))) {
             goto error;
         }
+
+        *shm_data_ptr += SR_SHM_SIZE(sizeof(uint32_t));
         *shm_data_ptr += sr_strshmlen(*shm_data_ptr);
         *shm_data_ptr += SR_SHM_SIZE(sr_ev_data_size(*shm_data_ptr));
     }
@@ -968,6 +977,16 @@ sr_session_get_ds(sr_session_ctx_t *session)
     }
 
     return session->ds;
+}
+
+API uint32_t
+sr_session_get_orig_sid(sr_session_ctx_t *session)
+{
+    if (!session || !session->ev) {
+        return 0;
+    }
+
+    return session->ev_data.orig_sid;
 }
 
 API int
@@ -4584,12 +4603,12 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
     }
 
     /* publish final diff in a "change" event for any subscribers and wait for them */
-    if ((err_info = sr_shmsub_change_notify_change(mod_info, orig_name, orig_data, timeout_ms, err_info2))) {
+    if ((err_info = sr_shmsub_change_notify_change(mod_info, sid, orig_name, orig_data, timeout_ms, err_info2))) {
         goto cleanup;
     }
     if (*err_info2) {
         /* "change" event failed, publish "abort" event and finish */
-        err_info = sr_shmsub_change_notify_change_abort(mod_info, orig_name, orig_data, timeout_ms, err_info2);
+        err_info = sr_shmsub_change_notify_change_abort(mod_info, sid, orig_name, orig_data, timeout_ms, err_info2);
         goto cleanup;
     }
 
@@ -4620,7 +4639,7 @@ store:
     }
 
     /* publish "done" event, all changes were applied */
-    if ((err_info = sr_shmsub_change_notify_change_done(mod_info, orig_name, orig_data, timeout_ms, err_info2))) {
+    if ((err_info = sr_shmsub_change_notify_change_done(mod_info, sid, orig_name, orig_data, timeout_ms, err_info2))) {
         goto cleanup;
     }
 
@@ -7562,7 +7581,7 @@ _sr_rpc_send_tree(sr_session_ctx_t *session, struct sr_mod_info_s *mod_info, con
     }
 
     /* publish RPC in an event and wait for a reply from the last subscriber */
-    if ((err_info = sr_shmsub_rpc_notify(session->conn, &shm_rpc->subs, &shm_rpc->sub_count, path, input,
+    if ((err_info = sr_shmsub_rpc_notify(session->conn, &shm_rpc->subs, &shm_rpc->sub_count, path, input, session->sid,
             session->orig_name, session->orig_data, mod_info->operation_id, timeout_ms, &request_id, &(*output)->tree,
             &cb_err_info))) {
         goto cleanup_rpcsub_unlock;
@@ -7571,7 +7590,8 @@ _sr_rpc_send_tree(sr_session_ctx_t *session, struct sr_mod_info_s *mod_info, con
     if (cb_err_info) {
         /* "rpc" event failed, publish "abort" event and finish */
         err_info = sr_shmsub_rpc_notify_abort(session->conn, &shm_rpc->subs, &shm_rpc->sub_count, path, input,
-                session->orig_name, session->orig_data, mod_info->operation_id, timeout_ms, request_id, &cb_err_info);
+                session->sid, session->orig_name, session->orig_data, mod_info->operation_id, timeout_ms, request_id,
+                &cb_err_info);
         goto cleanup_rpcsub_unlock;
     }
 
@@ -7682,7 +7702,7 @@ _sr_rpc_ext_send_tree(sr_session_ctx_t *session, const struct lyd_node *ext_pare
 
     /* publish RPC in an event and wait for a reply from the last subscriber */
     if ((err_info = sr_shmsub_rpc_notify(session->conn, &shm_mod->rpc_ext_subs, &shm_mod->rpc_ext_sub_count, path,
-            input, session->orig_name, session->orig_data, mod_info->operation_id, timeout_ms, &request_id,
+            input, session->sid, session->orig_name, session->orig_data, mod_info->operation_id, timeout_ms, &request_id,
             &(*output)->tree, &cb_err_info))) {
         goto cleanup_rpcsub_unlock;
     }
@@ -7690,7 +7710,8 @@ _sr_rpc_ext_send_tree(sr_session_ctx_t *session, const struct lyd_node *ext_pare
     if (cb_err_info) {
         /* "rpc" event failed, publish "abort" event and finish */
         err_info = sr_shmsub_rpc_notify_abort(session->conn, &shm_mod->rpc_ext_subs, &shm_mod->rpc_ext_sub_count, path,
-                input, session->orig_name, session->orig_data, mod_info->operation_id, timeout_ms, request_id, &cb_err_info);
+                input, session->sid, session->orig_name, session->orig_data, mod_info->operation_id, timeout_ms,
+                request_id, &cb_err_info);
         goto cleanup_rpcsub_unlock;
     }
 
@@ -8160,8 +8181,8 @@ sr_notif_send_tree_internal(sr_session_ctx_t *session, struct lyd_node *notif, u
     sr_realtime_get(&notif_ts_real);
 
     /* publish notif in an event */
-    err_info = sr_shmsub_notif_notify(session->conn, notif_top, notif_ts_mono, notif_ts_real, session->orig_name,
-            session->orig_data, mod_info.operation_id, timeout_ms, wait);
+    err_info = sr_shmsub_notif_notify(session->conn, notif_top, notif_ts_mono, notif_ts_real, session->sid,
+            session->orig_name, session->orig_data, mod_info.operation_id, timeout_ms, wait);
 
     /* NOTIF SUB READ UNLOCK */
     sr_rwunlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid, __func__);
