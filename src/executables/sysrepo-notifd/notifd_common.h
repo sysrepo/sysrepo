@@ -437,29 +437,31 @@ void process_modified_receiver_instances(notifd_ctx_t *notifd_ctx);
 int subscription_resubscribe(notifd_ctx_t *notifd_ctx, notif_sub_t *sub);
 
 /**
- * @brief Validate subscription changes during SR_EV_CHANGE (read-only).
+ * @brief Validate subscription changes during SR_EV_CHANGE or SR_EV_ENABLED (read-only).
  *
  * Validates transport identity, encoding, stream existence, subtree filter
  * convertibility, configured-replay stream support, and temporal constraints
  * (start/stop time). Does not modify any state.
  *
  * @param[in] notifd_ctx Daemon context.
- * @param[in,out] session Sysrepo change session (error messages may be set on it).
+ * @param[in,out] session Sysrepo change session (error messages may be set on it for ::SR_EV_CHANGE).
+ * @param[in] event Sysrepo event (::SR_EV_CHANGE or ::SR_EV_ENABLED).
  * @return ::SR_ERR_OK if all validations pass, error code on validation failure.
  */
-int sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session);
+int sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session, sr_event_t event);
 
 /**
- * @brief Validate filter changes during SR_EV_CHANGE (read-only).
+ * @brief Validate filter changes during SR_EV_CHANGE or SR_EV_ENABLED (read-only).
  *
  * Validates that any newly created or modified `stream-subtree-filter` entries
  * in the global filters list can be converted to XPath. Does not modify any state.
  *
  * @param[in] notifd_ctx Daemon context.
- * @param[in] session Sysrepo change session.
+ * @param[in] session Sysrepo change session (error messages may be set on it for ::SR_EV_CHANGE).
+ * @param[in] event Sysrepo event (::SR_EV_CHANGE or ::SR_EV_ENABLED).
  * @return ::SR_ERR_OK if all subtree filters are valid, error code on failure.
  */
-int filter_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session);
+int filter_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session, sr_event_t event);
 
 /**
  * @brief Check whether a specific YANG feature is enabled in a given module.
