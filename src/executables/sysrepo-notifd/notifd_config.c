@@ -1485,12 +1485,12 @@ handle_stream_filter(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, int 
 
 /*
  * ---------------------------------------------------------------------------
- * SR_EV_CHANGE validation (read-only checks, no state modification)
+ * SR_EV_CHANGE and SR_EV_ENABLED validation (read-only checks, no state modification)
  * ---------------------------------------------------------------------------
  */
 
 static int
-sub_change_validate_encoding(const struct lyd_node *node)
+sub_change_validate_encoding(sr_session_ctx_t *session, sr_event_t event, const struct lyd_node *node)
 {
     const char *value;
 
@@ -1498,16 +1498,17 @@ sub_change_validate_encoding(const struct lyd_node *node)
     if (!strcmp(value, "encode-xml") || !strcmp(value, "encode-json")) {
         return SR_ERR_OK;
     } else if (!strcmp(value, "encode-cbor")) {
-        SRNTF_LOG_ERR("CBOR encoding is not yet supported.");
+        SRNTF_VALIDATE_ERR(session, event, SR_ERR_UNSUPPORTED, "CBOR encoding is not yet supported.");
         return SR_ERR_UNSUPPORTED;
     } else {
-        SRNTF_LOG_ERR("Unsupported encoding \"%s\".", value);
+        SRNTF_VALIDATE_ERR(session, event, SR_ERR_UNSUPPORTED, "Unsupported encoding \"%s\".", value);
         return SR_ERR_UNSUPPORTED;
     }
 }
 
 static int
-sub_change_validate_stream(notifd_ctx_t *notifd_ctx, const char *stream, const char *xpath_filter)
+sub_change_validate_stream(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session, sr_event_t event,
+        const char *stream, const char *xpath_filter)
 {
     int rc = SR_ERR_OK;
     const struct ly_ctx *ly_ctx;
@@ -1516,7 +1517,7 @@ sub_change_validate_stream(notifd_ctx_t *notifd_ctx, const char *stream, const c
     ly_ctx = sr_session_acquire_context(notifd_ctx->sr_sess);
     if ((rc = srsn_stream_collect_mods(stream, xpath_filter, ly_ctx, &mod_set))) {
         if (rc == SR_ERR_NOT_FOUND) {
-            SRNTF_LOG_ERR("Stream \"%s\" does not match any implemented YANG module.", stream);
+            SRNTF_VALIDATE_ERR(session, event, rc, "Stream \"%s\" does not match any implemented YANG module.", stream);
         }
         goto cleanup;
     }
@@ -1528,29 +1529,31 @@ cleanup:
 }
 
 static int
-sub_change_validate_temporal(sr_session_ctx_t *session, const struct timespec *stop_time,
+sub_change_validate_temporal(sr_session_ctx_t *session, sr_event_t event, const struct timespec *stop_time,
         const struct timespec *start_time)
 {
+    int rc = SR_ERR_OK;
     struct timespec cur_ts;
 
     clock_gettime(CLOCK_REALTIME, &cur_ts);
 
     if (start_time && (timespec_cmp(&cur_ts, start_time) < 0)) {
-        sr_session_set_error_message(session, "Specified \"start-time\" is in the future.");
-        return SR_ERR_INVAL_ARG;
+        SRNTF_VALIDATE_ERR(session, event, SR_ERR_VALIDATION_FAILED, "Specified \"start-time\" is in the future.");
+        rc = SR_ERR_VALIDATION_FAILED;
     } else if (!start_time && stop_time && (timespec_cmp(&cur_ts, stop_time) > 0)) {
-        sr_session_set_error_message(session, "Specified \"stop-time\" is in the past.");
-        return SR_ERR_INVAL_ARG;
+        SRNTF_VALIDATE_ERR(session, event, SR_ERR_VALIDATION_FAILED, "Specified \"stop-time\" is in the past.");
+        rc = SR_ERR_VALIDATION_FAILED;
     } else if (start_time && stop_time && (timespec_cmp(start_time, stop_time) > 0)) {
-        sr_session_set_error_message(session, "Specified \"stop-time\" is earlier than \"start-time\".");
-        return SR_ERR_INVAL_ARG;
+        SRNTF_VALIDATE_ERR(session, event, SR_ERR_VALIDATION_FAILED, "Specified \"stop-time\" is earlier than \"start-time\".");
+        rc = SR_ERR_VALIDATION_FAILED;
     }
 
-    return SR_ERR_OK;
+    return rc;
 }
 
 static int
-sub_change_validate_subtree_filter(sr_session_ctx_t *session, const struct lyd_node *subtree_filter)
+sub_change_validate_subtree_filter(sr_session_ctx_t *session, sr_event_t event,
+        const struct lyd_node *subtree_filter)
 {
     int rc = SR_ERR_OK;
     char *xpath_filter = NULL;
@@ -1562,7 +1565,7 @@ sub_change_validate_subtree_filter(sr_session_ctx_t *session, const struct lyd_n
     }
 
     if ((rc = srsn_filter_subtree2xpath(filter, session, &xpath_filter))) {
-        SRNTF_LOG_ERR("Failed to convert subtree filter to XPath.");
+        SRNTF_VALIDATE_ERR(session, event, rc, "Failed to convert subtree filter to XPath.");
         goto cleanup;
     }
 
@@ -1572,7 +1575,7 @@ cleanup:
 }
 
 int
-sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session)
+sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session, sr_event_t event)
 {
     int rc = SR_ERR_OK, r, prev_dflt;
     sr_change_iter_t *iter = NULL;
@@ -1601,7 +1604,7 @@ sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session)
 
             ops = notif_transport_find_by_identity(lyd_get_value(n));
             if (!ops) {
-                SRNTF_LOG_ERR("Unsupported transport \"%s\".", lyd_get_value(n));
+                SRNTF_VALIDATE_ERR(session, event, SR_ERR_UNSUPPORTED, "Unsupported transport \"%s\".", lyd_get_value(n));
                 rc = SR_ERR_UNSUPPORTED;
                 goto cleanup;
             }
@@ -1613,7 +1616,7 @@ sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session)
 
         /* encoding */
         if (!lyd_find_path(node, "encoding", 0, &n)) {
-            if ((r = sub_change_validate_encoding(n))) {
+            if ((r = sub_change_validate_encoding(session, event, n))) {
                 rc = r;
                 goto cleanup;
             }
@@ -1629,7 +1632,7 @@ sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session)
             xpath_filter = lyd_get_value(n);
         }
         if (stream) {
-            if ((r = sub_change_validate_stream(notifd_ctx, stream, xpath_filter))) {
+            if ((r = sub_change_validate_stream(notifd_ctx, session, event, stream, xpath_filter))) {
                 rc = r;
                 goto cleanup;
             }
@@ -1637,7 +1640,7 @@ sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session)
 
         /* subtree filter must be convertible to XPath */
         if (!lyd_find_path(node, "stream-subtree-filter", 0, &n)) {
-            if ((r = sub_change_validate_subtree_filter(session, n))) {
+            if ((r = sub_change_validate_subtree_filter(session, event, n))) {
                 rc = r;
                 goto cleanup;
             }
@@ -1660,7 +1663,7 @@ sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session)
             /* replay requested, check that the stream supports it */
             if (stream) {
                 if ((r = stream_supports_replay(notifd_ctx, stream, xpath_filter, &start_time))) {
-                    SRNTF_LOG_ERR("Stream \"%s\" does not support replay.", stream);
+                    SRNTF_VALIDATE_ERR(session, event, r, "Stream \"%s\" does not support replay.", stream);
                     rc = r;
                     goto cleanup;
                 }
@@ -1669,7 +1672,7 @@ sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session)
 
         /* validate temporal constraints with the parsed values */
         if (stop_time.tv_sec || stop_time.tv_nsec || start_time.tv_sec || start_time.tv_nsec) {
-            if ((r = sub_change_validate_temporal(session,
+            if ((r = sub_change_validate_temporal(session, event,
                     (stop_time.tv_sec || stop_time.tv_nsec) ? &stop_time : NULL,
                     (start_time.tv_sec || start_time.tv_nsec) ? &start_time : NULL))) {
                 rc = r;
@@ -1694,7 +1697,7 @@ sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session)
 
         if (!strcmp(node_name, "stream")) {
             /* stream changed - validate new stream exists */
-            if ((r = sub_change_validate_stream(notifd_ctx, lyd_get_value(node), NULL))) {
+            if ((r = sub_change_validate_stream(notifd_ctx, session, event, lyd_get_value(node), NULL))) {
                 rc = r;
                 goto cleanup;
             }
@@ -1704,18 +1707,18 @@ sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session)
             if (sub && sub->replay) {
                 if ((r = stream_supports_replay(notifd_ctx, lyd_get_value(node), sub->xpath_filter,
                         &start_time))) {
-                    SRNTF_LOG_ERR("Stream \"%s\" does not support replay.", lyd_get_value(node));
+                    SRNTF_VALIDATE_ERR(session, event, r, "Stream \"%s\" does not support replay.", lyd_get_value(node));
                     rc = r;
                     goto cleanup;
                 }
             }
         } else if (!strcmp(node_name, "encoding")) {
-            if ((r = sub_change_validate_encoding(node))) {
+            if ((r = sub_change_validate_encoding(session, event, node))) {
                 rc = r;
                 goto cleanup;
             }
         } else if (!strcmp(node_name, "stream-subtree-filter")) {
-            if ((r = sub_change_validate_subtree_filter(session, node))) {
+            if ((r = sub_change_validate_subtree_filter(session, event, node))) {
                 rc = r;
                 goto cleanup;
             }
@@ -1733,7 +1736,7 @@ sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session)
                 start_time = sub->start_time;
             }
 
-            if ((r = sub_change_validate_temporal(session, &stop_time,
+            if ((r = sub_change_validate_temporal(session, event, &stop_time,
                     (start_time.tv_sec || start_time.tv_nsec) ? &start_time : NULL))) {
                 rc = r;
                 goto cleanup;
@@ -1744,7 +1747,7 @@ sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session)
             if (sub && sub->stream) {
                 if ((r = stream_supports_replay(notifd_ctx, sub->stream, sub->xpath_filter,
                         &start_time))) {
-                    SRNTF_LOG_ERR("Stream \"%s\" does not support replay.", sub->stream);
+                    SRNTF_VALIDATE_ERR(session, event, r, "Stream \"%s\" does not support replay.", sub->stream);
                     rc = r;
                     goto cleanup;
                 }
@@ -1760,7 +1763,7 @@ cleanup:
 }
 
 int
-filter_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session)
+filter_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session, sr_event_t event)
 {
     int rc = SR_ERR_OK, r, prev_dflt;
     sr_change_iter_t *iter = NULL;
@@ -1781,7 +1784,7 @@ filter_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session)
         node_name = LYD_NAME(node);
 
         if (!strcmp(node_name, "stream-subtree-filter")) {
-            if ((r = sub_change_validate_subtree_filter(session, node))) {
+            if ((r = sub_change_validate_subtree_filter(session, event, node))) {
                 rc = r;
                 goto cleanup;
             }

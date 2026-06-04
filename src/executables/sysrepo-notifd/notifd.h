@@ -32,6 +32,21 @@
 #define SRNTF_LOG_ERR(...) SRPLG_LOG_ERR("sysrepo-notifd", __VA_ARGS__)
 #define SRNTF_LOG_DBG(...) SRPLG_LOG_DBG("sysrepo-notifd", __VA_ARGS__)
 
+/**
+ * @brief Log a validation error and, if the event is ::SR_EV_CHANGE, also set it on the session for the client.
+ *
+ * Use in validation callbacks so that the daemon log (stderr/stdout) always receives
+ * the error message, while the originating client only gets it for ::SR_EV_CHANGE
+ * (not for ::SR_EV_ENABLED, there is no originating client to report back to).
+ */
+#define SRNTF_VALIDATE_ERR(sess, event, err_code, ...) \
+    do { \
+        SRNTF_LOG_ERR(__VA_ARGS__); \
+        if ((event) == SR_EV_CHANGE) { \
+            sr_session_set_error(sess, NULL, err_code, __VA_ARGS__); \
+        } \
+    } while (0)
+
 #define ERRMEM SRNTF_LOG_ERR("Memory allocation failed (%s:%d).", __FILE__, __LINE__)
 
 #define CHECK_ERRMEM_GOTO(_ptr, _ret, _label) \
@@ -208,7 +223,7 @@ typedef void (*notif_transport_config_destroy_cb)(void *cfg);
 /**
  * @brief Validate transport configuration for a subscription.
  *
- * Called during subscription validation (SR_EV_CHANGE) to check that the transport-specific
+ * Called during subscription validation (SR_EV_CHANGE || SR_EV_ENABLED) to check that the transport-specific
  * configuration under the subscription's receiver instance is valid and
  * supportable. The @p node is the subscription YANG node (not the transport
  * config container), allowing cross-validation between subscription parameters

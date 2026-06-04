@@ -784,18 +784,18 @@ subscribed_notifications_sub_change_cb(sr_session_ctx_t *session, uint32_t sub_i
     }
     appl_locked = 1;
 
-    if (event == SR_EV_CHANGE) {
+    if ((event == SR_EV_CHANGE) || (event == SR_EV_ENABLED)) {
         /* STATE RD LOCK - validation only reads existing subscriptions */
         if ((rc = notifd_rwlock_lock(&notifd_ctx->state_rwlock, 0, NOTIFD_CONTEXT_LOCK_TIMEOUT_MS, __func__))) {
             goto cleanup;
         }
         state_locked = 1;
 
-        rc = sub_change_validate(notifd_ctx, session);
+        rc = sub_change_validate(notifd_ctx, session, event);
 
         goto cleanup;
     } else if (event == SR_EV_ABORT) {
-        /* nothing to roll back since SR_EV_CHANGE did not modify any state */
+        /* nothing to roll back since SR_EV_CHANGE or SR_EV_ENABLED did not modify any state */
         goto cleanup;
     }
 
@@ -878,11 +878,11 @@ subscribed_notifications_filter_change_cb(sr_session_ctx_t *session, uint32_t su
     }
     appl_locked = 1;
 
-    if (event == SR_EV_CHANGE) {
-        rc = filter_change_validate(notifd_ctx, session);
+    if ((event == SR_EV_CHANGE) || (event == SR_EV_ENABLED)) {
+        rc = filter_change_validate(notifd_ctx, session, event);
         goto cleanup;
     } else if (event == SR_EV_ABORT) {
-        /* nothing to roll back since SR_EV_CHANGE did not modify any state */
+        /* nothing to roll back since SR_EV_CHANGE or SR_EV_ENABLED did not modify any state */
         goto cleanup;
     }
 
