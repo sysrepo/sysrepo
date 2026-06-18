@@ -1622,7 +1622,21 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, uint32_t orig_sid, con
                             goto cleanup_opergetsub_ext_unlock;
                         }
                     }
+
+                    goto next_iter;
                 }
+            }
+
+            /* data parent does not exist */
+            if ((err_info = sr_xpath_oper_data_get(mod, sub_xpath, request_xpaths, req_xpath_count, orig_sid, orig_name,
+                    orig_data, operation_id, shm_subs, i, NULL, timeout_ms, conn, &oper_data))) {
+                goto cleanup_opergetsub_ext_unlock;
+            }
+
+            /* merge oper data into one tree */
+            if ((err_info = sr_lyd_merge(data, oper_data, 1, LYD_MERGE_DESTRUCT))) {
+                lyd_free_all(oper_data);
+                goto cleanup_opergetsub_ext_unlock;
             }
 
 next_iter:
