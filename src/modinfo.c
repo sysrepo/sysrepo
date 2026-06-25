@@ -57,6 +57,9 @@ sr_modinfo_init(struct sr_mod_info_s *mod_info, sr_conn_ctx_t *conn, sr_datastor
     mod_info->ds2 = ds2;
     mod_info->conn = conn;
     mod_info->operation_id = op_id ? op_id : ATOMIC_INC_RELAXED(SR_CONN_MAIN_SHM(conn)->new_operation_id);
+
+    /* going to work with data so ext data callback may be called for mounted data */
+    sr_available_conn = conn;
 }
 
 sr_error_info_t *
