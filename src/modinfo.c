@@ -118,6 +118,9 @@ sr_modinfo_add(const struct lys_module *ly_mod, const char *xpath, int dyn, int 
         mod->xpaths[mod->xpath_count].dyn = dyn ? 1 : 0;
         mod->xpaths[mod->xpath_count].parent_only = parent_only;
         ++mod->xpath_count;
+
+        /* new xpath, re-add */
+        mod->state |= MOD_INFO_NEW;
     }
 
     return NULL;
