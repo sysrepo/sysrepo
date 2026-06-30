@@ -118,29 +118,6 @@ sr_error_info_t *sr_shmmod_get_notif_deps(sr_mod_shm_t *mod_shm, const struct ly
         const struct lyd_node *notif_op, sr_dep_t **shm_deps, uint16_t *shm_dep_count);
 
 /**
- * @brief Collect dependent modules from a leafref dependency.
- *
- * @param[in] taregt_path Target leafref path.
- * @param[in] target_module Target module name.
- * @param[in,out] mod_info Mod info to add to.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmod_collect_deps_lref(const char *target_path, const char *target_module,
-        struct sr_mod_info_s *mod_info);
-
-/**
- * @brief Collect dependent modules from an instance-identifier dependency.
- *
- * @param[in] source_path Source inst-id path.
- * @param[in] default_target_path Optional inst-id default value.
- * @param[in] data Instantiated data.
- * @param[in,out] mod_info Mod info to add to.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmod_collect_deps_instid(const char *source_path, const char *default_target_path,
-        const struct lyd_node *data, struct sr_mod_info_s *mod_info);
-
-/**
  * @brief Collect required module dependencies from a SHM dependency array.
  *
  * @param[in] mod_shm Mod SHM.

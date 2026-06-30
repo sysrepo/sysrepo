@@ -1197,7 +1197,15 @@ cleanup:
     return err_info;
 }
 
-sr_error_info_t *
+/**
+ * @brief Collect dependent modules from a leafref dependency.
+ *
+ * @param[in] taregt_path Target leafref path.
+ * @param[in] target_module Target module name.
+ * @param[in,out] mod_info Mod info to add to.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
 sr_shmmod_collect_deps_lref(const char *target_path, const char *target_module, struct sr_mod_info_s *mod_info)
 {
     sr_error_info_t *err_info = NULL;
@@ -1215,7 +1223,16 @@ sr_shmmod_collect_deps_lref(const char *target_path, const char *target_module, 
     return NULL;
 }
 
-sr_error_info_t *
+/**
+ * @brief Collect dependent modules from an instance-identifier dependency.
+ *
+ * @param[in] source_path Source inst-id path.
+ * @param[in] default_target_path Optional inst-id default value.
+ * @param[in] data Instantiated data.
+ * @param[in,out] mod_info Mod info to add to.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
 sr_shmmod_collect_deps_instid(const char *source_path, const char *default_target_path, const struct lyd_node *data,
         struct sr_mod_info_s *mod_info)
 {
