@@ -229,7 +229,11 @@ create_udp_socket(uint16_t port, const char *addr)
     }
 
     /* allow quick rebinding after exit without waiting for TIME_WAIT to expire */
-    setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt))) {
+        fprintf(stderr, "Failed to set SO_REUSEADDR socket option: %s\n", strerror(errno));
+        close(sockfd);
+        return -1;
+    }
 
     memset(&sa, 0, sizeof(sa));
     sa.sin_family = AF_INET;
