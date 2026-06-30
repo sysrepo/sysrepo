@@ -1013,7 +1013,7 @@ int
 subscription_create_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *node)
 {
     int rc = SR_ERR_OK;
-    notif_sub_t *sub, **sub_ptr;
+    notif_sub_t *sub, **sub_ptr = NULL;
 
     /* create a new sub and add it to the context array */
     sub = calloc(1, sizeof *sub);
@@ -1031,6 +1031,9 @@ cleanup:
     if (rc) {
         subscription_receivers_disconnect(notifd_ctx, sub);
         sub_invalidate(sub, NULL);
+        if (!sub_ptr) {
+            free(sub);
+        }
     }
     return rc;
 }
