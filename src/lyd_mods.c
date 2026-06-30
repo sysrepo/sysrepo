@@ -4,8 +4,8 @@
  * @brief Sysrepo module data routines
  *
  * @copyright
- * Copyright (c) 2018 - 2023 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2023 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2026 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2026 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -362,16 +362,18 @@ cleanup:
  * @param[in] target_mod Leafref target module.
  * @param[in] exp Leafref parsed path.
  * @param[in] prefixes Resolved prefixes in @p exp.
+ * @param[in] ctx_node Context node of @p exp.
  * @param[in,out] sr_deps Internal sysrepo data dependencies to add to.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_lydmods_moddep_add_lref(const char *target_mod, const struct lyxp_expr *exp, struct lysc_prefix *prefixes,
-        struct lyd_node *sr_deps)
+        const struct lysc_node *ctx_node, struct lyd_node *sr_deps)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_lref;
-    char *path = NULL;
+    char *path = NULL, *ctx_node_str = NULL;
+    uint32_t len1, len2;
 
     /* create new dependency */
     if ((err_info = sr_lyd_new_list(sr_deps, "lref", NULL, &sr_lref))) {
@@ -384,6 +386,28 @@ sr_lydmods_moddep_add_lref(const char *target_mod, const struct lyxp_expr *exp, 
         goto cleanup;
     }
 
+    /* check if relative path */
+    if (path[0] != '/') {
+        /* evaluate all ".." */
+        while (!strncmp(path, "../", 3)) {
+            ctx_node = lysc_data_parent(ctx_node);
+            len2 = strlen(path);
+            memmove(path, path + 3, len2 - 3);
+            path[len2 - 3] = '\0';
+        }
+
+        /* prepend the context node */
+        ctx_node_str = ctx_node ? lysc_path(ctx_node, LYSC_PATH_DATA, NULL, 0) : strdup("/");
+        SR_CHECK_MEM_GOTO(!ctx_node_str, err_info, cleanup);
+        len1 = strlen(ctx_node_str);
+        len2 = strlen(path);
+        path = sr_realloc(path, len1 + 1 + len2 + 1);
+        memmove(path + len1 + 1, path, len2);
+        path[len1 + 1 + len2] = '\0';
+        memcpy(path, ctx_node_str, len1);
+        path[len1] = '/';
+    }
+
     if ((err_info = sr_lyd_new_term(sr_lref, NULL, "target-path", path))) {
         goto cleanup;
     }
@@ -393,6 +417,7 @@ sr_lydmods_moddep_add_lref(const char *target_mod, const struct lyxp_expr *exp, 
 
 cleanup:
     free(path);
+    free(ctx_node_str);
     return err_info;
 }
 
@@ -586,7 +611,7 @@ sr_lydmods_moddep_type(const struct lysc_type *type, const struct lysc_node *nod
             }
 
             /* a foregin module is referenced */
-            if ((err_info = sr_lydmods_moddep_add_lref(ly_mod->name, lref->path, lref->prefixes, sr_deps))) {
+            if ((err_info = sr_lydmods_moddep_add_lref(ly_mod->name, lref->path, lref->prefixes, node, sr_deps))) {
                 goto cleanup;
             }
 
