@@ -4,7 +4,7 @@
  * @brief example of an application storing some operational data
  *
  * @copyright
- * Copyright (c) 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2021 - 2026 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -95,6 +95,12 @@ main(int argc, const char **argv)
         if (rc != SR_ERR_OK) {
             goto cleanup;
         }
+
+        /* release the context, needed for schema-mount data */
+        lyd_free_siblings(edit);
+        edit = NULL;
+        sr_session_release_context(session);
+        ly_ctx = NULL;
     } else {
         /* set push operational data (their lifetime is limited by the lifetime of the connection) */
         rc = sr_set_item_str(session, path, value, NULL, 0);
