@@ -4,8 +4,8 @@
  * @brief test for sending/receiving RPCs/actions
  *
  * @copyright
- * Copyright (c) 2018 - 2025 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2025 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2026 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2026 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -58,6 +58,7 @@ setup(void **state)
         {.schema_path = TESTS_SRC_DIR "/files/act2.yang"},
         {.schema_path = TESTS_SRC_DIR "/files/act3.yang"},
         {.schema_path = TESTS_SRC_DIR "/files/sm.yang"},
+        {.schema_path = TESTS_SRC_DIR "/files/example-sessions.yang"},
     };
 
     st = calloc(1, sizeof *st);
@@ -86,7 +87,8 @@ setup(void **state)
             "    <type xmlns:ii=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ii:ethernetCsmacd</type>\n"
             "  </interface>\n"
             "</interfaces>\n";
-    if (sr_install_modules2(st->conn, new_mods, 9, TESTS_SRC_DIR "/files", init_data, NULL, LYD_XML)) {
+    if (sr_install_modules2(st->conn, new_mods, sizeof new_mods / sizeof *new_mods, TESTS_SRC_DIR "/files", init_data,
+            NULL, LYD_XML)) {
         return 1;
     }
 
@@ -121,6 +123,7 @@ teardown(void **state)
     struct state *st = (struct state *)*state;
     int ret = 0;
     const char *module_names[] = {
+        "example-sessions",
         "sm",
         "act3",
         "act2",
@@ -2196,6 +2199,57 @@ test_factory_reset(void **state)
     sr_release_context(st->conn);
 }
 
+/* TEST */
+static int
+oper_relative_leafref_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *path,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
+{
+    (void)session;
+    (void)sub_id;
+    (void)module_name;
+    (void)request_xpath;
+    (void)request_id;
+    (void)private_data;
+
+    assert_string_equal(path, "/example-sessions:sessions/session");
+
+    assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/example-sessions:sessions/session[id='1']/user",
+            "local-user", 0, NULL));
+
+    return SR_ERR_OK;
+}
+
+static void
+test_relative_leafref(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr = NULL;
+    struct lyd_node *action;
+    sr_data_t *output;
+    int ret;
+
+    /* oper subscribe */
+    ret = sr_oper_get_subscribe(st->sess, "example-sessions", "/example-sessions:sessions/session",
+            oper_relative_leafref_cb, NULL, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* action subscribe */
+    ret = sr_rpc_subscribe(st->sess, "/example-sessions:sessions/delete-session", rpc_dummy_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* send the action */
+    ret = lyd_new_path(NULL, sr_acquire_context(st->conn), "/example-sessions:sessions/delete-session/id", "1", 0, &action);
+    assert_int_equal(ret, SR_ERR_OK);
+    sr_release_context(st->conn);
+
+    ret = sr_rpc_send_tree(st->sess, action, 0, &output);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    lyd_free_tree(action);
+    sr_release_data(output);
+    sr_unsubscribe(subscr);
+}
+
 /* MAIN */
 int
 main(void)
@@ -2216,6 +2270,7 @@ main(void)
         cmocka_unit_test(test_action_parent_subtree),
         cmocka_unit_test(test_schema_mount),
         cmocka_unit_test(test_factory_reset),
+        cmocka_unit_test(test_relative_leafref),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

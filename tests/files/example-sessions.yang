@@ -1,0 +1,33 @@
+module example-sessions {
+    namespace "urn:example:sessions";
+    prefix sess;
+
+    yang-version 1.1;
+
+    container sessions {
+        config false;
+
+        list session {
+            key id;
+
+            leaf id {
+                type uint32;
+            }
+
+            leaf user {
+                type string;
+            }
+        }
+
+        action delete-session {
+            input {
+                leaf id {
+                    type leafref {
+                        path "../../session/id";
+                    }
+                    mandatory true;
+                }
+            }
+        }
+    }
+}
