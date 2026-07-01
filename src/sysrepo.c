@@ -4740,7 +4740,7 @@ sr_apply_oper_changes(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
     new_oper_data = NULL;
 
     /* check for oper changes in schema-mount diff */
-    if (sr_schema_mount_changed_oper_data(mod_info->notify_diff)) {
+    if (sr_schema_mount_changed_oper_data(mod_info->ds_diff)) {
         /* prepare context update by getting current data with the current SM data */
         if ((err_info = sr_lycc_append_data(session->conn, sr_yang_ctx.ly_ctx, data_old))) {
             goto cleanup;
