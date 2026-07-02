@@ -805,37 +805,43 @@ subscribed_notifications_sub_change_cb(sr_session_ctx_t *session, uint32_t sub_i
     }
     state_locked = 1;
 
-    /* Step 1: create receiver instances (so that we can connect to them) */
+    /* Step 1: handle enable-notification-envelope toggle */
+    r = sub_change_handle_envelope_toggle(notifd_ctx, session);
+    if (r) {
+        rc = r;
+    }
+
+    /* Step 2: create receiver instances (so that we can connect to them) */
     r = sub_change_create_recv_instances(notifd_ctx, session);
     if (r) {
         rc = r;
     }
 
-    /* Step 2: modify receiver instances */
+    /* Step 3: modify receiver instances */
     r = sub_change_modify_recv_instances(notifd_ctx, session);
     if (r) {
         rc = r;
     }
 
-    /* Step 3: process subscription list changes */
+    /* Step 4: process subscription list changes */
     r = sub_change_process_subscriptions(notifd_ctx, session);
     if (r) {
         rc = r;
     }
 
-    /* Step 4: modify subscriptions */
+    /* Step 5: modify subscriptions */
     r = sub_change_modify_subscriptions(notifd_ctx, session);
     if (r) {
         rc = r;
     }
 
-    /* Step 5: add/modify/delete receivers */
+    /* Step 6: add/modify/delete receivers */
     r = sub_change_modify_receivers(notifd_ctx, session);
     if (r) {
         rc = r;
     }
 
-    /* Step 6: delete receiver instances */
+    /* Step 7: delete receiver instances */
     r = sub_change_delete_recv_instances(notifd_ctx, session);
     if (r) {
         rc = r;
@@ -1305,6 +1311,49 @@ cleanup:
  * =========================================================================
  */
 
+/**
+ * @brief Initialize notification envelope metadata (hostname and sequence number).
+ *
+ * @param[in] notifd_ctx Notification daemon context.
+ * @return SR_ERR_OK on success, otherwise an error code.
+ */
+static int
+notifd_envelope_init(notifd_ctx_t *notifd_ctx)
+{
+    long host_name_max;
+    size_t host_len;
+    char *hostbuf = NULL;
+
+    /* size the buffer portably via sysconf; fall back if the limit is indeterminate */
+    host_name_max = sysconf(_SC_HOST_NAME_MAX);
+    if (host_name_max <= 0) {
+#ifdef _POSIX_HOST_NAME_MAX
+        host_name_max = _POSIX_HOST_NAME_MAX;
+#else
+        host_name_max = 255;
+#endif
+    }
+    host_len = (size_t)host_name_max + 1;
+
+    hostbuf = malloc(host_len);
+    if (hostbuf && (gethostname(hostbuf, host_len) == 0) && (hostbuf[0] != '\0')) {
+        /* ensure null-termination in case the hostname was truncated */
+        hostbuf[host_len - 1] = '\0';
+        notifd_ctx->hostname = strdup(hostbuf);
+    }
+    free(hostbuf);
+    if (!notifd_ctx->hostname) {
+        /* sysconf/gethostname/malloc failed or strdup returned NULL */
+        SRNTF_LOG_ERR("Failed to get hostname");
+        return SR_ERR_INTERNAL;
+    }
+
+    /* init envelope sequence number */
+    ATOMIC_STORE_RELAXED(notifd_ctx->env_seq, 1);
+
+    return SR_ERR_OK;
+}
+
 int
 main(int argc, char **argv)
 {
@@ -1406,6 +1455,12 @@ main(int argc, char **argv)
 
     /* check that all required YANG modules are installed */
     if (check_required_modules(conn)) {
+        rc = EXIT_FAILURE;
+        goto cleanup;
+    }
+
+    /* init notification envelope (hostname and sequence number) */
+    if (notifd_envelope_init(&notifd_ctx)) {
         rc = EXIT_FAILURE;
         goto cleanup;
     }

@@ -282,6 +282,46 @@ subscription_completed_notif_send(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, no
             NULL, "subscription-completed", 1);
 }
 
+int
+notifd_envelope_toggle_handle(notifd_ctx_t *notifd_ctx, int new_enabled)
+{
+    int rc = SR_ERR_OK;
+    notif_sub_t **sub_p;
+    notif_receiver_t *recv;
+
+    /* send subscription-terminated in the OLD format (flag not flipped yet) */
+    LY_ARRAY_FOR(notifd_ctx->subs, notif_sub_t *, sub_p) {
+        if ((*sub_p)->state != NOTIF_SUB_STATE_VALID) {
+            continue;
+        }
+        LY_ARRAY_FOR((*sub_p)->receivers, notif_receiver_t, recv) {
+            if (recv->state != NOTIF_RECV_STATE_ACTIVE) {
+                continue;
+            }
+            subscription_terminated_notif_send(notifd_ctx, *sub_p, recv,
+                    "ietf-subscribed-notifications:no-such-subscription");
+        }
+    }
+
+    /* flip the flag */
+    notifd_ctx->notif_envelope_enabled = new_enabled;
+
+    /* send subscription-started in the NEW format */
+    LY_ARRAY_FOR(notifd_ctx->subs, notif_sub_t *, sub_p) {
+        if ((*sub_p)->state != NOTIF_SUB_STATE_VALID) {
+            continue;
+        }
+        LY_ARRAY_FOR((*sub_p)->receivers, notif_receiver_t, recv) {
+            if (recv->state != NOTIF_RECV_STATE_ACTIVE) {
+                continue;
+            }
+            subscription_started_notif_send(notifd_ctx, *sub_p, recv);
+        }
+    }
+
+    return rc;
+}
+
 /*
  * ---------------------------------------------------------------------------
  * Receiver connection management
@@ -395,13 +435,8 @@ notif_receiver_backoff_reconnect(notifd_ctx_t *notifd_ctx, notif_receiver_t *rec
         goto disconnect;
     }
 
-    /* send the notification directly via transport */
-    if (receiver->ops) {
-        rc = receiver->ops->send(receiver, receiver->inst->transport_config, start_notif, &now, receiver->cb_data.encoding);
-    } else {
-        SRNTF_LOG_ERR("No transport ops for receiver \"%s\".", receiver->name);
-        rc = SR_ERR_UNSUPPORTED;
-    }
+    /* send the notification */
+    rc = notif_receiver_send(notifd_ctx, receiver, start_notif, &now, receiver->cb_data.encoding);
     lyd_free_all(start_notif);
     sr_session_release_context(notifd_ctx->sr_sess);
     if (rc) {
@@ -420,13 +455,17 @@ disconnect:
 }
 
 int
-notif_receiver_send(notifd_ctx_t *UNUSED(notifd_ctx), notif_receiver_t *receiver, const struct lyd_node *notif,
+notif_receiver_send(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver, const struct lyd_node *notif,
         const struct timespec *timestamp, notif_encoding_t encoding)
 {
     int rc = SR_ERR_OK;
     struct timespec ts = {0};
     int is_sub_started;
     char *notif_path = NULL;
+    struct lyd_node *env = NULL;
+    const struct lyd_node *send_node;
+    int r_env;
+    uint32_t seq;
 
     if (!receiver || !notif) {
         SRNTF_LOG_ERR("Invalid arguments to send notification.");
@@ -471,8 +510,24 @@ notif_receiver_send(notifd_ctx_t *UNUSED(notifd_ctx), notif_receiver_t *receiver
     SRNTF_LOG_INF("Sending notification \"%s\" to receiver \"%s\" over %s.", notif_path, receiver->name,
             receiver->ops ? receiver->ops->name : "unknown");
 
+    /* optionally wrap in the notification envelope */
+    send_node = notif;
+    if (notifd_ctx->notif_envelope_enabled) {
+        seq = ATOMIC_INC_RELAXED(notifd_ctx->env_seq);
+        r_env = sr_notif_envelope_build(LYD_CTX(notif), notif, &ts,
+                notifd_ctx->hostname, seq, &env);
+        if (r_env == SR_ERR_OK) {
+            send_node = env;
+        } else if (r_env != SR_ERR_NOT_FOUND) {
+            SRNTF_LOG_ERR("Failed to build notification envelope (%s).", sr_strerror(r_env));
+            rc = r_env;
+            goto cleanup;
+        }
+        /* SR_ERR_NOT_FOUND: ietf-yp-notification not loaded, fall back to bare */
+    }
+
     if (receiver->ops) {
-        rc = receiver->ops->send(receiver, receiver->inst->transport_config, notif, &ts, encoding);
+        rc = receiver->ops->send(receiver, receiver->inst->transport_config, send_node, &ts, encoding);
     } else {
         SRNTF_LOG_ERR("No transport ops for receiver \"%s\".", receiver->name);
         rc = SR_ERR_UNSUPPORTED;
@@ -483,6 +538,7 @@ notif_receiver_send(notifd_ctx_t *UNUSED(notifd_ctx), notif_receiver_t *receiver
 
 cleanup:
     free(notif_path);
+    lyd_free_tree(env);
     return rc;
 }
 

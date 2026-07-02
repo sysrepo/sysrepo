@@ -350,6 +350,10 @@ struct notifd_ctx_s {
 
     notif_sub_t **subs;                     /**< configured subscriptions (sized-array, see libyang docs) */
     notif_receiver_inst_t **recv_insts;     /**< configured receiver instances (sized-array, see libyang docs) */
+
+    int notif_envelope_enabled;             /**< whether the notification envelope is enabled */
+    char *hostname;                         /**< gethostname() at startup, NULL if unavailable */
+    ATOMIC_T env_seq;                       /**< per-process sequence counter (starts at 1) */
 };
 
 #endif /* NOTIFD_H_ */

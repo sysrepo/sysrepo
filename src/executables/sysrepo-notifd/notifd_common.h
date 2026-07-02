@@ -451,6 +451,19 @@ int subscription_resubscribe(notifd_ctx_t *notifd_ctx, notif_sub_t *sub);
 int sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session, sr_event_t event);
 
 /**
+ * @brief Detect and handle a toggle of enable-notification-envelope.
+ *
+ * Checks the change iterator for the enable-notification-envelope leaf. If it
+ * changed, calls ::notifd_envelope_toggle_handle to send subscription-terminated
+ * in the old format, flip the flag, and send subscription-started in the new format.
+ *
+ * @param[in] notifd_ctx Daemon context.
+ * @param[in] session Sysrepo change session.
+ * @return ::SR_ERR_OK on success, error code on failure.
+ */
+int sub_change_handle_envelope_toggle(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session);
+
+/**
  * @brief Validate filter changes during SR_EV_CHANGE or SR_EV_ENABLED (read-only).
  *
  * Validates that any newly created or modified `stream-subtree-filter` entries
@@ -551,6 +564,20 @@ int subscription_modified_notif_send(notifd_ctx_t *notifd_ctx, notif_sub_t *sub,
  * @return ::SR_ERR_OK on success, error code on failure.
  */
 int subscription_completed_notif_send(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_receiver_t *receiver);
+
+/**
+ * @brief Handle a toggle of the notification envelope setting.
+ *
+ * Sends subscription-terminated to all active receivers of all valid subscriptions
+ * in the OLD format (before flipping the flag), then flips the flag, then sends
+ * subscription-started in the NEW format. No dispatch teardown/restart is needed
+ * since only the egress encoding changes.
+ *
+ * @param[in] notifd_ctx Daemon context.
+ * @param[in] new_enabled New value of the enable-notification-envelope flag.
+ * @return ::SR_ERR_OK on success, error code on failure.
+ */
+int notifd_envelope_toggle_handle(notifd_ctx_t *notifd_ctx, int new_enabled);
 
 /**
  * @brief Check whether a receiver currently has an active transport connection.

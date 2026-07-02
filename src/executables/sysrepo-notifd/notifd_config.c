@@ -461,6 +461,40 @@ sub_invalidate(notif_sub_t *sub, const char *reason)
 }
 
 int
+sub_change_handle_envelope_toggle(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session)
+{
+    int rc = SR_ERR_OK, prev_dflt;
+    sr_change_iter_t *iter = NULL;
+    sr_change_oper_t op;
+    const struct lyd_node *node;
+    const char *prev_value, *prev_list;
+    int new_val = -1;
+
+    if ((rc = sr_get_changes_iter(session,
+            "/ietf-subscribed-notifications:subscriptions/ietf-yp-notification:enable-notification-envelope",
+            &iter))) {
+        goto cleanup;
+    }
+
+    while (!sr_get_change_tree_next(session, iter, &op, &node, &prev_value, &prev_list, &prev_dflt)) {
+        if ((op == SR_OP_MODIFIED) || (op == SR_OP_CREATED)) {
+            new_val = ((struct lyd_node_term *)node)->value.boolean;
+        } else if (op == SR_OP_DELETED) {
+            new_val = 0;
+        }
+    }
+
+    /* if the value changed, toggle the envelope on/off */
+    if ((new_val != -1) && (new_val != notifd_ctx->notif_envelope_enabled)) {
+        rc = notifd_envelope_toggle_handle(notifd_ctx, new_val);
+    }
+
+cleanup:
+    sr_free_change_iter(iter);
+    return rc;
+}
+
+int
 handle_stream(notif_sub_t *sub, const struct lyd_node *node, sr_change_oper_t op)
 {
     int rc = SR_ERR_OK;
@@ -1574,10 +1608,54 @@ cleanup:
     return rc;
 }
 
+/**
+ * @brief Read the pending value of enable-notification-envelope for the transaction being validated.
+ *
+ * The value is taken from the session diff when the leaf is being changed, so that a transaction
+ * which enables the envelope and sets metadata in the same change is accepted. When the leaf is
+ * not part of the transaction, the cached flag (reflecting the current committed state) is used.
+ *
+ * @param[in] notifd_ctx Notifd context with the cached envelope flag.
+ * @param[in] session Event session with the transaction diff.
+ * @param[out] enabled Pending value of enable-notification-envelope.
+ * @return err_info, NULL on success.
+ */
+static int
+sub_change_validate_envelope_enabled(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session, int *enabled)
+{
+    int rc = SR_ERR_OK, prev_dflt;
+    sr_change_iter_t *iter = NULL;
+    sr_change_oper_t op;
+    const struct lyd_node *node;
+    const char *prev_value, *prev_list;
+
+    /* default to the current committed state */
+    *enabled = notifd_ctx->notif_envelope_enabled;
+
+    if ((rc = sr_get_changes_iter(session,
+            "/ietf-subscribed-notifications:subscriptions/ietf-yp-notification:enable-notification-envelope",
+            &iter))) {
+        goto cleanup;
+    }
+
+    while (!sr_get_change_tree_next(session, iter, &op, &node, &prev_value, &prev_list, &prev_dflt)) {
+        if ((op == SR_OP_MODIFIED) || (op == SR_OP_CREATED)) {
+            *enabled = ((struct lyd_node_term *)node)->value.boolean;
+        } else if (op == SR_OP_DELETED) {
+            /* reverting to the default value, which is false */
+            *enabled = 0;
+        }
+    }
+
+cleanup:
+    sr_free_change_iter(iter);
+    return rc;
+}
+
 int
 sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session, sr_event_t event)
 {
-    int rc = SR_ERR_OK, r, prev_dflt;
+    int rc = SR_ERR_OK, r, prev_dflt, envelope_enabled = 0;
     sr_change_iter_t *iter = NULL;
     sr_change_oper_t op;
     const struct lyd_node *node;
@@ -1757,6 +1835,35 @@ sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session, sr_even
     sr_free_change_iter(iter);
     iter = NULL;
 
+    /* validate enable-notification-envelope + metadata constraint (draft section 6:
+     * metadata MUST NOT be set when enable-notification-envelope is false) */
+    if ((rc = sr_get_changes_iter(session,
+            "/ietf-subscribed-notifications:subscriptions/ietf-yp-notification:metadata/*", &iter))) {
+        goto cleanup;
+    }
+
+    /* read the pending value of enable-notification-envelope so that a transaction enabling
+     * the envelope and setting metadata in the same change (or on SR_EV_ENABLED startup) is
+     * validated against the pending state rather than the stale cached flag */
+    if ((rc = sub_change_validate_envelope_enabled(notifd_ctx, session, &envelope_enabled))) {
+        goto cleanup;
+    }
+
+    while (!sr_get_change_tree_next(session, iter, &op, &node, &prev_value, &prev_list, &prev_dflt)) {
+        if ((op != SR_OP_CREATED) && (op != SR_OP_MODIFIED)) {
+            continue;
+        }
+
+        if (!envelope_enabled) {
+            SRNTF_VALIDATE_ERR(session, event, SR_ERR_INVAL_ARG,
+                    "metadata cannot be set when enable-notification-envelope is false.");
+            rc = SR_ERR_INVAL_ARG;
+            goto cleanup;
+        }
+    }
+    sr_free_change_iter(iter);
+    iter = NULL;
+
 cleanup:
     sr_free_change_iter(iter);
     return rc;
@@ -1862,4 +1969,7 @@ notifd_ctx_destroy(notifd_ctx_t *notifd_ctx)
         receiver_instance_destroy(notifd_ctx, notifd_ctx->recv_insts[i - 1]);
     }
     notifd_ctx->recv_insts = NULL;
+
+    free(notifd_ctx->hostname);
+    notifd_ctx->hostname = NULL;
 }

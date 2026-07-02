@@ -20,8 +20,10 @@
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <poll.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -1013,6 +1015,91 @@ srsn_read_notif(int fd, const struct ly_ctx *ly_ctx, struct timespec *timestamp,
 cleanup:
     free(buf);
     return err_info ? sr_api_ret(NULL, err_info) : rc;
+}
+
+API int
+sr_notif_envelope_build(const struct ly_ctx *ctx, const struct lyd_node *notif, const struct timespec *event_time,
+        const char *hostname, uint32_t seq_num, struct lyd_node **envelope)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod = NULL;
+    char *date_str = NULL;
+    char seq_buf[16];
+    struct lyd_node *notif_dup = NULL;
+    int hostname_seq_enabled = 0;
+
+    SR_CHECK_ARG_APIRET(!ctx || !notif || !event_time || !envelope, NULL, err_info);
+
+    *envelope = NULL;
+
+    /* the envelope structure is defined in ietf-yp-notification, which must be implemented in the context */
+    ly_mod = ly_ctx_get_module_implemented(ctx, "ietf-yp-notification");
+    if (!ly_mod) {
+        /* envelope not available, the caller falls back to the bare notification */
+        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Module \"ietf-yp-notification\" is not implemented.");
+        goto cleanup;
+    }
+
+    /* check if the hostname-sequence-number feature is enabled */
+    if (lys_feature_value(ly_mod, "hostname-sequence-number") == LY_SUCCESS) {
+        hostname_seq_enabled = 1;
+    }
+
+    /* hostname must be set when the hostname-sequence-number feature is enabled */
+    if (hostname_seq_enabled && !hostname) {
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Hostname not provided but hostname-sequence-number is enabled.");
+        goto cleanup;
+    }
+
+    /* create the envelope root structure */
+    if ((err_info = sr_lyd_new_inner(NULL, ly_mod, "envelope", envelope))) {
+        goto cleanup;
+    }
+
+    /* event-time */
+    if ((err_info = sr_ly_time_ts2str(event_time, &date_str))) {
+        goto cleanup;
+    }
+    if ((err_info = sr_lyd_new_term(*envelope, ly_mod, "event-time", date_str))) {
+        goto cleanup;
+    }
+    free(date_str);
+    date_str = NULL;
+
+    /* hostname and sequence-number are present only with the hostname-sequence-number feature */
+    if (hostname_seq_enabled) {
+        if ((err_info = sr_lyd_new_term(*envelope, ly_mod, "hostname", hostname))) {
+            goto cleanup;
+        }
+
+        /* seq_buf is 16B, which is enough for a 32-bit unsigned integer */
+        snprintf(seq_buf, sizeof seq_buf, "%" PRIu32, seq_num);
+        if ((err_info = sr_lyd_new_term(*envelope, ly_mod, "sequence-number", seq_buf))) {
+            goto cleanup;
+        }
+    }
+
+    /* clone the notification so the caller's tree remains valid (callers free it) */
+    if ((err_info = sr_lyd_dup(notif, NULL, LYD_DUP_RECURSIVE, 0, &notif_dup))) {
+        goto cleanup;
+    }
+
+    /* contents: the cloned notification tree is moved inside the envelope */
+    if ((err_info = sr_lyd_new_any(*envelope, "contents", notif_dup, NULL))) {
+        goto cleanup;
+    }
+
+    /* ownership transferred to envelope */
+    notif_dup = NULL;
+
+cleanup:
+    free(date_str);
+    lyd_free_tree(notif_dup);
+    if (err_info) {
+        lyd_free_tree(*envelope);
+        *envelope = NULL;
+    }
+    return sr_api_ret(NULL, err_info);
 }
 
 API int

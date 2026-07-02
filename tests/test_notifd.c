@@ -671,6 +671,296 @@ receive_specific_notification_timeout(int sockfd, const struct ly_ctx *ly_ctx, i
     return receive_specific_notification_ext(sockfd, ly_ctx, timeout_ms, expected_path, notif, header, NULL, 0);
 }
 
+/**
+ * @brief Find a direct child of a node by schema name.
+ *
+ * @param[in] parent Parent node.
+ * @param[in] name Schema name of the child to find.
+ * @return Pointer to the child, or NULL if not found.
+ */
+static struct lyd_node *
+find_envelope_child(struct lyd_node *parent, const char *name)
+{
+    struct lyd_node *child;
+
+    for (child = lyd_child(parent); child; child = child->next) {
+        if (child->schema && !strcmp(child->schema->name, name)) {
+            return child;
+        }
+    }
+    return NULL;
+}
+
+/**
+ * @brief Receive a UDP-Notif message and parse it as a notification envelope.
+ *
+ * Parses the reassembled payload with lyd_parse_data_mem (not lyd_parse_op),
+ * then extracts the inner notification from the contents anydata.
+ *
+ * @param[in] sockfd UDP socket FD.
+ * @param[in] ly_ctx libyang context for parsing.
+ * @param[in] timeout_ms Timeout in milliseconds for waiting for data.
+ * @param[out] env Parsed envelope tree (caller must free with lyd_free_all).
+ * @param[out] notif Inner notification extracted from contents (separately allocated, caller must free with lyd_free_all).
+ * @param[out] header Optional parsed header (can be NULL).
+ * @param[out] src_addr Optional source address buffer (can be NULL).
+ * @param[in] src_addr_len Size of src_addr buffer.
+ * @return 0 on success, 1 on timeout, -1 on error.
+ */
+static int
+receive_envelope_notification_ext(int sockfd, const struct ly_ctx *ly_ctx, int timeout_ms,
+        struct lyd_node **env, struct lyd_node **notif, udp_notif_header_t *header,
+        char *src_addr, size_t src_addr_len)
+{
+    uint8_t buffer[UDP_MAX_SIZE];
+    ssize_t recv_len;
+    udp_notif_header_t hdr;
+    const uint8_t *payload;
+    size_t payload_len, reassembled_len;
+    LYD_FORMAT format;
+    pending_message_t *pending;
+    struct sockaddr_storage src_sockaddr;
+    socklen_t src_sockaddr_len;
+    const void *src_ptr;
+    struct lyd_node *contents = NULL;
+    char *reassembled = NULL, *payload_str = NULL, *contents_str = NULL;
+    struct ly_in *in = NULL;
+    int family, r, rc = -1;
+
+    *env = NULL;
+    if (notif) {
+        *notif = NULL;
+    }
+    if (src_addr && src_addr_len) {
+        src_addr[0] = '\0';
+    }
+
+receive_next:
+    memset(&src_sockaddr, 0, sizeof(src_sockaddr));
+    src_sockaddr_len = sizeof(src_sockaddr);
+
+    /* poll for data with explicit timeout */
+    r = poll_for_data(sockfd, timeout_ms);
+    if (r < 0) {
+        TLOG_ERR("poll() failed: %s", strerror(errno));
+        return -1;
+    }
+    if (r == 0) {
+        TLOG_WRN("Timeout waiting for notification");
+        return 1;
+    }
+
+    recv_len = recvfrom(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *)&src_sockaddr, &src_sockaddr_len);
+    if (recv_len < 0) {
+        TLOG_ERR("recvfrom() failed: %s", strerror(errno));
+        return -1;
+    }
+
+    if (src_addr && src_addr_len) {
+        src_ptr = NULL;
+        family = ((struct sockaddr *)&src_sockaddr)->sa_family;
+        if (family == AF_INET) {
+            src_ptr = &((struct sockaddr_in *)&src_sockaddr)->sin_addr;
+        } else if (family == AF_INET6) {
+            src_ptr = &((struct sockaddr_in6 *)&src_sockaddr)->sin6_addr;
+        }
+
+        if (src_ptr && !inet_ntop(family, src_ptr, src_addr, src_addr_len)) {
+            src_addr[0] = '\0';
+        }
+    }
+
+    if (parse_udp_notif_header(buffer, recv_len, &hdr)) {
+        TLOG_ERR("Failed to parse UDP-Notif header");
+        return -1;
+    }
+
+    if (header) {
+        *header = hdr;
+    }
+
+    if (hdr.version != UDP_NOTIF_VERSION) {
+        TLOG_ERR("Invalid UDP-Notif version: %d", hdr.version);
+        return -1;
+    }
+
+    payload = buffer + hdr.header_len;
+    payload_len = recv_len - hdr.header_len;
+
+    /* handle segmentation */
+    if (hdr.has_segmentation) {
+        TLOG_INF("Received segment %d%s for message %u",
+                hdr.segment_num, hdr.is_last_segment ? " (last)" : "", hdr.message_id);
+
+        pending = find_or_create_pending(hdr.publisher_id, hdr.message_id, hdr.media_type);
+        if (!pending) {
+            TLOG_ERR("Failed to create pending message for reassembly");
+            return -1;
+        }
+
+        reassembled = add_segment(pending, hdr.segment_num, hdr.is_last_segment,
+                payload, payload_len, &reassembled_len);
+
+        if (!reassembled) {
+            /* not complete yet, wait for more segments */
+            goto receive_next;
+        }
+
+        TLOG_INF("Message reassembly complete: %zu bytes from %d segments",
+                reassembled_len, pending->total_segments);
+
+        /* use reassembled payload */
+        payload_str = reassembled;
+        payload_len = reassembled_len;
+
+        /* update header with info from the pending message */
+        hdr.media_type = pending->media_type;
+
+        /* free the pending message slot */
+        free_pending_message(pending);
+    } else {
+        /* non-segmented message, copy payload to null-terminated string */
+        if (payload_len == 0) {
+            TLOG_ERR("Empty payload");
+            return -1;
+        }
+
+        payload_str = malloc(payload_len + 1);
+        if (!payload_str) {
+            TLOG_ERR("Memory allocation failed");
+            return -1;
+        }
+        memcpy(payload_str, payload, payload_len);
+        payload_str[payload_len] = '\0';
+    }
+
+    switch (hdr.media_type) {
+    case UDP_NOTIF_MT_JSON:
+        format = LYD_JSON;
+        break;
+    case UDP_NOTIF_MT_XML:
+        format = LYD_XML;
+        break;
+    default:
+        TLOG_ERR("Unsupported media type: %d", hdr.media_type);
+        goto cleanup;
+    }
+
+    /* parse as envelope (sx:structure) using lyd_parse_data_mem */
+    if (lyd_parse_data_mem(ly_ctx, payload_str, format, LYD_PARSE_STRICT | LYD_PARSE_ONLY,
+            0, env)) {
+        TLOG_ERR("Failed to parse envelope: %s", ly_err_last(ly_ctx)->msg);
+        goto cleanup;
+    }
+
+    /* find the contents anydata child and extract the inner notification */
+    contents = find_envelope_child(*env, "contents");
+    if (!contents || (contents->schema->nodetype != LYS_ANYDATA)) {
+        TLOG_ERR("Failed to find 'contents' anydata in envelope");
+        lyd_free_all(*env);
+        *env = NULL;
+        goto cleanup;
+    }
+
+    if (notif) {
+        /* extract the anydata content as a string and parse it as a notification */
+        if (lyd_any_value_str(contents, format, &contents_str)) {
+            TLOG_ERR("Failed to extract anydata value: %s", ly_err_last(ly_ctx)->msg);
+            lyd_free_all(*env);
+            *env = NULL;
+            goto cleanup;
+        }
+
+        if (ly_in_new_memory(contents_str, &in)) {
+            TLOG_ERR("Failed to create libyang input");
+            free(contents_str);
+            lyd_free_all(*env);
+            *env = NULL;
+            goto cleanup;
+        }
+
+        if (lyd_parse_op(ly_ctx, NULL, in, format, LYD_TYPE_NOTIF_YANG, 0, NULL, notif)) {
+            TLOG_ERR("Failed to parse inner notification: %s", ly_err_last(ly_ctx)->msg);
+            ly_in_free(in, 0);
+            free(contents_str);
+            lyd_free_all(*env);
+            *env = NULL;
+            goto cleanup;
+        }
+
+        ly_in_free(in, 0);
+        free(contents_str);
+        contents_str = NULL;
+    }
+
+    rc = 0;
+
+cleanup:
+    free(payload_str);
+    return rc;
+}
+
+static int
+receive_envelope_notification(int sockfd, const struct ly_ctx *ly_ctx,
+        struct lyd_node **env, struct lyd_node **notif)
+{
+    return receive_envelope_notification_ext(sockfd, ly_ctx, NOTIF_TIMEOUT_MS, env, notif, NULL, NULL, 0);
+}
+
+/**
+ * @brief Wait for a specific notification (envelope-wrapped) by inner path.
+ *
+ * Reads envelope-wrapped notifications from the socket until one whose inner
+ * notification matches the expected path is found or timeout occurs.
+ */
+static int
+receive_envelope_specific_notification_ext(int sockfd, const struct ly_ctx *ly_ctx, int timeout_ms,
+        const char *expected_path, struct lyd_node **env, struct lyd_node **notif)
+{
+    struct lyd_node *received_env = NULL;
+    struct lyd_node *received_notif = NULL;
+    char *notif_path = NULL;
+    int r;
+
+    while (1) {
+        r = receive_envelope_notification_ext(sockfd, ly_ctx, timeout_ms, &received_env,
+                &received_notif, NULL, NULL, 0);
+        if (r < 0) {
+            return -1;
+        }
+        if (r > 0) {
+            /* timeout */
+            return 1;
+        }
+
+        if (!received_notif) {
+            continue;
+        }
+
+        notif_path = lyd_path(received_notif, LYD_PATH_STD, NULL, 0);
+        r = strcmp(notif_path, expected_path);
+        free(notif_path);
+        if (!r) {
+            *env = received_env;
+            *notif = received_notif;
+            return 0;
+        }
+
+        /* not the expected notification, free both and keep waiting */
+        lyd_free_all(received_env);
+        lyd_free_all(received_notif);
+        received_env = NULL;
+        received_notif = NULL;
+    }
+}
+
+static int
+receive_envelope_specific_notification(int sockfd, const struct ly_ctx *ly_ctx,
+        const char *expected_path, struct lyd_node **env, struct lyd_node **notif)
+{
+    return receive_envelope_specific_notification_ext(sockfd, ly_ctx, NOTIF_TIMEOUT_MS, expected_path, env, notif);
+}
+
 static int
 can_bind_local_ipv4(const char *address)
 {
@@ -786,14 +1076,19 @@ install_test_modules(sr_conn_ctx_t *conn)
         SN_YANG_DIR "/ietf-tls-client@2024-03-16.yang",
         SN_YANG_DIR "/ietf-udp-client@2025-05-14.yang",
         SN_YANG_DIR "/ietf-udp-notif-transport@2025-06-04.yang",
+        TESTS_SRC_DIR "/files/ietf-yp-notification@2025-12-24.yang",
+        TESTS_SRC_DIR "/files/ietf-yp-observation@2025-12-24.yang",
         TESTS_SRC_DIR "/files/test.yang",
         NULL
     };
-    const char *sub_ntf_feats[] = {"configured", "xpath", "replay", "subtree", NULL};
+    const char *sub_ntf_feats[] = {"configured", "xpath", "replay", "subtree", "encode-xml", "encode-json", NULL};
+    const char *yp_notif_feats[] = {"hostname-sequence-number", NULL};
     const char **features[] = {
         NULL, NULL, NULL, NULL, NULL,  /* interfaces, iana-if-type, ip, network-instance, restconf */
         sub_ntf_feats,                 /* ietf-subscribed-notifications */
         NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,  /* other modules */
+        yp_notif_feats,                /* ietf-yp-notification */
+        NULL,                          /* ietf-yp-observation */
         NULL                           /* test.yang */
     };
 
@@ -820,6 +1115,11 @@ remove_test_modules(sr_conn_ctx_t *conn)
         "iana-tls-cipher-suite-algs",
         "ietf-crypto-types",
         "ietf-subscribed-notif-receivers",
+        "ietf-yp-observation",
+        "ietf-yp-notification",
+        "ietf-yang-push",
+        "ietf-notification-capabilities",
+        "ietf-system-capabilities",
         "ietf-subscribed-notifications",
         "ietf-restconf",
         "ietf-network-instance",
@@ -1323,18 +1623,46 @@ teardown(void **state)
 
 /**
  * @brief Clear any existing subscriptions and unread notifications before each test to ensure a clean state.
+ *
+ * Also disables the notification envelope to ensure every test starts in the
+ * default (bare) egress format.
  */
 static int
 clear_subs_notifs(void **state)
 {
     struct state *st = *state;
 
+    /* disable envelope if it was left enabled by a previous test */
+    sr_set_item_str(st->sess,
+            "/ietf-subscribed-notifications:subscriptions/ietf-yp-notification:enable-notification-envelope",
+            "false", NULL, 0);
     sr_delete_item(st->sess, "/ietf-subscribed-notifications:subscriptions", 0);
     sr_apply_changes(st->sess, 0);
 
     /* drain any remaining notifications */
     drain_notifications(st->udp_sockfd);
     return 0;
+}
+
+/**
+ * @brief Enable or disable the notification envelope.
+ *
+ * @param[in] sess Sysrepo session.
+ * @param[in] enabled 1 to enable, 0 to disable.
+ * @return 0 on success, error code on failure.
+ */
+static int
+set_envelope_enabled(sr_session_ctx_t *sess, int enabled)
+{
+    int ret;
+
+    ret = sr_set_item_str(sess,
+            "/ietf-subscribed-notifications:subscriptions/ietf-yp-notification:enable-notification-envelope",
+            enabled ? "true" : "false", NULL, 0);
+    if (ret) {
+        return ret;
+    }
+    return sr_apply_changes(sess, 0);
 }
 
 /**
@@ -3175,6 +3503,311 @@ test_stop_time_concluded(void **state)
     cleanup_sub(st->sess, 200);
 }
 
+/**
+ * @brief Test: notification envelope wraps a config-change notification (JSON).
+ */
+static void
+test_envelope_basic(void **state)
+{
+    struct state *st = *state;
+    struct lyd_node *env = NULL, *notif = NULL, *node = NULL;
+    int ret;
+
+    TLOG_INF("Enabling notification envelope...");
+    ret = set_envelope_enabled(st->sess, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    TLOG_INF("Creating subscription for netconf-config-change...");
+    setup_sub(st->sess, st->udp_port, 100, "NETCONF",
+            "/ietf-netconf-notifications:netconf-config-change");
+
+    TLOG_INF("Waiting for envelope-wrapped subscription-started...");
+    ret = receive_envelope_notification(st->udp_sockfd, st->ly_ctx, &env, &notif);
+    assert_int_equal(ret, 0);
+    assert_non_null(env);
+    assert_non_null(notif);
+    lyd_free_all(env);
+    env = NULL;
+    lyd_free_all(notif);
+    notif = NULL;
+
+    TLOG_INF("Making configuration change to trigger notification...");
+    ret = sr_set_item_str(st->sess, "/test:test-leaf", "1", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    TLOG_INF("Waiting for envelope-wrapped config-change notification...");
+    ret = receive_envelope_specific_notification(st->udp_sockfd, st->ly_ctx,
+            "/ietf-netconf-notifications:netconf-config-change", &env, &notif);
+    assert_int_equal(ret, 0);
+    assert_non_null(env);
+    assert_non_null(notif);
+
+    /* verify envelope root is the sx:structure "envelope" */
+    assert_string_equal(LYD_NAME(env), "envelope");
+
+    /* verify event-time present */
+    node = find_envelope_child(env, "event-time");
+    assert_non_null(node);
+
+    /* verify inner notification */
+    assert_string_equal(notif->schema->name, "netconf-config-change");
+
+    TLOG_INF("Received envelope-wrapped config-change notification successfully");
+
+    /* cleanup */
+    lyd_free_all(env);
+    lyd_free_all(notif);
+    sr_delete_item(st->sess, "/test:test-leaf", 0);
+    sr_apply_changes(st->sess, 0);
+    cleanup_sub(st->sess, 100);
+}
+
+/**
+ * @brief Test: envelope hostname and sequence-number present and strictly increasing.
+ */
+static void
+test_envelope_hostname_sequence(void **state)
+{
+    struct state *st = *state;
+    struct lyd_node *env = NULL, *notif = NULL, *node = NULL;
+    char hostname[256] = {0};
+    char val_str[16];
+    uint32_t prev_seq = 0, seq;
+    int i, ret;
+
+    TLOG_INF("Enabling notification envelope...");
+    ret = set_envelope_enabled(st->sess, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    TLOG_INF("Creating subscription for netconf-config-change...");
+    setup_sub(st->sess, st->udp_port, 101, "NETCONF",
+            "/ietf-netconf-notifications:netconf-config-change");
+
+    /* drain envelope-wrapped subscription-started */
+    ret = receive_envelope_notification(st->udp_sockfd, st->ly_ctx, &env, &notif);
+    assert_int_equal(ret, 0);
+    lyd_free_all(env);
+    env = NULL;
+    lyd_free_all(notif);
+    notif = NULL;
+
+    /* get test process hostname for comparison */
+    ret = gethostname(hostname, sizeof(hostname) - 1);
+    assert_int_equal(ret, 0);
+
+    TLOG_INF("Triggering 5 config-change notifications...");
+
+    for (i = 0; i < 5; i++) {
+        snprintf(val_str, sizeof(val_str), "%d", 100 + i);
+        ret = sr_set_item_str(st->sess, "/test:test-leaf", val_str, NULL, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+        ret = sr_apply_changes(st->sess, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        ret = receive_envelope_specific_notification(st->udp_sockfd, st->ly_ctx,
+                "/ietf-netconf-notifications:netconf-config-change", &env, &notif);
+        assert_int_equal(ret, 0);
+        assert_non_null(env);
+        assert_non_null(notif);
+
+        /* verify hostname matches the test process */
+        node = find_envelope_child(env, "hostname");
+        assert_non_null(node);
+        assert_string_equal(lyd_get_value(node), hostname);
+
+        /* verify sequence-number is strictly increasing */
+        node = find_envelope_child(env, "sequence-number");
+        assert_non_null(node);
+        seq = (uint32_t)strtoul(lyd_get_value(node), NULL, 10);
+        assert_true(seq > prev_seq);
+        prev_seq = seq;
+
+        lyd_free_all(env);
+        env = NULL;
+        lyd_free_all(notif);
+        notif = NULL;
+    }
+
+    TLOG_INF("All 5 envelopes received with strictly increasing sequence numbers");
+
+    /* cleanup */
+    sr_delete_item(st->sess, "/test:test-leaf", 0);
+    sr_apply_changes(st->sess, 0);
+    cleanup_sub(st->sess, 101);
+}
+
+/**
+ * @brief Test: notification envelope with XML encoding.
+ */
+static void
+test_envelope_xml(void **state)
+{
+    struct state *st = *state;
+    struct lyd_node *env = NULL, *notif = NULL, *node = NULL;
+    char path[512];
+    int ret;
+
+    TLOG_INF("Enabling notification envelope...");
+    ret = set_envelope_enabled(st->sess, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    TLOG_INF("Creating subscription with XML encoding...");
+    ret = create_receiver_instance(st->sess, "test-recv", "127.0.0.1", st->udp_port);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = create_subscription(st->sess, 102, "NETCONF",
+            "/ietf-netconf-notifications:netconf-config-change", "test-recv");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set encoding to XML */
+    snprintf(path, sizeof(path),
+            "/ietf-subscribed-notifications:subscriptions/subscription[id='102']/encoding");
+    ret = sr_set_item_str(st->sess, path, "ietf-subscribed-notifications:encode-xml", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* drain envelope-wrapped subscription-started */
+    ret = receive_envelope_notification(st->udp_sockfd, st->ly_ctx, &env, &notif);
+    assert_int_equal(ret, 0);
+    lyd_free_all(env);
+    env = NULL;
+    lyd_free_all(notif);
+    notif = NULL;
+
+    TLOG_INF("Making configuration change to trigger notification...");
+    ret = sr_set_item_str(st->sess, "/test:test-leaf", "2", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    TLOG_INF("Waiting for envelope-wrapped XML config-change notification...");
+    ret = receive_envelope_specific_notification(st->udp_sockfd, st->ly_ctx,
+            "/ietf-netconf-notifications:netconf-config-change", &env, &notif);
+    assert_int_equal(ret, 0);
+    assert_non_null(env);
+    assert_non_null(notif);
+
+    /* verify envelope root is the sx:structure "envelope" */
+    assert_string_equal(LYD_NAME(env), "envelope");
+
+    /* verify event-time present */
+    node = find_envelope_child(env, "event-time");
+    assert_non_null(node);
+
+    TLOG_INF("Received envelope-wrapped XML config-change notification successfully");
+
+    /* cleanup */
+    lyd_free_all(env);
+    lyd_free_all(notif);
+    sr_delete_item(st->sess, "/test:test-leaf", 0);
+    sr_apply_changes(st->sess, 0);
+    cleanup_sub(st->sess, 102);
+}
+
+/**
+ * @brief Test: toggling enable-notification-envelope switches egress format both ways.
+ */
+static void
+test_envelope_toggle(void **state)
+{
+    struct state *st = *state;
+    struct lyd_node *env = NULL, *notif = NULL;
+    int ret;
+
+    TLOG_INF("Creating subscription (envelope disabled)...");
+    ret = set_envelope_enabled(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    setup_sub(st->sess, st->udp_port, 103, "NETCONF",
+            "/ietf-netconf-notifications:netconf-config-change");
+
+    /* drain bare subscription-started */
+    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
+            "/ietf-subscribed-notifications:subscription-started", &notif, NULL);
+    assert_int_equal(ret, 0);
+    lyd_free_all(notif);
+    notif = NULL;
+
+    /* --- OFF -> ON --- */
+    TLOG_INF("Enabling notification envelope (off -> on)...");
+    ret = set_envelope_enabled(st->sess, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    TLOG_INF("Waiting for bare subscription-terminated...");
+    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
+            "/ietf-subscribed-notifications:subscription-terminated", &notif, NULL);
+    assert_int_equal(ret, 0);
+    lyd_free_all(notif);
+    notif = NULL;
+
+    TLOG_INF("Waiting for envelope-wrapped subscription-started...");
+    ret = receive_envelope_specific_notification(st->udp_sockfd, st->ly_ctx,
+            "/ietf-subscribed-notifications:subscription-started", &env, &notif);
+    assert_int_equal(ret, 0);
+    lyd_free_all(env);
+    env = NULL;
+    lyd_free_all(notif);
+    notif = NULL;
+
+    TLOG_INF("Triggering config-change (should be envelope-wrapped)...");
+    ret = sr_set_item_str(st->sess, "/test:test-leaf", "10", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = receive_envelope_specific_notification(st->udp_sockfd, st->ly_ctx,
+            "/ietf-netconf-notifications:netconf-config-change", &env, &notif);
+    assert_int_equal(ret, 0);
+    assert_non_null(env);
+    assert_non_null(notif);
+    lyd_free_all(env);
+    env = NULL;
+    lyd_free_all(notif);
+    notif = NULL;
+
+    /* --- ON -> OFF --- */
+    TLOG_INF("Disabling notification envelope (on -> off)...");
+    ret = set_envelope_enabled(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    TLOG_INF("Waiting for envelope-wrapped subscription-terminated...");
+    ret = receive_envelope_specific_notification(st->udp_sockfd, st->ly_ctx,
+            "/ietf-subscribed-notifications:subscription-terminated", &env, &notif);
+    assert_int_equal(ret, 0);
+    lyd_free_all(env);
+    env = NULL;
+    lyd_free_all(notif);
+    notif = NULL;
+
+    TLOG_INF("Waiting for bare subscription-started...");
+    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
+            "/ietf-subscribed-notifications:subscription-started", &notif, NULL);
+    assert_int_equal(ret, 0);
+    lyd_free_all(notif);
+    notif = NULL;
+
+    TLOG_INF("Triggering config-change (should be bare)...");
+    ret = sr_set_item_str(st->sess, "/test:test-leaf", "11", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
+            "/ietf-netconf-notifications:netconf-config-change", &notif, NULL);
+    assert_int_equal(ret, 0);
+    assert_non_null(notif);
+    lyd_free_all(notif);
+    notif = NULL;
+
+    TLOG_INF("Toggle test completed successfully");
+
+    /* cleanup */
+    sr_delete_item(st->sess, "/test:test-leaf", 0);
+    sr_apply_changes(st->sess, 0);
+    cleanup_sub(st->sess, 103);
+}
+
 /* MAIN */
 int
 main(void)
@@ -3206,6 +3839,10 @@ main(void)
         cmocka_unit_test_setup(test_source_address_modify, clear_subs_notifs),
         cmocka_unit_test_setup(test_receiver_instance_ref_change, clear_subs_notifs),
         cmocka_unit_test_setup(test_stop_time_concluded, clear_subs_notifs),
+        cmocka_unit_test_setup(test_envelope_basic, clear_subs_notifs),
+        cmocka_unit_test_setup(test_envelope_hostname_sequence, clear_subs_notifs),
+        cmocka_unit_test_setup(test_envelope_xml, clear_subs_notifs),
+        cmocka_unit_test_setup(test_envelope_toggle, clear_subs_notifs),
     };
 
     test_init();

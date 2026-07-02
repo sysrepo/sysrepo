@@ -299,6 +299,28 @@ void srsn_oper_data_subscriptions_free(srsn_state_sub_t *subs, uint32_t count);
 int srsn_read_notif(int fd, const struct ly_ctx *ly_ctx, struct timespec *timestamp, struct lyd_node **notif);
 
 /**
+ * @brief Build a notification envelope (ietf-yp-notification) wrapping a bare notification tree.
+ *
+ * On success the @p notif tree is cloned into the envelope `contents` anydata node. The original @p notif tree
+ * remains owned by the caller and is not modified. The whole envelope tree should be freed by the caller.
+ *
+ * @param[in] ctx libyang context with the ietf-yp-notification module implemented.
+ * @param[in] notif Bare notification tree to wrap. On success it is cloned into the envelope.
+ * @param[in] event_time Event time of the notification.
+ * @param[in] hostname Hostname to set, used only if the hostname-sequence-number feature is enabled.
+ * @param[in] seq_num Sequence number to set, used only if the hostname-sequence-number feature is enabled.
+ * @param[out] envelope Created envelope tree, freed by the caller.
+ * @return ::SR_ERR_OK on success,
+ * @return ::SR_ERR_NOT_FOUND if ietf-yp-notification is not loaded in @p ctx (the caller should fall
+ * back to the bare notification),
+ * @return ::SR_ERR_INVAL_ARG if invalid arguments are provided,
+ * @return ::SR_ERR_LY on a libyang error.
+ */
+int sr_notif_envelope_build(const struct ly_ctx *ctx, const struct lyd_node *notif,
+        const struct timespec *event_time, const char *hostname, uint32_t seq_num,
+        struct lyd_node **envelope);
+
+/**
  * @brief Poll a file descriptor for data to read.
  *
  * @param[in] fd File descriptor to poll.
