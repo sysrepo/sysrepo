@@ -411,7 +411,7 @@ srsn_yang_push_on_change(sr_session_ctx_t *session, sr_datastore_t ds, const cha
     pthread_cond_init(&s->damp_sntimer.cond, NULL);
 
     /* send the initial update notification */
-    if (sync_on_start && (err_info = srsn_yp_ntf_update_send(s))) {
+    if (sync_on_start && (err_info = srsn_yp_ntf_update_send(s, SRSN_YP_POINT_IN_TIME_INITIAL_STATE))) {
         goto cleanup;
     }
 
@@ -473,7 +473,7 @@ srsn_yang_push_on_change_resync(uint32_t sub_id)
     srsn_yp_reset_patch_id(sub);
 
     /* send the update notification */
-    if ((err_info = srsn_yp_ntf_update_send(sub))) {
+    if ((err_info = srsn_yp_ntf_update_send(sub, SRSN_YP_POINT_IN_TIME_INITIAL_STATE))) {
         goto cleanup;
     }
 

@@ -28,6 +28,15 @@ struct srsn_sub;
 struct srsn_timer;
 
 /**
+ * @brief Point-in-time values for the ietf-yp-observation observation fields.
+ */
+enum srsn_yp_point_in_time {
+    SRSN_YP_POINT_IN_TIME_CURRENT_ACCOUNTING = 0,  /**< periodic subscription poll */
+    SRSN_YP_POINT_IN_TIME_INITIAL_STATE,           /**< sync-on-start / resync */
+    SRSN_YP_POINT_IN_TIME_STATE_CHANGED            /**< on-change event */
+};
+
+/**
  * @brief Reset the patch ID of a yang-push on-change subscription.
  *
  * @param[in] sub Subscription to use.
@@ -38,9 +47,10 @@ void srsn_yp_reset_patch_id(struct srsn_sub *sub);
  * @brief Send a push-update yang-push notification.
  *
  * @param[in] sub Subscription to use.
+ * @param[in] point_in_time Observation point-in-time to set, if supported.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *srsn_yp_ntf_update_send(struct srsn_sub *sub);
+sr_error_info_t *srsn_yp_ntf_update_send(struct srsn_sub *sub, enum srsn_yp_point_in_time point_in_time);
 
 /**
  * @brief Create a timer and schedule periodic updates of a subscription.

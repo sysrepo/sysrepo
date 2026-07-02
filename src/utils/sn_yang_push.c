@@ -37,6 +37,15 @@
 #include "subscribed_notifications.h"
 #include "sysrepo.h"
 
+/**
+ * @brief String representations of ::srsn_yp_point_in_time enum values.
+ */
+static const char *srsn_yp_point_in_time_str[] = {
+    "current-accounting",
+    "initial-state",
+    "state-changed"
+};
+
 void
 srsn_yp_reset_patch_id(struct srsn_sub *sub)
 {
@@ -44,14 +53,14 @@ srsn_yp_reset_patch_id(struct srsn_sub *sub)
 }
 
 sr_error_info_t *
-srsn_yp_ntf_update_send(struct srsn_sub *sub)
+srsn_yp_ntf_update_send(struct srsn_sub *sub, enum srsn_yp_point_in_time point_in_time)
 {
     sr_error_info_t *err_info = NULL;
     sr_session_ctx_t *sr_sess = NULL;
     struct lyd_node *ly_ntf = NULL;
     struct timespec ts;
     sr_data_t *data = NULL;
-    char buf[11];
+    char buf[11], *date_str = NULL;
     int r;
 
     /* start a new session (silently) */
@@ -72,10 +81,27 @@ srsn_yp_ntf_update_send(struct srsn_sub *sub)
         goto cleanup;
     }
 
+    /* get the observation timestamp */
+    sr_realtime_get(&ts);
+
     /* create the notification */
     sprintf(buf, "%" PRIu32, sub->id);
     if ((err_info = sr_lyd_new_path(NULL, sr_yang_ctx.ly_ctx, "/ietf-yang-push:push-update/id", buf, 0, &ly_ntf, NULL))) {
         goto cleanup;
+    }
+
+    /* observation fields, if the module is implemented */
+    if (ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, "ietf-yp-observation")) {
+        if ((err_info = sr_ly_time_ts2str(&ts, &date_str))) {
+            goto cleanup;
+        }
+        if ((err_info = sr_lyd_new_path(ly_ntf, NULL, "ietf-yp-observation:timestamp", date_str, 0, NULL, NULL))) {
+            goto cleanup;
+        }
+        if ((err_info = sr_lyd_new_path(ly_ntf, NULL, "ietf-yp-observation:point-in-time",
+                srsn_yp_point_in_time_str[point_in_time], 0, NULL, NULL))) {
+            goto cleanup;
+        }
     }
 
     /* datastore-contents */
@@ -87,12 +113,12 @@ srsn_yp_ntf_update_send(struct srsn_sub *sub)
     }
 
     /* send the notification */
-    sr_realtime_get(&ts);
     if ((err_info = srsn_ntf_send(sub, &ts, ly_ntf))) {
         goto cleanup;
     }
 
 cleanup:
+    free(date_str);
     lyd_free_tree(ly_ntf);
     sr_release_data(data);
     sr_session_stop(sr_sess);
@@ -109,7 +135,7 @@ srsn_yp_update_timer_cb(void *arg, int *UNUSED(freed))
     sr_error_info_t *err_info = NULL;
 
     /* send the push-update notification */
-    if ((err_info = srsn_yp_ntf_update_send(sub))) {
+    if ((err_info = srsn_yp_ntf_update_send(sub, SRSN_YP_POINT_IN_TIME_CURRENT_ACCOUNTING))) {
         sr_errinfo_free(&err_info);
     }
 }
@@ -454,13 +480,14 @@ srsn_yp_on_change_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const c
 {
     sr_error_info_t *err_info = NULL;
     struct srsn_sub *sub = private_data;
-    char *xp = NULL, buf[26], **groups = NULL, *node_path = NULL;
+    char *xp = NULL, buf[26], **groups = NULL, *node_path = NULL, *date_str = NULL;
     sr_change_iter_t *iter = NULL;
     sr_change_oper_t op, last_op = 0;
     const struct lyd_node *node, *par, *last_node = NULL;
     const struct ly_ctx *ly_ctx;
     struct lyd_node *ly_yp = NULL;
     const char *prev_value, *prev_list;
+    struct timespec obs_ts;
     srsn_yp_change_t yp_op;
     int ready, r, denied;
     uint32_t patch_id, group_count = 0;
@@ -541,6 +568,22 @@ srsn_yp_on_change_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const c
                 goto cleanup_unlock;
             }
 
+            /* observation fields, if the module is implemented */
+            sr_realtime_get(&obs_ts);
+            if (ly_ctx_get_module_implemented(ly_ctx, "ietf-yp-observation")) {
+                if ((err_info = sr_ly_time_ts2str(&obs_ts, &date_str))) {
+                    goto cleanup_unlock;
+                }
+                if ((err_info = sr_lyd_new_path(sub->change_ntf->tree, NULL, "ietf-yp-observation:timestamp",
+                        date_str, 0, NULL, NULL))) {
+                    goto cleanup_unlock;
+                }
+                if ((err_info = sr_lyd_new_path(sub->change_ntf->tree, NULL, "ietf-yp-observation:point-in-time",
+                        srsn_yp_point_in_time_str[SRSN_YP_POINT_IN_TIME_STATE_CHANGED], 0, NULL, NULL))) {
+                    goto cleanup_unlock;
+                }
+            }
+
             /* generate a new patch-id */
             patch_id = sub->patch_id++;
             sprintf(buf, "patch-%" PRIu32, patch_id);
@@ -593,6 +636,7 @@ cleanup_unlock:
 cleanup:
     free(node_path);
     free(xp);
+    free(date_str);
     sr_free_change_iter(iter);
 
     /* return value is ignored anyway */

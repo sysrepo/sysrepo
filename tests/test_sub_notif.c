@@ -58,6 +58,9 @@ setup(void **state)
         TESTS_SRC_DIR "/../modules/subscribed_notifications/ietf-network-instance@2019-01-21.yang",
         TESTS_SRC_DIR "/../modules/subscribed_notifications/ietf-subscribed-notifications@2019-09-09.yang",
         TESTS_SRC_DIR "/../modules/subscribed_notifications/ietf-yang-push@2019-09-09.yang",
+        TESTS_SRC_DIR "/files/ietf-system-capabilities@2022-02-17.yang",
+        TESTS_SRC_DIR "/files/ietf-notification-capabilities@2022-02-17.yang",
+        TESTS_SRC_DIR "/files/ietf-yp-observation@2025-12-24.yang",
         TESTS_SRC_DIR "/files/ops-ref.yang",
         TESTS_SRC_DIR "/files/ops.yang",
         TESTS_SRC_DIR "/files/test.yang",
@@ -72,6 +75,9 @@ setup(void **state)
         NULL,
         sub_ntf_feats,
         yang_push_feats,
+        NULL,
+        NULL,
+        NULL,
         NULL,
         NULL,
         NULL
@@ -109,6 +115,9 @@ teardown(void **state)
         "test",
         "ops",
         "ops-ref",
+        "ietf-yp-observation",
+        "ietf-notification-capabilities",
+        "ietf-system-capabilities",
         "ietf-yang-push",
         "ietf-subscribed-notifications",
         "ietf-network-instance",
@@ -506,7 +515,7 @@ static void
 test_yp_periodic(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif;
+    struct lyd_node *notif, *obs_node;
     int ret, fd;
     uint32_t sub_id;
     char *str, *exp;
@@ -524,6 +533,10 @@ test_yp_periodic(void **state)
     /* read and check the notif */
     assert_int_equal(SR_ERR_OK, srsn_poll(fd, 500));
     assert_int_equal(SR_ERR_OK, srsn_read_notif(fd, st->ly_ctx, &ts, &notif));
+
+    /* get the observation timestamp for XML comparison */
+    assert_int_equal(lyd_find_path(notif, "ietf-yp-observation:timestamp", 0, &obs_node), LY_SUCCESS);
+
     lyd_print_mem(&str, notif, LYD_XML, 0);
     ret = asprintf(&exp,
             "<push-update xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-push\">\n"
@@ -536,7 +549,9 @@ test_yp_periodic(void **state)
             "      </interface>\n"
             "    </interfaces>\n"
             "  </datastore-contents>\n"
-            "</push-update>\n", sub_id);
+            "  <timestamp xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yp-observation\">%s</timestamp>\n"
+            "  <point-in-time xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yp-observation\">current-accounting</point-in-time>\n"
+            "</push-update>\n", sub_id, lyd_get_value(obs_node));
     assert_int_not_equal(ret, -1);
     assert_string_equal(str, exp);
     free(str);
@@ -552,6 +567,10 @@ test_yp_periodic(void **state)
     /* read and check the notif */
     assert_int_equal(SR_ERR_OK, srsn_poll(fd, 500));
     assert_int_equal(SR_ERR_OK, srsn_read_notif(fd, st->ly_ctx, &ts, &notif));
+
+    /* get the observation timestamp for XML comparison */
+    assert_int_equal(lyd_find_path(notif, "ietf-yp-observation:timestamp", 0, &obs_node), LY_SUCCESS);
+
     lyd_print_mem(&str, notif, LYD_XML, 0);
     ret = asprintf(&exp,
             "<push-update xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-push\">\n"
@@ -568,7 +587,9 @@ test_yp_periodic(void **state)
             "      </interface>\n"
             "    </interfaces>\n"
             "  </datastore-contents>\n"
-            "</push-update>\n", sub_id);
+            "  <timestamp xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yp-observation\">%s</timestamp>\n"
+            "  <point-in-time xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yp-observation\">current-accounting</point-in-time>\n"
+            "</push-update>\n", sub_id, lyd_get_value(obs_node));
     assert_int_not_equal(ret, -1);
     assert_string_equal(str, exp);
     free(str);
@@ -604,7 +625,7 @@ static void
 test_yp_on_change(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif;
+    struct lyd_node *notif, *obs_node;
     int ret, fd;
     uint32_t sub_id;
     char *str, *exp;
@@ -622,6 +643,10 @@ test_yp_on_change(void **state)
     /* read and check the notif */
     assert_int_equal(SR_ERR_OK, srsn_poll(fd, 500));
     assert_int_equal(SR_ERR_OK, srsn_read_notif(fd, st->ly_ctx, &ts, &notif));
+
+    /* get the observation timestamp for XML comparison */
+    assert_int_equal(lyd_find_path(notif, "ietf-yp-observation:timestamp", 0, &obs_node), LY_SUCCESS);
+
     lyd_print_mem(&str, notif, LYD_XML, 0);
     ret = asprintf(&exp,
             "<push-change-update xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-push\">\n"
@@ -643,7 +668,9 @@ test_yp_on_change(void **state)
             "      </edit>\n"
             "    </yang-patch>\n"
             "  </datastore-changes>\n"
-            "</push-change-update>\n", sub_id);
+            "  <timestamp xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yp-observation\">%s</timestamp>\n"
+            "  <point-in-time xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yp-observation\">state-changed</point-in-time>\n"
+            "</push-change-update>\n", sub_id, lyd_get_value(obs_node));
     assert_int_not_equal(ret, -1);
     assert_string_equal(str, exp);
     free(str);
@@ -658,6 +685,10 @@ test_yp_on_change(void **state)
     /* read and check the notif */
     assert_int_equal(SR_ERR_OK, srsn_poll(fd, 500));
     assert_int_equal(SR_ERR_OK, srsn_read_notif(fd, st->ly_ctx, &ts, &notif));
+
+    /* get the observation timestamp for XML comparison */
+    assert_int_equal(lyd_find_path(notif, "ietf-yp-observation:timestamp", 0, &obs_node), LY_SUCCESS);
+
     lyd_print_mem(&str, notif, LYD_XML, 0);
     ret = asprintf(&exp,
             "<push-change-update xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-push\">\n"
@@ -687,7 +718,9 @@ test_yp_on_change(void **state)
             "      </edit>\n"
             "    </yang-patch>\n"
             "  </datastore-changes>\n"
-            "</push-change-update>\n", sub_id);
+            "  <timestamp xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yp-observation\">%s</timestamp>\n"
+            "  <point-in-time xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yp-observation\">state-changed</point-in-time>\n"
+            "</push-change-update>\n", sub_id, lyd_get_value(obs_node));
     assert_int_not_equal(ret, -1);
     assert_string_equal(str, exp);
     free(str);
@@ -851,7 +884,7 @@ static void
 test_nacm_yp_periodic(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif;
+    struct lyd_node *notif, *obs_node;
     char *str, *exp;
     int ret, fd;
     uint32_t sub_id;
@@ -864,6 +897,10 @@ test_nacm_yp_periodic(void **state)
     /* read and check the notif */
     assert_int_equal(SR_ERR_OK, srsn_poll(fd, 500));
     assert_int_equal(SR_ERR_OK, srsn_read_notif(fd, st->ly_ctx, &ts, &notif));
+
+    /* get the observation timestamp for XML comparison */
+    assert_int_equal(lyd_find_path(notif, "ietf-yp-observation:timestamp", 0, &obs_node), LY_SUCCESS);
+
     lyd_print_mem(&str, notif, LYD_XML, 0);
     ret = asprintf(&exp,
             "<push-update xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-push\">\n"
@@ -875,7 +912,9 @@ test_nacm_yp_periodic(void **state)
             "      </l2>\n"
             "    </cont>\n"
             "  </datastore-contents>\n"
-            "</push-update>\n", sub_id);
+            "  <timestamp xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yp-observation\">%s</timestamp>\n"
+            "  <point-in-time xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yp-observation\">current-accounting</point-in-time>\n"
+            "</push-update>\n", sub_id, lyd_get_value(obs_node));
     assert_int_not_equal(ret, -1);
     assert_string_equal(str, exp);
     free(str);
@@ -892,7 +931,7 @@ test_nacm_yp_onchange(void **state)
 {
     struct state *st = *state;
     sr_session_ctx_t *sess;
-    struct lyd_node *notif;
+    struct lyd_node *notif, *obs_node;
     char *str, *exp;
     int ret, fd;
     uint32_t sub_id;
@@ -920,6 +959,10 @@ test_nacm_yp_onchange(void **state)
     /* read and check the notif */
     assert_int_equal(SR_ERR_OK, srsn_poll(fd, 500));
     assert_int_equal(SR_ERR_OK, srsn_read_notif(fd, st->ly_ctx, &ts, &notif));
+
+    /* get the observation timestamp for XML comparison */
+    assert_int_equal(lyd_find_path(notif, "ietf-yp-observation:timestamp", 0, &obs_node), LY_SUCCESS);
+
     lyd_print_mem(&str, notif, LYD_XML, 0);
     ret = asprintf(&exp,
             "<push-change-update xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-push\">\n"
@@ -937,7 +980,9 @@ test_nacm_yp_onchange(void **state)
             "      </edit>\n"
             "    </yang-patch>\n"
             "  </datastore-changes>\n"
-            "</push-change-update>\n", sub_id);
+            "  <timestamp xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yp-observation\">%s</timestamp>\n"
+            "  <point-in-time xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yp-observation\">state-changed</point-in-time>\n"
+            "</push-change-update>\n", sub_id, lyd_get_value(obs_node));
     assert_int_not_equal(ret, -1);
     assert_string_equal(str, exp);
     free(str);
