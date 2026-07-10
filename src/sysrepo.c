@@ -1839,7 +1839,15 @@ sr_install_modules2(sr_conn_ctx_t *conn, const sr_install_mod_t *modules, uint32
 
     /* copy all the items */
     for (i = 0; i < module_count; ++i) {
-        memcpy(&new_mods[i], &modules[i], sizeof *modules);
+        /* cannot use memcpy, memory alignment of C structures (padding) could cause overwrite of unwanted fields,
+           possibility of memory corruption */
+        new_mods[i].schema_path = modules[i].schema_path;
+        new_mods[i].schema_yang = modules[i].schema_yang;
+        new_mods[i].features = modules[i].features;
+        new_mods[i].module_ds = modules[i].module_ds;
+        new_mods[i].owner = modules[i].owner;
+        new_mods[i].group = modules[i].group;
+        new_mods[i].perm = modules[i].perm;
 
         /* detect schema format */
         if (strchr(modules[i].schema_yang, '{')) {
