@@ -24,7 +24,20 @@
 
 #include <libyang/libyang.h>
 
+#include "compat.h"
 #include "sysrepo.h"
+
+/**
+ * @brief Serialized timespec structure with fixed-size fields.
+ * Ensures portable binary serialization across 32-bit and 64-bit systems,
+ * regardless of time_t size or struct padding.
+ */
+typedef struct _PACKED {
+    int64_t tv_sec; /**< Seconds */
+    int32_t tv_nsec; /**< Nanoseconds */
+} srpjson_timespec_t;
+
+_Static_assert(sizeof(srpjson_timespec_t) == 12, "srpjson_timespec_t size mismatch");
 
 /** suffix of temporary JSON files */
 #define SRPJSON_FILE_TMP_SUFFIX ".tmp"

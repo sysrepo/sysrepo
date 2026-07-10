@@ -185,15 +185,18 @@ store_notif(int fd, const struct ly_ctx *ly_ctx, const char *notif_xpath, off_t 
     char *notif_json;
     uint32_t notif_json_len;
     struct lyd_node *notif;
-    struct timespec notif_ts = {0};
+    int64_t notif_ts_sec;
+    int32_t notif_ts_nsec;
 
     if (lyd_new_path(NULL, ly_ctx, notif_xpath, NULL, 0, &notif)) {
         return 1;
     }
     lyd_print_mem(&notif_json, notif, LYD_JSON, LYD_PRINT_SIBLINGS | LYD_PRINT_SHRINK);
     notif_json_len = strlen(notif_json);
-    notif_ts.tv_sec = start_ts + ts_offset;
-    assert_int_equal(write(fd, &notif_ts, sizeof notif_ts), sizeof notif_ts);
+    notif_ts_sec = start_ts + ts_offset;
+    notif_ts_nsec = 0;
+    assert_int_equal(write(fd, &notif_ts_sec, sizeof notif_ts_sec), sizeof notif_ts_sec);
+    assert_int_equal(write(fd, &notif_ts_nsec, sizeof notif_ts_nsec), sizeof notif_ts_nsec);
     assert_int_equal(write(fd, &notif_json_len, sizeof notif_json_len), sizeof notif_json_len);
     assert_int_equal(write(fd, notif_json, notif_json_len), notif_json_len);
     lyd_free_all(notif);
