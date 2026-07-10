@@ -1061,21 +1061,10 @@ static int
 install_test_modules(sr_conn_ctx_t *conn)
 {
     const char *schema_paths[] = {
-        SN_YANG_DIR "/ietf-interfaces@2018-02-20.yang",
-        SN_YANG_DIR "/iana-if-type@2014-05-08.yang",
-        SN_YANG_DIR "/ietf-ip@2018-02-22.yang",
-        SN_YANG_DIR "/ietf-network-instance@2019-01-21.yang",
-        SN_YANG_DIR "/ietf-restconf@2017-01-26.yang",
         SN_YANG_DIR "/ietf-subscribed-notifications@2019-09-09.yang",
-        SN_YANG_DIR "/ietf-subscribed-notif-receivers@2024-02-01.yang",
-        SN_YANG_DIR "/ietf-crypto-types@2024-10-10.yang",
-        SN_YANG_DIR "/iana-tls-cipher-suite-algs@2024-03-16.yang",
-        SN_YANG_DIR "/ietf-keystore@2024-10-10.yang",
-        SN_YANG_DIR "/ietf-truststore@2024-10-10.yang",
-        SN_YANG_DIR "/ietf-tls-common@2024-10-10.yang",
-        SN_YANG_DIR "/ietf-tls-client@2024-03-16.yang",
-        SN_YANG_DIR "/ietf-udp-client@2025-05-14.yang",
         SN_YANG_DIR "/ietf-udp-notif-transport@2025-06-04.yang",
+        TESTS_SRC_DIR "/files/ietf-system-capabilities@2022-02-17.yang",
+        TESTS_SRC_DIR "/files/ietf-notification-capabilities@2022-02-17.yang",
         TESTS_SRC_DIR "/files/ietf-yp-notification@2025-12-24.yang",
         TESTS_SRC_DIR "/files/ietf-yp-observation@2025-12-24.yang",
         TESTS_SRC_DIR "/files/test.yang",
@@ -1084,9 +1073,10 @@ install_test_modules(sr_conn_ctx_t *conn)
     const char *sub_ntf_feats[] = {"configured", "xpath", "replay", "subtree", "encode-xml", "encode-json", NULL};
     const char *yp_notif_feats[] = {"hostname-sequence-number", NULL};
     const char **features[] = {
-        NULL, NULL, NULL, NULL, NULL,  /* interfaces, iana-if-type, ip, network-instance, restconf */
         sub_ntf_feats,                 /* ietf-subscribed-notifications */
-        NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,  /* other modules */
+        NULL,                          /* ietf-udp-notif-transport */
+        NULL,                          /* ietf-system-capabilities */
+        NULL,                          /* ietf-notification-capabilities */
         yp_notif_feats,                /* ietf-yp-notification */
         NULL,                          /* ietf-yp-observation */
         NULL                           /* test.yang */
@@ -1106,26 +1096,19 @@ remove_test_modules(sr_conn_ctx_t *conn)
 {
     const char *module_names[] = {
         "test",
-        "ietf-udp-notif-transport",
-        "ietf-udp-client",
-        "ietf-tls-client",
-        "ietf-tls-common",
-        "ietf-truststore",
-        "ietf-keystore",
-        "iana-tls-cipher-suite-algs",
-        "ietf-crypto-types",
-        "ietf-subscribed-notif-receivers",
         "ietf-yp-observation",
         "ietf-yp-notification",
-        "ietf-yang-push",
         "ietf-notification-capabilities",
+        "ietf-yang-push",
         "ietf-system-capabilities",
+        "ietf-udp-notif-transport",
+        "ietf-subscribed-notif-receivers",
         "ietf-subscribed-notifications",
-        "ietf-restconf",
         "ietf-network-instance",
         "ietf-ip",
-        "iana-if-type",
         "ietf-interfaces",
+        "ietf-truststore",
+        "ietf-keystore",
         NULL
     };
 
