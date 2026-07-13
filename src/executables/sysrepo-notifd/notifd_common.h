@@ -40,6 +40,18 @@ extern const notif_transport_ops_t udp_transport_ops;
 /** @brief Bitmask: include the `replay-start-time` field in a state-change notification. */
 #define NOTIF_FIELD_REPLAY_START   0x08
 
+/** @brief Bitmask: include the `transport` field in a state-change notification. */
+#define NOTIF_FIELD_TRANSPORT      0x10
+
+/** @brief Bitmask: include the `encoding` field in a state-change notification. */
+#define NOTIF_FIELD_ENCODING       0x20
+
+/** @brief Bitmask: include the `purpose` field in a state-change notification. */
+#define NOTIF_FIELD_PURPOSE         0x40
+
+/** @brief Bitmask: include the `stream-filter-name` field in a state-change notification. */
+#define NOTIF_FIELD_FILTER_REF     0x80
+
 /*
  * ---------------------------------------------------------------------------
  * Functions from notifd_config.c
@@ -341,6 +353,19 @@ int handle_configured_replay(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const s
 int handle_purpose(notif_sub_t *sub, const struct lyd_node *node, sr_change_oper_t op);
 
 /**
+ * @brief Handle a change to the `transport` leaf of a subscription.
+ *
+ * On create/modify, duplicates the new transport identity-ref string. On delete,
+ * frees it. Marks the subscription as modified.
+ *
+ * @param[in,out] sub Subscription being modified.
+ * @param[in] node The YANG `transport` leaf node.
+ * @param[in] op Sysrepo change operation.
+ * @return ::SR_ERR_OK on success, ::SR_ERR_NO_MEMORY on allocation failure.
+ */
+int handle_transport(notif_sub_t *sub, const struct lyd_node *node, sr_change_oper_t op);
+
+/**
  * @brief Handle a change to the `source-address` leaf of a subscription.
  *
  * On create/modify/delete, updates the local address and reconnects ALL
@@ -504,7 +529,8 @@ int timespec_cmp(const struct timespec *ts1, const struct timespec *ts2);
 /**
  * @brief Send a `subscription-started` notification to one or all receivers.
  *
- * Includes stream, xpath-filter, stop-time, and replay-start-time fields.
+ * Includes stream, filter (stream-filter-name or stream-xpath-filter), stop-time,
+ * replay-start-time, transport, encoding, and purpose fields.
  * Does not skip inactive receivers -- send failures are fatal.
  *
  * @param[in] notifd_ctx Daemon context.
@@ -530,7 +556,8 @@ int subscription_terminated_notif_send(notifd_ctx_t *notifd_ctx, notif_sub_t *su
 /**
  * @brief Send a `subscription-modified` notification to one or all receivers.
  *
- * Includes stream, xpath-filter, stop-time, and replay-start-time fields.
+ * Includes stream, filter (stream-filter-name or stream-xpath-filter), stop-time,
+ * replay-start-time, transport, encoding, and purpose fields.
  * Skips inactive receivers silently.
  *
  * @param[in] notifd_ctx Daemon context.

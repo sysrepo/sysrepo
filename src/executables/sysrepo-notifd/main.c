@@ -652,6 +652,8 @@ sub_change_modify_subscriptions(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *sess
             r = handle_purpose(sub, node, op);
         } else if (!strcmp(node_name, "source-address")) {
             r = handle_source_address(notifd_ctx, sub, node, op);
+        } else if (!strcmp(node_name, "transport")) {
+            r = handle_transport(sub, node, op);
         } else {
             r = 0;
         }
