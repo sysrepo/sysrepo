@@ -1,0 +1,3 @@
+#!/bin/bash
+
+docker run -it --rm --network host mongodb/mongodb-community-server mongosh
