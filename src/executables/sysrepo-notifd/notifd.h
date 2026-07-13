@@ -326,6 +326,7 @@ struct notif_sub_s {
     char *stream;                       /**< stream name */
     char *filter_ref;                   /**< optional stream filter name (e.g., XPath or subtree filter) */
     char *xpath_filter;                 /**< optional XPath filter */
+    char *transport;                    /**< notification transport identity-ref (e.g. "ietf-udp-notif-transport:udp-notif") */
     notif_encoding_t encoding;          /**< notification encoding */
     struct timespec stop_time;          /**< optional stop time */
     int replay;                         /**< whether to replay notifications */

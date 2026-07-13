@@ -605,6 +605,7 @@ int
 handle_encoding(notif_sub_t *sub, const struct lyd_node *node, sr_change_oper_t op)
 {
     int rc = SR_ERR_OK;
+    notif_receiver_t *receiver;
 
     /* optional leaf, need to handle all but move */
     if ((op == SR_OP_CREATED) || (op == SR_OP_MODIFIED)) {
@@ -618,6 +619,11 @@ handle_encoding(notif_sub_t *sub, const struct lyd_node *node, sr_change_oper_t 
     }
 
     if ((op == SR_OP_CREATED) || (op == SR_OP_MODIFIED) || (op == SR_OP_DELETED)) {
+        /* propagate the new encoding to all receivers */
+        LY_ARRAY_FOR(sub->receivers, notif_receiver_t, receiver) {
+            receiver->cb_data.encoding = sub->encoding;
+        }
+
         /* mark sub as modified so we know to send subscription-modified notification */
         sub->modified = 1;
     }
@@ -719,6 +725,39 @@ handle_purpose(notif_sub_t *sub, const struct lyd_node *node, sr_change_oper_t o
         /* clear purpose */
         free(sub->purpose);
         sub->purpose = NULL;
+    }
+
+    if ((op == SR_OP_CREATED) || (op == SR_OP_MODIFIED) || (op == SR_OP_DELETED)) {
+        /* mark sub as modified so we know to send subscription-modified notification */
+        sub->modified = 1;
+    }
+
+cleanup:
+    if (rc) {
+        sub_invalidate(sub, NULL);
+    }
+    return rc;
+}
+
+int
+handle_transport(notif_sub_t *sub, const struct lyd_node *node, sr_change_oper_t op)
+{
+    int rc = SR_ERR_OK;
+
+    /* mandatory leaf, need to handle all but move */
+    if ((op == SR_OP_CREATED) || (op == SR_OP_MODIFIED)) {
+        /* switch to the new value */
+        free(sub->transport);
+        sub->transport = strdup(lyd_get_value(node));
+        if (!sub->transport) {
+            rc = SR_ERR_NO_MEMORY;
+            ERRMEM;
+            goto cleanup;
+        }
+    } else if (op == SR_OP_DELETED) {
+        /* clear transport */
+        free(sub->transport);
+        sub->transport = NULL;
     }
 
     if ((op == SR_OP_CREATED) || (op == SR_OP_MODIFIED) || (op == SR_OP_DELETED)) {
@@ -960,6 +999,8 @@ subscription_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, no
         rc = SR_ERR_UNSUPPORTED;
         goto cleanup;
     }
+    sub->transport = strdup(lyd_get_value(n));
+    CHECK_ERRMEM_GOTO(sub->transport, rc, cleanup);
 
     /* purpose */
     get_descendant_optional(node, "purpose", &n);
@@ -1057,6 +1098,7 @@ subscription_destroy(notifd_ctx_t *notifd_ctx, notif_sub_t *sub)
     free(sub->stream);
     free(sub->xpath_filter);
     free(sub->filter_ref);
+    free(sub->transport);
     free(sub->purpose);
     free(sub->local_address);
     for (i = LY_ARRAY_COUNT(sub->receivers); i > 0; i--) {

@@ -68,6 +68,7 @@ subscription_state_change_notif_new(const struct ly_ctx *ly_ctx, notif_sub_t *su
     struct lyd_node *tree = NULL;
     char *id_str = NULL, *stop_time_str = NULL, *start_time_str = NULL;
     struct timespec *start_time, *stop_time;
+    const char *encoding_str = NULL;
 
     *notif = NULL;
 
@@ -95,8 +96,13 @@ subscription_state_change_notif_new(const struct ly_ctx *ly_ctx, notif_sub_t *su
         }
     }
 
-    /* xpath filter */
-    if ((fields & NOTIF_FIELD_XPATH_FILTER) && sub->xpath_filter) {
+    /* filter: stream-filter-name (by-reference) takes precedence over stream-xpath-filter (choice) */
+    if ((fields & NOTIF_FIELD_FILTER_REF) && sub->filter_ref) {
+        if (lyd_new_path(tree, ly_ctx, "stream-filter-name", sub->filter_ref, 0, NULL)) {
+            rc = SR_ERR_LY;
+            goto cleanup;
+        }
+    } else if ((fields & NOTIF_FIELD_XPATH_FILTER) && sub->xpath_filter) {
         if (lyd_new_path(tree, ly_ctx, "stream-xpath-filter", sub->xpath_filter, 0, NULL)) {
             rc = SR_ERR_LY;
             goto cleanup;
@@ -135,6 +141,42 @@ subscription_state_change_notif_new(const struct ly_ctx *ly_ctx, notif_sub_t *su
         }
     }
 
+    /* transport */
+    if ((fields & NOTIF_FIELD_TRANSPORT) && sub->transport) {
+        if (lyd_new_path(tree, ly_ctx, "transport", sub->transport, 0, NULL)) {
+            rc = SR_ERR_LY;
+            goto cleanup;
+        }
+    }
+
+    /* encoding */
+    if ((fields & NOTIF_FIELD_ENCODING) && (sub->encoding != NOTIF_ENCODING_UNSET)) {
+        switch (sub->encoding) {
+        case NOTIF_ENCODING_XML:
+            encoding_str = "ietf-subscribed-notifications:encode-xml";
+            break;
+        case NOTIF_ENCODING_JSON:
+            encoding_str = "ietf-subscribed-notifications:encode-json";
+            break;
+        default:
+            break;
+        }
+        if (encoding_str) {
+            if (lyd_new_path(tree, ly_ctx, "encoding", encoding_str, 0, NULL)) {
+                rc = SR_ERR_LY;
+                goto cleanup;
+            }
+        }
+    }
+
+    /* purpose */
+    if ((fields & NOTIF_FIELD_PURPOSE) && sub->purpose) {
+        if (lyd_new_path(tree, ly_ctx, "purpose", sub->purpose, 0, NULL)) {
+            rc = SR_ERR_LY;
+            goto cleanup;
+        }
+    }
+
     /* reason */
     if (reason) {
         if (lyd_new_path(tree, ly_ctx, "reason", reason, 0, NULL)) {
@@ -159,7 +201,8 @@ subscription_started_notif_new(const struct ly_ctx *ly_ctx, notif_sub_t *sub, st
 {
     return subscription_state_change_notif_new(ly_ctx, sub,
             "/ietf-subscribed-notifications:subscription-started",
-            NOTIF_FIELD_STREAM | NOTIF_FIELD_XPATH_FILTER | NOTIF_FIELD_STOP_TIME | NOTIF_FIELD_REPLAY_START,
+            NOTIF_FIELD_STREAM | NOTIF_FIELD_XPATH_FILTER | NOTIF_FIELD_STOP_TIME | NOTIF_FIELD_REPLAY_START |
+            NOTIF_FIELD_TRANSPORT | NOTIF_FIELD_ENCODING | NOTIF_FIELD_PURPOSE | NOTIF_FIELD_FILTER_REF,
             NULL, notif);
 }
 
@@ -178,7 +221,8 @@ subscription_modified_notif_new(const struct ly_ctx *ly_ctx, notif_sub_t *sub, s
 {
     return subscription_state_change_notif_new(ly_ctx, sub,
             "/ietf-subscribed-notifications:subscription-modified",
-            NOTIF_FIELD_STREAM | NOTIF_FIELD_XPATH_FILTER | NOTIF_FIELD_STOP_TIME | NOTIF_FIELD_REPLAY_START,
+            NOTIF_FIELD_STREAM | NOTIF_FIELD_XPATH_FILTER | NOTIF_FIELD_STOP_TIME | NOTIF_FIELD_REPLAY_START |
+            NOTIF_FIELD_TRANSPORT | NOTIF_FIELD_ENCODING | NOTIF_FIELD_PURPOSE | NOTIF_FIELD_FILTER_REF,
             NULL, notif);
 }
 
@@ -252,7 +296,8 @@ subscription_started_notif_send(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, noti
 {
     return subscription_state_change_notif_send(notifd_ctx, sub, receiver,
             "/ietf-subscribed-notifications:subscription-started",
-            NOTIF_FIELD_STREAM | NOTIF_FIELD_XPATH_FILTER | NOTIF_FIELD_STOP_TIME | NOTIF_FIELD_REPLAY_START,
+            NOTIF_FIELD_STREAM | NOTIF_FIELD_XPATH_FILTER | NOTIF_FIELD_STOP_TIME | NOTIF_FIELD_REPLAY_START |
+            NOTIF_FIELD_TRANSPORT | NOTIF_FIELD_ENCODING | NOTIF_FIELD_PURPOSE | NOTIF_FIELD_FILTER_REF,
             NULL, "subscription-started", 0);
 }
 
@@ -270,7 +315,8 @@ subscription_modified_notif_send(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, not
 {
     return subscription_state_change_notif_send(notifd_ctx, sub, receiver,
             "/ietf-subscribed-notifications:subscription-modified",
-            NOTIF_FIELD_STREAM | NOTIF_FIELD_XPATH_FILTER | NOTIF_FIELD_STOP_TIME | NOTIF_FIELD_REPLAY_START,
+            NOTIF_FIELD_STREAM | NOTIF_FIELD_XPATH_FILTER | NOTIF_FIELD_STOP_TIME | NOTIF_FIELD_REPLAY_START |
+            NOTIF_FIELD_TRANSPORT | NOTIF_FIELD_ENCODING | NOTIF_FIELD_PURPOSE | NOTIF_FIELD_FILTER_REF,
             NULL, "subscription-modified", 1);
 }
 

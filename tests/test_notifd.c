@@ -789,7 +789,7 @@ install_test_modules(sr_conn_ctx_t *conn)
         TESTS_SRC_DIR "/files/test.yang",
         NULL
     };
-    const char *sub_ntf_feats[] = {"configured", "xpath", "replay", "subtree", NULL};
+    const char *sub_ntf_feats[] = {"configured", "xpath", "replay", "subtree", "encode-xml", "encode-json", NULL};
     const char **features[] = {
         NULL, NULL, NULL, NULL, NULL,  /* interfaces, iana-if-type, ip, network-instance, restconf */
         sub_ntf_feats,                 /* ietf-subscribed-notifications */
@@ -1594,6 +1594,149 @@ test_subscription_started(void **state)
     lyd_free_all(notif);
 
     cleanup_sub(st->sess, 1);
+}
+
+/**
+ * @brief Test: Verify subscription-started notification contains all required fields.
+ *
+ * Creates a subscription with stream, transport, encoding, purpose, and
+ * stream-xpath-filter, then verifies each field is present in the
+ * subscription-started notification.
+ */
+static void
+test_subscription_started_fields(void **state)
+{
+    struct state *st = *state;
+    struct lyd_node *notif = NULL, *node = NULL;
+    char path[512];
+    int ret;
+
+    TLOG_INF("Creating receiver instance and subscription with all fields...");
+
+    ret = create_receiver_instance(st->sess, "test-recv", "127.0.0.1", st->udp_port);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = _set_sub_common(st->sess, 100, "NETCONF", "test-recv");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set xpath filter */
+    snprintf(path, sizeof(path),
+            "/ietf-subscribed-notifications:subscriptions/subscription[id='100']/stream-xpath-filter");
+    ret = sr_set_item_str(st->sess, path, "/ietf-netconf-notifications:*", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set encoding */
+    snprintf(path, sizeof(path),
+            "/ietf-subscribed-notifications:subscriptions/subscription[id='100']/encoding");
+    ret = sr_set_item_str(st->sess, path, "ietf-subscribed-notifications:encode-xml", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set purpose */
+    snprintf(path, sizeof(path),
+            "/ietf-subscribed-notifications:subscriptions/subscription[id='100']/purpose");
+    ret = sr_set_item_str(st->sess, path, "test-purpose", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    TLOG_INF("Waiting for subscription-started notification...");
+
+    ret = receive_notification(st->udp_sockfd, st->ly_ctx, &notif, NULL);
+    assert_int_equal(ret, 0);
+    assert_non_null(notif);
+
+    /* verify it's a subscription-started notification */
+    assert_string_equal(notif->schema->name, "subscription-started");
+
+    /* verify id */
+    ret = lyd_find_path(notif, "id", 0, &node);
+    assert_int_equal(ret, LY_SUCCESS);
+    assert_non_null(node);
+    assert_int_equal(strtoul(lyd_get_value(node), NULL, 10), 100);
+
+    /* verify stream */
+    ret = lyd_find_path(notif, "stream", 0, &node);
+    assert_int_equal(ret, LY_SUCCESS);
+    assert_non_null(node);
+    assert_string_equal(lyd_get_value(node), "NETCONF");
+
+    /* verify transport */
+    ret = lyd_find_path(notif, "transport", 0, &node);
+    assert_int_equal(ret, LY_SUCCESS);
+    assert_non_null(node);
+    assert_string_equal(lyd_get_value(node), "ietf-udp-notif-transport:udp-notif");
+
+    /* verify encoding */
+    ret = lyd_find_path(notif, "encoding", 0, &node);
+    assert_int_equal(ret, LY_SUCCESS);
+    assert_non_null(node);
+    assert_string_equal(lyd_get_value(node), "ietf-subscribed-notifications:encode-xml");
+
+    /* verify purpose */
+    ret = lyd_find_path(notif, "purpose", 0, &node);
+    assert_int_equal(ret, LY_SUCCESS);
+    assert_non_null(node);
+    assert_string_equal(lyd_get_value(node), "test-purpose");
+
+    /* verify stream-xpath-filter */
+    ret = lyd_find_path(notif, "stream-xpath-filter", 0, &node);
+    assert_int_equal(ret, LY_SUCCESS);
+    assert_non_null(node);
+    assert_string_equal(lyd_get_value(node), "/ietf-netconf-notifications:*");
+
+    TLOG_INF("All subscription-started fields verified successfully");
+
+    lyd_free_all(notif);
+
+    cleanup_sub(st->sess, 100);
+}
+
+/**
+ * @brief Test: Verify subscription-started notification with stream-filter-name.
+ *
+ * Creates a subscription that references a named stream filter, then verifies
+ * the stream-filter-name field is present in the notification (instead of
+ * stream-xpath-filter).
+ */
+static void
+test_subscription_started_filter_ref(void **state)
+{
+    struct state *st = *state;
+    struct lyd_node *notif = NULL, *node = NULL;
+    int ret;
+
+    TLOG_INF("Creating receiver instance, stream filter, and filter-ref subscription...");
+
+    setup_sub_filter_ref(st->sess, st->udp_port, 101, "NETCONF", "field-test-filter",
+            "/ietf-netconf-notifications:*");
+
+    TLOG_INF("Waiting for subscription-started notification...");
+
+    ret = receive_notification(st->udp_sockfd, st->ly_ctx, &notif, NULL);
+    assert_int_equal(ret, 0);
+    assert_non_null(notif);
+
+    /* verify it's a subscription-started notification */
+    assert_string_equal(notif->schema->name, "subscription-started");
+
+    /* verify stream-filter-name is present */
+    ret = lyd_find_path(notif, "stream-filter-name", 0, &node);
+    assert_int_equal(ret, LY_SUCCESS);
+    assert_non_null(node);
+    assert_string_equal(lyd_get_value(node), "field-test-filter");
+
+    /* verify stream-xpath-filter is NOT present (choice: by-reference takes precedence) */
+    ret = lyd_find_path(notif, "stream-xpath-filter", 0, &node);
+    assert_int_equal(ret, LY_ENOTFOUND);
+
+    TLOG_INF("stream-filter-name verified successfully");
+
+    lyd_free_all(notif);
+
+    cleanup_sub(st->sess, 101);
+    delete_stream_filter(st->sess, "field-test-filter");
+    sr_apply_changes(st->sess, 0);
 }
 
 /**
@@ -3181,6 +3324,8 @@ main(void)
 {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test_setup(test_subscription_started, clear_subs_notifs),
+        cmocka_unit_test_setup(test_subscription_started_fields, clear_subs_notifs),
+        cmocka_unit_test_setup(test_subscription_started_filter_ref, clear_subs_notifs),
         cmocka_unit_test_setup(test_subscription_terminated, clear_subs_notifs),
         cmocka_unit_test_setup(test_subscription_modified, clear_subs_notifs),
         cmocka_unit_test_setup(test_multiple_subscriptions, clear_subs_notifs),
