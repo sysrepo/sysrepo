@@ -1,0 +1,13 @@
+services:
+  redis-server:
+    image: redis:latest
+    ports:
+      - 6379:6379
+  mongod:
+    image: mongodb/mongodb-community-server:latest
+    ports:
+      - 27017:27017
+    ulimits:
+      nofile:
+        soft: 64000  # Set the soft limit for open files
+        hard: 64000  # Set the hard limit for open files
