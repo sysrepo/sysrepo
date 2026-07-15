@@ -438,6 +438,8 @@ receive_notification_ext(int sockfd, const struct ly_ctx *ly_ctx, int timeout_ms
     size_t payload_len, reassembled_len;
     struct ly_in *in = NULL;
     LYD_FORMAT format;
+    enum lyd_type dt;
+    struct lyd_node *envp = NULL;
     pending_message_t *pending;
     char *reassembled = NULL;
     char *payload_str = NULL;
@@ -569,16 +571,20 @@ receive_next:
         goto cleanup;
     }
 
-    if (lyd_parse_op(ly_ctx, NULL, in, format, LYD_TYPE_NOTIF_YANG, 0, NULL, notif)) {
+    /* parse the RFC 5277 notification envelope; choose the parse type by encoding */
+    dt = (format == LYD_XML) ? LYD_TYPE_NOTIF_NETCONF : LYD_TYPE_NOTIF_RESTCONF;
+    if (lyd_parse_op(ly_ctx, NULL, in, format, dt, 0, &envp, notif)) {
         TLOG_ERR("Failed to parse notification: %s", ly_err_last(ly_ctx)->msg);
-        ly_in_free(in, 0);
         goto cleanup;
     }
 
-    ly_in_free(in, 0);
+    /* the envelope (with eventTime) is returned separately from the inner notification;
+     * *notif holds the inner notification for the caller to use and free */
     rc = 0;
 
 cleanup:
+    ly_in_free(in, 0);
+    lyd_free_all(envp);
     free(payload_str);
     return rc;
 }
@@ -1737,6 +1743,106 @@ test_subscription_started_filter_ref(void **state)
     cleanup_sub(st->sess, 101);
     delete_stream_filter(st->sess, "field-test-filter");
     sr_apply_changes(st->sess, 0);
+}
+
+/**
+ * @brief Test: Verify subscription-started notification with JSON encoding.
+ *
+ * Creates a subscription with encoding set to encode-json, then verifies the
+ * media type is JSON and the notification is parsed correctly through the
+ * RFC 8040 Section 6.4 JSON envelope.
+ */
+static void
+test_subscription_started_json(void **state)
+{
+    struct state *st = *state;
+    struct lyd_node *notif = NULL, *node = NULL;
+    udp_notif_header_t header;
+    char path[512];
+    int ret;
+
+    TLOG_INF("Creating receiver instance and JSON-encoded subscription...");
+
+    ret = create_receiver_instance(st->sess, "test-recv", "127.0.0.1", st->udp_port);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = _set_sub_common(st->sess, 102, "NETCONF", "test-recv");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set xpath filter */
+    snprintf(path, sizeof(path),
+            "/ietf-subscribed-notifications:subscriptions/subscription[id='102']/stream-xpath-filter");
+    ret = sr_set_item_str(st->sess, path, "/ietf-netconf-notifications:*", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set encoding to JSON */
+    snprintf(path, sizeof(path),
+            "/ietf-subscribed-notifications:subscriptions/subscription[id='102']/encoding");
+    ret = sr_set_item_str(st->sess, path, "ietf-subscribed-notifications:encode-json", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set purpose */
+    snprintf(path, sizeof(path),
+            "/ietf-subscribed-notifications:subscriptions/subscription[id='102']/purpose");
+    ret = sr_set_item_str(st->sess, path, "test-purpose-json", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    TLOG_INF("Waiting for subscription-started notification...");
+
+    ret = receive_notification(st->udp_sockfd, st->ly_ctx, &notif, &header);
+    assert_int_equal(ret, 0);
+    assert_non_null(notif);
+
+    /* verify media type is JSON */
+    assert_int_equal(header.media_type, UDP_NOTIF_MT_JSON);
+
+    /* verify it's a subscription-started notification */
+    assert_string_equal(notif->schema->name, "subscription-started");
+
+    /* verify id */
+    ret = lyd_find_path(notif, "id", 0, &node);
+    assert_int_equal(ret, LY_SUCCESS);
+    assert_non_null(node);
+    assert_int_equal(strtoul(lyd_get_value(node), NULL, 10), 102);
+
+    /* verify stream */
+    ret = lyd_find_path(notif, "stream", 0, &node);
+    assert_int_equal(ret, LY_SUCCESS);
+    assert_non_null(node);
+    assert_string_equal(lyd_get_value(node), "NETCONF");
+
+    /* verify transport */
+    ret = lyd_find_path(notif, "transport", 0, &node);
+    assert_int_equal(ret, LY_SUCCESS);
+    assert_non_null(node);
+    assert_string_equal(lyd_get_value(node), "ietf-udp-notif-transport:udp-notif");
+
+    /* verify encoding */
+    ret = lyd_find_path(notif, "encoding", 0, &node);
+    assert_int_equal(ret, LY_SUCCESS);
+    assert_non_null(node);
+    assert_string_equal(lyd_get_value(node), "ietf-subscribed-notifications:encode-json");
+
+    /* verify purpose */
+    ret = lyd_find_path(notif, "purpose", 0, &node);
+    assert_int_equal(ret, LY_SUCCESS);
+    assert_non_null(node);
+    assert_string_equal(lyd_get_value(node), "test-purpose-json");
+
+    /* verify stream-xpath-filter */
+    ret = lyd_find_path(notif, "stream-xpath-filter", 0, &node);
+    assert_int_equal(ret, LY_SUCCESS);
+    assert_non_null(node);
+    assert_string_equal(lyd_get_value(node), "/ietf-netconf-notifications:*");
+
+    TLOG_INF("JSON subscription-started notification verified successfully");
+
+    lyd_free_all(notif);
+
+    cleanup_sub(st->sess, 102);
 }
 
 /**
@@ -3326,6 +3432,7 @@ main(void)
         cmocka_unit_test_setup(test_subscription_started, clear_subs_notifs),
         cmocka_unit_test_setup(test_subscription_started_fields, clear_subs_notifs),
         cmocka_unit_test_setup(test_subscription_started_filter_ref, clear_subs_notifs),
+        cmocka_unit_test_setup(test_subscription_started_json, clear_subs_notifs),
         cmocka_unit_test_setup(test_subscription_terminated, clear_subs_notifs),
         cmocka_unit_test_setup(test_subscription_modified, clear_subs_notifs),
         cmocka_unit_test_setup(test_multiple_subscriptions, clear_subs_notifs),

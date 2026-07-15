@@ -426,17 +426,25 @@ add_segment(pending_message_t *pending, uint16_t segment_num, int is_last,
 }
 
 /**
- * @brief Print a notification data tree in a human-readable format.
+ * @brief Print a notification in a human-readable format.
  *
- * @param[in] notif Notification data tree.
+ * The inner notification is linked into the parsed envelope tree so that the
+ * full RFC 5277 envelope (including eventTime and the inner notification) is
+ * pretty-printed with proper indentation.
+ *
+ * @param[in] envp RFC 5277 envelope data tree (contains eventTime).
+ * @param[in] notif Notification data tree (used for the path and linked into envp).
  * @param[in] hdr UDP-Notif header that carried the notification.
+ * @param[in] format Payload format (LYD_JSON or LYD_XML).
  */
 static void
-print_notification(const struct lyd_node *notif, const udp_notif_header_t *hdr)
+print_notification(struct lyd_node *envp, struct lyd_node *notif, const udp_notif_header_t *hdr, LYD_FORMAT format)
 {
     char *path = NULL;
     char *payload = NULL;
     const char *mt_name;
+    const char *line, *next;
+    struct lyd_node *event_time = NULL;
 
     path = lyd_path(notif, LYD_PATH_STD, NULL, 0);
     if (!path) {
@@ -445,16 +453,44 @@ print_notification(const struct lyd_node *notif, const udp_notif_header_t *hdr)
 
     mt_name = (hdr->media_type < 4) ? media_type_names[hdr->media_type] : "unknown";
 
+    /* link the inner notification into the envelope for combined pretty-printing */
+    if (envp && notif) {
+        /* eventTime is the only opaque child of the envelope before the notification is linked in */
+        event_time = lyd_child(envp);
+
+        lyd_insert_child(envp, notif);
+        notif = NULL;
+
+        /* libyang inserts schema nodes before opaque ones, so eventTime ended up after the
+           notification; move it back to the front so it is printed before the notification */
+        if (event_time && (event_time != lyd_child(envp))) {
+            lyd_insert_before(lyd_child(envp), event_time);
+        }
+
+        lyd_print_mem(&payload, envp, format, LYD_PRINT_SIBLINGS);
+    }
+
     printf("\n--- Notification ---\n");
     printf("  Path:          %s\n", path);
     printf("  Publisher ID:  %" PRIu32 "\n", hdr->publisher_id);
     printf("  Message ID:    %" PRIu32 "\n", hdr->message_id);
     printf("  Media Type:    %s\n", mt_name);
-
-    if (!lyd_print_mem(&payload, notif, LYD_JSON, 0)) {
-        printf("  Payload:\n%s\n", payload);
+    printf("  Payload:\n");
+    if (payload) {
+        line = payload;
+        while (line && *line) {
+            next = strchr(line, '\n');
+            if (next) {
+                printf("  %.*s\n", (int)(next - line), line);
+                line = next + 1;
+            } else {
+                printf("  %s\n", line);
+                break;
+            }
+        }
+    } else {
+        printf("  (failed to format)\n");
     }
-
     printf("---------------------\n");
     fflush(stdout);
 
@@ -484,8 +520,10 @@ receive_notification(int sockfd, sr_conn_ctx_t *conn, int timeout_ms)
     size_t payload_len, reassembled_len;
     struct ly_in *in = NULL;
     struct lyd_node *notif = NULL;
+    struct lyd_node *envp = NULL;
     const struct ly_ctx *ly_ctx = NULL;
     LYD_FORMAT format;
+    enum lyd_type dt;
     pending_message_t *pending;
     char *reassembled = NULL;
     char *payload_str = NULL;
@@ -611,13 +649,17 @@ receive_next:
         goto cleanup;
     }
 
-    if (lyd_parse_op(ly_ctx, NULL, in, format, LYD_TYPE_NOTIF_YANG, 0, NULL, &notif)) {
+    /* parse the RFC 5277 notification envelope; choose the parse type by encoding */
+    dt = (format == LYD_XML) ? LYD_TYPE_NOTIF_NETCONF : LYD_TYPE_NOTIF_RESTCONF;
+    if (lyd_parse_op(ly_ctx, NULL, in, format, dt, 0, &envp, &notif)) {
         fprintf(stderr, "Failed to parse notification: %s\n", ly_err_last(ly_ctx)->msg);
         rc = -1;
         goto cleanup;
     }
 
-    print_notification(notif, &hdr);
+    /* notif is linked into envp by print_notification, so only envp is freed in cleanup */
+    print_notification(envp, notif, &hdr, format);
+    notif = NULL;
 
     /* release context right after we're done using it */
     sr_release_context(conn);
@@ -626,6 +668,7 @@ receive_next:
 cleanup:
     free(payload_str);
     lyd_free_all(notif);
+    lyd_free_all(envp);
     ly_in_free(in, 0);
     if (ly_ctx) {
         sr_release_context(conn);
