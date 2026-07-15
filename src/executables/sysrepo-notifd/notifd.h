@@ -84,6 +84,21 @@
  */
 #define NOTIFD_RECV_RECONNECT_MAX_SEC 60
 
+/**
+ * @brief RFC 5277 NETCONF notification envelope namespace.
+ *
+ * Used for the <notification> wrapper and its <eventTime> child element.
+ */
+#define NOTIFD_NOTIF_XML_NS "urn:ietf:params:xml:ns:netconf:notification:1.0"
+
+/**
+ * @brief RFC 8040 Section 6.4 JSON envelope module name for the <notification> element.
+ *
+ * For JSON encoding, the <notification> element is placed in the "ietf-restconf"
+ * module namespace, as specified in RFC 8040 Section 6.4.
+ */
+#define NOTIFD_NOTIF_JSON_MODULE "ietf-restconf"
+
 /* forward declarations */
 typedef struct notifd_ctx_s notifd_ctx_t;
 typedef struct notif_sub_s notif_sub_t;
@@ -235,6 +250,18 @@ typedef void (*notif_transport_config_destroy_cb)(void *cfg);
 typedef int (*notif_transport_config_validate_cb)(const struct lyd_node *node);
 
 /**
+ * @brief Get the default encoding for this transport.
+ *
+ * Called when a subscription's encoding is not explicitly configured
+ * (NOTIF_ENCODING_UNSET). Per RFC 8639, the encoding leaf description states
+ * that for a configured subscription the encoding "will be the default encoding
+ * for an underlying transport." Each transport must define its default.
+ *
+ * @return The transport's default encoding.
+ */
+typedef notif_encoding_t (*notif_transport_default_encoding_cb)(void);
+
+/**
  * @brief Transport operations vtable.
  *
  * Each transport type implements this interface, enabling polymorphic
@@ -255,6 +282,7 @@ typedef struct notif_transport_ops_s {
     notif_transport_config_change_cb config_change;     /**< handle incremental config changes */
     notif_transport_config_destroy_cb config_destroy;   /**< free transport config */
     notif_transport_config_validate_cb config_validate; /**< validate transport config */
+    notif_transport_default_encoding_cb default_encoding; /**< get default encoding when not configured */
 } notif_transport_ops_t;
 
 /**

@@ -69,6 +69,10 @@ subscription_state_change_notif_new(const struct ly_ctx *ly_ctx, notif_sub_t *su
     char *id_str = NULL, *stop_time_str = NULL, *start_time_str = NULL;
     struct timespec *start_time, *stop_time;
     const char *encoding_str = NULL;
+    notif_encoding_t encoding;
+    const notif_transport_ops_t *ops = NULL;
+    const struct lys_module *mod = NULL;
+    const char *feat_name = NULL;
 
     *notif = NULL;
 
@@ -150,21 +154,35 @@ subscription_state_change_notif_new(const struct ly_ctx *ly_ctx, notif_sub_t *su
     }
 
     /* encoding */
-    if ((fields & NOTIF_FIELD_ENCODING) && (sub->encoding != NOTIF_ENCODING_UNSET)) {
-        switch (sub->encoding) {
+    if (fields & NOTIF_FIELD_ENCODING) {
+        /* resolve the encoding, defaulting to the transport's default if not explicitly configured */
+        encoding = sub->encoding;
+        if (encoding == NOTIF_ENCODING_UNSET) {
+            ops = notif_transport_find_by_identity(sub->transport);
+            if (ops && ops->default_encoding) {
+                encoding = ops->default_encoding();
+            }
+        }
+        switch (encoding) {
         case NOTIF_ENCODING_XML:
             encoding_str = "ietf-subscribed-notifications:encode-xml";
+            feat_name = "encode-xml";
             break;
         case NOTIF_ENCODING_JSON:
             encoding_str = "ietf-subscribed-notifications:encode-json";
+            feat_name = "encode-json";
             break;
         default:
             break;
         }
+        /* only include the encoding field if the corresponding feature is enabled */
         if (encoding_str) {
-            if (lyd_new_path(tree, ly_ctx, "encoding", encoding_str, 0, NULL)) {
-                rc = SR_ERR_LY;
-                goto cleanup;
+            mod = ly_ctx_get_module_implemented(ly_ctx, "ietf-subscribed-notifications");
+            if (mod && (lys_feature_value(mod, feat_name) == LY_SUCCESS)) {
+                if (lyd_new_path(tree, ly_ctx, "encoding", encoding_str, 0, NULL)) {
+                    rc = SR_ERR_LY;
+                    goto cleanup;
+                }
             }
         }
     }
@@ -382,7 +400,7 @@ int
 notif_receiver_backoff_reconnect(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver)
 {
     int rc = SR_ERR_OK;
-    struct timespec now;
+    struct timespec now, event_ts;
     uint32_t backoff_sec, shift;
     time_t elapsed;
     const struct ly_ctx *ly_ctx;
@@ -442,8 +460,9 @@ notif_receiver_backoff_reconnect(notifd_ctx_t *notifd_ctx, notif_receiver_t *rec
     }
 
     /* send the notification directly via transport */
+    clock_gettime(CLOCK_REALTIME, &event_ts);
     if (receiver->ops) {
-        rc = receiver->ops->send(receiver, receiver->inst->transport_config, start_notif, &now, receiver->cb_data.encoding);
+        rc = receiver->ops->send(receiver, receiver->inst->transport_config, start_notif, &event_ts, receiver->cb_data.encoding);
     } else {
         SRNTF_LOG_ERR("No transport ops for receiver \"%s\".", receiver->name);
         rc = SR_ERR_UNSUPPORTED;
@@ -507,8 +526,8 @@ notif_receiver_send(notifd_ctx_t *UNUSED(notifd_ctx), notif_receiver_t *receiver
     }
 
     if (!timestamp) {
-        /* get the current time */
-        clock_gettime(COMPAT_CLOCK_ID, &ts);
+        /* get the current wall-clock time for the event timestamp */
+        clock_gettime(CLOCK_REALTIME, &ts);
     } else {
         /* use the provided timestamp */
         ts = *timestamp;

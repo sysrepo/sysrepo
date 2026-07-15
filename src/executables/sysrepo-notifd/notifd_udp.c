@@ -189,24 +189,39 @@ udp_notif_seg_opt_build(uint8_t *opt, uint16_t segment_num, int is_last)
     opt[3] = seg_field & 0xFF;
 }
 
-/**
- * @brief Encode a notification to the specified format.
- *
- * @param[in] notif Notification data tree.
- * @param[in] encoding Encoding format.
- * @param[out] data Encoded data (caller must free).
- * @param[out] data_len Length of encoded data.
- * @return SR_ERR_OK on success, error code on failure.
- */
-static int
-notif_encode(const struct lyd_node *notif, notif_encoding_t encoding, char **data, size_t *data_len)
+int
+notif_rfc5277_encode(const struct lyd_node *notif, const struct timespec *ts,
+        notif_encoding_t encoding, char **data, size_t *data_len)
 {
+    int rc = SR_ERR_OK, inner_len;
+    struct timespec localts;
+    const struct timespec *ets;
+    char *datetime = NULL, *inner = NULL, *json_end;
     LYD_FORMAT format;
-    uint32_t print_flags = LYD_PRINT_SHRINK;
 
     *data = NULL;
     *data_len = 0;
 
+    if (!notif) {
+        SRNTF_LOG_ERR("Invalid arguments to encode notification.");
+        return SR_ERR_INVAL_ARG;
+    }
+
+    /* determine the event timestamp, defaulting to the current wall-clock time */
+    ets = ts;
+    if (!ets) {
+        clock_gettime(CLOCK_REALTIME, &localts);
+        ets = &localts;
+    }
+
+    /* format eventTime as a YANG date-and-time string */
+    if (ly_time_ts2str(ets, &datetime)) {
+        SRNTF_LOG_ERR("Failed to format eventTime.");
+        rc = SR_ERR_LY;
+        goto cleanup;
+    }
+
+    /* select the encoding format */
     switch (encoding) {
     case NOTIF_ENCODING_XML:
         format = LYD_XML;
@@ -216,21 +231,59 @@ notif_encode(const struct lyd_node *notif, notif_encoding_t encoding, char **dat
         format = LYD_JSON;
         break;
     case NOTIF_ENCODING_CBOR:
-        /* TODO: CBOR encoding not yet supported */
         SRNTF_LOG_ERR("CBOR encoding is not yet implemented.");
-        return SR_ERR_UNSUPPORTED;
+        rc = SR_ERR_UNSUPPORTED;
+        goto cleanup;
     default:
         SRNTF_LOG_ERR("Unknown encoding type %d.", encoding);
-        return SR_ERR_INVAL_ARG;
+        rc = SR_ERR_INVAL_ARG;
+        goto cleanup;
     }
 
-    if (lyd_print_mem(data, notif, format, print_flags)) {
+    /* serialize the inner notification data tree;
+     * LYD_PRINT_SHRINK is mandatory for the JSON splice below, which assumes
+     * compact output (no whitespace) so that strrchr(inner, '}') finds the
+     * true structural closing brace of the top-level object */
+    if (lyd_print_mem(&inner, notif, format, LYD_PRINT_SHRINK)) {
         SRNTF_LOG_ERR("Failed to encode notification.");
-        return SR_ERR_LY;
+        rc = SR_ERR_LY;
+        goto cleanup;
+    }
+
+    /* wrap the inner notification in the RFC 5277 <notification> envelope */
+    if (format == LYD_XML) {
+        if (asprintf(data, "<notification xmlns=\"%s\"><eventTime>%s</eventTime>%s</notification>",
+                NOTIFD_NOTIF_XML_NS, datetime, inner) == -1) {
+            *data = NULL;
+            rc = SR_ERR_NO_MEMORY;
+            ERRMEM;
+            goto cleanup;
+        }
+    } else {
+        /* JSON: inner is {"module:notification":{...}}, splice it without the outer braces */
+        json_end = strrchr(inner, '}');
+        if (!json_end || (json_end == inner)) {
+            SRNTF_LOG_ERR("Invalid JSON notification encoding.");
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
+        /* length of the inner content excluding the outer braces */
+        inner_len = (int)(json_end - inner - 1);
+        if (asprintf(data, "{\"%s:notification\":{\"eventTime\":\"%s\",%.*s}}",
+                NOTIFD_NOTIF_JSON_MODULE, datetime, inner_len, inner + 1) == -1) {
+            *data = NULL;
+            rc = SR_ERR_NO_MEMORY;
+            ERRMEM;
+            goto cleanup;
+        }
     }
 
     *data_len = strlen(*data);
-    return SR_ERR_OK;
+
+cleanup:
+    free(datetime);
+    free(inner);
+    return rc;
 }
 
 /**
@@ -606,8 +659,6 @@ udp_transport_send_cb(notif_receiver_t *recv, void *cfg,
     udp_notif_receiver_t *udp_recv = (udp_notif_receiver_t *)cfg;
     udp_conn_ctx_t *conn;
 
-    (void)timestamp;
-
     if (!recv || !udp_recv || !notif) {
         return SR_ERR_INVAL_ARG;
     }
@@ -623,8 +674,8 @@ udp_transport_send_cb(notif_receiver_t *recv, void *cfg,
         return SR_ERR_OPERATION_FAILED;
     }
 
-    /* encode the notification */
-    rc = notif_encode(notif, encoding, &payload, &payload_len);
+    /* encode the notification in the RFC 5277 <notification> envelope */
+    rc = notif_rfc5277_encode(notif, timestamp, encoding, &payload, &payload_len);
     if (rc != SR_ERR_OK) {
         goto cleanup;
     }
@@ -811,6 +862,12 @@ udp_transport_config_validate_cb(const struct lyd_node *UNUSED(node))
     return SR_ERR_OK;
 }
 
+static notif_encoding_t
+udp_transport_default_encoding_cb(void)
+{
+    return NOTIF_ENCODING_JSON;
+}
+
 /*
  * ---------------------------------------------------------------------------
  * UDP transport ops vtable definition
@@ -830,4 +887,5 @@ const notif_transport_ops_t udp_transport_ops = {
     .config_change = udp_transport_config_change_cb,
     .config_destroy = udp_transport_config_destroy_cb,
     .config_validate = udp_transport_config_validate_cb,
+    .default_encoding = udp_transport_default_encoding_cb,
 };

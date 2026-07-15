@@ -28,6 +28,14 @@
  */
 extern const notif_transport_ops_t udp_transport_ops;
 
+/**
+ * @brief Find a registered transport by its YANG identity value.
+ *
+ * @param[in] identity YANG identity string (e.g. "ietf-udp-notif-transport:udp-notif").
+ * @return Pointer to the matching transport ops, or NULL if not found.
+ */
+const notif_transport_ops_t *notif_transport_find_by_identity(const char *identity);
+
 /** @brief Bitmask: include the `stream` field in a state-change notification. */
 #define NOTIF_FIELD_STREAM         0x01
 
@@ -355,9 +363,6 @@ int handle_purpose(notif_sub_t *sub, const struct lyd_node *node, sr_change_oper
 /**
  * @brief Handle a change to the `transport` leaf of a subscription.
  *
- * On create/modify, duplicates the new transport identity-ref string. On delete,
- * frees it. Marks the subscription as modified.
- *
  * @param[in,out] sub Subscription being modified.
  * @param[in] node The YANG `transport` leaf node.
  * @param[in] op Sysrepo change operation.
@@ -641,6 +646,25 @@ int notif_receiver_backoff_reconnect(notifd_ctx_t *notifd_ctx, notif_receiver_t 
  * @return ::SR_ERR_OK on success, error code on failure.
  */
 int notif_receiver_reconnect(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_receiver_t *receiver, notif_receiver_inst_t *new_inst);
+
+/**
+ * @brief Encode a YANG notification into an RFC 5277 notification message.
+ *
+ * Wraps the given notification data tree in the RFC 5277 <notification> envelope
+ * (with the mandatory <eventTime> child set from @p ts) and serializes it in the
+ * requested encoding. For XML the envelope is the RFC 5277 XML structure; for
+ * JSON it is the RFC 8040 Section 6.4 JSON mapping of that same structure.
+ * CBOR encoding is not supported.
+ *
+ * @param[in] notif Notification data tree to wrap and encode.
+ * @param[in] ts Event timestamp for <eventTime>, or NULL for the current time.
+ * @param[in] encoding Encoding format (XML, JSON, or UNSET which defaults to JSON; CBOR not supported).
+ * @param[out] data Encoded message (caller must free).
+ * @param[out] data_len Length of encoded message.
+ * @return ::SR_ERR_OK on success, ::SR_ERR_UNSUPPORTED for CBOR, other error codes on failure.
+ */
+int notif_rfc5277_encode(const struct lyd_node *notif, const struct timespec *ts,
+        notif_encoding_t encoding, char **data, size_t *data_len);
 
 /**
  * @brief Send a single notification to a specific receiver over its transport.
