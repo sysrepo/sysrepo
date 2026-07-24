@@ -3503,6 +3503,9 @@ sr_modinfo_change_diff_merge_pred_data(struct sr_mod_info_s *mod_info)
     sr_error_info_t *err_info = NULL;
     char **xpaths = NULL;
     uint32_t i;
+    int diff_same;
+
+    diff_same = (mod_info->ds_diff == mod_info->notify_diff) ? 1 : 0;
 
     /* collect all the xpaths of the subscriptions */
     for (i = 0; i < mod_info->mod_count; ++i) {
@@ -3514,6 +3517,11 @@ sr_modinfo_change_diff_merge_pred_data(struct sr_mod_info_s *mod_info)
     /* merge all the required data into the diff */
     if ((err_info = sr_xpath_merge_pred_diff(mod_info->data, (const char **)xpaths, &mod_info->notify_diff))) {
         goto cleanup;
+    }
+
+    if (diff_same) {
+        /* keep the same */
+        mod_info->ds_diff = mod_info->notify_diff;
     }
 
 cleanup:
