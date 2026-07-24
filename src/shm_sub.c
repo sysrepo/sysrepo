@@ -4711,7 +4711,7 @@ cleanup:
 /**
  * @brief Whether a notification is valid (not filtered out) for a notif subscription.
  *
- * @param[in] input Operation input data tree.
+ * @param[in] notif Notification node (the operation node itself).
  * @param[in] xpath Full subscription XPath.
  * @return 0 if not, non-zero is it is.
  */
@@ -4719,22 +4719,44 @@ static int
 sr_shmsub_notif_listen_filter_is_valid(const struct lyd_node *notif, const char *xpath)
 {
     sr_error_info_t *err_info = NULL;
-    ly_bool result;
+    struct ly_set *set = NULL;
+    const struct lyd_node *node;
+    uint32_t i;
+    int valid = 0;
 
     if (!xpath) {
         return 1;
     }
 
-    if (lyd_eval_xpath(notif, xpath, &result)) {
-        SR_ERRINFO_INT(&err_info);
+    /* evaluate the filter on the whole notification data tree, which for a nested notification also includes
+     * its data-tree ancestors */
+    if ((err_info = sr_lyd_find_xpath(notif, xpath, &set))) {
         sr_errinfo_free(&err_info);
         return 0;
-    } else if (result) {
-        /* valid subscription */
-        return 1;
     }
 
-    return 0;
+    /* The notification passes the filter only if the notification itself, one of its descendants, or one of its
+     * ancestors is selected. A match on an unrelated node (e.g. a shared ancestor list key of a sibling instance,
+     * emitted as a separate union branch by the subtree-to-XPath conversion) must not deliver the notification. */
+    for (i = 0; !valid && (i < set->count); ++i) {
+        /* selected node is the notification or its descendant */
+        for (node = set->dnodes[i]; node; node = lyd_parent(node)) {
+            if (node == notif) {
+                valid = 1;
+                break;
+            }
+        }
+        /* selected node is an ancestor of the notification */
+        for (node = notif; !valid && node; node = lyd_parent(node)) {
+            if (node == set->dnodes[i]) {
+                valid = 1;
+                break;
+            }
+        }
+    }
+
+    ly_set_free(set, NULL);
+    return valid;
 }
 
 sr_error_info_t *
