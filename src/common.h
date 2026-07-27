@@ -311,6 +311,25 @@ typedef struct {
     LYS_INFORMAT format;
 } sr_int_update_mod_t;
 
+/**
+ * @brief Internal filter type.
+ */
+enum sr_filter_type {
+    SR_FILTER_SELECTION,
+    SR_FILTER_CONTENT,
+};
+
+/**
+ * @brief Internal filter structure.
+ */
+struct sr_filter {
+    struct {
+        char *str;                  /**< filter string */
+        enum sr_filter_type type;   /**< filter type */
+    } *filters;
+    uint32_t count;
+};
+
 /*
  * From sysrepo.c
  */
@@ -1633,5 +1652,32 @@ sr_error_info_t *_sr_acquire_data(sr_conn_ctx_t *conn, struct lyd_node *tree, sr
  */
 sr_error_info_t *sr_get_data_prune(sr_session_ctx_t *session, struct lyd_node **first, const struct ly_set *set, uint32_t max_depth,
         const uint32_t opts);
+
+/**
+ * @brief Erase all members of a filter structure.
+ *
+ * @param[in] filter Filter to erase.
+ */
+void sr_filter_erase(struct sr_filter *filter);
+
+/**
+ * @brief Create a filter structure from a subtree filter.
+ *
+ * @param[in] node Subtree filter.
+ * @param[in,out] ev_sess SR event session to set the error on.
+ * @param[in,out] filter Generated filter structure.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_filter_create_subtree(const struct lyd_node *node, struct sr_filter *filter);
+
+/**
+ * @brief Transform a filter structure into XPath filter.
+ *
+ * @param[in] filter Filter structure.
+ * @param[in] for_eval If set, connects filters with operator 'and', otherwise '|'.
+ * @param[out] xpath Generated XPath filter.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_filter_filter2xpath(const struct sr_filter *filter, int for_eval, char **xpath);
 
 #endif /* _COMMON_H */

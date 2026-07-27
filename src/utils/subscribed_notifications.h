@@ -74,12 +74,7 @@ typedef struct {
 } srsn_state_sub_t;
 
 /**
- * @brief Transform a subtree filter into an XPath filter.
- *
- * @param[in] subtree Subtree of the filter itself.
- * @param[in] session Optional session for storing errors.
- * @param[out] xpath_filter Generated XPath filter.
- * @return Error code (::SR_ERR_OK on success).
+ * @brief Deprecated, use ::sr_filter_subtree2xpath().
  */
 int srsn_filter_subtree2xpath(const struct lyd_node *subtree, sr_session_ctx_t *session, char **xpath_filter);
 

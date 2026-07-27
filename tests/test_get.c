@@ -738,7 +738,7 @@ test_subtree2xpath(void **state)
     assert_int_equal(ret, LY_SUCCESS);
 
     /* convert subtree filter to xpath */
-    ret = srsn_filter_subtree2xpath(filter_tree, NULL, &filter_str);
+    ret = sr_filter_subtree2xpath(NULL, filter_tree, 0, &filter_str);
     assert_int_equal(SR_ERR_OK, ret);
     exp = "(/mod:container/list-entry[name='k1']/name | /mod:container/list-entry[name='k1']/leaf-bool | "
             "/mod:container/list-entry[name='k2'][leaf-bool='true'])";

@@ -218,7 +218,7 @@ stream_filter_xpath_get(sr_session_ctx_t *sess, const char *filter_name, char **
     get_descendant_optional(tree, "stream-subtree-filter", &filter);
     if (filter) {
         /* convert the subtree filter to an xpath filter, subtree is anydata so use lyd_child_any */
-        if ((rc = srsn_filter_subtree2xpath(lyd_child_any(filter), sess, xpath_filter))) {
+        if ((rc = sr_filter_subtree2xpath(sess, lyd_child_any(filter), 1, xpath_filter))) {
             goto cleanup;
         }
     }
@@ -546,7 +546,7 @@ handle_stream_subtree_filter(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const s
         filter = lyd_child_any(node);
         if (filter) {
             /* filter exists, convert it to an xpath filter and switch to the new value */
-            if ((rc = srsn_filter_subtree2xpath(filter, notifd_ctx->sr_sess, &sub->xpath_filter))) {
+            if ((rc = sr_filter_subtree2xpath(notifd_ctx->sr_sess, filter, 1, &sub->xpath_filter))) {
                 goto cleanup;
             }
         }
@@ -921,7 +921,7 @@ subscription_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, no
         filter = lyd_child_any(n);
         if (filter) {
             /* filter exists, convert it to an xpath filter and switch to the new value */
-            if ((rc = srsn_filter_subtree2xpath(filter, notifd_ctx->sr_sess, &sub->xpath_filter))) {
+            if ((rc = sr_filter_subtree2xpath(notifd_ctx->sr_sess, filter, 1, &sub->xpath_filter))) {
                 goto cleanup;
             }
         }
@@ -1450,7 +1450,7 @@ handle_stream_filter(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, int 
             /* match */
             if (is_subtree) {
                 /* subtree filter reference, convert to xpath, subtree is anydata, so use lyd_child_any() to get it */
-                if ((r = srsn_filter_subtree2xpath(lyd_child_any(node), notifd_ctx->sr_sess, &new_filter))) {
+                if ((r = sr_filter_subtree2xpath(notifd_ctx->sr_sess, lyd_child_any(node), 1, &new_filter))) {
                     (*sub)->modif_err_reason = "ietf-subscribed-notifications:no-such-subscription";
                     rc = r;
                 }
@@ -1567,7 +1567,7 @@ sub_change_validate_subtree_filter(sr_session_ctx_t *session, sr_event_t event,
         goto cleanup;
     }
 
-    if ((rc = srsn_filter_subtree2xpath(filter, session, &xpath_filter))) {
+    if ((rc = sr_filter_subtree2xpath(session, filter, 1, &xpath_filter))) {
         SRNTF_VALIDATE_ERR(session, event, rc, "Failed to convert subtree filter to XPath.");
         goto cleanup;
     }

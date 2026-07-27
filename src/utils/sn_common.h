@@ -32,17 +32,6 @@
 #include "sysrepo.h"
 
 /**
- * @brief Internal filter structure.
- */
-struct srsn_filter {
-    struct {
-        char *str;      /**< filter string */
-        int selection;  /**< selection or content filter */
-    } *filters;
-    uint32_t count;
-};
-
-/**
  * @brief Internal timer structure.
  */
 struct srsn_timer {
@@ -141,32 +130,6 @@ struct srsn_state {
     uint32_t pfd_count;
     uint32_t valid_pfds;    /**< count of current valid (fd > -1) pfd items */
 };
-
-/**
- * @brief Erase all members of a filter structure.
- *
- * @param[in] filter Filter to erase.
- */
-void srsn_filter_erase(struct srsn_filter *filter);
-
-/**
- * @brief Create a filter structure from a subtree filter.
- *
- * @param[in] node Subtree filter.
- * @param[in,out] ev_sess SR event session to set the error on.
- * @param[in,out] filter Generated filter structure.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *srsn_filter_create_subtree(const struct lyd_node *node, struct srsn_filter *filter);
-
-/**
- * @brief Transform a filter structure into XPath filter.
- *
- * @param[in] filter Filter structure.
- * @param[out] xpath Generated XPath filter.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *srsn_filter_filter2xpath(const struct srsn_filter *filter, char **xpath);
 
 /**
  * @brief Generate a new unique subscription ID.

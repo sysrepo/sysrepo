@@ -601,6 +601,31 @@ sr_get_cid(sr_conn_ctx_t *conn)
     return conn->cid;
 }
 
+API int
+sr_filter_subtree2xpath(sr_session_ctx_t *session, const struct lyd_node *subtree, int for_eval, char **xpath_filter)
+{
+    sr_error_info_t *err_info = NULL;
+    struct sr_filter filter = {0};
+
+    SR_CHECK_ARG_APIRET(!subtree || !xpath_filter, session, err_info);
+
+    *xpath_filter = NULL;
+
+    /* create a filter structure first */
+    if ((err_info = sr_filter_create_subtree(subtree, &filter))) {
+        goto cleanup;
+    }
+
+    /* transform into an XPath */
+    if ((err_info = sr_filter_filter2xpath(&filter, for_eval, xpath_filter))) {
+        goto cleanup;
+    }
+
+cleanup:
+    sr_filter_erase(&filter);
+    return sr_api_ret(session, err_info);
+}
+
 API const char *
 sr_yang_module_dir(void)
 {

@@ -4,8 +4,8 @@
  * @brief multi-module notification subscription functions
  *
  * @copyright
- * Copyright (c) 2023 - 2024 Deutsche Telekom AG.
- * Copyright (c) 2023 - 2024 CESNET, z.s.p.o.
+ * Copyright (c) 2023 - 2026 Deutsche Telekom AG.
+ * Copyright (c) 2023 - 2026 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -39,26 +39,7 @@
 API int
 srsn_filter_subtree2xpath(const struct lyd_node *subtree, sr_session_ctx_t *session, char **xpath_filter)
 {
-    sr_error_info_t *err_info = NULL;
-    struct srsn_filter filter = {0};
-
-    SR_CHECK_ARG_APIRET(!subtree || !xpath_filter, session, err_info);
-
-    *xpath_filter = NULL;
-
-    /* create a filter structure first */
-    if ((err_info = srsn_filter_create_subtree(subtree, &filter))) {
-        goto cleanup;
-    }
-
-    /* transform into an XPath */
-    if ((err_info = srsn_filter_filter2xpath(&filter, xpath_filter))) {
-        goto cleanup;
-    }
-
-cleanup:
-    srsn_filter_erase(&filter);
-    return sr_api_ret(session, err_info);
+    return sr_filter_subtree2xpath(session, subtree, 0, xpath_filter);
 }
 
 static LY_ERR

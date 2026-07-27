@@ -255,6 +255,18 @@ uid_t sr_get_su_uid(void);
 sr_cid_t sr_get_cid(sr_conn_ctx_t *conn);
 
 /**
+ * @brief Transform a subtree filter into an XPath filter.
+ *
+ * @param[in] session Optional session for storing errors.
+ * @param[in] subtree Subtree of the filter itself.
+ * @param[in] for_eval If set, connects filters with operator 'and' (result is boolean),
+ * otherwise '|' (result is a node set).
+ * @param[out] xpath_filter Generated XPath filter.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_filter_subtree2xpath(sr_session_ctx_t *session, const struct lyd_node *subtree, int for_eval, char **xpath_filter);
+
+/**
  * @brief Get the directory with internal sysrepo YANG modules.
  *
  * @return YANG module dir.
