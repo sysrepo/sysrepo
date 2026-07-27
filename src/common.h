@@ -316,7 +316,7 @@ typedef struct {
  */
 enum sr_filter_type {
     SR_FILTER_SELECTION,
-    SR_FILTER_CONTENT,
+    SR_FILTER_CONTENT
 };
 
 /**
