@@ -3424,6 +3424,275 @@ test_stop_time_concluded(void **state)
     cleanup_sub(st->sess, 200);
 }
 
+/**
+ * @brief Test: Verify that changing the encoding of an existing subscription
+ * takes effect on subsequent notifications.
+ *
+ * Creates a subscription with JSON encoding, triggers a notification and
+ * verifies it is received as JSON. Then modifies the encoding to XML, triggers
+ * another notification and verifies it is received as XML. This catches the
+ * bug where the receiver's cached encoding was not updated on modification.
+ */
+static void
+test_encoding_modify(void **state)
+{
+    struct state *st = *state;
+    struct lyd_node *notif = NULL;
+    udp_notif_header_t header;
+    char path[512];
+    int ret;
+
+    TLOG_INF("Creating subscription with JSON encoding...");
+
+    ret = create_receiver_instance(st->sess, "test-recv", "127.0.0.1", st->udp_port);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set common fields and an XPath filter that matches netconf-config-change */
+    ret = _set_sub_common(st->sess, 120, "NETCONF", "test-recv");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    snprintf(path, sizeof(path),
+            "/ietf-subscribed-notifications:subscriptions/subscription[id='120']/stream-xpath-filter");
+    ret = sr_set_item_str(st->sess, path, "/ietf-netconf-notifications:netconf-config-change", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set encoding to JSON */
+    snprintf(path, sizeof(path),
+            "/ietf-subscribed-notifications:subscriptions/subscription[id='120']/encoding");
+    ret = sr_set_item_str(st->sess, path, "ietf-subscribed-notifications:encode-json", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    TLOG_INF("Waiting for subscription-started notification...");
+
+    /* receive and discard subscription-started */
+    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
+            "/ietf-subscribed-notifications:subscription-started", &notif, NULL);
+    assert_int_equal(ret, 0);
+    lyd_free_all(notif);
+    notif = NULL;
+
+    TLOG_INF("Triggering a notification (should be JSON)...");
+
+    /* make a config change to produce a netconf-config-change notification */
+    ret = sr_set_item_str(st->sess, "/test:test-leaf", "1", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* receive the notification and verify it is JSON */
+    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
+            "/ietf-netconf-notifications:netconf-config-change", &notif, &header);
+    assert_int_equal(ret, 0);
+    assert_non_null(notif);
+    assert_int_equal(header.media_type, UDP_NOTIF_MT_JSON);
+    lyd_free_all(notif);
+    notif = NULL;
+
+    TLOG_INF("Modifying encoding to XML...");
+
+    /* change the encoding to XML */
+    ret = sr_set_item_str(st->sess, path, "ietf-subscribed-notifications:encode-xml", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    TLOG_INF("Waiting for subscription-modified notification...");
+
+    /* receive and discard subscription-modified */
+    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
+            "/ietf-subscribed-notifications:subscription-modified", &notif, NULL);
+    assert_int_equal(ret, 0);
+    lyd_free_all(notif);
+    notif = NULL;
+
+    TLOG_INF("Triggering another notification (should be XML)...");
+
+    /* make another config change to produce a second notification */
+    ret = sr_set_item_str(st->sess, "/test:test-leaf", "2", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* receive the notification and verify it is now XML */
+    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
+            "/ietf-netconf-notifications:netconf-config-change", &notif, &header);
+    assert_int_equal(ret, 0);
+    assert_non_null(notif);
+    assert_int_equal(header.media_type, UDP_NOTIF_MT_XML);
+
+    TLOG_INF("Encoding change took effect on subsequent notifications");
+
+    lyd_free_all(notif);
+
+    sr_delete_item(st->sess, "/test:test-leaf", 0);
+    cleanup_sub(st->sess, 120);
+}
+
+/**
+ * @brief Test: Verify transport default encoding when encoding leaf is not set.
+ *
+ * Creates a subscription without setting the encoding leaf, then verifies that
+ * the UDP transport's default encoding (JSON) is used: the UDP-Notif media type
+ * must be JSON and the subscription-started notification must carry the
+ * encoding leaf set to encode-json.
+ */
+static void
+test_default_encoding(void **state)
+{
+    struct state *st = *state;
+    struct lyd_node *notif = NULL, *node = NULL;
+    udp_notif_header_t header;
+    int ret;
+
+    TLOG_INF("Creating subscription without encoding to test transport default...");
+
+    ret = create_receiver_instance(st->sess, "test-recv", "127.0.0.1", st->udp_port);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set only the common fields (stream, transport, receiver-ref); no encoding */
+    ret = _set_sub_common(st->sess, 110, "NETCONF", "test-recv");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    TLOG_INF("Waiting for subscription-started notification...");
+
+    ret = receive_notification(st->udp_sockfd, st->ly_ctx, &notif, &header);
+    assert_int_equal(ret, 0);
+    assert_non_null(notif);
+
+    /* verify it's a subscription-started notification */
+    assert_string_equal(notif->schema->name, "subscription-started");
+
+    /* media type must be JSON (the UDP transport default) */
+    assert_int_equal(header.media_type, UDP_NOTIF_MT_JSON);
+
+    /* the encoding leaf must be present and set to encode-json */
+    ret = lyd_find_path(notif, "encoding", 0, &node);
+    assert_int_equal(ret, LY_SUCCESS);
+    assert_non_null(node);
+    assert_string_equal(lyd_get_value(node), "ietf-subscribed-notifications:encode-json");
+
+    TLOG_INF("Default encoding (JSON) verified successfully");
+
+    lyd_free_all(notif);
+
+    cleanup_sub(st->sess, 110);
+}
+
+/**
+ * @brief Teardown: re-enable the encode-json feature after test_encoding_feature_disabled.
+ *
+ * Runs even if the test failed on an assertion, so that subsequent test runs
+ * start with both features enabled. Must release the context reference so that
+ * sr_enable_module_feature can acquire the write lock it needs.
+ */
+static int
+re_enable_encode_json(void **state)
+{
+    struct state *st = *state;
+    int ret;
+
+    /* release context so the feature change can acquire a write lock */
+    if (st->ly_ctx) {
+        sr_release_context(st->conn);
+        st->ly_ctx = NULL;
+    }
+
+    ret = sr_enable_module_feature(st->conn, "ietf-subscribed-notifications", "encode-json");
+    (void)ret; /* best-effort; if it fails the next test run's setup will reinstall */
+
+    /* re-acquire context for the global teardown */
+    st->ly_ctx = sr_acquire_context(st->conn);
+
+    return 0;
+}
+
+/**
+ * @brief Test: Verify the encoding field is omitted when encode-json is disabled.
+ *
+ * Disables the encode-json feature, creates a subscription without an explicit
+ * encoding, then verifies that the subscription-started notification is still
+ * sent (with JSON media type, since the transport default is unaffected by the
+ * feature) but the encoding leaf is absent (the identity does not exist in the
+ * schema when the feature is off).
+ *
+ * Must be the last test in the suite because it disables a YANG feature.
+ */
+static void
+test_encoding_feature_disabled(void **state)
+{
+    struct state *st = *state;
+    struct lyd_node *notif = NULL, *node = NULL;
+    udp_notif_header_t header;
+    int ret;
+
+    TLOG_INF("Disabling encode-json feature...");
+
+    /* release the context reference so sr_disable_module_feature can acquire
+     * the write lock it needs to change the libyang context */
+    sr_release_context(st->conn);
+    st->ly_ctx = NULL;
+
+    ret = sr_disable_module_feature(st->conn, "ietf-subscribed-notifications", "encode-json");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* re-acquire the context (now with encode-json disabled) */
+    st->ly_ctx = sr_acquire_context(st->conn);
+
+    TLOG_INF("Creating subscription without encoding (feature disabled)...");
+
+    ret = create_receiver_instance(st->sess, "test-recv", "127.0.0.1", st->udp_port);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* no encoding leaf set; the identity encode-json does not exist now */
+    ret = _set_sub_common(st->sess, 111, "NETCONF", "test-recv");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    TLOG_INF("Waiting for subscription-started notification...");
+
+    ret = receive_notification(st->udp_sockfd, st->ly_ctx, &notif, &header);
+    assert_int_equal(ret, 0);
+    assert_non_null(notif);
+
+    /* verify it's a subscription-started notification */
+    assert_string_equal(notif->schema->name, "subscription-started");
+
+    /* media type must still be JSON (transport default, unaffected by feature) */
+    assert_int_equal(header.media_type, UDP_NOTIF_MT_JSON);
+
+    /* verify id is present (sanity check that the notification is well-formed) */
+    ret = lyd_find_path(notif, "id", 0, &node);
+    assert_int_equal(ret, LY_SUCCESS);
+    assert_non_null(node);
+    assert_int_equal(strtoul(lyd_get_value(node), NULL, 10), 111);
+
+    /* the encoding leaf must be absent: the identity does not exist in the schema */
+    ret = lyd_find_path(notif, "encoding", 0, &node);
+    assert_int_not_equal(ret, LY_SUCCESS);
+    assert_null(node);
+
+    TLOG_INF("Encoding field correctly omitted with feature disabled");
+
+    lyd_free_all(notif);
+
+    /* release context before cleanup so notifd can process the deletion */
+    sr_release_context(st->conn);
+    st->ly_ctx = NULL;
+
+    cleanup_sub(st->sess, 111);
+
+    /* re-acquire context for the teardown function */
+    st->ly_ctx = sr_acquire_context(st->conn);
+}
+
 /* MAIN */
 int
 main(void)
@@ -3458,6 +3727,10 @@ main(void)
         cmocka_unit_test_setup(test_source_address_modify, clear_subs_notifs),
         cmocka_unit_test_setup(test_receiver_instance_ref_change, clear_subs_notifs),
         cmocka_unit_test_setup(test_stop_time_concluded, clear_subs_notifs),
+        cmocka_unit_test_setup(test_default_encoding, clear_subs_notifs),
+        cmocka_unit_test_setup(test_encoding_modify, clear_subs_notifs),
+        /* test_encoding_feature_disabled must be last: it disables the encode-json feature */
+        cmocka_unit_test_setup_teardown(test_encoding_feature_disabled, clear_subs_notifs, re_enable_encode_json),
     };
 
     test_init();
