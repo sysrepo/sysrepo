@@ -530,7 +530,7 @@ receive_notification(int sockfd, sr_conn_ctx_t *conn, int timeout_ms)
 {
     uint8_t buffer[UDP_MAX_SIZE];
     ssize_t recv_len;
-    udp_notif_header_t hdr;
+    udp_notif_header_t hdr = {0};
     const uint8_t *payload;
     size_t payload_len, reassembled_len;
     struct ly_in *in = NULL;
