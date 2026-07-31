@@ -773,6 +773,7 @@ subscribed_notifications_sub_change_cb(sr_session_ctx_t *session, uint32_t sub_i
     notifd_ctx_t *notifd_ctx = (notifd_ctx_t *)private_data;
 
     (void)sub_id;
+    (void)module_name;
     (void)xpath;
 
     assert(module_name && !strcmp(module_name, "ietf-subscribed-notifications"));
@@ -867,6 +868,7 @@ subscribed_notifications_filter_change_cb(sr_session_ctx_t *session, uint32_t su
     const char *prev_value, *prev_list, *node_name;
 
     (void)sub_id;
+    (void)module_name;
     (void)xpath;
 
     assert(module_name && !strcmp(module_name, "ietf-subscribed-notifications"));
