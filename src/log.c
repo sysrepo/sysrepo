@@ -31,7 +31,6 @@
 
 #include <libyang/libyang.h>
 
-#include "compat.h"
 #include "config.h"
 
 sr_log_level_t sr_stderr_ll = SR_LL_NONE;   /**< stderr log level */
