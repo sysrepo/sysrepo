@@ -20,6 +20,7 @@ override_dh_auto_configure:
 		-DSYSREPO_UMASK=007 \
 		-DSYSREPO_GROUP=sysrepo \
 		-DNACM_SRMON_DATA_PERM=660 \
+		-DREPO_SHM_SETUP=OFF \
 		-DNOTIFD_SETUP=OFF
 
 override_dh_auto_test:
