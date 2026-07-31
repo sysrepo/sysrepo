@@ -100,6 +100,8 @@ option(ENABLE_SYSREPO_PLUGIND "Build binary daemon 'sysrepo-plugind'" ON)
 option(ENABLE_SYSREPO_NOTIFD "Build binary daemon 'sysrepo-notifd'" ON)
 option(BUILD_SHARED_LIBS "By default, shared libs are enabled. Turn off for a static build." ON)
 option(INSTALL_SYSCTL_CONF "Install sysctl conf file to allow shared access to SHM files." OFF)
+option(REPO_SHM_SETUP "Initialize repository and SHM files (as non-privileged user is using 'sudo')" ON)
+
 # notifd setup options
 option(NOTIFD_SETUP "Install required modules with their default configuration into sysrepo using a script" ON)
 set(NOTIFD_MODULE_PERMS 600 CACHE STRING "File access permissions set for the notifd modules")
@@ -707,6 +709,23 @@ endif()
 
 if(INSTALL_SYSCTL_CONF)
     install(FILES "${PROJECT_SOURCE_DIR}/zz-sysrepo-disable-fs-protected_regular.conf" DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/sysctl.d/")
+endif()
+
+if(REPO_SHM_SETUP)
+    install(CODE "
+        message(STATUS \"Initializing sysrepo repository and SHM files (setup_repo_shm.sh)...\")
+        execute_process(COMMAND \"\$ENV{DESTDIR}${DATA_DIR}/scripts/setup_repo_shm.sh\"
+                RESULT_VARIABLE CMD_RES
+                OUTPUT_VARIABLE CMD_OUT
+                ERROR_VARIABLE CMD_ERR
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+                ERROR_STRIP_TRAILING_WHITESPACE)
+        if(NOT CMD_RES EQUAL 0)
+            string(REPLACE \"\\n\" \"\\n \" CMD_OUT_F \"\${CMD_OUT}\")
+            string(REPLACE \"\\n\" \"\\n \" CMD_ERR_F \"\${CMD_ERR}\")
+            message(FATAL_ERROR \" OUTPUT:\\n \${CMD_OUT_F}\\n ERROR:\\n \${CMD_ERR_F}\")
+        endif()
+    ")
 endif()
 
 if (NOTIFD_SETUP)
