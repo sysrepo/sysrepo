@@ -191,31 +191,22 @@ udp_notif_seg_opt_build(uint8_t *opt, uint16_t segment_num, int is_last)
 
 int
 notif_rfc5277_encode(const struct lyd_node *notif, const struct timespec *ts,
-        notif_encoding_t encoding, char **data, size_t *data_len)
+        notif_encoding_t encoding, char **data, uint32_t *data_len)
 {
     int rc = SR_ERR_OK, inner_len;
-    struct timespec localts;
-    const struct timespec *ets;
     char *datetime = NULL, *inner = NULL, *json_end;
     LYD_FORMAT format;
 
     *data = NULL;
     *data_len = 0;
 
-    if (!notif) {
+    if (!notif || !ts) {
         SRNTF_LOG_ERR("Invalid arguments to encode notification.");
         return SR_ERR_INVAL_ARG;
     }
 
-    /* determine the event timestamp, defaulting to the current wall-clock time */
-    ets = ts;
-    if (!ets) {
-        clock_gettime(CLOCK_REALTIME, &localts);
-        ets = &localts;
-    }
-
     /* format eventTime as a YANG date-and-time string */
-    if (ly_time_ts2str(ets, &datetime)) {
+    if (ly_time_ts2str(ts, &datetime)) {
         SRNTF_LOG_ERR("Failed to format eventTime.");
         rc = SR_ERR_LY;
         goto cleanup;
@@ -243,7 +234,8 @@ notif_rfc5277_encode(const struct lyd_node *notif, const struct timespec *ts,
     /* serialize the inner notification data tree;
      * LYD_PRINT_SHRINK is mandatory for the JSON splice below, which assumes
      * compact output (no whitespace) so that strrchr(inner, '}') finds the
-     * true structural closing brace of the top-level object */
+     * true structural closing brace of the top-level object. Also makes the UDP payload smaller.
+     */
     if (lyd_print_mem(&inner, notif, format, LYD_PRINT_SHRINK)) {
         SRNTF_LOG_ERR("Failed to encode notification.");
         rc = SR_ERR_LY;
@@ -278,7 +270,7 @@ notif_rfc5277_encode(const struct lyd_node *notif, const struct timespec *ts,
         }
     }
 
-    *data_len = strlen(*data);
+    *data_len = (uint32_t)strlen(*data);
 
 cleanup:
     free(datetime);
@@ -295,7 +287,7 @@ cleanup:
  * @return SR_ERR_OK on success, error code on failure.
  */
 static int
-udp_notif_segment_send(notif_receiver_t *recv, const uint8_t *buf, size_t len)
+udp_notif_segment_send(notif_receiver_t *recv, const uint8_t *buf, uint32_t len)
 {
     udp_conn_ctx_t *conn;
     ssize_t sent;
@@ -311,8 +303,8 @@ udp_notif_segment_send(notif_receiver_t *recv, const uint8_t *buf, size_t len)
         return SR_ERR_SYS;
     }
 
-    if ((size_t)sent != len) {
-        SRNTF_LOG_ERR("Incomplete UDP-Notif send to receiver \"%s\": sent %zd of %zu bytes.", recv->name, sent, len);
+    if ((uint32_t)sent != len) {
+        SRNTF_LOG_ERR("Incomplete UDP-Notif send to receiver \"%s\": sent %zd of %" PRIu32 " bytes.", recv->name, sent, len);
         return SR_ERR_SYS;
     }
 
@@ -332,13 +324,12 @@ udp_notif_segment_send(notif_receiver_t *recv, const uint8_t *buf, size_t len)
  */
 static int
 udp_notif_send_unsegmented(notif_receiver_t *recv, udp_notif_receiver_t *udp_recv, udp_notif_media_type_t media_type,
-        const char *payload, size_t payload_len, uint32_t message_id)
+        const char *payload, uint32_t payload_len, uint32_t message_id)
 {
     int rc;
-    uint8_t *buf = NULL;
-    size_t buf_len;
-    uint8_t header_len = UDP_NOTIF_HDR_SIZE;
+    uint8_t *buf = NULL, header_len = UDP_NOTIF_HDR_SIZE;
     uint16_t message_len;
+    uint32_t buf_len;
 
     buf_len = header_len + payload_len;
     message_len = (uint16_t)buf_len;
@@ -374,16 +365,13 @@ udp_notif_send_unsegmented(notif_receiver_t *recv, udp_notif_receiver_t *udp_rec
  */
 static int
 udp_notif_send_segmented(notif_receiver_t *recv, udp_notif_receiver_t *udp_recv, udp_notif_media_type_t media_type,
-        const char *payload, size_t payload_len, uint32_t message_id, uint16_t max_segment_size)
+        const char *payload, uint32_t payload_len, uint32_t message_id, uint16_t max_segment_size)
 {
     int rc = SR_ERR_OK;
     uint8_t *buf = NULL;
-    size_t buf_len;
+    uint32_t buf_len, max_payload_per_segment, offset = 0, chunk_len;
     uint8_t header_len = UDP_NOTIF_HDR_SIZE + UDP_NOTIF_SEG_OPT_SIZE;
-    size_t max_payload_per_segment;
-    size_t offset = 0;
     uint16_t segment_num = 0;
-    size_t chunk_len;
     int is_last;
 
     /* calculate max payload per segment */
@@ -651,11 +639,9 @@ udp_transport_send_cb(notif_receiver_t *recv, void *cfg,
 {
     int rc;
     char *payload = NULL;
-    size_t payload_len;
+    uint32_t payload_len, message_id, total_msg_len;
     udp_notif_media_type_t media_type;
-    uint32_t message_id;
     uint16_t max_segment_size;
-    size_t total_msg_len;
     udp_notif_receiver_t *udp_recv = (udp_notif_receiver_t *)cfg;
     udp_conn_ctx_t *conn;
 
@@ -704,7 +690,7 @@ udp_transport_send_cb(notif_receiver_t *recv, void *cfg,
         rc = udp_notif_send_segmented(recv, udp_recv, media_type, payload, payload_len, message_id, max_segment_size);
     } else {
         /* message too large but segmentation disabled */
-        SRNTF_LOG_ERR("Notification message too large (%zu bytes) and segmentation is disabled.",
+        SRNTF_LOG_ERR("Notification message too large (%" PRIu32 " bytes) and segmentation is disabled.",
                 payload_len);
         rc = SR_ERR_INVAL_ARG;
         goto cleanup;

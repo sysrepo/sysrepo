@@ -68,11 +68,10 @@ subscription_state_change_notif_new(const struct ly_ctx *ly_ctx, notif_sub_t *su
     struct lyd_node *tree = NULL;
     char *id_str = NULL, *stop_time_str = NULL, *start_time_str = NULL;
     struct timespec *start_time, *stop_time;
-    const char *encoding_str = NULL;
+    const char *encoding_str = NULL, *feat_name = NULL;
     notif_encoding_t encoding;
     const notif_transport_ops_t *ops = NULL;
     const struct lys_module *mod = NULL;
-    const char *feat_name = NULL;
 
     *notif = NULL;
 
@@ -100,7 +99,7 @@ subscription_state_change_notif_new(const struct ly_ctx *ly_ctx, notif_sub_t *su
         }
     }
 
-    /* filter: stream-filter-name (by-reference) takes precedence over stream-xpath-filter (choice) */
+    /* filter: stream-filter-name (by-reference) or stream-xpath-filter (choice) */
     if ((fields & NOTIF_FIELD_FILTER_REF) && sub->filter_ref) {
         if (lyd_new_path(tree, ly_ctx, "stream-filter-name", sub->filter_ref, 0, NULL)) {
             rc = SR_ERR_LY;

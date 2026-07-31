@@ -453,23 +453,37 @@ print_notification(struct lyd_node *envp, struct lyd_node *notif, const udp_noti
 
     mt_name = (hdr->media_type < 4) ? media_type_names[hdr->media_type] : "unknown";
 
-    /* link the inner notification into the envelope for combined pretty-printing */
-    if (envp && notif) {
-        /* eventTime is the only opaque child of the envelope before the notification is linked in */
-        event_time = lyd_child(envp);
-
-        lyd_insert_child(envp, notif);
-        notif = NULL;
-
-        /* libyang inserts schema nodes before opaque ones, so eventTime ended up after the
-           notification; move it back to the front so it is printed before the notification */
-        if (event_time && (event_time != lyd_child(envp))) {
-            lyd_insert_before(lyd_child(envp), event_time);
-        }
-
-        lyd_print_mem(&payload, envp, format, LYD_PRINT_SIBLINGS);
+    /* skip envelope linking if either tree is missing, payload degrades to "(failed to format)" */
+    if (!envp || !notif) {
+        goto print;
     }
 
+    /* eventTime is the only opaque child of the envelope before the notification is linked in */
+    event_time = lyd_child(envp);
+
+    /* link the inner notification into the envelope for combined pretty-printing */
+    if (lyd_insert_child(envp, notif)) {
+        fprintf(stderr, "Failed to link notification into the envelope\n");
+        goto print;
+    }
+
+    /* ownership transferred to envp */
+    notif = NULL;
+
+    /* libyang inserts schema nodes before opaque ones, so eventTime ended up after the
+       notification; move it back to the front so it is printed before the notification */
+    if (event_time && (event_time != lyd_child(envp))) {
+        if (lyd_insert_before(lyd_child(envp), event_time)) {
+            /* purely cosmetic failure, eventTime is just printed after the notification */
+            fprintf(stderr, "Failed to reorder eventTime before the notification\n");
+        }
+    }
+
+    if (lyd_print_mem(&payload, envp, format, LYD_PRINT_SIBLINGS)) {
+        fprintf(stderr, "Failed to format notification\n");
+    }
+
+print:
     printf("\n--- Notification ---\n");
     printf("  Path:          %s\n", path);
     printf("  Publisher ID:  %" PRIu32 "\n", hdr->publisher_id);
@@ -496,6 +510,7 @@ print_notification(struct lyd_node *envp, struct lyd_node *notif, const udp_noti
 
     free(path);
     free(payload);
+    lyd_free_all(notif);
 }
 
 /**
@@ -657,7 +672,8 @@ receive_next:
         goto cleanup;
     }
 
-    /* notif is linked into envp by print_notification, so only envp is freed in cleanup */
+    /* print_notification takes ownership of notif (links it into envp or frees it on failure),
+       so only envp is freed in cleanup */
     print_notification(envp, notif, &hdr, format);
     notif = NULL;
 

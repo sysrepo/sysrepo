@@ -657,14 +657,14 @@ int notif_receiver_reconnect(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_r
  * CBOR encoding is not supported.
  *
  * @param[in] notif Notification data tree to wrap and encode.
- * @param[in] ts Event timestamp for <eventTime>, or NULL for the current time.
+ * @param[in] ts Event timestamp for <eventTime> (mandatory).
  * @param[in] encoding Encoding format (XML, JSON, or UNSET which defaults to JSON; CBOR not supported).
  * @param[out] data Encoded message (caller must free).
  * @param[out] data_len Length of encoded message.
  * @return ::SR_ERR_OK on success, ::SR_ERR_UNSUPPORTED for CBOR, other error codes on failure.
  */
 int notif_rfc5277_encode(const struct lyd_node *notif, const struct timespec *ts,
-        notif_encoding_t encoding, char **data, size_t *data_len);
+        notif_encoding_t encoding, char **data, uint32_t *data_len);
 
 /**
  * @brief Send a single notification to a specific receiver over its transport.
