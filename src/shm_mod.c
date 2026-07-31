@@ -46,8 +46,7 @@ sr_error_info_t *
 sr_shmmod_open(sr_shm_t *shm, int zero)
 {
     sr_error_info_t *err_info = NULL;
-    char *shm_name = NULL, buf[8], *ret = NULL;
-    FILE *f;
+    char *shm_name = NULL;
 
     err_info = sr_path_mod_shm(&shm_name);
     if (err_info) {
@@ -58,18 +57,7 @@ sr_shmmod_open(sr_shm_t *shm, int zero)
     free(shm_name);
     if (shm->fd == -1) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to open mod shared memory (%s).", strerror(errno));
-        if ((errno == EACCES) && !geteuid()) {
-            /* check kernel parameter value of fs.protected_regular */
-            f = fopen("/proc/sys/fs/protected_regular", "r");
-            if (f) {
-                ret = fgets(buf, sizeof(buf), f);
-                fclose(f);
-            }
-        }
-        if (ret && (atoi(buf) != 0)) {
-            sr_errinfo_new(&err_info, SR_ERR_SYS, "Caused by kernel parameter \"fs.protected_regular\", "
-                    "which must be \"0\" (currently \"%d\").", atoi(buf));
-        }
+        sr_errinfo_new_sudo_eaccess(&err_info);
         goto error;
     }
 

@@ -131,4 +131,11 @@ void sr_log(sr_log_level_t ll, const char *format, ...) _FORMAT_PRINTF(2, 3);
  */
 void sr_errinfo_new_lock(sr_error_info_t **err_info, const char *func, int eno, const sr_rwlock_t *rwlock);
 
+/**
+ * @brief Log an error information about an obstructing kernel parameter on root permission denied errors.
+ *
+ * @param[in,out] err_info Error info to set or add to.
+ */
+void sr_errinfo_new_sudo_eaccess(sr_error_info_t **err_info);
+
 #endif

@@ -4,8 +4,8 @@
  * @brief logging routines
  *
  * @copyright
- * Copyright (c) 2018 - 2024 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2024 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2026 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2026 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -27,9 +27,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <syslog.h>
+#include <unistd.h>
 
 #include <libyang/libyang.h>
 
+#include "compat.h"
 #include "config.h"
 
 sr_log_level_t sr_stderr_ll = SR_LL_NONE;   /**< stderr log level */
@@ -394,6 +396,27 @@ sr_errinfo_new_lock(sr_error_info_t **err_info, const char *func, int eno, const
 cleanup:
     sr_errinfo_merge(err_info, tmp_err);
     free(msg);
+}
+
+void
+sr_errinfo_new_sudo_eaccess(sr_error_info_t **err_info)
+{
+    char buf[8], *ret = NULL;
+    FILE *f;
+
+    if ((errno == EACCES) && !geteuid()) {
+        /* check kernel parameter value of fs.protected_regular */
+        f = fopen("/proc/sys/fs/protected_regular", "r");
+        if (f) {
+            ret = fgets(buf, sizeof(buf), f);
+            fclose(f);
+        }
+    }
+
+    if (ret && (atoi(buf) != 0)) {
+        sr_errinfo_new(err_info, SR_ERR_SYS, "Caused by kernel parameter \"fs.protected_regular\", "
+                "which must be \"0\" (currently \"%d\").", atoi(buf));
+    }
 }
 
 API void

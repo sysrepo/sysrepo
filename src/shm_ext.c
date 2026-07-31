@@ -181,6 +181,7 @@ sr_shmext_open(sr_shm_t *shm, int zero)
     free(shm_name);
     if (shm->fd == -1) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to open ext shared memory (%s).", strerror(errno));
+        sr_errinfo_new_sudo_eaccess(&err_info);
         goto error;
     }
 
