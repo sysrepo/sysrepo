@@ -136,11 +136,31 @@ typedef enum {
  * @brief Notification encoding type.
  */
 typedef enum {
-    NOTIF_ENCODING_UNSET = 0,   /**< not set, left to the underlying transport default */
+    NOTIF_ENCODING_UNSET = 0,   /**< not set, resolved to the underlying transport default when sending */
     NOTIF_ENCODING_XML,         /**< XML encoding */
     NOTIF_ENCODING_JSON,        /**< JSON encoding */
     NOTIF_ENCODING_CBOR         /**< CBOR encoding */
 } notif_encoding_t;
+
+/**
+ * @brief Static description of a notification encoding.
+ *
+ * Single source of truth for mapping between the internal encoding enum,
+ * its YANG identity, the module and feature that gate its availability, and
+ * whether the daemon actually implements serialization for it.
+ *
+ * The order of entries in the encoding registry (see notifd_config.c) defines
+ * the default encoding priority: the first entry has the highest priority.
+ */
+typedef struct notif_encoding_info_s {
+    notif_encoding_t encoding;      /**< internal encoding enum value */
+    const char *identity;           /**< YANG encoding identity name (e.g. "encode-xml") */
+    const char *identityref;        /**< fully qualified identityref value
+                                         (e.g. "ietf-subscribed-notifications:encode-xml") */
+    const char *module;             /**< YANG module defining the identity and the gating feature */
+    const char *feature;            /**< YANG feature gating the encoding availability */
+    int implemented;                /**< whether the daemon can serialize notifications in this encoding */
+} notif_encoding_info_t;
 
 /**
  * @brief Establish a transport connection for a notification receiver.
@@ -250,16 +270,18 @@ typedef void (*notif_transport_config_destroy_cb)(void *cfg);
 typedef int (*notif_transport_config_validate_cb)(const struct lyd_node *node);
 
 /**
- * @brief Get the default encoding for this transport.
+ * @brief Resolve the default encoding for this transport.
  *
  * Called when a subscription's encoding is not explicitly configured
- * (NOTIF_ENCODING_UNSET). Per RFC 8639, the encoding leaf description states
- * that for a configured subscription the encoding "will be the default encoding
- * for an underlying transport." Each transport must define its default.
+ * (::NOTIF_ENCODING_UNSET), in which case the `encoding` leaf description of
+ * RFC 8639 states it "will be the default encoding for an underlying transport."
+ * The transport must choose an encoding that the daemon implements and whose
+ * gating YANG feature is enabled in @p ly_ctx.
  *
- * @return The transport's default encoding.
+ * @param[in] ly_ctx libyang context used to evaluate YANG features.
+ * @return The transport's default encoding, or ::NOTIF_ENCODING_UNSET if none is usable.
  */
-typedef notif_encoding_t (*notif_transport_default_encoding_cb)(void);
+typedef notif_encoding_t (*notif_transport_default_encoding_cb)(const struct ly_ctx *ly_ctx);
 
 /**
  * @brief Transport operations vtable.
@@ -307,7 +329,8 @@ struct notif_receiver_inst_s {
 typedef struct notif_cb_data_s {
     notifd_ctx_t *ctx;          /**< main daemon context */
     notif_receiver_t *recv;     /**< receiver to send the notification to */
-    notif_encoding_t encoding;  /**< notification encoding to use for sending */
+    notif_encoding_t encoding;  /**< configured subscription encoding (::NOTIF_ENCODING_UNSET if not
+                                     configured, resolved to the transport default when sending) */
 } notif_cb_data_t;
 
 /**

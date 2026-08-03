@@ -3532,12 +3532,50 @@ test_encoding_modify(void **state)
 }
 
 /**
+ * @brief Test: Configuring CBOR encoding must be rejected (not implemented).
+ *
+ * Attempts to create a subscription with the encode-cbor identity and verifies
+ * that it is rejected with an error, since CBOR serialization is not implemented
+ * by the daemon (registry entry has implemented = 0).
+ */
+static void
+test_encoding_cbor_unsupported(void **state)
+{
+    struct state *st = *state;
+    char path[512];
+    int ret;
+
+    TLOG_INF("Attempting to create subscription with CBOR encoding...");
+
+    ret = create_receiver_instance(st->sess, "test-recv", "127.0.0.1", st->udp_port);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = _set_sub_common(st->sess, 112, "NETCONF", "test-recv");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set encoding to CBOR */
+    snprintf(path, sizeof(path),
+            "/ietf-subscribed-notifications:subscriptions/subscription[id='112']/encoding");
+    ret = sr_set_item_str(st->sess, path, "ietf-udp-notif-transport:encode-cbor", NULL, 0);
+    if (ret == SR_ERR_OK) {
+        /* CBOR is not implemented, the apply must fail at validation */
+        ret = sr_apply_changes(st->sess, 0);
+    }
+    assert_int_not_equal(ret, SR_ERR_OK);
+
+    TLOG_INF("CBOR encoding correctly rejected as unsupported");
+
+    cleanup_sub(st->sess, 112);
+}
+
+/**
  * @brief Test: Verify transport default encoding when encoding leaf is not set.
  *
  * Creates a subscription without setting the encoding leaf, then verifies that
- * the UDP transport's default encoding (JSON) is used: the UDP-Notif media type
- * must be JSON and the subscription-started notification must carry the
- * encoding leaf set to encode-json.
+ * the feature-aware transport default encoding is used: the highest-priority
+ * encoding whose YANG feature is enabled (XML). The UDP-Notif media type must
+ * be XML and the subscription-started notification must carry the encoding
+ * leaf set to encode-xml.
  */
 static void
 test_default_encoding(void **state)
@@ -3568,16 +3606,16 @@ test_default_encoding(void **state)
     /* verify it's a subscription-started notification */
     assert_string_equal(notif->schema->name, "subscription-started");
 
-    /* media type must be JSON (the UDP transport default) */
-    assert_int_equal(header.media_type, UDP_NOTIF_MT_JSON);
+    /* media type must be XML (the highest-priority encoding with an enabled feature) */
+    assert_int_equal(header.media_type, UDP_NOTIF_MT_XML);
 
-    /* the encoding leaf must be present and set to encode-json */
+    /* the encoding leaf must be present and set to encode-xml */
     ret = lyd_find_path(notif, "encoding", 0, &node);
     assert_int_equal(ret, LY_SUCCESS);
     assert_non_null(node);
-    assert_string_equal(lyd_get_value(node), "ietf-subscribed-notifications:encode-json");
+    assert_string_equal(lyd_get_value(node), "ietf-subscribed-notifications:encode-xml");
 
-    TLOG_INF("Default encoding (JSON) verified successfully");
+    TLOG_INF("Default encoding (XML) verified successfully");
 
     lyd_free_all(notif);
 
@@ -3585,26 +3623,33 @@ test_default_encoding(void **state)
 }
 
 /**
- * @brief Teardown: re-enable the encode-json feature after test_encoding_feature_disabled.
+ * @brief Teardown: re-enable the encoding features after test_encoding_feature_disabled.
  *
  * Runs even if the test failed on an assertion, so that subsequent test runs
  * start with both features enabled. Must release the context reference so that
  * sr_enable_module_feature can acquire the write lock it needs.
  */
 static int
-re_enable_encode_json(void **state)
+re_enable_encoding_features(void **state)
 {
     struct state *st = *state;
     int ret;
 
-    /* release context so the feature change can acquire a write lock */
+    /* release context so the feature changes can acquire a write lock */
     if (st->ly_ctx) {
         sr_release_context(st->conn);
         st->ly_ctx = NULL;
     }
 
+    /* best-effort; if it fails the next test run's setup will reinstall */
+    ret = sr_enable_module_feature(st->conn, "ietf-subscribed-notifications", "encode-xml");
+    if (ret) {
+        TLOG_WRN("Failed to re-enable encode-xml: %s", sr_strerror(ret));
+    }
     ret = sr_enable_module_feature(st->conn, "ietf-subscribed-notifications", "encode-json");
-    (void)ret; /* best-effort; if it fails the next test run's setup will reinstall */
+    if (ret) {
+        TLOG_WRN("Failed to re-enable encode-json: %s", sr_strerror(ret));
+    }
 
     /* re-acquire context for the global teardown */
     st->ly_ctx = sr_acquire_context(st->conn);
@@ -3613,15 +3658,17 @@ re_enable_encode_json(void **state)
 }
 
 /**
- * @brief Test: Verify the encoding field is omitted when encode-json is disabled.
+ * @brief Test: Default encoding resolution skips disabled features.
  *
- * Disables the encode-json feature, creates a subscription without an explicit
- * encoding, then verifies that the subscription-started notification is still
- * sent (with JSON media type, since the transport default is unaffected by the
- * feature) but the encoding leaf is absent (the identity does not exist in the
- * schema when the feature is off).
+ * Disables the encode-json and encode-xml features and verifies that creating
+ * a subscription without an explicit encoding fails (there is no usable
+ * default). Then re-enables encode-json only and verifies that explicitly
+ * configuring encode-xml is rejected (its feature is disabled), and that
+ * a subscription without an explicit encoding is created, uses the JSON media
+ * type, and carries the encoding leaf set to encode-json (the higher-priority
+ * encode-xml is skipped because its feature is disabled).
  *
- * Must be the last test in the suite because it disables a YANG feature.
+ * Must be the last test in the suite because it disables YANG features.
  */
 static void
 test_encoding_feature_disabled(void **state)
@@ -3629,27 +3676,85 @@ test_encoding_feature_disabled(void **state)
     struct state *st = *state;
     struct lyd_node *notif = NULL, *node = NULL;
     udp_notif_header_t header;
+    sr_session_ctx_t *tmp_sess = NULL;
+    char path[512];
     int ret;
 
-    TLOG_INF("Disabling encode-json feature...");
+    TLOG_INF("Disabling encode-json and encode-xml features...");
 
-    /* release the context reference so sr_disable_module_feature can acquire
-     * the write lock it needs to change the libyang context */
+    /* release the context reference so the feature changes can acquire
+     * the write lock they need to change the libyang context */
     sr_release_context(st->conn);
     st->ly_ctx = NULL;
 
     ret = sr_disable_module_feature(st->conn, "ietf-subscribed-notifications", "encode-json");
     assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_disable_module_feature(st->conn, "ietf-subscribed-notifications", "encode-xml");
+    assert_int_equal(ret, SR_ERR_OK);
 
-    /* re-acquire the context (now with encode-json disabled) */
+    /* re-acquire the context (now with both encoding features disabled) */
     st->ly_ctx = sr_acquire_context(st->conn);
 
-    TLOG_INF("Creating subscription without encoding (feature disabled)...");
+    /* use a throwaway session for the failing apply so that any state left
+     * by the failed change is dropped with it */
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &tmp_sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    TLOG_INF("Creating subscription without encoding (no usable default)...");
+
+    ret = create_receiver_instance(tmp_sess, "test-recv", "127.0.0.1", st->udp_port);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = _set_sub_common(tmp_sess, 111, "NETCONF", "test-recv");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* must fail, there is no encoding the daemon could use */
+    ret = sr_apply_changes(tmp_sess, 0);
+    assert_int_not_equal(ret, SR_ERR_OK);
+
+    sr_session_stop(tmp_sess);
+
+    TLOG_INF("Re-enabling encode-json only...");
+
+    sr_release_context(st->conn);
+    st->ly_ctx = NULL;
+
+    ret = sr_enable_module_feature(st->conn, "ietf-subscribed-notifications", "encode-json");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* re-acquire the context (now with encode-json enabled, encode-xml disabled) */
+    st->ly_ctx = sr_acquire_context(st->conn);
+
+    /* verify that explicitly configuring a disabled-feature encoding is rejected */
+    TLOG_INF("Attempting to explicitly configure encode-xml (feature disabled)...");
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &tmp_sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = create_receiver_instance(tmp_sess, "test-recv", "127.0.0.1", st->udp_port);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = _set_sub_common(tmp_sess, 113, "NETCONF", "test-recv");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    snprintf(path, sizeof(path),
+            "/ietf-subscribed-notifications:subscriptions/subscription[id='113']/encoding");
+    ret = sr_set_item_str(tmp_sess, path, "ietf-subscribed-notifications:encode-xml", NULL, 0);
+    if (ret == SR_ERR_OK) {
+        /* if the identity was accepted, the validation must still reject it */
+        ret = sr_apply_changes(tmp_sess, 0);
+    }
+    assert_int_not_equal(ret, SR_ERR_OK);
+
+    sr_session_stop(tmp_sess);
+
+    TLOG_INF("Explicitly configured disabled-feature encoding correctly rejected");
+
+    TLOG_INF("Creating subscription without encoding (encode-xml default skipped)...");
 
     ret = create_receiver_instance(st->sess, "test-recv", "127.0.0.1", st->udp_port);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* no encoding leaf set; the identity encode-json does not exist now */
     ret = _set_sub_common(st->sess, 111, "NETCONF", "test-recv");
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -3665,7 +3770,7 @@ test_encoding_feature_disabled(void **state)
     /* verify it's a subscription-started notification */
     assert_string_equal(notif->schema->name, "subscription-started");
 
-    /* media type must still be JSON (transport default, unaffected by feature) */
+    /* media type must be JSON, the XML default is skipped because its feature is disabled */
     assert_int_equal(header.media_type, UDP_NOTIF_MT_JSON);
 
     /* verify id is present (sanity check that the notification is well-formed) */
@@ -3674,12 +3779,13 @@ test_encoding_feature_disabled(void **state)
     assert_non_null(node);
     assert_int_equal(strtoul(lyd_get_value(node), NULL, 10), 111);
 
-    /* the encoding leaf must be absent: the identity does not exist in the schema */
+    /* the encoding leaf must be present and set to encode-json */
     ret = lyd_find_path(notif, "encoding", 0, &node);
-    assert_int_not_equal(ret, LY_SUCCESS);
-    assert_null(node);
+    assert_int_equal(ret, LY_SUCCESS);
+    assert_non_null(node);
+    assert_string_equal(lyd_get_value(node), "ietf-subscribed-notifications:encode-json");
 
-    TLOG_INF("Encoding field correctly omitted with feature disabled");
+    TLOG_INF("Default encoding correctly resolved to JSON with encode-xml disabled");
 
     lyd_free_all(notif);
 
@@ -3727,10 +3833,11 @@ main(void)
         cmocka_unit_test_setup(test_source_address_modify, clear_subs_notifs),
         cmocka_unit_test_setup(test_receiver_instance_ref_change, clear_subs_notifs),
         cmocka_unit_test_setup(test_stop_time_concluded, clear_subs_notifs),
+        cmocka_unit_test_setup(test_encoding_cbor_unsupported, clear_subs_notifs),
         cmocka_unit_test_setup(test_default_encoding, clear_subs_notifs),
         cmocka_unit_test_setup(test_encoding_modify, clear_subs_notifs),
-        /* test_encoding_feature_disabled must be last: it disables the encode-json feature */
-        cmocka_unit_test_setup_teardown(test_encoding_feature_disabled, clear_subs_notifs, re_enable_encode_json),
+        /* test_encoding_feature_disabled must be last: it disables the encoding features */
+        cmocka_unit_test_setup_teardown(test_encoding_feature_disabled, clear_subs_notifs, re_enable_encoding_features),
     };
 
     test_init();

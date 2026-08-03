@@ -68,10 +68,9 @@ subscription_state_change_notif_new(const struct ly_ctx *ly_ctx, notif_sub_t *su
     struct lyd_node *tree = NULL;
     char *id_str = NULL, *stop_time_str = NULL, *start_time_str = NULL;
     struct timespec *start_time, *stop_time;
-    const char *encoding_str = NULL, *feat_name = NULL;
     notif_encoding_t encoding;
     const notif_transport_ops_t *ops = NULL;
-    const struct lys_module *mod = NULL;
+    const notif_encoding_info_t *enc_info = NULL;
 
     *notif = NULL;
 
@@ -154,35 +153,18 @@ subscription_state_change_notif_new(const struct ly_ctx *ly_ctx, notif_sub_t *su
 
     /* encoding */
     if (fields & NOTIF_FIELD_ENCODING) {
-        /* resolve the encoding, defaulting to the transport's default if not explicitly configured */
-        encoding = sub->encoding;
-        if (encoding == NOTIF_ENCODING_UNSET) {
-            ops = notif_transport_find_by_identity(sub->transport);
-            if (ops && ops->default_encoding) {
-                encoding = ops->default_encoding();
-            }
+        /* resolve the encoding (shared path: transport default + feature check) */
+        ops = notif_transport_find_by_identity(sub->transport);
+        encoding = notif_encoding_resolve(sub->encoding, ly_ctx, ops);
+        enc_info = notif_encoding_info_find(encoding);
+        if (!enc_info) {
+            SRNTF_LOG_ERR("Failed to resolve encoding for subscription %" PRIu32 ".", sub->id);
+            rc = SR_ERR_UNSUPPORTED;
+            goto cleanup;
         }
-        switch (encoding) {
-        case NOTIF_ENCODING_XML:
-            encoding_str = "ietf-subscribed-notifications:encode-xml";
-            feat_name = "encode-xml";
-            break;
-        case NOTIF_ENCODING_JSON:
-            encoding_str = "ietf-subscribed-notifications:encode-json";
-            feat_name = "encode-json";
-            break;
-        default:
-            break;
-        }
-        /* only include the encoding field if the corresponding feature is enabled */
-        if (encoding_str) {
-            mod = ly_ctx_get_module_implemented(ly_ctx, "ietf-subscribed-notifications");
-            if (mod && (lys_feature_value(mod, feat_name) == LY_SUCCESS)) {
-                if (lyd_new_path(tree, ly_ctx, "encoding", encoding_str, 0, NULL)) {
-                    rc = SR_ERR_LY;
-                    goto cleanup;
-                }
-            }
+        if (lyd_new_path(tree, ly_ctx, "encoding", enc_info->identityref, 0, NULL)) {
+            rc = SR_ERR_LY;
+            goto cleanup;
         }
     }
 
@@ -458,14 +440,9 @@ notif_receiver_backoff_reconnect(notifd_ctx_t *notifd_ctx, notif_receiver_t *rec
         goto disconnect;
     }
 
-    /* send the notification directly via transport */
+    /* send the notification through the standard send path, resolving the default encoding as needed */
     clock_gettime(CLOCK_REALTIME, &event_ts);
-    if (receiver->ops) {
-        rc = receiver->ops->send(receiver, receiver->inst->transport_config, start_notif, &event_ts, receiver->cb_data.encoding);
-    } else {
-        SRNTF_LOG_ERR("No transport ops for receiver \"%s\".", receiver->name);
-        rc = SR_ERR_UNSUPPORTED;
-    }
+    rc = notif_receiver_send(notifd_ctx, receiver, start_notif, &event_ts, receiver->cb_data.encoding);
     lyd_free_all(start_notif);
     sr_session_release_context(notifd_ctx->sr_sess);
     if (rc) {
@@ -535,12 +512,21 @@ notif_receiver_send(notifd_ctx_t *UNUSED(notifd_ctx), notif_receiver_t *receiver
     SRNTF_LOG_INF("Sending notification \"%s\" to receiver \"%s\" over %s.", notif_path, receiver->name,
             receiver->ops ? receiver->ops->name : "unknown");
 
-    if (receiver->ops) {
-        rc = receiver->ops->send(receiver, receiver->inst->transport_config, notif, &ts, encoding);
-    } else {
+    if (!receiver->ops) {
         SRNTF_LOG_ERR("No transport ops for receiver \"%s\".", receiver->name);
         rc = SR_ERR_UNSUPPORTED;
+        goto cleanup;
     }
+
+    /* resolve the encoding, defaulting to the transport default and checking enabled features */
+    encoding = notif_encoding_resolve(encoding, LYD_CTX(notif), receiver->ops);
+    if (encoding == NOTIF_ENCODING_UNSET) {
+        SRNTF_LOG_ERR("No usable encoding for notification \"%s\", all encoding features are disabled.", notif_path);
+        rc = SR_ERR_UNSUPPORTED;
+        goto cleanup;
+    }
+
+    rc = receiver->ops->send(receiver, receiver->inst->transport_config, notif, &ts, encoding);
     if (rc) {
         goto cleanup;
     }

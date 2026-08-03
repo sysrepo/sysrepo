@@ -96,24 +96,33 @@ typedef enum {
 /**
  * @brief Convert notification encoding to UDP-Notif media type.
  *
- * @param[in] encoding Notification encoding.
- * @return UDP-Notif media type value.
+ * @param[in] encoding Notification encoding, must be resolved (not ::NOTIF_ENCODING_UNSET).
+ * @param[out] media_type Set to the UDP-Notif media type value.
+ * @return SR_ERR_OK on success, error code on failure.
  */
-static udp_notif_media_type_t
-encoding_to_media_type(notif_encoding_t encoding)
+static int
+encoding_to_media_type(notif_encoding_t encoding, udp_notif_media_type_t *media_type)
 {
+    int rc = SR_ERR_OK;
+
     switch (encoding) {
     case NOTIF_ENCODING_XML:
-        return UDP_NOTIF_MT_XML;
+        *media_type = UDP_NOTIF_MT_XML;
+        break;
     case NOTIF_ENCODING_JSON:
-        return UDP_NOTIF_MT_JSON;
+        *media_type = UDP_NOTIF_MT_JSON;
+        break;
     case NOTIF_ENCODING_CBOR:
-        return UDP_NOTIF_MT_CBOR;
+        *media_type = UDP_NOTIF_MT_CBOR;
+        break;
     case NOTIF_ENCODING_UNSET:
     default:
-        /* default to JSON if not set */
-        return UDP_NOTIF_MT_JSON;
+        SRNTF_LOG_ERR("Encoding must be resolved before notification serialization.");
+        rc = SR_ERR_INVAL_ARG;
+        break;
     }
+
+    return rc;
 }
 
 /**
@@ -218,15 +227,15 @@ notif_rfc5277_encode(const struct lyd_node *notif, const struct timespec *ts,
         format = LYD_XML;
         break;
     case NOTIF_ENCODING_JSON:
-    case NOTIF_ENCODING_UNSET:
         format = LYD_JSON;
         break;
     case NOTIF_ENCODING_CBOR:
         SRNTF_LOG_ERR("CBOR encoding is not yet implemented.");
         rc = SR_ERR_UNSUPPORTED;
         goto cleanup;
+    case NOTIF_ENCODING_UNSET:
     default:
-        SRNTF_LOG_ERR("Unknown encoding type %d.", encoding);
+        SRNTF_LOG_ERR("Encoding must be resolved before notification serialization.");
         rc = SR_ERR_INVAL_ARG;
         goto cleanup;
     }
@@ -667,7 +676,9 @@ udp_transport_send_cb(notif_receiver_t *recv, void *cfg,
     }
 
     /* get media type */
-    media_type = encoding_to_media_type(encoding);
+    if ((rc = encoding_to_media_type(encoding, &media_type))) {
+        goto cleanup;
+    }
 
     /* get current message ID and increment for next message atomically */
     message_id = ATOMIC_ADD_RELAXED(udp_recv->message_id, 1);
@@ -848,10 +859,16 @@ udp_transport_config_validate_cb(const struct lyd_node *UNUSED(node))
     return SR_ERR_OK;
 }
 
+/**
+ * @brief Get the default UDP-Notif encoding, the first implemented encoding whose YANG feature is enabled.
+ *
+ * @param[in] ly_ctx libyang context used for checking enabled features.
+ * @return Default encoding or ::NOTIF_ENCODING_UNSET if none is usable.
+ */
 static notif_encoding_t
-udp_transport_default_encoding_cb(void)
+udp_transport_default_encoding_cb(const struct ly_ctx *ly_ctx)
 {
-    return NOTIF_ENCODING_JSON;
+    return notif_encoding_resolve_default(ly_ctx);
 }
 
 /*

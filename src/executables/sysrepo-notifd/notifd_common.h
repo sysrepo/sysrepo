@@ -62,6 +62,75 @@ const notif_transport_ops_t *notif_transport_find_by_identity(const char *identi
 
 /*
  * ---------------------------------------------------------------------------
+ * Encoding registry (defined in notifd_config.c)
+ * ---------------------------------------------------------------------------
+ */
+
+/**
+ * @brief Registry of all known notification encodings, terminated by an entry
+ * with a NULL @p identity.
+ *
+ * The entry order defines the priority when resolving the default encoding:
+ * the first implemented encoding whose YANG feature is enabled wins.
+ */
+extern const notif_encoding_info_t notif_encoding_registry[];
+
+/**
+ * @brief Find the encoding registry entry for an internal encoding value.
+ *
+ * @param[in] encoding Encoding to look up.
+ * @return Registry entry, or NULL if the encoding is not in the registry.
+ */
+const notif_encoding_info_t *notif_encoding_info_find(notif_encoding_t encoding);
+
+/**
+ * @brief Find the encoding registry entry for a YANG encoding identityref.
+ *
+ * @param[in] identity Fully qualified identityref value (e.g. "ietf-subscribed-notifications:encode-xml").
+ * @return Registry entry, or NULL if the identity is not in the registry.
+ */
+const notif_encoding_info_t *notif_encoding_info_find_by_identity(const char *identity);
+
+/**
+ * @brief Check whether the YANG feature gating an encoding is enabled.
+ *
+ * @param[in] ly_ctx libyang context to evaluate the feature in.
+ * @param[in] info Encoding registry entry.
+ * @return 1 if the module is implemented and the feature is enabled, 0 otherwise.
+ */
+int notif_encoding_feature_enabled(const struct ly_ctx *ly_ctx, const notif_encoding_info_t *info);
+
+/**
+ * @brief Resolve the default notification encoding.
+ *
+ * Returns the first registry entry (registry order = priority) that is
+ * implemented by the daemon and whose gating YANG feature is enabled.
+ *
+ * @param[in] ly_ctx libyang context to evaluate the features in.
+ * @return The default encoding, or ::NOTIF_ENCODING_UNSET if none is usable.
+ */
+notif_encoding_t notif_encoding_resolve_default(const struct ly_ctx *ly_ctx);
+
+/**
+ * @brief Resolve the encoding to use for sending a notification.
+ *
+ * If @p encoding is ::NOTIF_ENCODING_UNSET, asks the transport for its default
+ * (which itself respects enabled YANG features). Then verifies that the resulting
+ * encoding is implemented by the daemon and that its gating YANG feature is
+ * enabled in @p ly_ctx. This is the single shared resolution path used both when
+ * building state-change notifications (to decide whether to include the encoding
+ * leaf) and when sending notifications (to pick the serialization format).
+ *
+ * @param[in] encoding Configured encoding, or ::NOTIF_ENCODING_UNSET to use the transport default.
+ * @param[in] ly_ctx libyang context to evaluate the features in.
+ * @param[in] ops Transport operations (used to obtain the default encoding). May be NULL.
+ * @return The resolved encoding, or ::NOTIF_ENCODING_UNSET if none is usable.
+ */
+notif_encoding_t notif_encoding_resolve(notif_encoding_t encoding, const struct ly_ctx *ly_ctx,
+        const notif_transport_ops_t *ops);
+
+/*
+ * ---------------------------------------------------------------------------
  * Functions from notifd_config.c
  * ---------------------------------------------------------------------------
  */
@@ -658,7 +727,8 @@ int notif_receiver_reconnect(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_r
  *
  * @param[in] notif Notification data tree to wrap and encode.
  * @param[in] ts Event timestamp for <eventTime> (mandatory).
- * @param[in] encoding Encoding format (XML, JSON, or UNSET which defaults to JSON; CBOR not supported).
+ * @param[in] encoding Encoding format, must be resolved by the caller (::NOTIF_ENCODING_UNSET
+ *            is rejected with ::SR_ERR_INVAL_ARG).
  * @param[out] data Encoded message (caller must free).
  * @param[out] data_len Length of encoded message.
  * @return ::SR_ERR_OK on success, ::SR_ERR_UNSUPPORTED for CBOR, other error codes on failure.
@@ -677,10 +747,13 @@ int notif_rfc5277_encode(const struct lyd_node *notif, const struct timespec *ts
  * @param[in] receiver Receiver to send to.
  * @param[in] notif Notification data tree to send.
  * @param[in] timestamp Event timestamp, or NULL for current time.
- * @param[in] encoding Encoding format for the notification payload.
+ * @param[in] encoding Encoding format for the notification payload. May be
+ *            ::NOTIF_ENCODING_UNSET, in which case it is resolved to the transport
+ *            default encoding before sending.
  * @return ::SR_ERR_OK on success, ::SR_ERR_INVAL_ARG if receiver or notif is NULL,
  *         ::SR_ERR_OPERATION_FAILED if the receiver is not connected or not active,
- *         ::SR_ERR_UNSUPPORTED if no transport ops available, or other error codes.
+ *         ::SR_ERR_UNSUPPORTED if no transport ops are available or no default encoding is usable,
+ *         or other error codes.
  */
 int notif_receiver_send(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver, const struct lyd_node *notif,
         const struct timespec *timestamp, notif_encoding_t encoding);
