@@ -99,6 +99,119 @@ notif_transport_find_by_container(const char *container_name)
 
 /*
  * ---------------------------------------------------------------------------
+ * Encoding registry
+ * ---------------------------------------------------------------------------
+ */
+
+const notif_encoding_info_t notif_encoding_registry[] = {
+    {
+        NOTIF_ENCODING_XML, "encode-xml", "ietf-subscribed-notifications:encode-xml",
+        "ietf-subscribed-notifications", "encode-xml", 1
+    },
+    {
+        NOTIF_ENCODING_JSON, "encode-json", "ietf-subscribed-notifications:encode-json",
+        "ietf-subscribed-notifications", "encode-json", 1
+    },
+    {
+        NOTIF_ENCODING_CBOR, "encode-cbor", "ietf-udp-notif-transport:encode-cbor",
+        "ietf-udp-notif-transport", "encode-cbor", 0
+    },
+    /* sentinel terminator; not findable by the lookup functions (loops terminate on NULL identity) */
+    {NOTIF_ENCODING_UNSET, NULL, NULL, NULL, NULL, 0}
+};
+
+const notif_encoding_info_t *
+notif_encoding_info_find(notif_encoding_t encoding)
+{
+    const notif_encoding_info_t *info;
+
+    for (info = notif_encoding_registry; info->identity; info++) {
+        if (info->encoding == encoding) {
+            return info;
+        }
+    }
+
+    return NULL;
+}
+
+const notif_encoding_info_t *
+notif_encoding_info_find_by_identity(const char *identity)
+{
+    const notif_encoding_info_t *info;
+
+    if (!identity) {
+        return NULL;
+    }
+
+    for (info = notif_encoding_registry; info->identity; info++) {
+        if (!strcmp(info->identityref, identity)) {
+            return info;
+        }
+    }
+
+    return NULL;
+}
+
+int
+notif_encoding_feature_enabled(const struct ly_ctx *ly_ctx, const notif_encoding_info_t *info)
+{
+    const struct lys_module *mod;
+
+    assert(ly_ctx && info);
+
+    mod = ly_ctx_get_module_implemented(ly_ctx, info->module);
+    if (!mod) {
+        return 0;
+    }
+
+    return lys_feature_value(mod, info->feature) == LY_SUCCESS ? 1 : 0;
+}
+
+notif_encoding_t
+notif_encoding_resolve_default(const struct ly_ctx *ly_ctx)
+{
+    const notif_encoding_info_t *info;
+
+    assert(ly_ctx);
+
+    for (info = notif_encoding_registry; info->identity; info++) {
+        if (!info->implemented) {
+            continue;
+        }
+        if (notif_encoding_feature_enabled(ly_ctx, info)) {
+            return info->encoding;
+        }
+    }
+
+    return NOTIF_ENCODING_UNSET;
+}
+
+notif_encoding_t
+notif_encoding_resolve(notif_encoding_t encoding, const struct ly_ctx *ly_ctx,
+        const notif_transport_ops_t *ops)
+{
+    const notif_encoding_info_t *info;
+
+    assert(ly_ctx);
+
+    /* if not explicitly configured, ask the transport for its default */
+    if (encoding == NOTIF_ENCODING_UNSET) {
+        if (ops && ops->default_encoding) {
+            encoding = ops->default_encoding(ly_ctx);
+        }
+    }
+
+    /* reject encodings that are not implemented or whose feature is disabled */
+    info = notif_encoding_info_find(encoding);
+    if (!info || !info->implemented || !notif_encoding_feature_enabled(ly_ctx, info)) {
+        return NOTIF_ENCODING_UNSET;
+    }
+
+    return encoding;
+}
+
+/*
+ * ---------------------------------------------------------------------------
  * Helpers
  * ---------------------------------------------------------------------------
  */
@@ -170,20 +283,20 @@ notif_encoding_parse(const struct lyd_node *node, notif_encoding_t *encoding)
 {
     int rc = SR_ERR_OK;
     const char *value;
+    const notif_encoding_info_t *info;
 
     *encoding = NOTIF_ENCODING_UNSET;
 
-    value = ((struct lyd_node_term *)node)->value.ident->name;
-    if (!strcmp(value, "encode-xml")) {
-        *encoding = NOTIF_ENCODING_XML;
-    } else if (!strcmp(value, "encode-json")) {
-        *encoding = NOTIF_ENCODING_JSON;
-    } else if (!strcmp(value, "encode-cbor")) {
-        SRNTF_LOG_ERR("CBOR encoding is not yet supported.");
-        rc = SR_ERR_UNSUPPORTED;
-    } else {
+    value = lyd_get_value(node);
+    info = notif_encoding_info_find_by_identity(value);
+    if (!info) {
         SRNTF_LOG_ERR("Unsupported encoding \"%s\".", value);
         rc = SR_ERR_UNSUPPORTED;
+    } else if (!info->implemented) {
+        SRNTF_LOG_ERR("Encoding \"%s\" is not supported by this implementation.", value);
+        rc = SR_ERR_UNSUPPORTED;
+    } else {
+        *encoding = info->encoding;
     }
 
     return rc;
@@ -1537,18 +1650,41 @@ handle_stream_filter(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, int 
 static int
 sub_change_validate_encoding(sr_session_ctx_t *session, sr_event_t event, const struct lyd_node *node)
 {
+    int rc = SR_ERR_OK;
     const char *value;
+    const notif_encoding_info_t *info;
 
-    value = ((struct lyd_node_term *)node)->value.ident->name;
-    if (!strcmp(value, "encode-xml") || !strcmp(value, "encode-json")) {
-        return SR_ERR_OK;
-    } else if (!strcmp(value, "encode-cbor")) {
-        SRNTF_VALIDATE_ERR(session, event, SR_ERR_UNSUPPORTED, "CBOR encoding is not yet supported.");
-        return SR_ERR_UNSUPPORTED;
-    } else {
+    value = lyd_get_value(node);
+    info = notif_encoding_info_find_by_identity(value);
+    if (!info) {
         SRNTF_VALIDATE_ERR(session, event, SR_ERR_UNSUPPORTED, "Unsupported encoding \"%s\".", value);
-        return SR_ERR_UNSUPPORTED;
+        rc = SR_ERR_UNSUPPORTED;
+    } else if (!info->implemented) {
+        SRNTF_VALIDATE_ERR(session, event, SR_ERR_UNSUPPORTED,
+                "Encoding \"%s\" is not supported by this implementation.", value);
+        rc = SR_ERR_UNSUPPORTED;
+    } else if (!notif_encoding_feature_enabled(LYD_CTX(node), info)) {
+        SRNTF_VALIDATE_ERR(session, event, SR_ERR_UNSUPPORTED,
+                "Encoding \"%s\" cannot be used, feature \"%s\" is disabled in module \"%s\".",
+                value, info->feature, info->module);
+        rc = SR_ERR_UNSUPPORTED;
     }
+
+    return rc;
+}
+
+static int
+sub_change_validate_default_encoding(sr_session_ctx_t *session, sr_event_t event, const struct lyd_node *sub_node)
+{
+    int rc = SR_ERR_OK;
+
+    if (notif_encoding_resolve_default(LYD_CTX(sub_node)) == NOTIF_ENCODING_UNSET) {
+        SRNTF_VALIDATE_ERR(session, event, SR_ERR_UNSUPPORTED,
+                "No encoding configured and no supported encoding available (all encoding features are disabled).");
+        rc = SR_ERR_UNSUPPORTED;
+    }
+
+    return rc;
 }
 
 static int
@@ -1665,6 +1801,12 @@ sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session, sr_even
                 rc = r;
                 goto cleanup;
             }
+        } else {
+            /* no explicit encoding, there must be a usable default */
+            if ((r = sub_change_validate_default_encoding(session, event, node))) {
+                rc = r;
+                goto cleanup;
+            }
         }
 
         /* stream must map to an existing module */
@@ -1734,11 +1876,13 @@ sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session, sr_even
         goto cleanup;
     }
     while (!sr_get_change_tree_next(session, iter, &op, &node, &prev_value, &prev_list, &prev_dflt)) {
-        if ((op != SR_OP_CREATED) && (op != SR_OP_MODIFIED)) {
+        node_name = LYD_NAME(node);
+
+        /* skip non-created/modified ops, except for encoding deletion which needs default validation */
+        if ((op != SR_OP_CREATED) && (op != SR_OP_MODIFIED) &&
+                !((op == SR_OP_DELETED) && !strcmp(node_name, "encoding"))) {
             continue;
         }
-
-        node_name = LYD_NAME(node);
 
         if (!strcmp(node_name, "stream")) {
             /* stream changed - validate new stream exists */
@@ -1758,9 +1902,18 @@ sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session, sr_even
                 }
             }
         } else if (!strcmp(node_name, "encoding")) {
-            if ((r = sub_change_validate_encoding(session, event, node))) {
-                rc = r;
-                goto cleanup;
+            if (op == SR_OP_DELETED) {
+                /* encoding removed, there must be a usable default */
+                if ((r = sub_change_validate_default_encoding(session, event, node))) {
+                    rc = r;
+                    goto cleanup;
+                }
+            } else {
+                /* encoding created/modified, validate the new value */
+                if ((r = sub_change_validate_encoding(session, event, node))) {
+                    rc = r;
+                    goto cleanup;
+                }
             }
         } else if (!strcmp(node_name, "stream-subtree-filter")) {
             if ((r = sub_change_validate_subtree_filter(session, event, node))) {
