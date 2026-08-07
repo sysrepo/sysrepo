@@ -3899,9 +3899,15 @@ sr_error_info_t *
 sr_mkfifo(const char *path, mode_t mode)
 {
     sr_error_info_t *err_info = NULL;
+    gid_t gid;
 
     /* apply umask on mode */
     mode &= ~SR_UMASK;
+
+    /* get GID of the group */
+    if (sr_is_prod_env() && strlen(SR_GROUP) && (err_info = sr_get_gid(SR_GROUP, &gid))) {
+        return err_info;
+    }
 
     /* create the event pipe */
     if (mkfifo(path, mode) == -1) {
@@ -3909,9 +3915,14 @@ sr_mkfifo(const char *path, mode_t mode)
         return err_info;
     }
 
-    /* set correct permissions */
+    /* update perms and group */
     if (chmod(path, mode) == -1) {
         SR_ERRINFO_SYSERRNO(&err_info, "chmod");
+        unlink(path);
+        return err_info;
+    }
+    if (sr_is_prod_env() && strlen(SR_GROUP) && (chown(path, -1, gid) == -1)) {
+        SR_ERRINFO_SYSERRNO(&err_info, "chown");
         unlink(path);
         return err_info;
     }
