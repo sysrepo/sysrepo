@@ -3502,15 +3502,36 @@ sr_modinfo_change_diff_merge_pred_data(struct sr_mod_info_s *mod_info)
 {
     sr_error_info_t *err_info = NULL;
     char **xpaths = NULL;
-    uint32_t i;
-    int diff_same;
+    uint32_t i, j, prev_xp_count = 0, xp_count;
+    int diff_same, oper_mod_info = 0;
+    struct sr_mod_info_s mod_info2;
 
+    /* remember if we need to keep the diffs same */
     diff_same = (mod_info->ds_diff == mod_info->notify_diff) ? 1 : 0;
+
+    /* learn whether we need to use the additional oper mod_info */
+    oper_mod_info = (mod_info->ds == SR_DS_OPERATIONAL) && (mod_info->ds2 == SR_DS_OPERATIONAL) ? 1 : 0;
+
+    sr_modinfo_init(&mod_info2, mod_info->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, 0);
 
     /* collect all the xpaths of the subscriptions */
     for (i = 0; i < mod_info->mod_count; ++i) {
         if ((err_info = sr_shmsub_change_xpath_collect(mod_info->conn, mod_info->mods[i].shm_mod, mod_info->ds, &xpaths))) {
             goto cleanup;
+        }
+
+        if (oper_mod_info) {
+            /* count xpaths */
+            for (xp_count = 0; xpaths && xpaths[xp_count]; ++xp_count) {}
+
+            /* add any new ones with the module into the oper mod_info */
+            for (j = prev_xp_count; j < xp_count; ++j) {
+                if ((err_info = sr_modinfo_add(mod_info->mods[i].ly_mod, xpaths[j], 0, 0, 0, &mod_info2))) {
+                    goto cleanup;
+                }
+            }
+
+            prev_xp_count = xp_count;
         }
     }
 
@@ -3519,12 +3540,28 @@ sr_modinfo_change_diff_merge_pred_data(struct sr_mod_info_s *mod_info)
         goto cleanup;
     }
 
+    if (oper_mod_info && mod_info2.mod_count) {
+        /* get current oper DS data */
+        if ((err_info = sr_modinfo_consolidate(&mod_info2, SR_LOCK_READ, SR_MI_PERM_NO | SR_MI_DATA_RO, NULL,
+                SR_OPER_CB_TIMEOUT, 0, 0))) {
+            goto cleanup;
+        }
+
+        /* merge also required operational DS data (not just the data from the current diff) */
+        if ((err_info = sr_xpath_merge_pred_diff(mod_info2.data, (const char **)xpaths, &mod_info->notify_diff))) {
+            goto cleanup;
+        }
+    }
+
     if (diff_same) {
         /* keep the same */
         mod_info->ds_diff = mod_info->notify_diff;
     }
 
 cleanup:
+    /* MODULES UNLOCK */
+    sr_shmmod_modinfo_unlock(&mod_info2);
+    sr_modinfo_erase(&mod_info2);
     sr_shmsub_change_xpath_free(xpaths);
     return err_info;
 }

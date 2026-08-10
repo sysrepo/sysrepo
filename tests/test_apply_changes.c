@@ -7609,6 +7609,75 @@ test_diff_reuse(void **state)
 
 /* TEST */
 static int
+module_oper_ds_filter_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+
+    (void)session;
+    (void)sub_id;
+    (void)module_name;
+    (void)xpath;
+    (void)event;
+    (void)request_id;
+
+    ATOMIC_INC_RELAXED(st->cb_called);
+    return SR_ERR_OK;
+}
+
+static void
+test_oper_ds_filter(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr = NULL;
+    sr_session_ctx_t *sess;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_OPERATIONAL, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* create a subscription filtering based on if type */
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces",
+            "/ietf-interfaces:interfaces/interface[type='iana-if-type:ethernetCsmacd']/enabled",
+            module_oper_ds_filter_cb, st, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* create another subscription just to populate oper DS */
+    sr_session_switch_ds(sess, SR_DS_RUNNING);
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, dummy_change_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* create running data that will appear in operational */
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='myname']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* perform operational data changes */
+    sr_session_switch_ds(sess, SR_DS_OPERATIONAL);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='myname']/enabled", "false", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* callback should have been called */
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
+
+    /* cleanup */
+    ret = sr_unsubscribe(subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_delete_item(sess, "/ietf-interfaces:interfaces", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_session_stop(sess);
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
+/* TEST */
+static int
 module_list_replace_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
         sr_event_t event, uint32_t request_id, void *private_data)
 {
@@ -8371,7 +8440,6 @@ test_lock_write(void **state)
 }
 
 /* TEST */
-
 static int
 dummy_slow_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
@@ -8492,6 +8560,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_filter_orig, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_sub_xpath_data, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_diff_reuse, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_oper_ds_filter, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_order, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_userord, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_enabled, setup_f, teardown_f),
