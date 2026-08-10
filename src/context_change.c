@@ -25,6 +25,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include <libyang/libyang.h>
 
@@ -1208,9 +1210,10 @@ void
 sr_lycc_store_context(sr_shm_t *shm, struct ly_ctx *ctx)
 {
     sr_error_info_t *err_info = NULL;
-    int ctx_size = 0, fd = -1;
+    int ctx_size = 0, fd = -1, prev_file_rc;
     void *mem = NULL, *mem_end;
     char *shm_name_tmp = NULL, *shm_name = NULL;
+    struct stat st;
 
     if (!SR_PRINTED_LYCTX_ADDRESS) {
         /* printed context not supported */
@@ -1270,10 +1273,21 @@ sr_lycc_store_context(sr_shm_t *shm, struct ly_ctx *ctx)
     }
     assert(((char *)mem_end - (char *)mem) == ctx_size);
 
+    /* learn UID/GID of the current file, if any */
+    prev_file_rc = stat(shm_name, &st);
+
     /* rename so that existing maps can still access the old content */
     if (rename(shm_name_tmp, shm_name) == -1) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to rename %s to %s (%s)", shm_name_tmp, shm_name, strerror(errno));
         goto cleanup;
+    }
+
+    if (!prev_file_rc) {
+        /* set the previous UID/GID so the file can be updated by the same users */
+        if ((chown(shm_name, st.st_uid, st.st_gid) == -1) && (errno != EPERM)) {
+            SR_ERRINFO_SYSERRNO(&err_info, "chown");
+            goto cleanup;
+        }
     }
 
     if (sr_yang_ctx.ly_ctx) {
