@@ -1240,6 +1240,14 @@ sr_lycc_store_context(sr_shm_t *shm, struct ly_ctx *ctx)
         goto cleanup;
     }
 
+    if ((void *)sr_yang_ctx.ly_ctx == shm->addr) {
+        /* destroy the context now, will be unmapped below */
+        sr_yang_ctx.content_id = 0;
+        sr_yang_ctx.sm_data_id = 0;
+        sr_ly_ctx_destroy(sr_yang_ctx.ly_ctx);
+        sr_yang_ctx.ly_ctx = NULL;
+    }
+
     /* unmap to avoid collision */
     if (shm->addr) {
         munmap(shm->addr, shm->size);
@@ -1260,6 +1268,7 @@ sr_lycc_store_context(sr_shm_t *shm, struct ly_ctx *ctx)
     if ((err_info = sr_ly_ctx_compiled_print(ctx, mem, &mem_end))) {
         goto cleanup;
     }
+    assert(((char *)mem_end - (char *)mem) == ctx_size);
 
     /* rename so that existing maps can still access the old content */
     if (rename(shm_name_tmp, shm_name) == -1) {
@@ -1267,14 +1276,14 @@ sr_lycc_store_context(sr_shm_t *shm, struct ly_ctx *ctx)
         goto cleanup;
     }
 
-    assert(((char *)mem_end - (char *)mem) == ctx_size);
-
-    /* destroy the old printed context, it will be unmapped anyways,
-     * doing it now avoids a context data collision with the new context */
-    sr_yang_ctx.content_id = 0;
-    sr_yang_ctx.sm_data_id = 0;
-    sr_ly_ctx_destroy(sr_yang_ctx.ly_ctx);
-    sr_yang_ctx.ly_ctx = NULL;
+    if (sr_yang_ctx.ly_ctx) {
+        /* destroy the old printed context, it will be unmapped anyways,
+         * doing it now avoids a context data collision with the new context */
+        sr_yang_ctx.content_id = 0;
+        sr_yang_ctx.sm_data_id = 0;
+        sr_ly_ctx_destroy(sr_yang_ctx.ly_ctx);
+        sr_yang_ctx.ly_ctx = NULL;
+    }
 
 cleanup:
     if (err_info && shm_name_tmp) {
