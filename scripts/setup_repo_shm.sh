@@ -24,7 +24,7 @@ fi
 
 # run sysrepoctl so that a connection is created and repository and SHM initialized (ideally as a non-privileged user)
 if [ $(id -u) -eq 0 ] && [ -n "$RUN_USER" ] && [ $(command -v su) ]; then
-    su -c "$SYSREPOCTL -L" -l "$RUN_USER"
+    su -c "$SYSREPOCTL -L" -l "$RUN_USER" > /dev/null
 else
     "$SYSREPOCTL" -L > /dev/null
 fi
