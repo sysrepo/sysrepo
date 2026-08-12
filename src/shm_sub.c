@@ -3768,11 +3768,8 @@ process_event:
         goto cleanup;
     }
 
-    /* ATOMIC_SUB_RELAXED returns the previous value, so subtract valid_subscr_count again to get remaining_subs. */
-    remaining_subs = ATOMIC_SUB_RELAXED(sub_shm->subscriber_count, valid_subscr_count) - valid_subscr_count;
-
     /* only finish the event if there are no remaining subscribers, or there is some data or error to report back */
-    if (!remaining_subs || (data && data_len) || err_code) {
+    if (((ATOMIC_LOAD_RELAXED(sub_shm->subscriber_count) - valid_subscr_count) == 0) || (data && data_len) || err_code) {
         /* SUB UNLOCK */
         sr_rwunlock(&sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, sub_lock, conn->cid, __func__);
         sub_lock = SR_LOCK_NONE;
@@ -3785,9 +3782,12 @@ process_event:
         sub_lock = SR_LOCK_WRITE_URGE;
 
         /* finish event */
-        err_info = sr_shmsub_listen_write_event(sub_shm, remaining_subs ? valid_subscr_count : 0, err_code, &shm_data_sub, data,
+        err_info = sr_shmsub_listen_write_event(sub_shm, valid_subscr_count, err_code, &shm_data_sub, data,
                 data_len, change_subs->module_name, err_code ? "fail" : "success");
     } else {
+        /* ATOMIC_SUB_RELAXED returns the previous value, so subtract valid_subscr_count again to get remaining_subs. */
+        remaining_subs = ATOMIC_SUB_RELAXED(sub_shm->subscriber_count, valid_subscr_count) - valid_subscr_count;
+
         SR_LOG_DBG("EV LISTEN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " success (remaining %" PRIu32 " subscribers).",
                 change_subs->module_name, sr_ev2str(sub_info.event), sub_info.operation_id, sub_info.priority, remaining_subs);
     }
