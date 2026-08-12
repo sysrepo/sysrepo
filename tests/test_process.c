@@ -1092,12 +1092,12 @@ test_apply_thread(void *arg)
     for (i = 0; i < NUM_ITERS; i++) {
         r = sr_set_item_str(sess, key, "iana-if-type:ethernetCsmacd", NULL, 0);
         sr_assert_true_ret(r == SR_ERR_OK, (void *)1);
-        r = sr_apply_changes(sess, 0);
+        r = sr_apply_changes(sess, 10000);
         sr_assert_true_ret(r == SR_ERR_OK, (void *)1);
 
         r = sr_set_item_str(sess, key, "iana-if-type:other", NULL, 0);
         sr_assert_true_ret(r == SR_ERR_OK, (void *)1);
-        r = sr_apply_changes(sess, 0);
+        r = sr_apply_changes(sess, 10000);
         sr_assert_true_ret(r == SR_ERR_OK, (void *)1);
     }
 
