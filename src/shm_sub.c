@@ -3100,7 +3100,7 @@ clear_shm:
 
         /* write "abort" event with the same input */
         if ((err_info = sr_shmsub_notify_write_event(sub_shm, conn->cid, request_id, cur_priority, SR_SUB_EV_ABORT,
-                orig_sid, orig_name, orig_data, operation_id, subscriber_count, &shm_data_sub, NULL, input_lyb,
+                orig_sid, orig_name, orig_data, subscriber_count, operation_id, &shm_data_sub, NULL, input_lyb,
                 input_lyb_len, path))) {
             goto cleanup_wrunlock;
         }
