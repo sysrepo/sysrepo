@@ -991,7 +991,7 @@ test_multi_fail(void **state)
     sr_release_data(output_op);
 
     /* it should fail with 5 total callback calls */
-    assert_int_equal(ret, SR_ERR_TIME_OUT);
+    assert_int_equal(ret, SR_ERR_NO_MEMORY);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 5);
 
     /*
@@ -1007,7 +1007,7 @@ test_multi_fail(void **state)
     sr_release_data(output_op);
 
     /* it should fail with 3 total callback calls */
-    assert_int_equal(ret, SR_ERR_TIME_OUT);
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 3);
 
     /*
