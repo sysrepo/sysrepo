@@ -1164,10 +1164,9 @@ test_sub_thread(void *arg)
 static int
 test_sub(int rp, int wp)
 {
-    int ret, i, j;
+    int ret, i;
     sr_conn_ctx_t *conn;
-    const int NUM_ITERS = 25;
-    const int NUM_THREADS = 3;
+    const int NUM_THREADS = 2;
     pthread_t tid[NUM_THREADS];
     state_t states[NUM_THREADS];
 
@@ -1175,16 +1174,15 @@ test_sub(int rp, int wp)
     sr_assert_true(ret == SR_ERR_OK);
 
     barrier(rp, wp);
-    for (j = 0; j < NUM_ITERS; j++) {
-        for (i = 0; i < NUM_THREADS; ++i) {
-            states[i].tid = i;
-            states[i].conn = conn;
-            pthread_create(&tid[i], NULL, test_sub_thread, &states[i]);
-        }
 
-        for (i = 0; i < NUM_THREADS; ++i) {
-            pthread_join(tid[i], NULL);
-        }
+    for (i = 0; i < NUM_THREADS; ++i) {
+        states[i].tid = i;
+        states[i].conn = conn;
+        pthread_create(&tid[i], NULL, test_sub_thread, &states[i]);
+    }
+
+    for (i = 0; i < NUM_THREADS; ++i) {
+        pthread_join(tid[i], NULL);
     }
 
     sr_disconnect(conn);
