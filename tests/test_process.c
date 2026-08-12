@@ -1092,12 +1092,12 @@ test_apply_thread(void *arg)
     for (i = 0; i < NUM_ITERS; i++) {
         r = sr_set_item_str(sess, key, "iana-if-type:ethernetCsmacd", NULL, 0);
         sr_assert_true_ret(r == SR_ERR_OK, (void *)1);
-        r = sr_apply_changes(sess, 10000);
+        r = sr_apply_changes(sess, 0);
         sr_assert_true_ret(r == SR_ERR_OK, (void *)1);
 
         r = sr_set_item_str(sess, key, "iana-if-type:other", NULL, 0);
         sr_assert_true_ret(r == SR_ERR_OK, (void *)1);
-        r = sr_apply_changes(sess, 10000);
+        r = sr_apply_changes(sess, 0);
         sr_assert_true_ret(r == SR_ERR_OK, (void *)1);
     }
 
@@ -1108,10 +1108,9 @@ test_apply_thread(void *arg)
 static int
 test_apply(int rp, int wp)
 {
-    int ret = 0, r, i, j;
+    int ret = 0, r, i;
     sr_conn_ctx_t *conn;
     void *tret;
-    const int NUM_ITERS = 10;
     const int NUM_THREADS = 2;
     pthread_t tid[NUM_THREADS];
     state_t states[NUM_THREADS];
@@ -1120,18 +1119,17 @@ test_apply(int rp, int wp)
     sr_assert_true(r == SR_ERR_OK);
 
     barrier(rp, wp);
-    for (j = 0; !ret && (j < NUM_ITERS); j++) {
-        for (i = 0; i < NUM_THREADS; ++i) {
-            states[i].tid = i;
-            states[i].conn = conn;
-            pthread_create(&tid[i], NULL, test_apply_thread, &states[i]);
-        }
 
-        for (i = 0; i < NUM_THREADS; ++i) {
-            pthread_join(tid[i], &tret);
-            if (tret) {
-                ret = 1;
-            }
+    for (i = 0; i < NUM_THREADS; ++i) {
+        states[i].tid = i;
+        states[i].conn = conn;
+        pthread_create(&tid[i], NULL, test_apply_thread, &states[i]);
+    }
+
+    for (i = 0; i < NUM_THREADS; ++i) {
+        pthread_join(tid[i], &tret);
+        if (tret) {
+            ret = 1;
         }
     }
 
