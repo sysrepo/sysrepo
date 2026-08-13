@@ -3102,8 +3102,15 @@ sr_edit_add_find_match(const struct ly_ctx *ly_ctx, const struct lyd_node *tree,
             case LYS_LEAFLIST:
                 /* find the (specific) leaf-list instance */
                 if (pred != pred_end) {
-                    assert(!strncmp(pred, "[.=", 3) && ((pred[3] == '\'') || (pred[3] == '\"')));
-                    dpred = strndup(pred + 4, (pred_end - 2) - (pred + 4));
+                    assert(!strncmp(pred, "[.=", 3));
+                    if (isdigit(pred[3])) {
+                        /* number val */
+                        dpred = strndup(pred + 3, (pred_end - 1) - (pred + 3));
+                    } else {
+                        /* quoted val */
+                        assert((pred[3] == '\'') || (pred[3] == '\"'));
+                        dpred = strndup(pred + 4, (pred_end - 2) - (pred + 4));
+                    }
                 } else if (!xp[0] && value) {
                     dpred = strdup(value);
                 }
