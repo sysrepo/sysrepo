@@ -37,6 +37,7 @@ sr_log_level_t sr_stderr_ll = SR_LL_NONE;   /**< stderr log level */
 sr_log_level_t sr_syslog_ll = SR_LL_NONE;   /**< syslog log level */
 int syslog_open;                            /**< Whether syslog was opened */
 sr_log_cb sr_lcb;                           /**< Logging callback */
+sr_log_level_t sr_lcb_ll = SR_LL_DBG;       /**< logging callback log level */
 
 /**
  * @brief String error list.
@@ -107,6 +108,12 @@ sr_api_ret(sr_session_ctx_t *session, sr_error_info_t *err_info)
     return err_code;
 }
 
+int
+sr_log_ll_wanted(sr_log_level_t ll)
+{
+    return (ll <= sr_stderr_ll) || (ll <= sr_syslog_ll) || (sr_lcb && (ll <= sr_lcb_ll));
+}
+
 void
 sr_log_msg(int plugin, sr_log_level_t ll, const char *msg)
 {
@@ -150,7 +157,7 @@ sr_log_msg(int plugin, sr_log_level_t ll, const char *msg)
     }
 
     /* logging callback */
-    if (sr_lcb) {
+    if (sr_lcb && ll <= sr_lcb_ll) {
         sr_lcb(ll, msg);
     }
 }
@@ -322,6 +329,11 @@ sr_log(sr_log_level_t ll, const char *format, ...)
     char *msg;
     int msg_len = 0;
 
+    if (!sr_log_ll_wanted(ll)) {
+        /* no destination wants this level, do not waste time formatting the message */
+        return;
+    }
+
     va_start(ap, format);
     sr_vsprintf(&msg, &msg_len, 0, format, ap);
     va_end(ap);
@@ -475,6 +487,11 @@ srplg_log(const char *plg_name, sr_log_level_t ll, const char *format, ...)
         return;
     }
 
+    if (!sr_log_ll_wanted(ll)) {
+        /* no destination wants this level, do not waste time formatting the message */
+        return;
+    }
+
     /* store plugin name first */
     off = msg_len = asprintf(&msg, "%s: ", plg_name);
     ++msg_len;
@@ -535,4 +552,16 @@ API void
 sr_log_set_cb(sr_log_cb log_callback)
 {
     sr_lcb = log_callback;
+}
+
+API void
+sr_log_set_cb_level(sr_log_level_t log_level)
+{
+    sr_lcb_ll = log_level;
+}
+
+API sr_log_level_t
+sr_log_get_cb_level(void)
+{
+    return sr_lcb_ll;
 }
