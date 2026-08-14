@@ -5881,6 +5881,72 @@ sr_ly_atom_is_foreign(const struct lysc_node *atom, const struct lysc_node *top_
     return NULL;
 }
 
+int
+sr_path_is_val(const char *ptr)
+{
+    int32_t i;
+
+    for (i = -1; isspace(ptr[i]); --i) {}
+    if (ptr[i] != '=') {
+        return 0;
+    }
+
+    if ((ptr[0] == '\'') || (ptr[0] == '\"') || isdigit(ptr[0]) || (ptr[0] == '$')) {
+        return 1;
+    }
+    return 0;
+}
+
+const char *
+sr_path_get_val(const char *ptr, const char *user, const char **val_ptr, uint32_t *val_len)
+{
+    char quot;
+    const char *var_end;
+
+    if ((ptr[0] == '\'') || (ptr[0] == '\"')) {
+        /* quoted val */
+        quot = ptr[0];
+        ++ptr;
+
+        *val_ptr = ptr;
+        while (ptr[0] != quot) {
+            ++ptr;
+        }
+        *val_len = ptr - *val_ptr;
+        ++ptr;
+    } else if ((ptr[0] == '.') || isdigit(ptr[0])) {
+        /* numeric val */
+        *val_ptr = ptr;
+        while ((ptr[0] == '.') || isdigit(ptr[0])) {
+            ++ptr;
+        }
+        *val_len = ptr - *val_ptr;
+    } else {
+        /* variable */
+        assert(ptr[0] == '$');
+        ++ptr;
+
+        if (!user || strncmp(ptr, "USER]", 5)) {
+            var_end = strchr(ptr, ']');
+            assert(var_end);
+
+            SR_LOG_WRN("Variable \"%.*s\" not defined.", (int)(var_end - ptr), ptr);
+
+            /* will not match anything */
+            *val_ptr = "";
+            *val_len = 0;
+            ptr = var_end;
+        } else {
+            *val_ptr = user;
+            *val_len = strlen(user);
+            ptr += 4;
+        }
+    }
+
+    assert(ptr[0] == ']');
+    return ptr;
+}
+
 sr_error_info_t *
 sr_ly_find_last_parent(struct lyd_node **parent, int nodetype)
 {

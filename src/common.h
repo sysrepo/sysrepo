@@ -4,8 +4,8 @@
  * @brief common routines header
  *
  * @copyright
- * Copyright (c) 2018 - 2025 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2025 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2026 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2026 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -1519,6 +1519,26 @@ void sr_xpath_atoms_free(sr_xp_atoms_t *xp_atoms);
  * @return Foreign dependency module, NULL if atom is not foreign.
  */
 struct lys_module *sr_ly_atom_is_foreign(const struct lysc_node *atom, const struct lysc_node *top_node);
+
+/**
+ * @brief Check whether a pointer points to the beginning of a value in a path.
+ *
+ * @param[in] ptr Pointer to the path (must not be the beginning).
+ * @return 1 if @p ptr represents a value;
+ * @return 0 otherwise.
+ */
+int sr_path_is_val(const char *ptr);
+
+/**
+ * @brief Parse value in a path.
+ *
+ * @param[in] ptr Pointer to the value.
+ * @param[in] user User to use as the value of $USER variable. If not set, it is considered not defined.
+ * @param[out] val_ptr Parsed value.
+ * @param[out] val_len Length of @p val_ptr.
+ * @return Pointer right after the value.
+ */
+const char *sr_path_get_val(const char *ptr, const char *user, const char **val_ptr, uint32_t *val_len);
 
 /**
  * @brief Find last (most nested) parent (node with possible children) in a data tree.

@@ -4,8 +4,8 @@
  * @brief NACM and ietf-netconf-acm callbacks
  *
  * @copyright
- * Copyright (c) 2019 - 2023 Deutsche Telekom AG.
- * Copyright (c) 2017 - 2023 CESNET, z.s.p.o.
+ * Copyright (c) 2019 - 2026 Deutsche Telekom AG.
+ * Copyright (c) 2017 - 2026 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -20,10 +20,12 @@
 #include "netconf_acm.h"
 
 #include <assert.h>
+#include <ctype.h>
 #include <errno.h>
 #include <grp.h>
 #include <pthread.h>
 #include <pwd.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -1357,8 +1359,9 @@ cleanup:
 static int
 sr_nacm_allowed_path(const char *rule_target, const char *node_path, const char *user)
 {
-    const char *rule_ptr, *node_ptr;
-    size_t val_len;
+    const char *rule_ptr, *node_ptr, *rule_val, *node_val;
+    char quot;
+    uint32_t rule_val_len, node_val_len;
 
     rule_ptr = rule_target;
     node_ptr = node_path;
@@ -1367,29 +1370,22 @@ sr_nacm_allowed_path(const char *rule_target, const char *node_path, const char 
         if (rule_ptr[0] == node_ptr[0]) {
             ++rule_ptr;
             ++node_ptr;
-        } else if ((rule_ptr[0] == '$') && (rule_ptr[-1] == '=') && (node_ptr[0] == '\'') && (node_ptr[-1] == '=')) {
-            /* variable used */
-            ++rule_ptr;
-            if (strncmp(rule_ptr, "USER]", 5)) {
-                SR_LOG_WRN("Variable \"%.*s\" not defined.", (int)(strchr(rule_ptr, ']') - rule_ptr), rule_ptr);
-                return 0;
-            }
-            rule_ptr += 4;
+        } else if (sr_path_is_val(rule_ptr) && sr_path_is_val(node_ptr)) {
+            /* compare values */
+            rule_ptr = sr_path_get_val(rule_ptr, user, &rule_val, &rule_val_len);
+            node_ptr = sr_path_get_val(node_ptr, user, &node_val, &node_val_len);
 
-            /* compare value */
-            ++node_ptr;
-            val_len = strchr(node_ptr, '\'') - node_ptr;
-            if ((strlen(user) != val_len) || strncmp(user, node_ptr, val_len)) {
+            if ((rule_val_len != node_val_len) || strncmp(rule_val, node_val, rule_val_len)) {
                 return 0;
             }
-            node_ptr += val_len + 1;
         } else if ((rule_ptr[0] == '/') && (node_ptr[0] == '[')) {
             /* target has no predicate, skip it in path as well because it matches any value */
             while (node_ptr[0] != ']') {
-                if (node_ptr[0] == '\'') {
+                if ((node_ptr[0] == '\'') || (node_ptr[0] == '\"')) {
+                    quot = node_ptr[0];
                     do {
                         ++node_ptr;
-                    } while (node_ptr[0] != '\'');
+                    } while (node_ptr[0] != quot);
                 }
 
                 ++node_ptr;
