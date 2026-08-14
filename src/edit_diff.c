@@ -3013,13 +3013,13 @@ sr_edit_add_find_match(const struct ly_ctx *ly_ctx, const struct lyd_node *tree,
         struct lyd_node **match)
 {
     sr_error_info_t *err_info = NULL;
-    const char *mod_name, *name, *xp, *pred, *pred_end;
+    const char *mod_name, *name, *xp, *pred, *pred_end, *val;
     char *mname, *dpred = NULL;
     const struct lyd_node *siblings;
     struct lyd_node *iter;
     const struct lysc_node *schema, *siter;
     const struct lys_module *mod;
-    uint32_t cur_pos, pos;
+    uint32_t cur_pos, pos, val_len;
     int mlen, len;
 
     /* validate xpath */
@@ -3102,15 +3102,16 @@ sr_edit_add_find_match(const struct ly_ctx *ly_ctx, const struct lyd_node *tree,
             case LYS_LEAFLIST:
                 /* find the (specific) leaf-list instance */
                 if (pred != pred_end) {
-                    assert(!strncmp(pred, "[.=", 3));
-                    if (isdigit(pred[3])) {
-                        /* number val */
-                        dpred = strndup(pred + 3, (pred_end - 1) - (pred + 3));
-                    } else {
-                        /* quoted val */
-                        assert((pred[3] == '\'') || (pred[3] == '\"'));
-                        dpred = strndup(pred + 4, (pred_end - 2) - (pred + 4));
-                    }
+                    assert(pred[0] == '[');
+                    for (++pred; isspace(pred[0]); ++pred) {}
+                    assert(pred[0] == '.');
+                    for (++pred; isspace(pred[0]); ++pred) {}
+                    assert(pred[0] == '=');
+                    for (++pred; isspace(pred[0]); ++pred) {}
+
+                    /* parse the value */
+                    sr_path_get_val(pred, NULL, &val, &val_len);
+                    dpred = strndup(val, val_len);
                 } else if (!xp[0] && value) {
                     dpred = strdup(value);
                 }
