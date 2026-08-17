@@ -2731,7 +2731,7 @@ sr_edit_add_merge_op(struct lyd_node *match, struct lyd_node **root, const char 
 {
     sr_error_info_t *err_info = NULL;
     const struct lysc_node *schema;
-    struct lyd_node *parent = NULL, *sibling = NULL;
+    struct lyd_node *parent = NULL, *sibling;
     enum edit_op cur_op;
     int own_oper;
 
@@ -2793,7 +2793,11 @@ sr_edit_add_merge_op(struct lyd_node *match, struct lyd_node **root, const char 
                 } else {
                     /* need to create a valid node instead */
                     parent = lyd_parent(match);
-                    sibling = match->prev;
+                    if (match->prev != match) {
+                        sibling = match->prev;
+                    } else {
+                        sibling = NULL;
+                    }
 
                     if (*root == match) {
                         *root = (*root)->next;
