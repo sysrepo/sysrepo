@@ -626,7 +626,7 @@ sr_nacm_rule_list_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const c
                     prev_list = strchr(prev_list, '\'') + 1;
                     len = strchr(prev_list, '\'') - prev_list;
                     prev_rlist = nacm.rule_lists;
-                    while (prev_rlist && strncmp(prev_rlist->name, prev_list, len)) {
+                    while (prev_rlist && (strncmp(prev_rlist->name, prev_list, len) || prev_rlist->name[len])) {
                         prev_rlist = prev_rlist->next;
                     }
                     assert(prev_rlist);
@@ -797,7 +797,7 @@ sr_nacm_rule_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *
                     prev_list = strchr(prev_list, '\'') + 1;
                     len = strchr(prev_list, '\'') - prev_list;
                     prev_rule = rlist->rules;
-                    while (prev_rule && strncmp(prev_rule->name, prev_list, len)) {
+                    while (prev_rule && (strncmp(prev_rule->name, prev_list, len) || prev_rule->name[len])) {
                         prev_rule = prev_rule->next;
                     }
                     assert(prev_rule);
