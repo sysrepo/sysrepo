@@ -5926,7 +5926,7 @@ sr_path_get_val(const char *ptr, const char *user, const char **val_ptr, uint32_
         assert(ptr[0] == '$');
         ++ptr;
 
-        if (!user || strncmp(ptr, "USER]", 5)) {
+        if (!user || strncmp(ptr, "USER", 4) || ((ptr[4] != ']') && !isspace(ptr[4]))) {
             var_end = strchr(ptr, ']');
             assert(var_end);
 
@@ -5943,6 +5943,9 @@ sr_path_get_val(const char *ptr, const char *user, const char **val_ptr, uint32_
         }
     }
 
+    while (isspace(ptr[0])) {
+        ++ptr;
+    }
     assert(ptr[0] == ']');
     return ptr;
 }
