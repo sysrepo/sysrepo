@@ -94,11 +94,28 @@ sr_log_level_t sr_log_get_syslog(void);
 
 /**
  * @brief Sets callback that will be called when a log entry would be populated.
- * Callback will be called for every message __regardless__ of any log level.
+ * By default the callback is called for every message regardless of any log level,
+ * this can be changed with ::sr_log_set_cb_level().
  *
  * @param[in] log_callback Callback to be called when a log entry would populated.
  */
 void sr_log_set_cb(sr_log_cb log_callback);
+
+/**
+ * @brief Enables / disables / changes log level (verbosity) of logging to log callback.
+ *
+ * By default, logging to callback is enabled on level ::SR_LL_DBG.
+ *
+ * @param[in] log_level Requested log level (verbosity).
+ */
+void sr_log_set_cb_level(sr_log_level_t log_level);
+
+/**
+ * @brief Learn current log callback log level.
+ *
+ * @return log callback log level.
+ */
+sr_log_level_t sr_log_get_cb_level(void);
 
 /** @} logging */
 

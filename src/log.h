@@ -42,6 +42,7 @@
 extern sr_log_level_t sr_stderr_ll;  /**< stderr log level */
 extern sr_log_level_t sr_syslog_ll;  /**< syslog log level */
 extern sr_log_cb sr_lcb;             /**< logging callback */
+extern sr_log_level_t sr_lcb_ll;     /**< logging callback log level */
 
 /**
  * @brief Set error info to a session and return corresponding error code, if any.
@@ -51,6 +52,17 @@ extern sr_log_cb sr_lcb;             /**< logging callback */
  * @return Error code to be returned from an API function based on error info.
  */
 int sr_api_ret(sr_session_ctx_t *session, sr_error_info_t *err_info);
+
+/**
+ * @brief Check whether any log destination is interested in a message of some level.
+ *
+ * Mirrors the delivery conditions in ::sr_log_msg(), letting callers skip work
+ * (formatting a message, collecting data to print) that would be discarded.
+ *
+ * @param[in] ll Message log level.
+ * @return Whether the message would not be logged anywhere.
+ */
+int sr_log_msg_hidden(sr_log_level_t ll);
 
 /**
  * @brief Log a message.

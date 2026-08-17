@@ -293,7 +293,7 @@ sr_shmext_print(sr_mod_shm_t *mod_shm, sr_shm_t *shm_ext)
     sr_ext_hole_t *hole;
     sr_ext_shm_t *ext_shm = (sr_ext_shm_t *)shm_ext->addr;
 
-    if ((sr_stderr_ll < SR_LL_DBG) && (sr_syslog_ll < SR_LL_DBG) && !sr_lcb) {
+    if (sr_log_msg_hidden(SR_LL_DBG)) {
         /* nothing to print */
         return;
     }
