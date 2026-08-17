@@ -26,6 +26,7 @@
 
 #include "notifd.h"
 #include "notifd_common.h"
+#include "utils/netconf_acm.h"
 #include "utils/subscribed_notifications.h"
 
 #include <libyang/libyang.h>
@@ -608,18 +609,48 @@ notification_dispatch_start(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_re
 {
     int rc = SR_ERR_OK;
     struct timespec *stop_time, *start_time;
+    sr_session_ctx_t *sr_sess = NULL;
+    const char *nacm_user = NULL;
 
     stop_time = (sub->stop_time.tv_sec || sub->stop_time.tv_nsec) ? &sub->stop_time : NULL;
     start_time = (sub->start_time.tv_sec || sub->start_time.tv_nsec) ? &sub->start_time : NULL;
 
+    /* create a per-receiver session so that NACM filtering is applied per-receiver */
+    if ((rc = sr_session_start(sr_session_get_connection(notifd_ctx->sr_sess), SR_DS_RUNNING, &sr_sess))) {
+        SRNTF_LOG_ERR("Failed to start per-receiver session for subscription ID %" PRIu32 " and receiver \"%s\".",
+                sub->id, receiver->name);
+        sub->modif_err_reason = "ietf-subscribed-notifications:no-such-subscription";
+        goto cleanup;
+    }
+
+    /* resolve the NACM user from the receiver instance (mandatory leaf) */
+    nacm_user = receiver->inst->nacm_user;
+    if (!nacm_user) {
+        /* mandatory leaf missing — fail closed rather than creating an unfiltered session */
+        SRNTF_LOG_ERR("No NACM user set for receiver \"%s\" (mandatory leaf missing).", receiver->name);
+        sub->modif_err_reason = "ietf-subscribed-notifications:no-such-subscription";
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
+    if ((rc = sr_nacm_set_user(sr_sess, nacm_user))) {
+        SRNTF_LOG_ERR("Failed to set NACM user \"%s\" for subscription ID %" PRIu32 " and receiver \"%s\".",
+                nacm_user, sub->id, receiver->name);
+        sub->modif_err_reason = "ietf-subscribed-notifications:no-such-subscription";
+        goto cleanup;
+    }
+
     /* subscribe for notifications */
-    if ((rc = srsn_subscribe(notifd_ctx->sr_sess, sub->stream, sub->xpath_filter, stop_time, start_time, 0,
+    if ((rc = srsn_subscribe(sr_sess, sub->stream, sub->xpath_filter, stop_time, start_time, 0,
             &receiver->srsn_data.sr_subscr, &sub->replay_start_time, &receiver->srsn_data.fd, &receiver->srsn_data.sub_id))) {
         SRNTF_LOG_ERR("Failed to subscribe for notifications for subscription ID %" PRIu32 " and receiver \"%s\".",
                 sub->id, receiver->name);
         sub->modif_err_reason = "ietf-subscribed-notifications:no-such-subscription";
         goto cleanup;
     }
+
+    /* store the per-receiver session (freed after unsubscribe in notification_dispatch_stop) */
+    receiver->srsn_data.sr_sess = sr_sess;
+    sr_sess = NULL;
 
     /* set up notif cb data */
     receiver->cb_data.ctx = notifd_ctx;
@@ -644,6 +675,14 @@ cleanup:
             close(receiver->srsn_data.fd);
             receiver->srsn_data.fd = -1;
         }
+        if (receiver->srsn_data.sr_sess) {
+            sr_session_stop(receiver->srsn_data.sr_sess);
+            receiver->srsn_data.sr_sess = NULL;
+        }
+    }
+    if (sr_sess) {
+        /* per-receiver session was created but not stored (failure before store) */
+        sr_session_stop(sr_sess);
     }
     return rc;
 }
@@ -675,6 +714,11 @@ notification_dispatch_stop(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver)
     if (receiver->srsn_data.fd != -1) {
         close(receiver->srsn_data.fd);
         receiver->srsn_data.fd = -1;
+    }
+    /* free the per-receiver NACM-filtered session (after unsubscribe, which holds the session ref) */
+    if (receiver->srsn_data.sr_sess) {
+        sr_session_stop(receiver->srsn_data.sr_sess);
+        receiver->srsn_data.sr_sess = NULL;
     }
 }
 

@@ -17,6 +17,8 @@
 
 #include "compat.h"
 
+#include "config.h"
+
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -32,6 +34,7 @@
 #include "../bin_common.h"
 #include "notifd.h"
 #include "notifd_common.h"
+#include "utils/netconf_acm.h"
 #include "utils/subscribed_notifications.h"
 
 #ifdef SR_HAVE_SYSTEMD
@@ -1321,6 +1324,8 @@ main(int argc, char **argv)
         .config_apply_mutex = PTHREAD_MUTEX_INITIALIZER
     };
     sr_subscription_ctx_t *sr_subscr = NULL;
+    sr_subscription_ctx_t *nacm_subscr = NULL;
+    sr_subscription_ctx_t *nacm_stats_subscr = NULL;
 
     struct option options[] = {
         {"help",              no_argument,       NULL, 'h'},
@@ -1454,6 +1459,19 @@ main(int argc, char **argv)
         goto cleanup;
     }
 
+    /* initialize NACM for per-receiver access control (uses its own subscription thread) */
+    if (sr_nacm_init(notifd_ctx.sr_sess, 0, &nacm_subscr)) {
+        SRNTF_LOG_ERR("Failed to initialize NACM. Access control for notification receivers is required "
+                "and cannot be disabled.");
+        rc = EXIT_FAILURE;
+        goto cleanup;
+    }
+
+    /* subscribe for NACM global statistics (denied-* counters) */
+    if (sr_nacm_glob_stats_subscribe(notifd_ctx.sr_sess, 0, &nacm_stats_subscr)) {
+        SRNTF_LOG_WRN("Failed to subscribe for NACM statistics (denied-* counters will not be provided).");
+    }
+
     /* create and write PID file (atomically, so existence implies readiness) */
     if (pidfile && ((pidfd = create_pidfile(pidfile)) < 0)) {
         rc = EXIT_FAILURE;
@@ -1488,6 +1506,13 @@ cleanup:
 
     srsn_read_dispatch_destroy();
     sr_unsubscribe(sr_subscr);
+    if (nacm_subscr) {
+        sr_unsubscribe(nacm_subscr);
+    }
+    if (nacm_stats_subscr) {
+        sr_unsubscribe(nacm_stats_subscr);
+    }
+    sr_nacm_destroy();
     sr_disconnect(conn);
     return rc;
 }

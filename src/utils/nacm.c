@@ -26,6 +26,7 @@
 #include <pwd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <libyang/libyang.h>
@@ -37,6 +38,10 @@
 #include "ly_wrap.h"
 
 static struct sr_nacm nacm;
+
+/* forward declarations — defined below */
+static void sr_nacm_free_groups(char **groups, uint32_t group_count);
+static void sr_nacm_group_cache_clear(void);
 
 #define EMEM_CB sr_session_set_error_message(session, "Memory allocation failed (%s:%d)", __FILE__, __LINE__)
 #define EINT_CB sr_session_set_error_message(session, "Internal error (%s:%d)", __FILE__, __LINE__)
@@ -108,6 +113,8 @@ sr_nacm_nacm_params_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const
                 } else {
                     nacm.enable_external_groups = 0;
                 }
+                /* invalidate the per-user group cache (external groups toggle changed) */
+                sr_nacm_group_cache_clear();
             }
         }
     }
@@ -383,6 +390,9 @@ sr_nacm_group_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char 
             }
         }
     }
+
+    /* invalidate the per-user group cache (group/user membership changed) */
+    sr_nacm_group_cache_clear();
 
     /* NACM UNLOCK */
     pthread_mutex_unlock(&nacm.lock);
@@ -1118,6 +1128,7 @@ sr_nacm_destroy(void)
     nacm.rule_lists = NULL;
     nacm.groups = NULL;
     nacm.group_count = 0;
+    sr_nacm_group_cache_clear();
     nacm.denied_notifications = 0;
     nacm.denied_operations = 0;
     nacm.denied_data_writes = 0;
@@ -1247,7 +1258,151 @@ sr_nacm_allowed_tree(const struct lysc_node *root, const char *user, int *allowe
 }
 
 /**
+ * @brief TTL for the per-user group cache, in seconds.
+ *
+ * Group membership changes infrequently; the cache is also explicitly invalidated
+ * on NACM config changes. The TTL is a safety net for system group membership
+ * changes (e.g. `usermod -aG`) that do not trigger a callback.
+ */
+#define SR_NACM_GROUP_CACHE_TTL 5
+
+/**
+ * @brief Find a cache entry for a user.
+ *
+ * Must be called with the NACM lock held.
+ *
+ * @param[in] user User to look up.
+ * @return Cache entry, or NULL if not found or stale.
+ */
+static struct sr_nacm_group_cache *
+sr_nacm_group_cache_find(const char *user)
+{
+    struct sr_nacm_group_cache *entry;
+
+    LY_LIST_FOR(nacm.group_cache, entry) {
+        if (!strcmp(entry->user, user)) {
+            if ((time(NULL) - entry->cached_at) < SR_NACM_GROUP_CACHE_TTL) {
+                return entry;
+            }
+            break;
+        }
+    }
+    return NULL;
+}
+
+/**
+ * @brief Deep-copy a groups array.
+ *
+ * @param[in] src Source array.
+ * @param[in] src_count Source count.
+ * @param[out] dst Destination array.
+ * @return 0 on success, non-zero on memory error.
+ */
+static int
+sr_nacm_groups_dup(char **src, uint32_t src_count, char ***dst)
+{
+    char **copy = NULL;
+    uint32_t i;
+
+    copy = calloc(src_count, sizeof *copy);
+    if (!copy && src_count) {
+        return 1;
+    }
+    for (i = 0; i < src_count; ++i) {
+        copy[i] = strdup(src[i]);
+        if (!copy[i]) {
+            goto error;
+        }
+    }
+    *dst = copy;
+    return 0;
+
+error:
+    for (uint32_t j = 0; j < i; ++j) {
+        free(copy[j]);
+    }
+    free(copy);
+    return 1;
+}
+
+/**
+ * @brief Store a copy of collected groups in the per-user cache.
+ *
+ * Must be called with the NACM lock held. Replaces any existing entry for the user.
+ *
+ * @param[in] user User to cache for.
+ * @param[in] groups Groups to cache (deep-copied).
+ * @param[in] group_count Number of @p groups.
+ * @return 0 on success, non-zero on memory error.
+ */
+static int
+sr_nacm_group_cache_store(const char *user, char **groups, uint32_t group_count)
+{
+    struct sr_nacm_group_cache *entry, *prev = NULL, *cur;
+
+    /* remove any existing (possibly stale) entry for this user */
+    LY_LIST_FOR(nacm.group_cache, cur) {
+        if (!strcmp(cur->user, user)) {
+            if (prev) {
+                prev->next = cur->next;
+            } else {
+                nacm.group_cache = cur->next;
+            }
+            free(cur->user);
+            sr_nacm_free_groups(cur->groups, cur->group_count);
+            free(cur);
+            break;
+        }
+        prev = cur;
+    }
+
+    entry = calloc(1, sizeof *entry);
+    if (!entry) {
+        return 1;
+    }
+    entry->user = strdup(user);
+    if (!entry->user) {
+        goto error;
+    }
+    if (sr_nacm_groups_dup(groups, group_count, &entry->groups)) {
+        goto error;
+    }
+    entry->group_count = group_count;
+    entry->cached_at = time(NULL);
+
+    entry->next = nacm.group_cache;
+    nacm.group_cache = entry;
+    return 0;
+
+error:
+    free(entry->user);
+    free(entry);
+    return 1;
+}
+
+/**
+ * @brief Free all entries in the per-user group cache.
+ *
+ * Must be called with the NACM lock held.
+ */
+static void
+sr_nacm_group_cache_clear(void)
+{
+    struct sr_nacm_group_cache *entry, *tmp;
+
+    LY_LIST_FOR_SAFE(nacm.group_cache, tmp, entry) {
+        free(entry->user);
+        sr_nacm_free_groups(entry->groups, entry->group_count);
+        free(entry);
+    }
+    nacm.group_cache = NULL;
+}
+
+/**
  * @brief Collect all NACM groups for a user. If enabled, even system ones.
+ *
+ * Results are cached per-user for @ref SR_NACM_GROUP_CACHE_TTL seconds to avoid
+ * repeated getpwnam/getgrouplist syscalls on the notification dispatch path.
  *
  * @param[in] user User to collect groups for.
  * @param[out] groups Sorted array of collected groups.
@@ -1265,9 +1420,21 @@ sr_nacm_collect_groups(const char *user, char ***groups, uint32_t *group_count)
     ssize_t buflen = 0;
     uint32_t i, j;
     int found, gid_count = 0, r;
+    struct sr_nacm_group_cache *cache_entry;
 
     *groups = NULL;
     *group_count = 0;
+
+    /* check the per-user cache first (avoids getpwnam/getgrouplist on every notification) */
+    cache_entry = sr_nacm_group_cache_find(user);
+    if (cache_entry) {
+        if (sr_nacm_groups_dup(cache_entry->groups, cache_entry->group_count, groups)) {
+            SR_ERRINFO_MEM(&err_info);
+            return err_info;
+        }
+        *group_count = cache_entry->group_count;
+        return NULL;
+    }
 
     /* collect NACM groups */
     for (i = 0; i < nacm.group_count; ++i) {
@@ -1339,6 +1506,10 @@ sr_nacm_collect_groups(const char *user, char ***groups, uint32_t *group_count)
 cleanup:
     free(gids);
     free(buf);
+    if (!err_info) {
+        /* store in cache for subsequent lookups (best-effort, ignore memory errors) */
+        sr_nacm_group_cache_store(user, *groups, *group_count);
+    }
     return err_info;
 }
 

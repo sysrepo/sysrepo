@@ -1,0 +1,44 @@
+module sysrepo-subscribed-notif {
+  yang-version 1.1;
+  namespace "http://www.sysrepo.org/yang/sysrepo-subscribed-notif";
+  prefix ssn;
+
+  import ietf-subscribed-notifications {
+    prefix sn;
+  }
+
+  import ietf-subscribed-notif-receivers {
+    prefix snr;
+  }
+
+  import ietf-netconf-acm {
+    prefix nacm;
+  }
+
+  organization
+    "CESNET, z.s.p.o.";
+  contact
+    "Author: Roman Janota
+             <mailto:Roman.Janota@cesnet.cz>";
+  description
+    "Sysrepo-specific augments for the subscribed-notifications stack.";
+
+  revision "2026-08-06" {
+    description
+      "Initial revision.";
+  }
+
+  augment "/sn:subscriptions/snr:receiver-instances/snr:receiver-instance" {
+    when "true()";
+    leaf nacm-user {
+      nacm:default-deny-write;
+      type string {
+        length "1..255";
+      }
+      mandatory true;
+      description
+        "NACM username whose read permissions govern which
+         notifications are relayed to this receiver.";
+    }
+  }
+}

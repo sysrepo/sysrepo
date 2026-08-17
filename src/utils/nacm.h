@@ -19,6 +19,7 @@
 
 #include <pthread.h>
 #include <stdint.h>
+#include <time.h>
 
 #include <libyang/libyang.h>
 #include <sysrepo.h>
@@ -41,6 +42,20 @@ typedef enum sr_nacm_target_type {
     SR_NACM_TARGET_DATA,   /**< Rule target is a data node, action, or a nested notification. */
     SR_NACM_TARGET_ANY     /**< Rule target is any node. */
 } SR_NACM_TARGET_TYPE;
+
+/**
+ * @brief Per-user group cache entry.
+ *
+ * Avoids repeated getpwnam/getgrouplist syscalls on the notification dispatch path.
+ * Protected by the NACM lock.
+ */
+struct sr_nacm_group_cache {
+    char *user;                 /**< Cached user. */
+    char **groups;              /**< Deep-copied sorted array of group names. */
+    uint32_t group_count;       /**< Number of @p groups. */
+    time_t cached_at;            /**< When the entry was stored. */
+    struct sr_nacm_group_cache *next; /**< Next entry. */
+};
 
 /**
  * @brief Main NACM container structure.
@@ -93,6 +108,10 @@ struct sr_nacm {
     } *rule_lists;                  /**< List of all the rule lists. */
 
     pthread_mutex_t lock;           /**< Lock for accessing all the NACM members. */
+
+    struct sr_nacm_group_cache *group_cache; /**< Per-user group cache (avoids repeated
+                                                  getpwnam/getgrouplist syscalls on the
+                                                  notification dispatch path). */
 };
 
 enum sr_nacm_access {

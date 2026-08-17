@@ -3,7 +3,7 @@
 .\" groff -man -Tascii sysrepo-notifd.8
 .\"
 
-.TH SYSREPO-NOTIFD 8 "2026-05-29" "sysrepo"
+.TH SYSREPO-NOTIFD 8 "2026-08-07" "sysrepo"
 .SH NAME
 sysrepo-notifd \- sysrepo notification daemon
 .
@@ -47,6 +47,72 @@ initialization is finished.
 .TP
 .BR "\-s\fR,\fP \-\^\-schema\-dir \fIDIR\fP"
 Set the directory with internal sysrepo YANG modules.
+.
+.SH ACCESS CONTROL
+The daemon requires NACM (RFC 8341) to be configured and will fail to
+start if NACM cannot be initialized. NACM is used to apply per-receiver
+access control:
+.
+.TP
+.B Receiver nacm-user leaf
+The
+.I sysrepo-subscribed-notif
+module augments
+.I ietf-subscribed-notif-receivers
+with a mandatory
+.I nacm-user
+leaf on each
+.IR receiver-instance .
+The daemon creates a dedicated sysrepo session bound to that
+NACM identity for the receiver's subscription. Notifications the user is
+not authorized to read are silently excluded (the
+.I excluded-event-records
+counter is incremented). The leaf is transport-agnostic and applies to
+all configured transports.
+.
+.TP
+.B Write access to the nacm-user leaf
+The
+.I nacm-user
+leaf is annotated with
+.IR nacm:default-deny-write ,
+so standard NACM write-rules (RFC 8341) govern who may set it: only the
+recovery user or users with an explicit permit rule. Both NACM
+configuration groups
+.RI ( ietf-netconf-acm:nacm/groups )
+and Unix system groups (when
+.I enable-external-groups
+is
+.RI true ,
+the default) are evaluated by sysrepo automatically. Direct sysrepo API
+clients (e.g.
+.IR sysrepocfg )
+that do not have a NACM user set bypass these checks; this relies on OS
+file permissions on the sysrepo shared memory and repository directories
+to prevent unauthorized access.
+.
+.TP
+.B NACM statistics
+The daemon subscribes to the NACM global statistics
+.RI ( denied-operations ,
+.IR denied-data-writes ,
+.IR denied-notifications )
+so that the standard RFC 8341 counters are populated and accessible via
+the
+.I ietf-netconf-acm
+data tree. If another process on the system is already providing these
+statistics (e.g. a running NETCONF/RESTCONF server), the daemon's
+subscription silently becomes a no-op and the counters are provided by
+that other process.
+.
+.TP
+.B Future: DTLS
+Plain UDP is scoped to controlled environments (RFC 8085 §3.6, RFC 8799).
+DTLS is the future cryptographically-bound transport for
+.IR sysrepo-notifd ;
+until then, the
+.I nacm-user
+leaf provides configuration-based access control over plain UDP.
 .
 .SH SEE ALSO
 https://www.sysrepo.org (sysrepo home page)

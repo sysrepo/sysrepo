@@ -25,6 +25,7 @@
 
 #include "notifd.h"
 #include "notifd_common.h"
+#include "utils/netconf_acm.h"
 #include "utils/subscribed_notifications.h"
 
 #include <libyang/libyang.h>
@@ -956,15 +957,27 @@ receiver_inst_config_change(notif_receiver_inst_t *recv_inst, const struct lyd_n
 
     node_name = LYD_NAME(node);
 
-    if (recv_inst->ops) {
+    /* handle nacm-user leaf (augmented by sysrepo-subscribed-notif) */
+    if (!strcmp(node_name, "nacm-user")) {
+        free(recv_inst->nacm_user);
+        recv_inst->nacm_user = NULL;
+        if ((op == SR_OP_CREATED) || (op == SR_OP_MODIFIED)) {
+            recv_inst->nacm_user = strdup(lyd_get_value(node));
+            if (!recv_inst->nacm_user) {
+                return SR_ERR_NO_MEMORY;
+            }
+        }
+        /* nacm-user change requires resubscription so the per-receiver NACM session is recreated */
+        recv_inst->modified = 1;
+    } else if (recv_inst->ops) {
         return recv_inst->ops->config_change(recv_inst, node, op);
-    }
-
-    ops = notif_transport_find_by_container(node_name);
-    if (ops) {
-        recv_inst->ops = ops;
-        recv_inst->type = ops->type;
-        return ops->config_change(recv_inst, node, op);
+    } else {
+        ops = notif_transport_find_by_container(node_name);
+        if (ops) {
+            recv_inst->ops = ops;
+            recv_inst->type = ops->type;
+            return ops->config_change(recv_inst, node, op);
+        }
     }
 
     return SR_ERR_OK;
@@ -1405,6 +1418,13 @@ receiver_instance_from_node(const struct lyd_node *node, notif_receiver_inst_t *
     recv_inst->name = strdup(lyd_get_value(n));
     CHECK_ERRMEM_GOTO(recv_inst->name, rc, cleanup);
 
+    /* mandatory nacm-user leaf (augmented by sysrepo-subscribed-notif) */
+    if ((rc = get_descendant_mandatory(node, "sysrepo-subscribed-notif:nacm-user", &n))) {
+        goto cleanup;
+    }
+    recv_inst->nacm_user = strdup(lyd_get_value(n));
+    CHECK_ERRMEM_GOTO(recv_inst->nacm_user, rc, cleanup);
+
     /* find the transport config container by iterating children */
     LY_LIST_FOR(lyd_child(node), child) {
         ops = notif_transport_find_by_container(LYD_NAME(child));
@@ -1455,6 +1475,7 @@ receiver_instance_destroy(notifd_ctx_t *notifd_ctx, notif_receiver_inst_t *recv_
 
     /* free members */
     free(recv_inst->name);
+    free(recv_inst->nacm_user);
     if (recv_inst->ops && recv_inst->transport_config) {
         recv_inst->ops->config_destroy(recv_inst->transport_config);
         recv_inst->transport_config = NULL;
@@ -1755,6 +1776,156 @@ cleanup:
     return rc;
 }
 
+/**
+ * @brief Resolve the username of the change originator from the change-callback session.
+ *
+ * For netopeer2-originated changes, the NETCONF client username is pushed as the
+ * second chunk of originator data (chunk 0 is the NCID, chunk 1 is the username).
+ * For direct sysrepo API clients (sysrepocfg, scripts) no originator data is pushed,
+ * so NULL is returned and the caller treats it as "trust local" (the change is allowed
+ * unconditionally, mitigated by OS file permissions on sysrepo SHM/repo).
+ *
+ * @param[in] session Change-callback session.
+ * @return Resolved originator username, or NULL if no originator identity is available.
+ */
+static const char *
+nacm_user_validate_get_originator(sr_session_ctx_t *session)
+{
+    const char *orig_name, *user = NULL;
+    uint32_t ncid_size = 0, size;
+    const void *ncid_data = NULL, *data;
+
+    orig_name = sr_session_get_orig_name(session);
+    if (orig_name && *orig_name && !strcmp(orig_name, "netopeer2")) {
+        /* netopeer2 pushes exactly 2 chunks: NCID (uint32_t) and username (NUL-terminated string) */
+        assert(!sr_session_get_orig_data(session, 0, &ncid_size, &ncid_data) && ncid_size == sizeof(uint32_t));
+        if (!sr_session_get_orig_data(session, 1, &size, &data) && data && size) {
+            user = (const char *)data;
+        }
+    }
+
+    /* NULL means no originator identity is available (direct sysrepo API client) */
+    return user;
+}
+
+/**
+ * @brief Validate a `nacm-user` leaf value against the change originator identity.
+ *
+ * The value is allowed if the originator is a direct sysrepo API client (no
+ * originator identity pushed — trust local, mitigated by OS file permissions),
+ * if it equals the originator username, or if the originator is the NACM
+ * recovery user (who may set any value). Otherwise the change is denied.
+ *
+ * @param[in] session Change-callback session.
+ * @param[in] event Change event.
+ * @param[in] nacm_user_value The new value of the `nacm-user` leaf.
+ * @return SR_ERR_OK on success, SR_ERR_UNAUTHORIZED if the change is denied.
+ */
+static int
+nacm_user_validate(sr_session_ctx_t *session, sr_event_t event, const char *nacm_user_value)
+{
+    const char *originator;
+
+    originator = nacm_user_validate_get_originator(session);
+
+    if (!originator) {
+        /* Direct sysrepo API client (no originator identity pushed): trust local.
+         * Mitigated by OS file permissions on sysrepo SHM/repo directories. */
+        return SR_ERR_OK;
+    }
+
+    if (!strcmp(nacm_user_value, originator)) {
+        /* user is setting the leaf to their own identity */
+        return SR_ERR_OK;
+    }
+
+    if (!strcmp(originator, sr_nacm_get_recovery_user())) {
+        /* recovery user may set any value */
+        return SR_ERR_OK;
+    }
+
+    SRNTF_VALIDATE_ERR(session, event, SR_ERR_UNAUTHORIZED,
+            "Not authorized to set \"nacm-user\" to \"%s\" (originator: \"%s\").",
+            nacm_user_value, originator);
+    return SR_ERR_UNAUTHORIZED;
+}
+
+/**
+ * @brief Validate `nacm-user` leaf changes on receiver-instances.
+ *
+ * Skipped on SR_EV_ENABLED (startup config), since there is no originator and the
+ * values were validated when originally committed.
+ *
+ * @param[in] session Change-callback session.
+ * @param[in] event Change event.
+ * @return SR_ERR_OK on success, error code on failure.
+ */
+static int
+recv_inst_change_validate(sr_session_ctx_t *session, sr_event_t event)
+{
+    int rc = SR_ERR_OK, r, prev_dflt;
+    sr_change_iter_t *iter = NULL;
+    sr_change_oper_t op;
+    const struct lyd_node *node;
+    struct lyd_node *n;
+    const char *prev_value, *prev_list;
+
+    /* skip on SR_EV_ENABLED (startup config), there is no originator */
+    if (event != SR_EV_CHANGE) {
+        return SR_ERR_OK;
+    }
+
+    /* pass 1: created receiver-instances - validate the nacm-user leaf if present */
+    if ((rc = sr_get_changes_iter(session,
+            "/ietf-subscribed-notifications:subscriptions/receiver-instances/receiver-instance", &iter))) {
+        goto cleanup;
+    }
+    while (!sr_get_change_tree_next(session, iter, &op, &node, &prev_value, &prev_list, &prev_dflt)) {
+        assert(LYD_NAME(node) && !strcmp(LYD_NAME(node), "receiver-instance"));
+
+        if (op != SR_OP_CREATED) {
+            continue;
+        }
+
+        get_descendant_optional(node, "sysrepo-subscribed-notif:nacm-user", &n);
+        if (n) {
+            if ((r = nacm_user_validate(session, event, lyd_get_value(n)))) {
+                rc = r;
+                goto cleanup;
+            }
+        }
+    }
+    sr_free_change_iter(iter);
+    iter = NULL;
+
+    /* pass 2: modified nacm-user leaf on existing receiver-instances */
+    if ((rc = sr_get_changes_iter(session, "/ietf-subscribed-notifications:subscriptions/"
+            "receiver-instances/receiver-instance[not(@yang:operation)]//.", &iter))) {
+        goto cleanup;
+    }
+    while (!sr_get_change_tree_next(session, iter, &op, &node, &prev_value, &prev_list, &prev_dflt)) {
+        if ((op != SR_OP_CREATED) && (op != SR_OP_MODIFIED)) {
+            continue;
+        }
+
+        if (strcmp(LYD_NAME(node), "nacm-user") ||
+                strcmp(node->schema->module->name, "sysrepo-subscribed-notif")) {
+            continue;
+        }
+
+        if ((r = nacm_user_validate(session, event, lyd_get_value(node)))) {
+            rc = r;
+            goto cleanup;
+        }
+    }
+    sr_free_change_iter(iter);
+    iter = NULL;
+
+cleanup:
+    sr_free_change_iter(iter);
+    return rc;
+}
+
 int
 sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session, sr_event_t event)
 {
@@ -1954,6 +2125,12 @@ sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session, sr_even
     }
     sr_free_change_iter(iter);
     iter = NULL;
+
+    /* validate nacm-user leaf changes on receiver-instances */
+    if ((r = recv_inst_change_validate(session, event))) {
+        rc = r;
+        goto cleanup;
+    }
 
 cleanup:
     sr_free_change_iter(iter);

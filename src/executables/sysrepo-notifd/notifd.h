@@ -321,6 +321,8 @@ struct notif_receiver_inst_s {
     notif_transport_type_t type;            /**< configured transport type */
     const notif_transport_ops_t *ops;       /**< transport operations vtable */
     void *transport_config;                 /**< transport-specific configuration (owned by the transport ops) */
+
+    char *nacm_user;                        /**< NACM user for access control (mandatory leaf) */
 };
 
 /**
@@ -352,6 +354,7 @@ struct notif_receiver_s {
         sr_subscription_ctx_t *sr_subscr;       /**< sysrepo subscription context */
         uint32_t sub_id;                        /**< srsn subscription ID */
         int fd;                                 /**< notification pipe FD from srsn_subscribe */
+        sr_session_ctx_t *sr_sess;              /**< per-receiver NACM-filtered session (NULL if NACM inactive) */
     } srsn_data;                                /**< srsn subscription and dispatch data */
     notif_cb_data_t cb_data;                    /**< callback data for srsn dispatch */
 

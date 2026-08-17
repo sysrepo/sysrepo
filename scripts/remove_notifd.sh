@@ -16,6 +16,7 @@ fi
 
 # modules to uninstall (in reverse order of their dependencies)
 MODULES=(
+"sysrepo-subscribed-notif"
 "ietf-subscribed-notif-receivers"
 "ietf-subscribed-notifications"
 "ietf-udp-notif-transport"
