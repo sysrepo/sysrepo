@@ -109,9 +109,9 @@ sr_api_ret(sr_session_ctx_t *session, sr_error_info_t *err_info)
 }
 
 int
-sr_log_ll_wanted(sr_log_level_t ll)
+sr_log_msg_hidden(sr_log_level_t ll)
 {
-    return (ll <= sr_stderr_ll) || (ll <= sr_syslog_ll) || (sr_lcb && (ll <= sr_lcb_ll));
+    return (ll > sr_stderr_ll) && (ll > sr_syslog_ll) && (!sr_lcb || (ll > sr_lcb_ll));
 }
 
 void
@@ -157,7 +157,7 @@ sr_log_msg(int plugin, sr_log_level_t ll, const char *msg)
     }
 
     /* logging callback */
-    if (sr_lcb && ll <= sr_lcb_ll) {
+    if (sr_lcb && (ll <= sr_lcb_ll)) {
         sr_lcb(ll, msg);
     }
 }
@@ -329,7 +329,7 @@ sr_log(sr_log_level_t ll, const char *format, ...)
     char *msg;
     int msg_len = 0;
 
-    if (!sr_log_ll_wanted(ll)) {
+    if (sr_log_msg_hidden(ll)) {
         /* no destination wants this level, do not waste time formatting the message */
         return;
     }
@@ -487,7 +487,7 @@ srplg_log(const char *plg_name, sr_log_level_t ll, const char *format, ...)
         return;
     }
 
-    if (!sr_log_ll_wanted(ll)) {
+    if (sr_log_msg_hidden(ll)) {
         /* no destination wants this level, do not waste time formatting the message */
         return;
     }

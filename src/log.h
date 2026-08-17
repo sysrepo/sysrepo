@@ -60,9 +60,9 @@ int sr_api_ret(sr_session_ctx_t *session, sr_error_info_t *err_info);
  * (formatting a message, collecting data to print) that would be discarded.
  *
  * @param[in] ll Message log level.
- * @return Whether the message would be logged anywhere.
+ * @return Whether the message would not be logged anywhere.
  */
-int sr_log_ll_wanted(sr_log_level_t ll);
+int sr_log_msg_hidden(sr_log_level_t ll);
 
 /**
  * @brief Log a message.
