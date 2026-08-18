@@ -189,6 +189,8 @@ srsn_subscribe(sr_session_ctx_t *session, const char *stream, const char *xpath_
     struct timespec cur_ts, replay_start;
     int valid;
 
+    SR_CHECK_ARG_APIRET(!session || !fd || !sub_id, NULL, err_info);
+
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
         return sr_api_ret(session, err_info);
@@ -285,6 +287,13 @@ srsn_yang_push_periodic(sr_session_ctx_t *session, sr_datastore_t ds, const char
     struct srsn_sub *s = NULL;
     struct lys_module *ly_mod;
 
+    SR_CHECK_ARG_APIRET(!session || !fd || !sub_id, NULL, err_info);
+
+    if (!period_ms) {
+        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Period of 0 is invalid.");
+        goto cleanup;
+    }
+
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
         return sr_api_ret(session, err_info);
@@ -354,6 +363,8 @@ srsn_yang_push_on_change(sr_session_ctx_t *session, sr_datastore_t ds, const cha
     const struct lys_module *ly_mod;
     struct srsn_sub *s = NULL;
     int valid;
+
+    SR_CHECK_ARG_APIRET(!session || !fd || !sub_id, NULL, err_info);
 
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
@@ -524,6 +535,11 @@ srsn_yang_push_modify_periodic(uint32_t sub_id, uint32_t period_ms, const struct
 {
     sr_error_info_t *err_info = NULL;
     struct srsn_sub *sub;
+
+    if (!period_ms) {
+        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Period of 0 is invalid.");
+        return sr_api_ret(NULL, err_info);
+    }
 
     /* LOCK */
     if ((err_info = srsn_lock())) {
