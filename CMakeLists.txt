@@ -714,6 +714,7 @@ endif()
 if(REPO_SHM_SETUP)
     install(CODE "
         message(STATUS \"Initializing sysrepo repository and SHM files (setup_repo_shm.sh)...\")
+        set(ENV{SYSREPOCTL_EXECUTABLE} \"${SYSREPOCTL_EXECUTABLE}\")
         execute_process(COMMAND \"\$ENV{DESTDIR}${DATA_DIR}/scripts/setup_repo_shm.sh\"
                 RESULT_VARIABLE CMD_RES
                 OUTPUT_VARIABLE CMD_OUT
