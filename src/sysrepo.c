@@ -6490,7 +6490,7 @@ sr_module_change_subscribe_enable(sr_session_ctx_t *session, const struct lys_mo
     /* finish with a "done" event just because this event should imitate a regular change */
     ev_sess->ev = SR_SUB_EV_DONE;
     SR_LOG_INF("Triggering \"%s\" \"%s\" event on enabled data.", ly_mod->name, sr_ev2str(ev_sess->ev));
-    callback(ev_sess, sub_id, ly_mod->name, xpath, sr_ev2api(ev_sess->ev), 0, private_data);
+    callback(ev_sess, sub_id, ly_mod->name, xpath, sr_ev2api(ev_sess->ev), mod_info.operation_id, private_data);
 
 cleanup:
     sr_session_stop(ev_sess);
