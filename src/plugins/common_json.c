@@ -427,12 +427,12 @@ srpjson_chmodown(const char *plg_name, const char *path, const char *owner, cons
         }
 
         if (log_inf) {
-            srplg_log(plg_name, SR_LL_INF, msg);
+            srplg_log(plg_name, SR_LL_INF, "%s", msg);
             free(msg);
             /* continue */
         } else {
             r = ((errno == EACCES) || (errno == EPERM)) ? SR_ERR_UNAUTHORIZED : SR_ERR_INTERNAL;
-            srplg_log_errinfo(&err_info, plg_name, NULL, r, msg);
+            srplg_log_errinfo(&err_info, plg_name, NULL, r, "%s", msg);
             free(msg);
             return err_info;
         }
