@@ -152,7 +152,7 @@ error_sr_print(sr_session_ctx_t *sess)
 
     if (!sr_session_get_error(sess, &err_info) && err_info) {
         for (i = 0; i < err_info->err_count; i++) {
-            error_print(err_info->err[i].err_code, err_info->err[i].message);
+            error_print(err_info->err[i].err_code, "%s", err_info->err[i].message);
         }
     }
 }
