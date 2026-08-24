@@ -488,43 +488,27 @@ cleanup:
 }
 
 /**
- * @brief Check whether any ancestor of a diff node has a create or delete operation.
+ * @brief Check whether the operation of a diff node is inherited from an ancestor.
  *
- * When an entire subtree is being created (e.g. on SR_EV_ENABLED where the top-level container gets
- * operation "create"), the XPath predicate [not(@yang:operation)] on list entries fails
- * to exclude them since the list entries themselves lack the metadata. This function
- * detects that case by walking up the tree and checking ancestors for create/delete.
- *
- * Since all nodes in a given change callback share the same ancestor chain, the result
- * is the same for every node - it only needs to be called once (on the first node) and cached.
+ * Such a node always belongs to a subtree created or deleted as a whole, the only inherited operations
+ * ::sr_get_change_tree_next() ever reports. It happens for the whole configuration on the "enabled"
+ * event, where only the top-level node gets the operation, and for the descendants of a created or
+ * deleted list entry, which the [not(@yang:operation)] predicates cannot filter out because they carry
+ * no metadata themselves.
  *
  * @param[in] node Diff node to check.
- * @return 1 if an ancestor has "create" or "delete" operation, 0 otherwise.
+ * @return 1 if the operation is inherited, 0 if @p node carries it itself.
  */
 static int
-node_ancestor_is_created_or_deleted(const struct lyd_node *node)
+node_oper_is_inherited(const struct lyd_node *node)
 {
-    const struct lyd_node *parent;
-    struct lyd_meta *meta;
-    const char *val;
-
-    for (parent = lyd_parent(node); parent; parent = lyd_parent(parent)) {
-        meta = lyd_find_meta(parent->meta, NULL, "yang:operation");
-        if (meta) {
-            val = lyd_get_meta_value(meta);
-            if (val && (!strcmp(val, "create") || !strcmp(val, "delete"))) {
-                return 1;
-            }
-        }
-    }
-
-    return 0;
+    return lyd_find_meta(node->meta, NULL, "yang:operation") ? 0 : 1;
 }
 
 static int
 sub_change_modify_recv_instances(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session)
 {
-    int rc = SR_ERR_OK, r, prev_dflt, ancestor_checked = 0, skip_all = 0;
+    int rc = SR_ERR_OK, r, prev_dflt;
     sr_change_iter_t *iter = NULL;
     sr_change_oper_t op;
     const struct lyd_node *node;
@@ -540,12 +524,9 @@ sub_change_modify_recv_instances(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *ses
         node_name = LYD_NAME(node);
         SRNTF_LOG_DBG("Current node: %s", node_name);
 
-        /* check once whether an ancestor has create/delete (result is same for all nodes) */
-        if (!ancestor_checked) {
-            skip_all = node_ancestor_is_created_or_deleted(node);
-            ancestor_checked = 1;
-        }
-        if (skip_all) {
+        /* skip the receiver instances created/deleted as a whole, they are handled by the dedicated
+         * create/delete steps */
+        if (node_oper_is_inherited(node)) {
             continue;
         }
 
@@ -605,7 +586,7 @@ cleanup:
 static int
 sub_change_modify_subscriptions(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session)
 {
-    int rc = SR_ERR_OK, r, prev_dflt, ancestor_checked = 0, skip_all = 0;
+    int rc = SR_ERR_OK, r, prev_dflt;
     sr_change_iter_t *iter = NULL;
     sr_change_oper_t op;
     const struct lyd_node *node;
@@ -621,12 +602,9 @@ sub_change_modify_subscriptions(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *sess
         node_name = LYD_NAME(node);
         SRNTF_LOG_DBG("Current node: %s", node_name);
 
-        /* check once whether an ancestor has create/delete (result is same for all nodes) */
-        if (!ancestor_checked) {
-            skip_all = node_ancestor_is_created_or_deleted(node);
-            ancestor_checked = 1;
-        }
-        if (skip_all) {
+        /* skip the subscriptions and receivers created/deleted as a whole, they are handled by
+         * sub_change_process_subscriptions() and sub_change_modify_receivers() */
+        if (node_oper_is_inherited(node)) {
             continue;
         }
 
@@ -675,7 +653,7 @@ cleanup:
 static int
 sub_change_modify_receivers(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session)
 {
-    int rc = SR_ERR_OK, r, prev_dflt, ancestor_checked = 0, skip_all = 0;
+    int rc = SR_ERR_OK, r, prev_dflt;
     sr_change_iter_t *iter = NULL;
     sr_change_oper_t op;
     const struct lyd_node *node;
@@ -691,12 +669,10 @@ sub_change_modify_receivers(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session)
         node_name = LYD_NAME(node);
         SRNTF_LOG_DBG("Current node: %s", node_name);
 
-        /* check once whether an ancestor has create/delete (result is same for all nodes) */
-        if (!ancestor_checked) {
-            skip_all = node_ancestor_is_created_or_deleted(node);
-            ancestor_checked = 1;
-        }
-        if (skip_all) {
+        /* skip the descendants of a created/deleted "receiver", the whole subtree is handled below for
+         * the list entry itself and processing them again would reconnect a just created receiver or
+         * fail to find a just destroyed one, invalidating the whole subscription */
+        if (node_oper_is_inherited(node)) {
             continue;
         }
 
@@ -860,7 +836,7 @@ static int
 subscribed_notifications_filter_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
         sr_event_t event, uint32_t operation_id, void *private_data)
 {
-    int rc = SR_ERR_OK, r, prev_dflt, appl_locked = 0, state_locked = 0, ancestor_checked = 0, skip_all = 0;
+    int rc = SR_ERR_OK, r, prev_dflt, appl_locked = 0, state_locked = 0;
     notifd_ctx_t *notifd_ctx = (notifd_ctx_t *)private_data;
     sr_change_iter_t *iter = NULL;
     sr_change_oper_t op;
@@ -904,12 +880,9 @@ subscribed_notifications_filter_change_cb(sr_session_ctx_t *session, uint32_t su
         node_name = LYD_NAME(node);
         SRNTF_LOG_DBG("Current node: %s", node_name);
 
-        /* check once whether an ancestor has create/delete (result is same for all nodes) */
-        if (!ancestor_checked) {
-            skip_all = node_ancestor_is_created_or_deleted(node);
-            ancestor_checked = 1;
-        }
-        if (skip_all) {
+        /* skip the filters created/deleted as a whole, only a content change of an existing filter
+         * affects the referencing subscriptions and such a node always carries its own operation */
+        if (node_oper_is_inherited(node)) {
             continue;
         }
 
