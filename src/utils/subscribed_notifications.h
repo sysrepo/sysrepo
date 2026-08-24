@@ -317,6 +317,13 @@ typedef void (*srsn_notif_cb)(const struct lyd_node *notif, const struct timespe
 /**
  * @brief Init read dispatch for notifications, overwrites any previous parameters.
  *
+ * The dispatch runs @p cb on a separate thread, so the callback and the FD it reads from are shared
+ * between that thread and the caller. To avoid data races, never close a dispatched FD directly and do
+ * not free its callback data while the FD is registered: use ::srsn_read_dispatch_del() to remove an FD,
+ * which closes it and blocks until the callback is no longer running for it, only then is it safe to free
+ * the callback data. The callback data must also stay valid and at a stable address for the whole time the
+ * FD is dispatched. Removing all FDs (or ::srsn_read_dispatch_destroy()) stops the thread.
+ *
  * @param[in] conn Connection that must not be terminated while the notifications are being processed.
  * @param[in] cb Callback to be called for each notification.
  * @return Error code (::SR_ERR_OK on success).
@@ -332,16 +339,35 @@ int srsn_read_dispatch_start(int fd, sr_conn_ctx_t *conn, srsn_notif_cb cb, void
  * @brief Add another subscription to be handled by the dispatched thread.
  *
  * The thread is automatically started on the first @p fd and terminated when the last
- * one is closed.
+ * one is closed by the peer.
  *
- * On success @p fd is owned by the dispatch, which closes it once the subscription terminates, so it
- * must never be closed by the caller. On error @p fd is not registered and stays owned by the caller.
+ * On success @p fd is owned by the dispatch, which closes it once the subscription terminates or when
+ * removed by ::srsn_read_dispatch_del(), so it must never be closed by the caller. On error @p fd is
+ * not registered and stays owned by the caller.
  *
  * @param[in] fd Subscription file descriptor to read from.
  * @param[in] cb_data User @p cb callback data for the @p fd.
  * @return Error code (::SR_ERR_OK on success).
  */
 int srsn_read_dispatch_add(int fd, void *cb_data);
+
+/**
+ * @brief Remove a subscription from being handled by the dispatched thread and close its FD.
+ *
+ * Blocks until the dispatched thread is not processing any notification, so once this function returns,
+ * the callback is neither running for @p fd nor can be called for it again and the callback data of
+ * @p fd can be freed.
+ *
+ * It is not an error to remove an FD that is no longer handled by the dispatched thread, which closes
+ * FDs of terminated subscriptions on its own without notifying the caller. So, calling this function
+ * is always the correct way of learning that the callback data of @p fd can be freed.
+ *
+ * @param[in] fd Subscription file descriptor previously added by ::srsn_read_dispatch_add(), closed
+ * unless the dispatched thread has already closed it after the subscription terminated, in which case
+ * its number must not have been reused for another dispatch FD, which would be removed instead.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int srsn_read_dispatch_del(int fd);
 
 /**
  * @brief Get the number of subscriptions currently handled by the dispatched thread.

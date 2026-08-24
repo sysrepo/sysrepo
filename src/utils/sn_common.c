@@ -1059,6 +1059,13 @@ srsn_read_dispatch_thread(void *UNUSED(arg))
                 /* subscription terminated */
                 close(snstate.pfds[i].fd);
                 snstate.pfds[i].fd = -1;
+                snstate.cb_data[i] = NULL;
+                --snstate.valid_pfds;
+            } else if (snstate.pfds[i].revents & POLLNVAL) {
+                /* the FD was closed behind our back, just drop the item, closing again could affect
+                 * an unrelated FD that reused the number */
+                snstate.pfds[i].fd = -1;
+                snstate.cb_data[i] = NULL;
                 --snstate.valid_pfds;
             }
 
@@ -1160,6 +1167,41 @@ srsn_dispatch_add(int fd, void *cb_data)
     }
 
 cleanup:
+    /* DISPATCH UNLOCK */
+    pthread_mutex_unlock(&snstate.dispatch_lock);
+
+    return err_info;
+}
+
+sr_error_info_t *
+srsn_dispatch_del(int fd)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t i;
+    int r;
+
+    /* DISPATCH LOCK, the dispatch thread holds it while calling the callback, so once acquired,
+     * no callback is running nor can start before we are done */
+    if ((r = pthread_mutex_lock(&snstate.dispatch_lock))) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Locking failed (%s: %s).", __func__, strerror(r));
+        return err_info;
+    }
+
+    for (i = 0; i < snstate.pfd_count; ++i) {
+        if (snstate.pfds[i].fd != fd) {
+            continue;
+        }
+
+        /* invalidate the item, it is removed from the arrays by the next add. Close the FD while still
+         * holding the lock, the dispatch thread closes it on POLLHUP under the same lock but then there
+         * is no valid item left to find here, so it is always closed exactly once. */
+        close(snstate.pfds[i].fd);
+        snstate.pfds[i].fd = -1;
+        snstate.cb_data[i] = NULL;
+        --snstate.valid_pfds;
+        break;
+    }
+
     /* DISPATCH UNLOCK */
     pthread_mutex_unlock(&snstate.dispatch_lock);
 
