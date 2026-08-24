@@ -692,6 +692,44 @@ receive_specific_notification_timeout(int sockfd, const struct ly_ctx *ly_ctx, i
     return receive_specific_notification_ext(sockfd, ly_ctx, timeout_ms, expected_path, notif, header, NULL, 0);
 }
 
+/**
+ * @brief Count the notifications of a single type received until the socket goes quiet.
+ *
+ * Waits for the first notification of any type and then keeps reading until nothing else arrives, so
+ * that a duplicate is detected instead of silently ignored.
+ *
+ * @param[in] sockfd UDP socket FD.
+ * @param[in] ly_ctx libyang context.
+ * @param[in] path Path of the notification to count.
+ * @return Number of notifications matching @p path, notifications of other types are discarded.
+ */
+static uint32_t
+count_notifications(int sockfd, const struct ly_ctx *ly_ctx, const char *path)
+{
+    struct lyd_node *notif = NULL;
+    char *notif_path;
+    uint32_t count = 0;
+    int timeout_ms = NOTIF_TIMEOUT_MS;
+
+    while (!receive_notification_ext(sockfd, ly_ctx, timeout_ms, &notif, NULL, NULL, 0)) {
+        /* the first notification may take a while, any further one is already waiting */
+        timeout_ms = DRAIN_TIMEOUT_MS;
+        if (!notif) {
+            continue;
+        }
+
+        notif_path = lyd_path(notif, LYD_PATH_STD, NULL, 0);
+        if (notif_path && !strcmp(notif_path, path)) {
+            ++count;
+        }
+        free(notif_path);
+        lyd_free_all(notif);
+        notif = NULL;
+    }
+
+    return count;
+}
+
 static int
 can_bind_local_ipv4(const char *address)
 {
@@ -3559,6 +3597,141 @@ test_receiver_add_delete_dispatch(void **state)
 }
 
 /**
+ * @brief Test: Verify that deleting one receiver leaves the subscription and its other receivers alone.
+ *
+ * The deleted receiver is reported as a created/deleted list entry followed by its descendant nodes,
+ * which carry no operation of their own. Processing those descendants after the entry itself has been
+ * destroyed fails to find the receiver and invalidates the whole subscription, terminating every other
+ * receiver with it.
+ */
+static void
+test_receiver_delete_keeps_subscription(void **state)
+{
+    struct state *st = *state;
+    struct lyd_node *notif = NULL;
+    char path[512], *sub_state;
+    int ret;
+    uint32_t count;
+
+    TLOG_INF("Testing that deleting a receiver keeps the subscription...");
+
+    /* subscription with receivers "recv1" and "recv2" */
+    setup_sub(st->sess, st->udp_port, 220, "NETCONF", "/ietf-netconf-notifications:netconf-config-change");
+    snprintf(path, sizeof(path),
+            "/ietf-subscribed-notifications:subscriptions/subscription[id='220']"
+            "/receivers/receiver[name='recv2']/ietf-subscribed-notif-receivers:receiver-instance-ref");
+    ret = sr_set_item_str(st->sess, path, "test-recv", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    drain_notifications(st->udp_sockfd);
+
+    TLOG_INF("Deleting receiver \"recv1\"...");
+
+    snprintf(path, sizeof(path),
+            "/ietf-subscribed-notifications:subscriptions/subscription[id='220']/receivers/receiver[name='recv1']");
+    ret = sr_delete_item(st->sess, path, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* only the deleted receiver may be terminated, "recv2" must be left alone */
+    count = count_notifications(st->udp_sockfd, st->ly_ctx,
+            "/ietf-subscribed-notifications:subscription-terminated");
+    assert_int_equal(count, 1);
+
+    /* and the subscription itself must still be valid */
+    sub_state = get_oper_leaf_str(st->sess,
+            "/ietf-subscribed-notifications:subscriptions/subscription[id='220']/configured-subscription-state");
+    assert_non_null(sub_state);
+    assert_string_equal(sub_state, "valid");
+    free(sub_state);
+
+    TLOG_INF("Checking that \"recv2\" still receives notifications...");
+
+    ret = sr_set_item_str(st->sess, "/test:test-leaf", "220", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
+            "/ietf-netconf-notifications:netconf-config-change", &notif, NULL);
+    assert_int_equal(ret, 0);
+    assert_non_null(notif);
+    lyd_free_all(notif);
+
+    cleanup_sub(st->sess, 220);
+}
+
+/**
+ * @brief Test: Verify that restarting the daemon over an existing configuration works.
+ *
+ * On the "enabled" event the whole configuration is presented as a single created subtree, with only
+ * the top-level node carrying the operation. Every subscription and receiver below it therefore looks
+ * created without saying so, and processing them in the modify steps as well as in the create ones
+ * would set up a second dispatch for every receiver, delivering each notification twice.
+ */
+static void
+test_restart_existing_config(void **state)
+{
+    struct state *st = *state;
+    struct lyd_node *notif = NULL;
+    char *sub_state;
+    int ret;
+    uint32_t count;
+
+    TLOG_INF("Creating a subscription to be loaded again on restart...");
+
+    setup_sub(st->sess, st->udp_port, 221, "NETCONF", "/ietf-netconf-notifications:netconf-config-change");
+    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
+            "/ietf-subscribed-notifications:subscription-started", &notif, NULL);
+    assert_int_equal(ret, 0);
+    assert_non_null(notif);
+    lyd_free_all(notif);
+    notif = NULL;
+    drain_notifications(st->udp_sockfd);
+
+    TLOG_INF("Restarting sysrepo-notifd with the configuration in place...");
+
+    stop_notifd(st->notifd_pid);
+    st->notifd_pid = 0;
+    drain_notifications(st->udp_sockfd);
+
+    ret = start_notifd(&st->notifd_pid);
+    assert_int_equal(ret, 0);
+
+    /* the subscription must be picked up from the datastore and started again */
+    ret = receive_specific_notification_timeout(st->udp_sockfd, st->ly_ctx, LONG_TIMEOUT_MS,
+            "/ietf-subscribed-notifications:subscription-started", &notif, NULL);
+    assert_int_equal(ret, 0);
+    assert_non_null(notif);
+    lyd_free_all(notif);
+    notif = NULL;
+
+    sub_state = get_oper_leaf_str(st->sess,
+            "/ietf-subscribed-notifications:subscriptions/subscription[id='221']/configured-subscription-state");
+    assert_non_null(sub_state);
+    assert_string_equal(sub_state, "valid");
+    free(sub_state);
+
+    drain_notifications(st->udp_sockfd);
+
+    TLOG_INF("Checking that the restarted receiver is dispatched exactly once...");
+
+    ret = sr_set_item_str(st->sess, "/test:test-leaf", "221", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    count = count_notifications(st->udp_sockfd, st->ly_ctx,
+            "/ietf-netconf-notifications:netconf-config-change");
+    assert_int_equal(count, 1);
+
+    cleanup_sub(st->sess, 221);
+}
+
+/**
  * @brief Test: Verify that changing the encoding of an existing subscription
  * takes effect on subsequent notifications.
  *
@@ -3968,6 +4141,8 @@ main(void)
         cmocka_unit_test_setup(test_source_address_modify, clear_subs_notifs),
         cmocka_unit_test_setup(test_receiver_instance_ref_change, clear_subs_notifs),
         cmocka_unit_test_setup(test_receiver_add_delete_dispatch, clear_subs_notifs),
+        cmocka_unit_test_setup(test_receiver_delete_keeps_subscription, clear_subs_notifs),
+        cmocka_unit_test_setup(test_restart_existing_config, clear_subs_notifs),
         cmocka_unit_test_setup(test_stop_time_concluded, clear_subs_notifs),
         cmocka_unit_test_setup(test_encoding_cbor_unsupported, clear_subs_notifs),
         cmocka_unit_test_setup(test_default_encoding, clear_subs_notifs),
