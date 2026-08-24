@@ -1151,6 +1151,10 @@ srsn_dispatch_add(int fd, void *cb_data)
         /* create the thread */
         if ((r = pthread_create(&snstate.tid, NULL, srsn_read_dispatch_thread, NULL))) {
             sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to create a thread (%s).", strerror(r));
+
+            /* roll back the new item, on error the FD is not registered */
+            --snstate.valid_pfds;
+            snstate.pfd_count = snstate.valid_pfds;
             goto cleanup;
         }
     }
