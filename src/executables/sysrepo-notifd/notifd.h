@@ -328,7 +328,6 @@ struct notif_receiver_inst_s {
  */
 typedef struct notif_cb_data_s {
     notifd_ctx_t *ctx;          /**< main daemon context */
-    notif_receiver_t *recv;     /**< receiver to send the notification to */
 } notif_cb_data_t;
 
 /**
@@ -351,7 +350,10 @@ struct notif_receiver_s {
         uint32_t sub_id;                        /**< srsn subscription ID */
         int fd;                                 /**< notification pipe FD from srsn_subscribe */
     } srsn_data;                                /**< srsn subscription and dispatch data */
-    notif_cb_data_t cb_data;                    /**< callback data for srsn dispatch */
+    notif_cb_data_t *cb_data;                   /**< callback data for srsn dispatch.
+                                                     Its address identifies the receiver it belongs to -
+                                                     the address is used for receiver lookup in
+                                                     ::notifd_notification_cb() notification dispatch callback. */
 
     notif_sub_t *sub;                           /**< back-pointer to the parent subscription */
     struct timespec last_reconnect_attempt;     /**< time of the last reconnect attempt */

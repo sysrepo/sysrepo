@@ -621,13 +621,16 @@ notification_dispatch_start(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_re
         goto cleanup;
     }
 
-    /* set up notif cb data */
-    receiver->cb_data.ctx = notifd_ctx;
-    receiver->cb_data.recv = receiver;
+    /* set up notif cb data, allocated separately from the receiver whose address may change */
+    if (!(receiver->cb_data = calloc(1, sizeof *receiver->cb_data))) {
+        SRNTF_LOG_ERR("Memory allocation failed.");
+        rc = SR_ERR_NO_MEMORY;
+        goto cleanup;
+    }
+    receiver->cb_data->ctx = notifd_ctx;
 
-    /* add notification dispatch, set notifd_ctx and sub as user data - the pointer itself won't be
-     * modified (stored as ** in notifd_ctx), but its content might be, so the callback will need to lock */
-    if ((rc = srsn_read_dispatch_add(receiver->srsn_data.fd, &receiver->cb_data))) {
+    /* add notification dispatch, which takes over the FD on success */
+    if ((rc = srsn_read_dispatch_add(receiver->srsn_data.fd, receiver->cb_data))) {
         SRNTF_LOG_ERR("Failed to add notification dispatch for subscription ID %" PRIu32 " and receiver \"%s\".",
                 sub->id, receiver->name);
         sub->modif_err_reason = "ietf-subscribed-notifications:no-such-subscription";
@@ -643,6 +646,8 @@ cleanup:
             close(receiver->srsn_data.fd);
             receiver->srsn_data.fd = -1;
         }
+        free(receiver->cb_data);
+        receiver->cb_data = NULL;
     }
     return rc;
 }
@@ -675,6 +680,8 @@ notification_dispatch_stop(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver)
         close(receiver->srsn_data.fd);
         receiver->srsn_data.fd = -1;
     }
+    free(receiver->cb_data);
+    receiver->cb_data = NULL;
 }
 
 /*
@@ -682,6 +689,29 @@ notification_dispatch_stop(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver)
  * Main notification callback (called by srsn dispatch thread)
  * ---------------------------------------------------------------------------
  */
+
+/**
+ * @brief Find the receiver dispatch callback data belong to.
+ *
+ * @param[in] notifd_ctx Daemon context.
+ * @param[in] data Callback data to look up.
+ * @return Receiver owning @p data, NULL if it no longer exists.
+ */
+static notif_receiver_t *
+receiver_find_by_cb_data(notifd_ctx_t *notifd_ctx, const notif_cb_data_t *data)
+{
+    LY_ARRAY_COUNT_TYPE i, j;
+
+    LY_ARRAY_FOR(notifd_ctx->subs, i) {
+        LY_ARRAY_FOR(notifd_ctx->subs[i]->receivers, j) {
+            if (notifd_ctx->subs[i]->receivers[j].cb_data == data) {
+                return &notifd_ctx->subs[i]->receivers[j];
+            }
+        }
+    }
+
+    return NULL;
+}
 
 void
 notifd_notification_cb(const struct lyd_node *notif, const struct timespec *timestamp, void *cb_data)
@@ -692,16 +722,19 @@ notifd_notification_cb(const struct lyd_node *notif, const struct timespec *time
     notif_sub_t *sub;
     struct timespec now;
     uint32_t sub_id;
-    LY_ARRAY_COUNT_TYPE i;
 
     assert(data);
     notifd_ctx = data->ctx;
-    receiver = data->recv;
-    assert(notifd_ctx && receiver);
+    assert(notifd_ctx);
 
     /* STATE RD LOCK */
     if (notifd_rwlock_lock(&notifd_ctx->state_rwlock, 0, NOTIFD_CONTEXT_LOCK_TIMEOUT_MS, __func__)) {
         return;
+    }
+
+    /* look up our receiver */
+    if (!(receiver = receiver_find_by_cb_data(notifd_ctx, data))) {
+        goto unlock;
     }
 
     sub = receiver->sub;
@@ -768,14 +801,7 @@ notifd_notification_cb(const struct lyd_node *notif, const struct timespec *time
             }
 
             /* re-find the receiver as it may have been moved in the array */
-            receiver = NULL;
-            LY_ARRAY_FOR(sub->receivers, i) {
-                if (&sub->receivers[i].cb_data == data) {
-                    receiver = &sub->receivers[i];
-                    break;
-                }
-            }
-            if (!receiver) {
+            if (!(receiver = receiver_find_by_cb_data(notifd_ctx, data))) {
                 goto unlock;
             }
 

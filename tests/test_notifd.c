@@ -3471,6 +3471,94 @@ test_stop_time_concluded(void **state)
 }
 
 /**
+ * @brief Test: Verify that adding and removing receivers of a live subscription keeps the
+ * notification dispatch coherent.
+ *
+ * Adding and removing receivers moves the remaining ones in the receivers array, so the callback data
+ * pointer held by the srsn read dispatch must stay valid. Otherwise the dispatch thread accesses freed
+ * memory and notifd crashes or wedges, blocking any further configuration change.
+ */
+static void
+test_receiver_add_delete_dispatch(void **state)
+{
+    struct state *st = *state;
+    struct lyd_node *notif = NULL;
+    char path[512], *state_val;
+    int ret, i;
+
+    TLOG_INF("Testing receiver add/delete keeps notification dispatch coherent...");
+
+    /* subscription with a single receiver "recv1", only config change notifications */
+    setup_sub(st->sess, st->udp_port, 210, "NETCONF",
+            "/ietf-netconf-notifications:netconf-config-change");
+
+    /* receive subscription-started for recv1 */
+    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
+            "/ietf-subscribed-notifications:subscription-started", &notif, NULL);
+    assert_int_equal(ret, 0);
+    assert_non_null(notif);
+    lyd_free_all(notif);
+    notif = NULL;
+
+    drain_notifications(st->udp_sockfd);
+
+    TLOG_INF("Adding more receivers, reallocating the receivers array...");
+
+    /* each added receiver reallocates the receivers array, moving the already dispatched ones */
+    for (i = 2; i <= 4; ++i) {
+        snprintf(path, sizeof(path),
+                "/ietf-subscribed-notifications:subscriptions/subscription[id='210']"
+                "/receivers/receiver[name='recv%d']/ietf-subscribed-notif-receivers:receiver-instance-ref", i);
+        ret = sr_set_item_str(st->sess, path, "test-recv", NULL, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+        ret = sr_apply_changes(st->sess, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        drain_notifications(st->udp_sockfd);
+    }
+
+    TLOG_INF("Deleting receivers, compacting the receivers array...");
+
+    /* deleting a receiver stops its dispatch and moves the last receiver into its place */
+    for (i = 1; i <= 3; ++i) {
+        snprintf(path, sizeof(path),
+                "/ietf-subscribed-notifications:subscriptions/subscription[id='210']"
+                "/receivers/receiver[name='recv%d']", i);
+        ret = sr_delete_item(st->sess, path, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+        ret = sr_apply_changes(st->sess, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        drain_notifications(st->udp_sockfd);
+    }
+
+    TLOG_INF("Checking notifd survived the churn and is still fully functional...");
+
+    /* notifd must still be alive and serving operational data */
+    state_val = get_oper_leaf_str(st->sess,
+            "/ietf-subscribed-notifications:subscriptions/subscription[id='210']"
+            "/configured-subscription-state");
+    assert_non_null(state_val);
+    free(state_val);
+
+    /* and it must still process configuration changes and set up new dispatches, so replace the
+     * churned subscription with a fresh one and expect it to come up normally */
+    cleanup_sub(st->sess, 210);
+    drain_notifications(st->udp_sockfd);
+
+    setup_sub(st->sess, st->udp_port, 211, "NETCONF",
+            "/ietf-netconf-notifications:netconf-config-change");
+
+    ret = receive_specific_notification_timeout(st->udp_sockfd, st->ly_ctx, LONG_TIMEOUT_MS,
+            "/ietf-subscribed-notifications:subscription-started", &notif, NULL);
+    assert_int_equal(ret, 0);
+    assert_non_null(notif);
+    lyd_free_all(notif);
+
+    cleanup_sub(st->sess, 211);
+}
+
+/**
  * @brief Test: Verify that changing the encoding of an existing subscription
  * takes effect on subsequent notifications.
  *
@@ -3879,6 +3967,7 @@ main(void)
         cmocka_unit_test_setup(test_configured_replay, clear_subs_notifs),
         cmocka_unit_test_setup(test_source_address_modify, clear_subs_notifs),
         cmocka_unit_test_setup(test_receiver_instance_ref_change, clear_subs_notifs),
+        cmocka_unit_test_setup(test_receiver_add_delete_dispatch, clear_subs_notifs),
         cmocka_unit_test_setup(test_stop_time_concluded, clear_subs_notifs),
         cmocka_unit_test_setup(test_encoding_cbor_unsupported, clear_subs_notifs),
         cmocka_unit_test_setup(test_default_encoding, clear_subs_notifs),
