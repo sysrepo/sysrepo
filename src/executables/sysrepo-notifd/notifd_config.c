@@ -718,7 +718,6 @@ int
 handle_encoding(notif_sub_t *sub, const struct lyd_node *node, sr_change_oper_t op)
 {
     int rc = SR_ERR_OK;
-    notif_receiver_t *receiver;
 
     /* optional leaf, need to handle all but move */
     if ((op == SR_OP_CREATED) || (op == SR_OP_MODIFIED)) {
@@ -732,11 +731,6 @@ handle_encoding(notif_sub_t *sub, const struct lyd_node *node, sr_change_oper_t 
     }
 
     if ((op == SR_OP_CREATED) || (op == SR_OP_MODIFIED) || (op == SR_OP_DELETED)) {
-        /* propagate the new encoding to all receivers */
-        LY_ARRAY_FOR(sub->receivers, notif_receiver_t, receiver) {
-            receiver->cb_data.encoding = sub->encoding;
-        }
-
         /* mark sub as modified so we know to send subscription-modified notification */
         sub->modified = 1;
     }

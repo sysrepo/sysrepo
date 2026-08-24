@@ -3476,8 +3476,9 @@ test_stop_time_concluded(void **state)
  *
  * Creates a subscription with JSON encoding, triggers a notification and
  * verifies it is received as JSON. Then modifies the encoding to XML, triggers
- * another notification and verifies it is received as XML. This catches the
- * bug where the receiver's cached encoding was not updated on modification.
+ * another notification and verifies it is received as XML. This catches a receiver
+ * sending in the encoding configured when its dispatch was started instead of the
+ * one currently configured for the subscription.
  */
 static void
 test_encoding_modify(void **state)
