@@ -311,6 +311,8 @@ sr_error_info_t *srsn_dispatch_init(sr_conn_ctx_t *conn, srsn_notif_cb cb);
 /**
  * @brief Add another FD handled by notification dispatch.
  *
+ * On success @p fd is owned by the dispatch, on error it is not registered and stays owned by the caller.
+ *
  * @param[in] fd Subscription FD.
  * @param[in] cb_data Callback data for @p fd.
  * @return err_info, NULL on success.

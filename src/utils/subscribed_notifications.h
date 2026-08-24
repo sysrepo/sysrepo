@@ -334,6 +334,9 @@ int srsn_read_dispatch_start(int fd, sr_conn_ctx_t *conn, srsn_notif_cb cb, void
  * The thread is automatically started on the first @p fd and terminated when the last
  * one is closed.
  *
+ * On success @p fd is owned by the dispatch, which closes it once the subscription terminates, so it
+ * must never be closed by the caller. On error @p fd is not registered and stays owned by the caller.
+ *
  * @param[in] fd Subscription file descriptor to read from.
  * @param[in] cb_data User @p cb callback data for the @p fd.
  * @return Error code (::SR_ERR_OK on success).
