@@ -763,8 +763,15 @@ int notif_receiver_send(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver, co
  *
  * Subscribes to the configured notification stream and adds a file-descriptor-based
  * dispatch entry. This begins the flow of notifications from sysrepo to the receiver.
+ * Temporarily drops the state write lock, the dispatch add waits for the dispatch thread,
+ * which may be executing the notification callback (that acquires the state read lock).
  *
- * @param[in] notifd_ctx Daemon context (its sr_sess is used as the srsn subscription session).
+ * @warning The caller MUST hold both state_rwlock (write) AND config_apply_mutex.
+ * The config_apply_mutex prevents another thread from stealing the write-lock
+ * in the unlock/relock window.
+ *
+ * @param[in] notifd_ctx Daemon context (its sr_sess is used as the srsn subscription session,
+ * its state_rwlock is temporarily unlocked/relocked).
  * @param[in] sub Subscription defining the stream, filter, and stop/start times.
  * @param[in] receiver Receiver whose srsn_data and cb_data will be populated.
  * @return ::SR_ERR_OK on success, error code on failure.

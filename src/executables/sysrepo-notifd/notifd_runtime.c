@@ -603,10 +603,40 @@ cleanup:
  * ---------------------------------------------------------------------------
  */
 
+/**
+ * @brief Free the srsn subscription and dispatch data of a receiver that failed to start.
+ *
+ * Must not be called for an FD that the dispatch has taken over, use ::srsn_read_dispatch_del() instead.
+ *
+ * @param[in,out] receiver Receiver to clean up.
+ */
+static void
+notification_dispatch_data_free(notif_receiver_t *receiver)
+{
+    if (receiver->srsn_data.sub_id) {
+        /* terminate the srsn subscription, which removes its subscriptions from the sysrepo context */
+        srsn_terminate(receiver->srsn_data.sub_id, NULL);
+        receiver->srsn_data.sub_id = 0;
+    }
+
+    /* unsubscribe only after srsn_terminate(), which still uses the subscription context */
+    sr_unsubscribe(receiver->srsn_data.sr_subscr);
+    receiver->srsn_data.sr_subscr = NULL;
+
+    if (receiver->srsn_data.fd != -1) {
+        /* the dispatch never took over the FD, it is still ours to close */
+        close(receiver->srsn_data.fd);
+        receiver->srsn_data.fd = -1;
+    }
+
+    free(receiver->cb_data);
+    receiver->cb_data = NULL;
+}
+
 int
 notification_dispatch_start(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_receiver_t *receiver)
 {
-    int rc = SR_ERR_OK;
+    int rc = SR_ERR_OK, unlocked = 0;
     struct timespec *stop_time, *start_time;
 
     stop_time = (sub->stop_time.tv_sec || sub->stop_time.tv_nsec) ? &sub->stop_time : NULL;
@@ -617,7 +647,6 @@ notification_dispatch_start(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_re
             &receiver->srsn_data.sr_subscr, &sub->replay_start_time, &receiver->srsn_data.fd, &receiver->srsn_data.sub_id))) {
         SRNTF_LOG_ERR("Failed to subscribe for notifications for subscription ID %" PRIu32 " and receiver \"%s\".",
                 sub->id, receiver->name);
-        sub->modif_err_reason = "ietf-subscribed-notifications:no-such-subscription";
         goto cleanup;
     }
 
@@ -629,25 +658,36 @@ notification_dispatch_start(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_re
     }
     receiver->cb_data->ctx = notifd_ctx;
 
+    /* UNLOCK state lock, the dispatch add waits for the dispatch lock, which the dispatch thread holds while
+     * calling the notif cb, which needs the state lock. Nobody can steal our WR lock here, because the caller
+     * MUST hold config_apply_mutex, which prevents another thread from acquiring the state WR lock in this
+     * window. The receiver is not active yet, so no notifications are sent to it meanwhile. */
+    notifd_rwlock_unlock(&notifd_ctx->state_rwlock, __func__);
+    unlocked = 1;
+
     /* add notification dispatch, which takes over the FD on success */
     if ((rc = srsn_read_dispatch_add(receiver->srsn_data.fd, receiver->cb_data))) {
         SRNTF_LOG_ERR("Failed to add notification dispatch for subscription ID %" PRIu32 " and receiver \"%s\".",
                 sub->id, receiver->name);
-        sub->modif_err_reason = "ietf-subscribed-notifications:no-such-subscription";
-        goto cleanup;
     }
 
 cleanup:
     if (rc) {
-        /* unsubscribe */
-        sr_unsubscribe(receiver->srsn_data.sr_subscr);
-        receiver->srsn_data.sr_subscr = NULL;
-        if (receiver->srsn_data.fd != -1) {
-            close(receiver->srsn_data.fd);
-            receiver->srsn_data.fd = -1;
+        /* clean up before the state lock is reacquired, srsn_terminate() may wait for the dispatch thread */
+        notification_dispatch_data_free(receiver);
+    }
+
+    if (unlocked) {
+        /* WR LOCK, reacquire to finish updating the config */
+        if (notifd_rwlock_lock(&notifd_ctx->state_rwlock, 1, NOTIFD_CONTEXT_LOCK_TIMEOUT_MS, __func__)) {
+            SRNTF_LOG_ERR("Internal error: failed to acquire state lock to start notification dispatch for "
+                    "receiver \"%s\".", receiver->name);
+            return rc ? rc : SR_ERR_INTERNAL;
         }
-        free(receiver->cb_data);
-        receiver->cb_data = NULL;
+    }
+
+    if (rc) {
+        sub->modif_err_reason = "ietf-subscribed-notifications:no-such-subscription";
     }
     return rc;
 }
@@ -665,6 +705,17 @@ notification_dispatch_stop(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver)
         receiver->srsn_data.sub_id = 0;
     }
 
+    /* Remove the dispatch, which also closes the FD. Must be done without the state lock, the call waits
+     * for any running callback, which needs the lock. Afterwards no callback can reference our cb_data. */
+    if (receiver->srsn_data.fd != -1) {
+        srsn_read_dispatch_del(receiver->srsn_data.fd);
+        receiver->srsn_data.fd = -1;
+    }
+
+    /* free before the lock is reacquired, which may fail */
+    free(receiver->cb_data);
+    receiver->cb_data = NULL;
+
     /* WR LOCK, reacquire to finish updating the config before checking retval of srsn_terminate */
     if (notifd_rwlock_lock(&notifd_ctx->state_rwlock, 1, NOTIFD_CONTEXT_LOCK_TIMEOUT_MS, __func__)) {
         SRNTF_LOG_ERR("Internal error: failed to acquire state lock to stop notification dispatch for receiver \"%s\".",
@@ -676,12 +727,6 @@ notification_dispatch_stop(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver)
         sr_unsubscribe(receiver->srsn_data.sr_subscr);
         receiver->srsn_data.sr_subscr = NULL;
     }
-    if (receiver->srsn_data.fd != -1) {
-        close(receiver->srsn_data.fd);
-        receiver->srsn_data.fd = -1;
-    }
-    free(receiver->cb_data);
-    receiver->cb_data = NULL;
 }
 
 /*
