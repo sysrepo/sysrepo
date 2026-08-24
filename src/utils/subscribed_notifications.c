@@ -1080,6 +1080,19 @@ srsn_read_dispatch_add(int fd, void *cb_data)
     return sr_api_ret(NULL, err_info);
 }
 
+API int
+srsn_read_dispatch_del(int fd)
+{
+    sr_error_info_t *err_info = NULL;
+
+    SR_CHECK_ARG_APIRET(fd < 0, NULL, err_info);
+
+    /* remove from the pollfd structure */
+    err_info = srsn_dispatch_del(fd);
+
+    return sr_api_ret(NULL, err_info);
+}
+
 API uint32_t
 srsn_read_dispatch_count(void)
 {

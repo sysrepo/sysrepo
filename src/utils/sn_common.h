@@ -320,6 +320,21 @@ sr_error_info_t *srsn_dispatch_init(sr_conn_ctx_t *conn, srsn_notif_cb cb);
 sr_error_info_t *srsn_dispatch_add(int fd, void *cb_data);
 
 /**
+ * @brief Remove an FD handled by notification dispatch and close it.
+ *
+ * Blocks until no callback is being processed, so on return the callback of @p fd is neither running
+ * nor can be called again and its callback data can be freed.
+ *
+ * Removing an FD that is not handled by the dispatch is not an error, the dispatch thread removes FDs
+ * itself once the peer closes them and there is no way for the caller to learn about it, so both cases
+ * are indistinguishable here and the guarantees above hold either way.
+ *
+ * @param[in] fd Subscription FD.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *srsn_dispatch_del(int fd);
+
+/**
  * @brief Get the current count of subscriptions handled by dispatch.
  *
  * @return Subscription count.
