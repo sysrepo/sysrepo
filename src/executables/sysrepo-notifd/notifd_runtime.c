@@ -442,7 +442,7 @@ notif_receiver_backoff_reconnect(notifd_ctx_t *notifd_ctx, notif_receiver_t *rec
 
     /* send the notification through the standard send path, resolving the default encoding as needed */
     clock_gettime(CLOCK_REALTIME, &event_ts);
-    rc = notif_receiver_send(notifd_ctx, receiver, start_notif, &event_ts, receiver->cb_data.encoding);
+    rc = notif_receiver_send(notifd_ctx, receiver, start_notif, &event_ts, receiver->sub->encoding);
     lyd_free_all(start_notif);
     sr_session_release_context(notifd_ctx->sr_sess);
     if (rc) {
@@ -624,7 +624,6 @@ notification_dispatch_start(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_re
     /* set up notif cb data */
     receiver->cb_data.ctx = notifd_ctx;
     receiver->cb_data.recv = receiver;
-    receiver->cb_data.encoding = sub->encoding;
 
     /* add notification dispatch, set notifd_ctx and sub as user data - the pointer itself won't be
      * modified (stored as ** in notifd_ctx), but its content might be, so the callback will need to lock */
@@ -690,7 +689,6 @@ notifd_notification_cb(const struct lyd_node *notif, const struct timespec *time
     notif_cb_data_t *data = (notif_cb_data_t *)cb_data;
     notifd_ctx_t *notifd_ctx;
     notif_receiver_t *receiver;
-    notif_encoding_t encoding;
     notif_sub_t *sub;
     struct timespec now;
     uint32_t sub_id;
@@ -699,7 +697,6 @@ notifd_notification_cb(const struct lyd_node *notif, const struct timespec *time
     assert(data);
     notifd_ctx = data->ctx;
     receiver = data->recv;
-    encoding = data->encoding;
     assert(notifd_ctx && receiver);
 
     /* STATE RD LOCK */
@@ -800,7 +797,7 @@ notifd_notification_cb(const struct lyd_node *notif, const struct timespec *time
     }
 
     /* send the notification */
-    notif_receiver_send(notifd_ctx, receiver, notif, timestamp, encoding);
+    notif_receiver_send(notifd_ctx, receiver, notif, timestamp, receiver->sub->encoding);
 
 unlock:
     /* STATE UNLOCK */

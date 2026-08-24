@@ -329,8 +329,6 @@ struct notif_receiver_inst_s {
 typedef struct notif_cb_data_s {
     notifd_ctx_t *ctx;          /**< main daemon context */
     notif_receiver_t *recv;     /**< receiver to send the notification to */
-    notif_encoding_t encoding;  /**< configured subscription encoding (::NOTIF_ENCODING_UNSET if not
-                                     configured, resolved to the transport default when sending) */
 } notif_cb_data_t;
 
 /**
