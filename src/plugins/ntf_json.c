@@ -192,7 +192,7 @@ srpntf_open_file(const char *mod_name, time_t from_ts, time_t to_ts, int flags, 
         goto cleanup;
     }
 
-    *notif_fd = srpjson_open(srpntf_name, path, flags, perm);
+    *notif_fd = srpjson_open(path, flags, perm);
     if (*notif_fd == -1) {
         err_info = srpjson_open_error(srpntf_name, path);
         goto cleanup;
@@ -447,7 +447,7 @@ srpntf_json_enable(const struct lys_module *mod)
     }
 
     /* create the replay file only if it does not exist yet */
-    fd = srpjson_open(srpntf_name, path, O_WRONLY | O_CREAT | O_EXCL, SRPJSON_NOTIF_PERM);
+    fd = srpjson_open(path, O_WRONLY | O_CREAT | O_EXCL, SRPJSON_NOTIF_PERM);
     if (fd == -1) {
         if (errno == EEXIST) {
             /* already enabled, nothing to do */
@@ -829,7 +829,7 @@ srpntf_json_access_set(const struct lys_module *mod, const char *owner, const ch
         }
 
         /* update notification file permissions and owner */
-        err_info = srpjson_chmodown(srpntf_name, path, owner, group, perm);
+        err_info = srpjson_chmodown(srpntf_name, path, owner, group, perm, 0);
         free(path);
         if (err_info) {
             return err_info;

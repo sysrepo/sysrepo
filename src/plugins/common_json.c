@@ -169,12 +169,10 @@ srpjson_log_err_ly(const char *plg_name, const struct ly_ctx *ly_ctx)
 }
 
 int
-srpjson_open(const char *plg_name, const char *path, int flags, mode_t mode)
+srpjson_open(const char *path, int flags, mode_t mode)
 {
     int fd;
-    char *group = SR_GROUP;
     struct stat st = {0};
-    gid_t gid = -1;
 
     assert(!(flags & O_CREAT) || mode);
 
@@ -195,35 +193,17 @@ srpjson_open(const char *plg_name, const char *path, int flags, mode_t mode)
     }
 
     /* check permissions if the file could have been created */
-    if (flags & O_CREAT) {
+    if ((flags & O_CREAT) && sr_is_prod_env()) {
         /* stat the file */
         if (fstat(fd, &st)) {
             close(fd);
             return -1;
         }
 
-        if (!sr_is_prod_env()) {
-            return fd;
-        }
         /* set correct permissions if not already */
         if (((st.st_mode & 00777) != mode) && (fchmod(fd, mode) == -1)) {
             close(fd);
             return -1;
-        }
-
-        /* set correct group if needed */
-        if (strlen(SR_GROUP)) {
-            /* get GID */
-            if (srpjson_get_grp(plg_name, &gid, &group)) {
-                close(fd);
-                return -1;
-            }
-
-            /* update if needed */
-            if ((st.st_gid != gid) && (fchown(fd, -1, gid) == -1)) {
-                close(fd);
-                return -1;
-            }
         }
     }
 
@@ -407,11 +387,12 @@ cleanup:
 }
 
 sr_error_info_t *
-srpjson_chmodown(const char *plg_name, const char *path, const char *owner, const char *group, mode_t perm)
+srpjson_chmodown(const char *plg_name, const char *path, const char *owner, const char *group, mode_t perm, int log_inf)
 {
     sr_error_info_t *err_info = NULL;
     uid_t uid = -1;
     gid_t gid = -1;
+    char *msg = NULL;
     int r;
 
     assert(path);
@@ -438,9 +419,23 @@ srpjson_chmodown(const char *plg_name, const char *path, const char *owner, cons
 
     /* apply owner changes, if any */
     if (chown(path, uid, gid) == -1) {
-        r = ((errno == EACCES) || (errno == EPERM)) ? SR_ERR_UNAUTHORIZED : SR_ERR_INTERNAL;
-        srplg_log_errinfo(&err_info, plg_name, NULL, r, "Changing owner of \"%s\" failed (%s).", path, strerror(errno));
-        return err_info;
+        if (asprintf(&msg, "Changing owner of \"%s\" to %s:%s failed (%s).", path,
+                (uid == (uid_t)-1) ? "<unchanged>" : owner, (gid == (gid_t)-1) ? "<unchanged>" : group,
+                strerror(errno)) == -1) {
+            srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_NO_MEMORY, "Memory allocation failed.");
+            return err_info;
+        }
+
+        if (log_inf) {
+            srplg_log(plg_name, SR_LL_INF, msg);
+            free(msg);
+            /* continue */
+        } else {
+            r = ((errno == EACCES) || (errno == EPERM)) ? SR_ERR_UNAUTHORIZED : SR_ERR_INTERNAL;
+            srplg_log_errinfo(&err_info, plg_name, NULL, r, msg);
+            free(msg);
+            return err_info;
+        }
     }
 
     /* apply permission changes, if any */
@@ -463,14 +458,14 @@ srpjson_cp_path(const char *plg_name, const char *to, const char *from)
     ssize_t nread, nwritten;
 
     /* open "from" file */
-    fd_from = srpjson_open(plg_name, from, O_RDONLY, 0);
+    fd_from = srpjson_open(from, O_RDONLY, 0);
     if (fd_from < 0) {
         err_info = srpjson_open_error(plg_name, from);
         goto cleanup;
     }
 
     /* open "to" */
-    fd_to = srpjson_open(plg_name, to, O_WRONLY | O_TRUNC, 0);
+    fd_to = srpjson_open(to, O_WRONLY | O_TRUNC, 0);
     if (fd_to < 0) {
         err_info = srpjson_open_error(plg_name, to);
         goto cleanup;

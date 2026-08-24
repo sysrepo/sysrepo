@@ -4,8 +4,8 @@
  * @brief common routines for JSON header
  *
  * @copyright
- * Copyright (c) 2021 - 2022 Deutsche Telekom AG.
- * Copyright (c) 2021 - 2022 CESNET, z.s.p.o.
+ * Copyright (c) 2021 - 2026 Deutsche Telekom AG.
+ * Copyright (c) 2021 - 2026 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -88,14 +88,13 @@ sr_error_info_t *srpjson_log_err_ly(const char *plg_name, const struct ly_ctx *l
  *
  * Additionally sets umask.
  *
- * @param[in] plg_name Plugin name.
  * @param[in] path Path of the file to open.
  * @param[in] flags Flags to use.
  * @param[in] mode Permissions for the file in case it is created.
  * @return Opened file descriptor.
  * @return -1 on error, errno set.
  */
-int srpjson_open(const char *plg_name, const char *path, int flags, mode_t mode);
+int srpjson_open(const char *path, int flags, mode_t mode);
 
 /**
  * @brief Generate plugin error on failed open.
@@ -134,9 +133,11 @@ sr_error_info_t *srpjson_get_grp(const char *plg_name, gid_t *gid, char **group)
  * @param[in] owner New owner if not NULL.
  * @param[in] group New group if not NULL.
  * @param[in] perm New permissions if not 0.
+ * @param[in] log_inf If set, log @p owner or @p group `chown()` failures as INF message only.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *srpjson_chmodown(const char *plg_name, const char *path, const char *owner, const char *group, mode_t perm);
+sr_error_info_t *srpjson_chmodown(const char *plg_name, const char *path, const char *owner, const char *group,
+        mode_t perm, int log_inf);
 
 /**
  * @brief Copy file contents to another file.
