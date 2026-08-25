@@ -20,6 +20,9 @@
 
 #define TESTS_REPO_DIR "@TESTS_REPO_DIR@"
 
+/** directory with the sysrepo-notifd log and PID files of test_notifd */
+#define TESTS_NOTIFD_DATA_DIR "@TEST_NOTIFD_DATA_DIR@"
+
 /* path to all compiled executables */
 #define SR_BINARY_DIR "@PROJECT_BINARY_DIR@"
 
