@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+
+# Kill any sysrepo-notifd daemon left behind by an aborted test_notifd run. The PID files are
+# created by the daemons themselves, one directory per test variant. With the "--remove-data"
+# argument the whole daemon data directory is removed as well, which is what "make test_clean" uses.
+
+NOTIFD_DATA_DIR="@TEST_NOTIFD_DATA_DIR@"
+
+# CMake always generates an absolute path inside the build directory here, but verify it anyway.
+# This is the only guard the "rm -rf" below has, an empty or unexpected value must never be able
+# to turn it into removing an unrelated directory.
+case "$NOTIFD_DATA_DIR" in
+    /?*/test_notifd_data)
+        ;;
+    *)
+        echo "Refusing to use \"$NOTIFD_DATA_DIR\" as the notifd test data directory!"
+        exit 1
+        ;;
+esac
+
+for PIDFILE in "$NOTIFD_DATA_DIR"/*/sysrepo-notifd.pid; do
+    if [ ! -f "$PIDFILE" ]; then
+        continue
+    fi
+
+    PID=$(cat "$PIDFILE")
+
+    # only kill the process if it really still is a daemon, the PID may have been reused
+    case "$(ps -p "$PID" -o comm= 2>/dev/null)" in
+        *sysrepo-notifd*)
+            kill "$PID"
+            ;;
+    esac
+
+    rm -f "$PIDFILE"
+done
+
+if [ "$1" = "--remove-data" ]; then
+    # only ever the directory validated above, which always is "<build dir>/test_notifd_data"
+    rm -rf "$NOTIFD_DATA_DIR"
+fi
+
+exit 0

@@ -47,6 +47,12 @@
 /** Path to sysrepoctl executable */
 #define SYSREPOCTL_PATH SR_BINARY_DIR "/sysrepoctl"
 
+/** Name of the daemon log file, kept after the tests end to make a failure debuggable */
+#define NOTIFD_LOG_NAME "sysrepo-notifd.log"
+
+/** Name of the daemon PID file, used by the ctest cleanup fixture to kill a leftover daemon */
+#define NOTIFD_PID_NAME "sysrepo-notifd.pid"
+
 /** Directory containing YANG modules */
 #define SCHEMA_DIR TESTS_SRC_DIR "/../modules"
 
@@ -850,8 +856,30 @@ start_notifd(pid_t *pid)
     pid_t child_pid;
     int pipefd[2];
     struct pollfd pfd;
-    int i, status, ret;
+    int i, status, ret, logfd;
     char c;
+    char run_dir[256], log_path[512], pid_path[512];
+    const char *test_name;
+
+    /* keep the files of every test variant separate, the variants may run in parallel */
+    test_name = getenv("TEST_NAME");
+    if (!test_name) {
+        test_name = "test_notifd";
+    }
+    snprintf(run_dir, sizeof(run_dir), "%s/%s", TESTS_NOTIFD_DATA_DIR, test_name);
+    snprintf(log_path, sizeof(log_path), "%s/%s", run_dir, NOTIFD_LOG_NAME);
+    snprintf(pid_path, sizeof(pid_path), "%s/%s", run_dir, NOTIFD_PID_NAME);
+
+    /* create the directory for the daemon log and PID file */
+    if (mkdir(TESTS_NOTIFD_DATA_DIR, 00755) && (errno != EEXIST)) {
+        TLOG_ERR("Failed to create directory \"%s\" (%s)", TESTS_NOTIFD_DATA_DIR, strerror(errno));
+        return -1;
+    }
+    if (mkdir(run_dir, 00755) && (errno != EEXIST)) {
+        TLOG_ERR("Failed to create directory \"%s\" (%s)", run_dir, strerror(errno));
+        return -1;
+    }
+    TLOG_INF("sysrepo-notifd log file \"%s\"", log_path);
 
     /* create pipe with CLOEXEC so exec() automatically closes the write end */
     if (pipe2(pipefd, O_CLOEXEC) < 0) {
@@ -869,9 +897,19 @@ start_notifd(pid_t *pid)
         /* child process - close read end, keep write end for failure signaling */
         close(pipefd[0]);
 
-        execlp(NOTIFD_PATH, "sysrepo-notifd", "-d", "-v", "info", "-s", SCHEMA_DIR, (char *)NULL);
+        /* redirect the daemon output into its own log file, it would be interleaved with the test output otherwise */
+        logfd = open(log_path, O_WRONLY | O_CREAT | O_TRUNC, 00600);
+        if (logfd == -1) {
+            goto child_error;
+        }
+        dup2(logfd, STDOUT_FILENO);
+        dup2(logfd, STDERR_FILENO);
+        close(logfd);
 
-        /* exec failed - signal parent by writing to pipe before exiting */
+        execlp(NOTIFD_PATH, "sysrepo-notifd", "-d", "-v", "info", "-s", SCHEMA_DIR, "-p", pid_path, (char *)NULL);
+
+child_error:
+        /* setup or exec failed - signal parent by writing to pipe before exiting */
         c = 1;
         write(pipefd[1], &c, 1);
         _exit(1);
@@ -907,9 +945,9 @@ start_notifd(pid_t *pid)
     }
 
     if (pfd.revents & POLLIN) {
-        /* exec failed - child wrote error byte before _exit() */
+        /* setup or exec failed - child wrote error byte before _exit() */
         waitpid(child_pid, &status, 0);
-        TLOG_ERR("sysrepo-notifd exec failed with status %d", status);
+        TLOG_ERR("sysrepo-notifd failed to start with status %d", status);
         return -1;
     }
 
@@ -3840,6 +3878,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_encoding_feature_disabled, clear_subs_notifs, re_enable_encoding_features),
     };
 
+    setenv("CMOCKA_TEST_ABORT", "1", 1);
     test_init();
     return cmocka_run_group_tests(tests, setup, teardown);
 }
