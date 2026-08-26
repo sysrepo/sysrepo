@@ -307,11 +307,16 @@ stream_filter_xpath_get(sr_session_ctx_t *sess, const char *filter_name, char **
 {
     int rc = SR_ERR_OK;
     struct lyd_node *filter, *tree;
-    char *path = NULL;
+    char *path = NULL, quot;
     sr_data_t *data = NULL;
 
+    /* the predicate must use the canonical libyang quoting (single quotes unless the value itself contains
+     * one) because datastore plugins may match the requested path against the stored node paths */
+    quot = strchr(filter_name, '\'') ? '\"' : '\'';
+
     /* get the filter with this name */
-    if ((asprintf(&path, "/ietf-subscribed-notifications:filters/stream-filter[name=\"%s\"]", filter_name) == -1)) {
+    if ((asprintf(&path, "/ietf-subscribed-notifications:filters/stream-filter[name=%c%s%c]", quot, filter_name,
+            quot) == -1)) {
         rc = SR_ERR_NO_MEMORY;
         ERRMEM;
         goto cleanup;
@@ -326,6 +331,10 @@ stream_filter_xpath_get(sr_session_ctx_t *sess, const char *filter_name, char **
 
     /* data->tree points to filters cont, we go one level down to the filter instance */
     tree = lyd_child(data->tree);
+    if (!tree) {
+        /* no filter instance, so no filter to apply */
+        goto cleanup;
+    }
 
     /* because it's a choice, only one of the two filter types can be present */
     get_descendant_optional(tree, "stream-subtree-filter", &filter);
