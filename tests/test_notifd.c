@@ -18,6 +18,7 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <netinet/in.h>
 #include <poll.h>
 #include <pthread.h>
@@ -58,9 +59,6 @@
 
 /** Directory containing subscribed_notifications YANG modules */
 #define SN_YANG_DIR TESTS_SRC_DIR "/../modules/subscribed_notifications"
-
-/** UDP port for testing */
-#define TEST_UDP_PORT 47950
 
 /** UDP-Notif protocol constants */
 #define UDP_NOTIF_VERSION 1
@@ -390,32 +388,43 @@ add_segment(pending_message_t *pending, uint16_t segment_num, int is_last,
 /**
  * @brief Create UDP socket for receiving notifications.
  *
- * @param[in] port Port to listen on.
+ * The port is always assigned by the system so that several tests, such as the plain and the
+ * valgrind variant of this one, may receive notifications at the same time. SO_REUSEADDR is
+ * deliberately not set, it would let them silently bind the very same port and steal each
+ * other's notifications.
+ *
+ * @param[out] port Port the socket was bound to.
  * @return Socket FD on success, -1 on error.
  */
 static int
-create_udp_receiver_socket(uint16_t port)
+create_udp_receiver_socket(uint16_t *port)
 {
     int sockfd;
     struct sockaddr_in addr;
-    int opt = 1;
+    socklen_t addr_len;
 
     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sockfd < 0) {
         return -1;
     }
 
-    setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
+    addr.sin_port = htons(0);
     addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
     if (bind(sockfd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         close(sockfd);
         return -1;
     }
+
+    /* learn the assigned port */
+    addr_len = sizeof(addr);
+    if (getsockname(sockfd, (struct sockaddr *)&addr, &addr_len) < 0) {
+        close(sockfd);
+        return -1;
+    }
+    *port = ntohs(addr.sin_port);
 
     return sockfd;
 }
@@ -1309,15 +1318,13 @@ setup(void **state)
         return 1;
     }
 
-    /* find available port */
-    st->udp_port = TEST_UDP_PORT;
-
-    /* create UDP receiver socket */
-    st->udp_sockfd = create_udp_receiver_socket(st->udp_port);
+    /* create UDP receiver socket on a free port assigned by the system */
+    st->udp_sockfd = create_udp_receiver_socket(&st->udp_port);
     if (st->udp_sockfd < 0) {
         TLOG_ERR("Failed to create UDP socket");
         return 1;
     }
+    TLOG_INF("Receiving notifications on port %" PRIu16, st->udp_port);
 
     /* start sysrepo-notifd */
     if (start_notifd(&st->notifd_pid)) {
@@ -3294,20 +3301,21 @@ test_receiver_instance_ref_change(void **state)
     struct lyd_node *notif = NULL;
     char path[512];
     int ret, recv2_sockfd = -1;
+    uint16_t recv2_port = 0;
 
     TLOG_INF("Creating first and second receiver instances...");
+
+    /* create a socket for the second receiver first, its port is assigned by the system */
+    recv2_sockfd = create_udp_receiver_socket(&recv2_port);
+    assert_true(recv2_sockfd >= 0);
 
     /*
      Create two receiver instances
      */
     ret = create_receiver_instance(st->sess, "recv-1", "127.0.0.1", st->udp_port);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = create_receiver_instance(st->sess, "recv-2", "127.0.0.1", st->udp_port + 1);
+    ret = create_receiver_instance(st->sess, "recv-2", "127.0.0.1", recv2_port);
     assert_int_equal(ret, SR_ERR_OK);
-
-    /* create a socket for the second receiver */
-    recv2_sockfd = create_udp_receiver_socket(st->udp_port + 1);
-    assert_true(recv2_sockfd >= 0);
 
     /*
      Create subscription pointing to recv-1
