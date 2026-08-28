@@ -1148,7 +1148,7 @@ sr_pc_edit_config(sr_session_ctx_t *session, sr_priv_cand_t *privcand, const str
     enum edit_op op;
     const struct lyd_node *iter;
 
-    SR_CHECK_ARG_APIRET(!session || !privcand || !edit || !default_operation, NULL, err_info);
+    SR_CHECK_ARG_APIRET(!session || !privcand || !edit || !default_operation, session, err_info);
     SR_CHECK_ARG_APIRET(strcmp(default_operation, "merge") && strcmp(default_operation, "replace"), session, err_info);
 
     /* verify that nodes are top-level */
