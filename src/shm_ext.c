@@ -666,6 +666,15 @@ sr_shmext_change_sub_modify(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore
         goto cleanup_changesub_ext_unlock;
     }
 
+    /* find the subscription again, after realloc */
+    shm_sub = (sr_mod_change_sub_t *)(conn->ext_shm.addr + shm_mod->change_sub[ds].subs);
+    for (i = 0; i < shm_mod->change_sub[ds].sub_count; ++i) {
+        if (shm_sub[i].sub_id == sub_id) {
+            break;
+        }
+    }
+    SR_CHECK_INT_GOTO(i == shm_mod->change_sub[ds].sub_count, err_info, cleanup_changesub_ext_unlock);
+
     /* fill new xpath */
     if (xpath) {
         strcpy(conn->ext_shm.addr + shm_sub[i].xpath, xpath);
