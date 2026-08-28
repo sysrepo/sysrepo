@@ -4299,7 +4299,8 @@ sr_shmsub_rpc_listen_call_callback(struct opsub_rpcsub_s *rpc_sub, sr_session_ct
     sr_error_info_t *err_info = NULL;
     const struct lyd_node *elem;
     void *mem;
-    char buf[22], *val_str, *op_xpath = NULL;
+    char buf[22], *op_xpath = NULL;
+    const char *val_str;
     sr_val_t *input_vals = NULL, *output_vals = NULL;
     size_t i, input_val_count = 0, output_val_count = 0;
 
@@ -4363,7 +4364,10 @@ sr_shmsub_rpc_listen_call_callback(struct opsub_rpcsub_s *rpc_sub, sr_session_ct
             goto cleanup;
         }
         for (i = 0; i < output_val_count; ++i) {
-            val_str = sr_val_sr2ly_str(sr_yang_ctx.ly_ctx, &output_vals[i], output_vals[i].xpath, buf, 1);
+            if ((err_info = sr_val_sr2ly_str(sr_yang_ctx.ly_ctx, &output_vals[i], output_vals[i].xpath, buf, 1, &val_str))) {
+                /* output sr_vals are invalid */
+                goto fake_cb_error;
+            }
             if ((err_info = sr_val_sr2ly(sr_yang_ctx.ly_ctx, output_vals[i].xpath, val_str, output_vals[i].dflt, 1,
                     output_op))) {
                 /* output sr_vals are invalid */

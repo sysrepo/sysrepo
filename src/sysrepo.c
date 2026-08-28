@@ -3863,8 +3863,8 @@ API int
 sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, const uint32_t opts)
 {
     sr_error_info_t *err_info = NULL;
-    char str[22], *str_val;
-    /* lock context if not already locked when edit was created */
+    char str[22];
+    const char *str_val;
     int lock_context = !session->dt[session->ds].edit;
 
     SR_CHECK_ARG_APIRET(!session || (!path && (!value || !value->xpath)) || SR_EDIT_DS_API_CHECK(session->ds, opts),
@@ -3874,16 +3874,41 @@ sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, 
         path = value->xpath;
     }
 
+    /* check for a non-positional predicate */
+    str_val = (path + strlen(path)) - 1;
+    if (str_val[0] == ']') {
+        for (--str_val; str_val != path; --str_val) {
+            if (str_val[0] == '[') {
+                /* empty or positional predicate, keep it */
+                str_val = NULL;
+                break;
+            }
+            if ((str_val[0] < '0') || (str_val[0] > '9')) {
+                break;
+            }
+        }
+    } else {
+        str_val = NULL;
+    }
+    if (str_val) {
+        /* using value from the predicate */
+        value = NULL;
+    }
+
     /* CONTEXT LOCK */
     if (lock_context && (err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
         return sr_api_ret(session, err_info);
     }
 
-    str_val = sr_val_sr2ly_str(sr_yang_ctx.ly_ctx, value, path, str, 0);
+    err_info = sr_val_sr2ly_str(sr_yang_ctx.ly_ctx, value, path, str, 0, &str_val);
 
     /* CONTEXT UNLOCK */
     if (lock_context) {
         sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
+    }
+
+    if (err_info) {
+        return sr_api_ret(session, err_info);
     }
 
     /* API function */
@@ -7431,7 +7456,8 @@ sr_rpc_send(sr_session_ctx_t *session, const char *path, const sr_val_t *input, 
     sr_error_info_t *err_info = NULL;
     struct lyd_node *input_tree = NULL, *elem;
     sr_data_t *output_data = NULL;
-    char *val_str, buf[22];
+    char buf[22];
+    const char *val_str;
     size_t i;
 
     SR_CHECK_ARG_APIRET(!session || !output || !output_cnt, session, err_info);
@@ -7454,7 +7480,9 @@ sr_rpc_send(sr_session_ctx_t *session, const char *path, const sr_val_t *input, 
 
     /* transform input into a data tree */
     for (i = 0; i < input_cnt; ++i) {
-        val_str = sr_val_sr2ly_str(sr_yang_ctx.ly_ctx, &input[i], input[i].xpath, buf, 0);
+        if ((err_info = sr_val_sr2ly_str(sr_yang_ctx.ly_ctx, &input[i], input[i].xpath, buf, 0, &val_str))) {
+            goto cleanup;
+        }
         if ((err_info = sr_val_sr2ly(sr_yang_ctx.ly_ctx, input[i].xpath, val_str, input[i].dflt, 0, &input_tree))) {
             goto cleanup;
         }
@@ -8258,7 +8286,8 @@ sr_notif_send(sr_session_ctx_t *session, const char *path, const sr_val_t *value
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *notif_tree = NULL;
-    char *val_str, buf[22];
+    char buf[22];
+    const char *val_str;
     size_t i;
     int ret = SR_ERR_OK;
 
@@ -8276,7 +8305,9 @@ sr_notif_send(sr_session_ctx_t *session, const char *path, const sr_val_t *value
 
     /* transform values into a data tree */
     for (i = 0; i < values_cnt; ++i) {
-        val_str = sr_val_sr2ly_str(sr_yang_ctx.ly_ctx, &values[i], values[i].xpath, buf, 0);
+        if ((err_info = sr_val_sr2ly_str(sr_yang_ctx.ly_ctx, &values[i], values[i].xpath, buf, 0, &val_str))) {
+            goto cleanup;
+        }
         if ((err_info = sr_val_sr2ly(sr_yang_ctx.ly_ctx, values[i].xpath, val_str, values[i].dflt, 0, &notif_tree))) {
             goto cleanup;
         }

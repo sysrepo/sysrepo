@@ -4504,14 +4504,18 @@ error:
     return err_info;
 }
 
-char *
-sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *sr_val, const char *xpath, char *buf, int output)
+sr_error_info_t *
+sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *sr_val, const char *xpath, char *buf, int output, const char **str)
 {
+    sr_error_info_t *err_info = NULL;
     struct lysc_node_leaf *sleaf;
     const struct lysc_type *t, *t2;
     LY_ARRAY_COUNT_TYPE u;
 
+    *str = NULL;
+
     if (!sr_val) {
+        /* value ignored */
         return NULL;
     }
 
@@ -4524,16 +4528,19 @@ sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *sr_val, const char *xpath, 
     case SR_INSTANCEID_T:
     case SR_ANYDATA_T:
     case SR_ANYXML_T:
-        return sr_val->data.string_val;
+        *str = sr_val->data.string_val;
+        break;
     case SR_LEAF_EMPTY_T:
-        return NULL;
+        break;
     case SR_BOOL_T:
-        return sr_val->data.bool_val ? "true" : "false";
+        *str = sr_val->data.bool_val ? "true" : "false";
+        break;
     case SR_DECIMAL64_T:
         /* get fraction-digits */
         sleaf = (struct lysc_node_leaf *)lys_find_path(ctx, NULL, xpath, output);
-        if (!sleaf) {
-            return NULL;
+        if (!sleaf || !(sleaf->nodetype & LYD_NODE_TERM)) {
+            /* invalid xpath detected later, value ignored for other node types */
+            break;
         }
         t = sleaf->type;
         if (t->basetype == LY_TYPE_LEAFREF) {
@@ -4549,38 +4556,57 @@ sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *sr_val, const char *xpath, 
             }
             t = t2;
         }
-        if (!t) {
-            return NULL;
+        if (!t || (t->basetype != LY_TYPE_DEC64)) {
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Type of node \"%s\" is not \"decimal64\".", sleaf->name);
+            break;
         }
-        sprintf(buf, "%.*f", ((struct lysc_type_dec *)t)->fraction_digits, sr_val->data.decimal64_val);
-        return buf;
+
+        if (snprintf(buf, 22, "%.*f", ((struct lysc_type_dec *)t)->fraction_digits, sr_val->data.decimal64_val) >= 22) {
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG,
+                    "Value %f is not a valid \"decimal64\" value with %" PRIu8 " fraction digits.",
+                    sr_val->data.decimal64_val, ((struct lysc_type_dec *)t)->fraction_digits);
+            break;
+        }
+        *str = buf;
+        break;
     case SR_UINT8_T:
         sprintf(buf, "%" PRIu8, sr_val->data.uint8_val);
-        return buf;
+        *str = buf;
+        break;
     case SR_UINT16_T:
         sprintf(buf, "%" PRIu16, sr_val->data.uint16_val);
-        return buf;
+        *str = buf;
+        break;
     case SR_UINT32_T:
         sprintf(buf, "%" PRIu32, sr_val->data.uint32_val);
-        return buf;
+        *str = buf;
+        break;
     case SR_UINT64_T:
         sprintf(buf, "%" PRIu64, sr_val->data.uint64_val);
-        return buf;
+        *str = buf;
+        break;
     case SR_INT8_T:
         sprintf(buf, "%" PRId8, sr_val->data.int8_val);
-        return buf;
+        *str = buf;
+        break;
     case SR_INT16_T:
         sprintf(buf, "%" PRId16, sr_val->data.int16_val);
-        return buf;
+        *str = buf;
+        break;
     case SR_INT32_T:
         sprintf(buf, "%" PRId32, sr_val->data.int32_val);
-        return buf;
+        *str = buf;
+        break;
     case SR_INT64_T:
         sprintf(buf, "%" PRId64, sr_val->data.int64_val);
-        return buf;
+        *str = buf;
+        break;
     default:
-        return NULL;
+        SR_ERRINFO_INT(&err_info);
+        break;
     }
+
+    return err_info;
 }
 
 sr_error_info_t *

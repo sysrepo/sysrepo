@@ -1317,9 +1317,11 @@ sr_error_info_t *sr_val_ly2sr(const struct lyd_node *node, int with_origin, sr_v
  * @param[in] xpath XPath of the sysrepo value.
  * @param[in] buf Function buffer, must be of size at least 22 bytes.
  * @param[in] output Whether to look for output nodes instead of input.
- * @return String value.
+ * @param[out] str String value.
+ * @return err_info, NULL on success.
  */
-char *sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *sr_val, const char *xpath, char *buf, int output);
+sr_error_info_t *sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *sr_val, const char *xpath, char *buf, int output,
+        const char **str);
 
 /**
  * @brief Transform a sysrepo value into libyang node.
