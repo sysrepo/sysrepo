@@ -322,8 +322,9 @@ sr_err_get_netconf_error(const sr_error_info_err_t *err, const char **error_type
     const void *ptr;
     int rc = SR_ERR_OK;
 
-    if (!err || strcmp(err->error_format, "NETCONF") || !error_type || !error_tag || !error_app_tag || !error_path ||
-            !error_message || !error_info_elements || !error_info_values || !error_info_count) {
+    if (!err || !err->error_format || strcmp(err->error_format, "NETCONF") || !error_type || !error_tag ||
+            !error_app_tag || !error_path || !error_message || !error_info_elements || !error_info_values ||
+            !error_info_count) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Invalid arguments for function \"%s\".", __func__);
         sr_errinfo_free(&err_info);
         return SR_ERR_INVAL_ARG;
