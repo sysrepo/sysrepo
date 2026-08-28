@@ -3352,8 +3352,9 @@ sr_diff_set_getnext(struct ly_set *set, uint32_t *idx, struct lyd_node **node, s
             return err_info;
         }
 
-        if ((parent != *node) && lysc_is_userordered(parent->schema) && (lyd_get_meta_value(meta)[0] == 'r')) {
-            /* do not return changes for descendants of moved userord lists without operation */
+        if ((parent != *node) && (lyd_get_meta_value(meta)[0] == 'r') && (lysc_is_userordered(parent->schema) ||
+                (parent->schema->nodetype & LYD_NODE_ANY))) {
+            /* do not return changes for descendants of moved userord lists or anyxml/anydata nodes without operation */
             ++(*idx);
             continue;
         }
