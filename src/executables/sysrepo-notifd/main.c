@@ -1394,6 +1394,21 @@ main(int argc, char **argv)
         goto cleanup;
     }
 
+    /* register the oper data providers and the action BEFORE subscribing */
+    if (register_oper_data_providers(&notifd_ctx, &sr_subscr)) {
+        rc = EXIT_FAILURE;
+        goto cleanup;
+    }
+
+    /* subscribe for 'reset' action */
+    if (sr_rpc_subscribe_tree(notifd_ctx.sr_sess,
+            "/ietf-subscribed-notifications:subscriptions/subscription/receivers/receiver/reset",
+            receiver_reset_rpc_cb, &notifd_ctx, 0, 0, &sr_subscr)) {
+        SRNTF_LOG_ERR("Failed to subscribe for receiver reset action.");
+        rc = EXIT_FAILURE;
+        goto cleanup;
+    }
+
     /* subscribe for subscription changes (higher priority) */
     if (sr_module_change_subscribe(notifd_ctx.sr_sess, "ietf-subscribed-notifications",
             "/ietf-subscribed-notifications:subscriptions", subscribed_notifications_sub_change_cb,
@@ -1408,21 +1423,6 @@ main(int argc, char **argv)
             "/ietf-subscribed-notifications:filters", subscribed_notifications_filter_change_cb,
             &notifd_ctx, 1, SR_SUBSCR_ENABLED, &sr_subscr)) {
         SRNTF_LOG_ERR("Failed to subscribe for filters changes");
-        rc = EXIT_FAILURE;
-        goto cleanup;
-    }
-
-    /* register operational data provider callbacks */
-    if (register_oper_data_providers(&notifd_ctx, &sr_subscr)) {
-        rc = EXIT_FAILURE;
-        goto cleanup;
-    }
-
-    /* subscribe for 'reset' action */
-    if (sr_rpc_subscribe_tree(notifd_ctx.sr_sess,
-            "/ietf-subscribed-notifications:subscriptions/subscription/receivers/receiver/reset",
-            receiver_reset_rpc_cb, &notifd_ctx, 0, 0, &sr_subscr)) {
-        SRNTF_LOG_ERR("Failed to subscribe for receiver reset action.");
         rc = EXIT_FAILURE;
         goto cleanup;
     }
