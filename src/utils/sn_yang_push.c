@@ -381,7 +381,7 @@ srsn_yp_ntf_change_edit_append(struct lyd_node *ly_yp, srsn_yp_change_t yp_op, c
 
     if ((yp_op == SRSN_YP_CHANGE_INSERT) || (yp_op == SRSN_YP_CHANGE_MOVE)) {
         /* point */
-        if (node->schema->nodetype == LYS_LEAFLIST) {
+        if (lysc_is_dup_inst_list(node->schema) || (node->schema->nodetype == LYS_LEAFLIST)) {
             assert(prev_value);
             if (prev_value[0]) {
                 quot = strchr(prev_value, '\'') ? '\"' : '\'';
@@ -391,6 +391,7 @@ srsn_yp_ntf_change_edit_append(struct lyd_node *ly_yp, srsn_yp_change_t yp_op, c
                 }
             }
         } else {
+            assert(prev_list);
             if (prev_list[0]) {
                 if (asprintf(&point, "%s%s", path, prev_list) == -1) {
                     SR_ERRINFO_MEM(&err_info);
@@ -403,8 +404,7 @@ srsn_yp_ntf_change_edit_append(struct lyd_node *ly_yp, srsn_yp_change_t yp_op, c
         }
 
         /* where */
-        if (((node->schema->nodetype == LYS_LEAFLIST) && !prev_value[0]) ||
-                ((node->schema->nodetype == LYS_LIST) && !prev_list[0])) {
+        if ((prev_value && !prev_value[0]) || (prev_list && !prev_list[0])) {
             if ((err_info = sr_lyd_new_term(ly_edit, NULL, "where", "first"))) {
                 goto cleanup;
             }
