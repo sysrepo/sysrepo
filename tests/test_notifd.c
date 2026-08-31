@@ -70,8 +70,18 @@
 #define UDP_NOTIF_MT_JSON 1
 #define UDP_NOTIF_MT_XML 2
 
-/** Maximum time to wait for notification (milliseconds) */
-#define NOTIF_TIMEOUT_MS 3000
+/**
+ * @brief Total deadline for a notification that is expected to arrive (milliseconds).
+ *
+ * The deadline is a total, not a per-attempt timeout, so a successful receive returns as soon as
+ * the datagram arrives and a generous value only costs time on the failure path.
+ */
+#define NOTIF_TIMEOUT_MS 10000
+
+/** Return codes of the notification receive functions */
+#define NOTIF_RECV_OK      0    /**< notification received */
+#define NOTIF_RECV_TIMEOUT 1    /**< deadline expired without a matching notification */
+#define NOTIF_RECV_ERR    (-1)  /**< socket, parse or protocol error */
 
 /** Maximum number of segments to track for reassembly */
 #define MAX_PENDING_MESSAGES 16
@@ -196,21 +206,65 @@ parse_udp_notif_header(const uint8_t *data, size_t data_len, udp_notif_header_t 
 }
 
 /**
- * @brief Poll a socket for available data with timeout.
+ * @brief Set a monotonic deadline @p timeout_ms milliseconds from now.
+ *
+ * @param[in] timeout_ms Timeout in milliseconds.
+ * @param[out] deadline Resulting deadline.
+ */
+static void
+deadline_set(uint32_t timeout_ms, struct timespec *deadline)
+{
+    clock_gettime(CLOCK_MONOTONIC, deadline);
+    deadline->tv_sec += timeout_ms / 1000;
+    deadline->tv_nsec += (long)(timeout_ms % 1000) * 1000000;
+    if (deadline->tv_nsec >= 1000000000) {
+        deadline->tv_nsec -= 1000000000;
+        ++deadline->tv_sec;
+    }
+}
+
+/**
+ * @brief Get the time remaining until a deadline.
+ *
+ * @param[in] deadline Deadline to check.
+ * @return Milliseconds remaining, 0 if the deadline has passed.
+ */
+static int
+deadline_remaining(const struct timespec *deadline)
+{
+    struct timespec now;
+    int64_t ms;
+
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    ms = ((int64_t)deadline->tv_sec - now.tv_sec) * 1000;
+    ms += ((int64_t)deadline->tv_nsec - now.tv_nsec) / 1000000;
+
+    return (ms > 0) ? (int)ms : 0;
+}
+
+/**
+ * @brief Poll a socket for available data until a deadline.
+ *
+ * Interruptions by a signal are retried against the same deadline.
  *
  * @param[in] sockfd Socket FD to poll.
- * @param[in] timeout_ms Timeout in milliseconds.
+ * @param[in] deadline Deadline to poll until.
  * @return 1 if data available, 0 on timeout, -1 on error.
  */
 static int
-poll_for_data(int sockfd, int timeout_ms)
+poll_for_data(int sockfd, const struct timespec *deadline)
 {
     struct pollfd pfd;
+    int r;
 
     pfd.fd = sockfd;
     pfd.events = POLLIN;
 
-    return poll(&pfd, 1, timeout_ms);
+    do {
+        r = poll(&pfd, 1, deadline_remaining(deadline));
+    } while ((r < 0) && (errno == EINTR));
+
+    return r;
 }
 
 /**
@@ -430,20 +484,22 @@ create_udp_receiver_socket(uint16_t *port)
 }
 
 /**
- * @brief Receive and parse a notification from UDP socket.
+ * @brief Receive and parse a notification from UDP socket, waiting until a deadline.
  *
- * Handles both unsegmented and segmented UDP-Notif messages.
- * For segmented messages, waits for all segments and reassembles them.
+ * Handles both unsegmented and segmented UDP-Notif messages. For segmented messages, waits for
+ * all segments and reassembles them, without ever re-arming the deadline.
  *
  * @param[in] sockfd UDP socket FD.
  * @param[in] ly_ctx libyang context for parsing.
- * @param[in] timeout_ms Timeout in milliseconds for waiting for data.
- * @param[out] notif Parsed notification (caller must free).
+ * @param[in] deadline Deadline to wait until.
+ * @param[out] notif Parsed notification (caller must free), NULL on timeout.
  * @param[out] header Optional parsed header (can be NULL).
- * @return 0 on success, 1 on timeout, -1 on error.
+ * @param[out] src_addr Optional buffer for the source address (can be NULL).
+ * @param[in] src_addr_len Size of @p src_addr.
+ * @return ::NOTIF_RECV_OK, ::NOTIF_RECV_TIMEOUT or ::NOTIF_RECV_ERR.
  */
 static int
-receive_notification_ext(int sockfd, const struct ly_ctx *ly_ctx, int timeout_ms,
+receive_notification_deadline(int sockfd, const struct ly_ctx *ly_ctx, const struct timespec *deadline,
         struct lyd_node **notif, udp_notif_header_t *header, char *src_addr, size_t src_addr_len)
 {
     uint8_t buffer[UDP_MAX_SIZE];
@@ -463,7 +519,7 @@ receive_notification_ext(int sockfd, const struct ly_ctx *ly_ctx, int timeout_ms
     const void *src_ptr;
     int family;
     int r;
-    int rc = -1;
+    int rc = NOTIF_RECV_ERR;
 
     *notif = NULL;
     if (src_addr && src_addr_len) {
@@ -474,21 +530,20 @@ receive_next:
     memset(&src_sockaddr, 0, sizeof(src_sockaddr));
     src_sockaddr_len = sizeof(src_sockaddr);
 
-    /* poll for data with explicit timeout */
-    r = poll_for_data(sockfd, timeout_ms);
+    /* poll for data until the shared deadline */
+    r = poll_for_data(sockfd, deadline);
     if (r < 0) {
         TLOG_ERR("poll() failed: %s", strerror(errno));
-        return -1;
+        return NOTIF_RECV_ERR;
     }
     if (r == 0) {
-        TLOG_WRN("Timeout waiting for notification");
-        return 1;
+        return NOTIF_RECV_TIMEOUT;
     }
 
     recv_len = recvfrom(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *)&src_sockaddr, &src_sockaddr_len);
     if (recv_len < 0) {
         TLOG_ERR("recvfrom() failed: %s", strerror(errno));
-        return -1;
+        return NOTIF_RECV_ERR;
     }
 
     if (src_addr && src_addr_len) {
@@ -507,7 +562,7 @@ receive_next:
 
     if (parse_udp_notif_header(buffer, recv_len, &hdr)) {
         TLOG_ERR("Failed to parse UDP-Notif header");
-        return -1;
+        return NOTIF_RECV_ERR;
     }
 
     if (header) {
@@ -516,7 +571,7 @@ receive_next:
 
     if (hdr.version != UDP_NOTIF_VERSION) {
         TLOG_ERR("Invalid UDP-Notif version: %d", hdr.version);
-        return -1;
+        return NOTIF_RECV_ERR;
     }
 
     payload = buffer + hdr.header_len;
@@ -530,7 +585,7 @@ receive_next:
         pending = find_or_create_pending(hdr.publisher_id, hdr.message_id, hdr.media_type);
         if (!pending) {
             TLOG_ERR("Failed to create pending message for reassembly");
-            return -1;
+            return NOTIF_RECV_ERR;
         }
 
         reassembled = add_segment(pending, hdr.segment_num, hdr.is_last_segment,
@@ -557,13 +612,13 @@ receive_next:
         /* non-segmented message, copy payload to null-terminated string */
         if (payload_len == 0) {
             TLOG_ERR("Empty payload");
-            return -1;
+            return NOTIF_RECV_ERR;
         }
 
         payload_str = malloc(payload_len + 1);
         if (!payload_str) {
             TLOG_ERR("Memory allocation failed");
-            return -1;
+            return NOTIF_RECV_ERR;
         }
         memcpy(payload_str, payload, payload_len);
         payload_str[payload_len] = '\0';
@@ -595,13 +650,35 @@ receive_next:
 
     /* the envelope (with eventTime) is returned separately from the inner notification;
      * *notif holds the inner notification for the caller to use and free */
-    rc = 0;
+    rc = NOTIF_RECV_OK;
 
 cleanup:
     ly_in_free(in, 0);
     lyd_free_all(envp);
     free(payload_str);
     return rc;
+}
+
+/**
+ * @brief Receive and parse a notification from UDP socket.
+ *
+ * @param[in] sockfd UDP socket FD.
+ * @param[in] ly_ctx libyang context for parsing.
+ * @param[in] timeout_ms Total deadline in milliseconds.
+ * @param[out] notif Parsed notification (caller must free), NULL on timeout.
+ * @param[out] header Optional parsed header (can be NULL).
+ * @param[out] src_addr Optional buffer for the source address (can be NULL).
+ * @param[in] src_addr_len Size of @p src_addr.
+ * @return ::NOTIF_RECV_OK, ::NOTIF_RECV_TIMEOUT or ::NOTIF_RECV_ERR.
+ */
+static int
+receive_notification_ext(int sockfd, const struct ly_ctx *ly_ctx, int timeout_ms,
+        struct lyd_node **notif, udp_notif_header_t *header, char *src_addr, size_t src_addr_len)
+{
+    struct timespec deadline;
+
+    deadline_set(timeout_ms, &deadline);
+    return receive_notification_deadline(sockfd, ly_ctx, &deadline, notif, header, src_addr, src_addr_len);
 }
 
 static int
@@ -624,15 +701,19 @@ receive_notification_timeout(int sockfd, const struct ly_ctx *ly_ctx, int timeou
 /**
  * @brief Wait for a specific notification by path.
  *
- * Reads notifications from the socket until one with the expected path is found or timeout occurs.
+ * Reads notifications from the socket until one with the expected path is found or the deadline
+ * expires. Notifications of other types are discarded. The deadline is a total for the whole wait,
+ * so a notification that never arrives fails the wait instead of blocking forever.
  *
  * @param[in] sockfd UDP socket FD.
  * @param[in] ly_ctx libyang context for parsing.
- * @param[in] timeout_ms Timeout in milliseconds per receive attempt.
+ * @param[in] timeout_ms Total deadline in milliseconds.
  * @param[in] expected_path Expected notification path.
- * @param[out] notif Parsed notification (caller must free).
+ * @param[out] notif Parsed notification (caller must free), NULL on timeout.
  * @param[out] header Optional parsed header (can be NULL).
- * @return 0 on success, -1 on error or timeout.
+ * @param[out] src_addr Optional buffer for the source address (can be NULL).
+ * @param[in] src_addr_len Size of @p src_addr.
+ * @return ::NOTIF_RECV_OK, ::NOTIF_RECV_TIMEOUT or ::NOTIF_RECV_ERR.
  */
 static int
 receive_specific_notification_ext(int sockfd, const struct ly_ctx *ly_ctx, int timeout_ms,
@@ -641,18 +722,22 @@ receive_specific_notification_ext(int sockfd, const struct ly_ctx *ly_ctx, int t
 {
     udp_notif_header_t hdr;
     struct lyd_node *received_notif = NULL;
+    struct timespec deadline;
     int r;
     char *notif_path = NULL;
     char recv_src_addr[INET6_ADDRSTRLEN] = {0};
 
-    while (1) {
-        r = receive_notification_ext(sockfd, ly_ctx, timeout_ms, &received_notif, &hdr, recv_src_addr, sizeof(recv_src_addr));
-        if (r < 0) {
-            return -1;
-        }
+    *notif = NULL;
+    deadline_set(timeout_ms, &deadline);
 
-        if (!received_notif) {
-            continue;
+    while (1) {
+        r = receive_notification_deadline(sockfd, ly_ctx, &deadline, &received_notif, &hdr,
+                recv_src_addr, sizeof(recv_src_addr));
+        if (r != NOTIF_RECV_OK) {
+            if (r == NOTIF_RECV_TIMEOUT) {
+                TLOG_WRN("Timeout waiting for notification \"%s\"", expected_path);
+            }
+            return r;
         }
 
         notif_path = lyd_path(received_notif, LYD_PATH_STD, NULL, 0);
@@ -667,11 +752,12 @@ receive_specific_notification_ext(int sockfd, const struct ly_ctx *ly_ctx, int t
                 strncpy(src_addr, recv_src_addr, src_addr_len - 1);
                 src_addr[src_addr_len - 1] = '\0';
             }
-            return 0;
+            return NOTIF_RECV_OK;
         }
 
         /* not the expected notification, free and keep waiting */
         lyd_free_all(received_notif);
+        received_notif = NULL;
     }
 }
 
@@ -711,12 +797,9 @@ count_notifications(int sockfd, const struct ly_ctx *ly_ctx, const char *path)
     uint32_t count = 0;
     int timeout_ms = NOTIF_TIMEOUT_MS;
 
-    while (!receive_notification_ext(sockfd, ly_ctx, timeout_ms, &notif, NULL, NULL, 0)) {
+    while (receive_notification_ext(sockfd, ly_ctx, timeout_ms, &notif, NULL, NULL, 0) == NOTIF_RECV_OK) {
         /* the first notification may take a while, any further one is already waiting */
         timeout_ms = DRAIN_TIMEOUT_MS;
-        if (!notif) {
-            continue;
-        }
 
         notif_path = lyd_path(notif, LYD_PATH_STD, NULL, 0);
         if (notif_path && !strcmp(notif_path, path)) {
@@ -795,6 +878,7 @@ static void
 drain_notifications(int sockfd)
 {
     uint8_t buffer[UDP_MAX_SIZE];
+    struct timespec deadline;
     ssize_t recv_len;
     int count;
     int poll_ret;
@@ -803,7 +887,8 @@ drain_notifications(int sockfd)
 
     /* read and discard all pending notifications */
     while (1) {
-        poll_ret = poll_for_data(sockfd, DRAIN_TIMEOUT_MS);
+        deadline_set(DRAIN_TIMEOUT_MS, &deadline);
+        poll_ret = poll_for_data(sockfd, &deadline);
         if (poll_ret <= 0) {
             break;
         }
