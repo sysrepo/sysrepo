@@ -3230,6 +3230,81 @@ test_default_encoding(void **state)
 }
 
 /**
+ * @brief A purpose string long enough to push any notification past a small max-segment-size.
+ *
+ * The subscription-started notification carries it verbatim, so a reassembly that drops, reorders
+ * or truncates a segment cannot reproduce it.
+ */
+#define LONG_PURPOSE \
+        "segmentation-test-purpose-0123456789-0123456789-0123456789-0123456789" \
+        "-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789" \
+        "-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789"
+
+/** max-segment-size forcing every notification to be split; the floor is the 16 byte header */
+#define SMALL_SEGMENT_SIZE "128"
+
+/**
+ * @brief Test: a notification larger than max-segment-size is segmented and reassembles correctly.
+ *
+ * Configures a small max-segment-size on the receiver instance so that even an ordinary
+ * subscription-started notification must be split. Verifies the segmentation option is present in
+ * the header, that more than one segment arrived, and that the reassembled notification carries the
+ * long purpose intact.
+ *
+ * A small value is accepted because nothing validates a floor for it today; should an
+ * "unsupported-max-segment-size" check be added, raise this above whatever floor it introduces.
+ */
+static void
+test_segmentation_reassembly(void **state)
+{
+    struct state *st = *state;
+    struct lyd_node *notif;
+    udp_notif_header_t header;
+
+    add_recv_inst(st, TEST_RECV_INST, st->udp_port,
+            "enable-segmentation", "true", "max-segment-size", SMALL_SEGMENT_SIZE, NULL);
+    add_sub(st, 130, "stream", "NETCONF", "transport", UDP_TRANSPORT,
+            "encoding", ENC_XML, "purpose", LONG_PURPOSE, NULL);
+    bind_sub_recv(st, 130, TEST_RECV, TEST_RECV_INST);
+    apply(st);
+
+    notif = expect_notif_hdr(st, SUB_STARTED, &header);
+
+    /* the segmentation option must be present and the message must have needed several segments */
+    assert_int_equal(header.has_segmentation, 1);
+    assert_int_equal(header.header_len, UDP_NOTIF_HDR_SIZE + UDP_NOTIF_SEG_OPT_SIZE);
+    assert_true(header.seg_count > 1);
+
+    /* the reassembled payload must be exactly what was sent */
+    assert_notif_leaf(notif, "id", "130");
+    assert_notif_leaf(notif, "purpose", LONG_PURPOSE);
+
+    lyd_free_all(notif);
+}
+
+/**
+ * @brief Test: a notification larger than max-segment-size is dropped when segmentation is off.
+ *
+ * With enable-segmentation false the daemon has no way to deliver a message that does not fit into
+ * one segment, so it must fail the send rather than fragment at the IP layer.
+ */
+static void
+test_segmentation_disabled(void **state)
+{
+    struct state *st = *state;
+
+    add_recv_inst(st, TEST_RECV_INST, st->udp_port,
+            "enable-segmentation", "false", "max-segment-size", SMALL_SEGMENT_SIZE, NULL);
+    add_sub(st, 131, "stream", "NETCONF", "transport", UDP_TRANSPORT,
+            "encoding", ENC_XML, "purpose", LONG_PURPOSE, NULL);
+    bind_sub_recv(st, 131, TEST_RECV, TEST_RECV_INST);
+    apply(st);
+
+    /* the subscription-started does not fit into one segment, so nothing can be delivered */
+    expect_no_notif(st, NULL);
+}
+
+/**
  * @brief Teardown: re-enable the encoding features after test_encoding_feature_disabled.
  *
  * Runs even if the test failed on an assertion, so that subsequent test runs start with both
@@ -3397,6 +3472,8 @@ main(void)
         cmocka_unit_test_setup(test_encoding_cbor_unsupported, test_reset),
         cmocka_unit_test_setup(test_default_encoding, test_reset),
         cmocka_unit_test_setup(test_encoding_modify, test_reset),
+        cmocka_unit_test_setup(test_segmentation_reassembly, test_reset),
+        cmocka_unit_test_setup(test_segmentation_disabled, test_reset),
         /* test_encoding_feature_disabled must be last: it disables the encoding features */
         cmocka_unit_test_setup_teardown(test_encoding_feature_disabled, test_reset, re_enable_encoding_features),
     };
