@@ -74,35 +74,38 @@
  * @brief Total deadline for a notification that is expected to arrive (milliseconds).
  *
  * The deadline is a total, not a per-attempt timeout, so a successful receive returns as soon as
- * the datagram arrives and a generous value only costs time on the failure path.
+ * the datagram arrives and a generous value only costs time on the failure path. For the same
+ * reason it is not scaled for valgrind, the value is generous enough for both environments.
  */
-#define NOTIF_TIMEOUT_MS 10000
+#define NOTIF_TIMEOUT_MS 50000
 
 /** Return codes of the notification receive functions */
 #define NOTIF_RECV_OK      0    /**< notification received */
 #define NOTIF_RECV_TIMEOUT 1    /**< deadline expired without a matching notification */
 #define NOTIF_RECV_ERR    (-1)  /**< socket, parse or protocol error */
 
-/** Maximum number of segments to track for reassembly */
-#define MAX_PENDING_MESSAGES 16
+/** Maximum number of messages tracked for reassembly at the same time */
+#define MAX_PENDING_MESSAGES 4
 
 /** Maximum number of segments per message */
 #define MAX_SEGMENTS_PER_MESSAGE 256
 
-/** Timeout for segment reassembly in seconds */
-#define SEGMENT_REASSEMBLY_TIMEOUT 30
+/**
+ * @brief Time the socket must stay silent for a negative assertion or a drain (milliseconds).
+ *
+ * Unlike the deadlines of the waits that expect something, this one is always consumed in full, so
+ * it cannot simply be generous and has to be scaled instead, see ::tmo().
+ */
+#define QUIET_TIMEOUT_MS 300
 
-/** Short timeout for draining notifications (milliseconds) */
-#define DRAIN_TIMEOUT_MS 200
+/** Poll interval for operational data polling (milliseconds) */
+#define OPER_POLL_MS 50
 
-/** Long timeout for operations that may take a while (milliseconds) */
-#define LONG_TIMEOUT_MS 10000
+/** Total deadline for operational data polling (milliseconds), consumed only until the value appears */
+#define OPER_WAIT_MS 25000
 
-/** Poll interval for operational counter polling (milliseconds) */
-#define COUNTER_POLL_MS 50
-
-/** Total timeout for operational counter polling (milliseconds) */
-#define COUNTER_WAIT_MS 5000
+/** Multiplier applied to the timeouts that are consumed in full when running under valgrind */
+#define VALGRIND_TIMEOUT_MUL 5
 
 /**
  * @brief Segment buffer for message reassembly.
@@ -123,23 +126,30 @@ typedef struct {
     segment_buffer_t *segments; /**< array of segment buffers */
     uint16_t total_segments;    /**< total number of segments (0 if unknown) */
     uint16_t received_count;    /**< number of received segments */
-    time_t first_received;      /**< timestamp of first segment */
     int active;                 /**< whether this slot is in use */
 } pending_message_t;
 
-/** Pending messages for reassembly */
-static pending_message_t pending_messages[MAX_PENDING_MESSAGES];
+/**
+ * @brief UDP-Notif segment reassembly context.
+ */
+struct notif_reasm {
+    pending_message_t msgs[MAX_PENDING_MESSAGES];   /**< messages being reassembled */
+};
 
 /**
  * @brief Test state structure.
  */
 struct state {
     sr_conn_ctx_t *conn;            /**< sysrepo connection */
-    sr_session_ctx_t *sess;         /**< sysrepo session */
+    sr_session_ctx_t *sess;         /**< running datastore session */
+    sr_session_ctx_t *oper_sess;    /**< operational datastore session, avoids switching DS */
     const struct ly_ctx *ly_ctx;    /**< libyang context */
     pid_t notifd_pid;               /**< PID of sysrepo-notifd process */
     int udp_sockfd;                 /**< UDP socket for receiving notifications */
     uint16_t udp_port;              /**< UDP port used for test */
+    uint32_t timeout_mul;           /**< multiplier of the fully consumed timeouts, greater than 1 under valgrind */
+    sr_subscription_ctx_t *test_subscr; /**< subscription of the running test, freed by its teardown */
+    struct notif_reasm reasm;       /**< segment reassembly state */
 };
 
 /**
@@ -156,6 +166,7 @@ typedef struct {
     int has_segmentation;
     uint16_t segment_num;
     int is_last_segment;
+    uint16_t seg_count;         /**< segments the message was reassembled from, 1 if unsegmented */
 } udp_notif_header_t;
 
 /**
@@ -270,74 +281,48 @@ poll_for_data(int sockfd, const struct timespec *deadline)
 /**
  * @brief Find or create a pending message slot for reassembly.
  *
+ * @param[in] reasm Reassembly context.
  * @param[in] publisher_id Publisher ID.
  * @param[in] message_id Message ID.
  * @param[in] media_type Media type.
- * @return Pending message slot or NULL on error.
+ * @return Pending message slot, NULL if none is free.
  */
 static pending_message_t *
-find_or_create_pending(uint32_t publisher_id, uint32_t message_id, uint8_t media_type)
+find_or_create_pending(struct notif_reasm *reasm, uint32_t publisher_id, uint32_t message_id,
+        uint8_t media_type)
 {
-    pending_message_t *oldest = NULL;
-    time_t oldest_time = 0;
-    time_t now = time(NULL);
-    int i, j;
+    pending_message_t *pending;
+    int i;
 
-    /* first, look for existing entry */
+    /* first, look for an existing entry */
     for (i = 0; i < MAX_PENDING_MESSAGES; i++) {
-        if (pending_messages[i].active &&
-                (pending_messages[i].publisher_id == publisher_id) &&
-                (pending_messages[i].message_id == message_id)) {
-            return &pending_messages[i];
-        }
-
-        /* track oldest for potential eviction */
-        if (pending_messages[i].active) {
-            if (!oldest || (pending_messages[i].first_received < oldest_time)) {
-                oldest = &pending_messages[i];
-                oldest_time = pending_messages[i].first_received;
-            }
+        pending = &reasm->msgs[i];
+        if (pending->active && (pending->publisher_id == publisher_id) && (pending->message_id == message_id)) {
+            return pending;
         }
     }
 
-    /* look for empty slot */
+    /* then for a free slot */
     for (i = 0; i < MAX_PENDING_MESSAGES; i++) {
-        if (!pending_messages[i].active) {
-            pending_messages[i].active = 1;
-            pending_messages[i].publisher_id = publisher_id;
-            pending_messages[i].message_id = message_id;
-            pending_messages[i].media_type = media_type;
-            pending_messages[i].segments = calloc(MAX_SEGMENTS_PER_MESSAGE, sizeof(segment_buffer_t));
-            pending_messages[i].total_segments = 0;
-            pending_messages[i].received_count = 0;
-            pending_messages[i].first_received = now;
-            return &pending_messages[i];
+        pending = &reasm->msgs[i];
+        if (pending->active) {
+            continue;
         }
+
+        pending->segments = calloc(MAX_SEGMENTS_PER_MESSAGE, sizeof *pending->segments);
+        if (!pending->segments) {
+            return NULL;
+        }
+        pending->publisher_id = publisher_id;
+        pending->message_id = message_id;
+        pending->media_type = media_type;
+        pending->total_segments = 0;
+        pending->received_count = 0;
+        pending->active = 1;
+        return pending;
     }
 
-    /* evict oldest if timed out */
-    if (oldest && (now - oldest->first_received > SEGMENT_REASSEMBLY_TIMEOUT)) {
-        TLOG_WRN("Evicting timed-out pending message (pub_id=%u, msg_id=%u)",
-                oldest->publisher_id, oldest->message_id);
-
-        /* free old segments */
-        for (j = 0; j < MAX_SEGMENTS_PER_MESSAGE; j++) {
-            free(oldest->segments[j].data);
-        }
-        free(oldest->segments);
-
-        oldest->active = 1;
-        oldest->publisher_id = publisher_id;
-        oldest->message_id = message_id;
-        oldest->media_type = media_type;
-        oldest->segments = calloc(MAX_SEGMENTS_PER_MESSAGE, sizeof(segment_buffer_t));
-        oldest->total_segments = 0;
-        oldest->received_count = 0;
-        oldest->first_received = now;
-        return oldest;
-    }
-
-    TLOG_ERR("No space for pending message reassembly");
+    TLOG_ERR("No free reassembly slot for message %" PRIu32, message_id);
     return NULL;
 }
 
@@ -489,8 +474,8 @@ create_udp_receiver_socket(uint16_t *port)
  * Handles both unsegmented and segmented UDP-Notif messages. For segmented messages, waits for
  * all segments and reassembles them, without ever re-arming the deadline.
  *
+ * @param[in] st Test state.
  * @param[in] sockfd UDP socket FD.
- * @param[in] ly_ctx libyang context for parsing.
  * @param[in] deadline Deadline to wait until.
  * @param[out] notif Parsed notification (caller must free), NULL on timeout.
  * @param[out] header Optional parsed header (can be NULL).
@@ -499,7 +484,7 @@ create_udp_receiver_socket(uint16_t *port)
  * @return ::NOTIF_RECV_OK, ::NOTIF_RECV_TIMEOUT or ::NOTIF_RECV_ERR.
  */
 static int
-receive_notification_deadline(int sockfd, const struct ly_ctx *ly_ctx, const struct timespec *deadline,
+receive_notif_deadline(struct state *st, int sockfd, const struct timespec *deadline,
         struct lyd_node **notif, udp_notif_header_t *header, char *src_addr, size_t src_addr_len)
 {
     uint8_t buffer[UDP_MAX_SIZE];
@@ -565,10 +550,6 @@ receive_next:
         return NOTIF_RECV_ERR;
     }
 
-    if (header) {
-        *header = hdr;
-    }
-
     if (hdr.version != UDP_NOTIF_VERSION) {
         TLOG_ERR("Invalid UDP-Notif version: %d", hdr.version);
         return NOTIF_RECV_ERR;
@@ -582,7 +563,7 @@ receive_next:
         TLOG_INF("Received segment %d%s for message %u",
                 hdr.segment_num, hdr.is_last_segment ? " (last)" : "", hdr.message_id);
 
-        pending = find_or_create_pending(hdr.publisher_id, hdr.message_id, hdr.media_type);
+        pending = find_or_create_pending(&st->reasm, hdr.publisher_id, hdr.message_id, hdr.media_type);
         if (!pending) {
             TLOG_ERR("Failed to create pending message for reassembly");
             return NOTIF_RECV_ERR;
@@ -605,10 +586,13 @@ receive_next:
 
         /* update header with info from the pending message */
         hdr.media_type = pending->media_type;
+        hdr.seg_count = pending->total_segments;
 
         /* free the pending message slot */
         free_pending_message(pending);
     } else {
+        hdr.seg_count = 1;
+
         /* non-segmented message, copy payload to null-terminated string */
         if (payload_len == 0) {
             TLOG_ERR("Empty payload");
@@ -622,6 +606,10 @@ receive_next:
         }
         memcpy(payload_str, payload, payload_len);
         payload_str[payload_len] = '\0';
+    }
+
+    if (header) {
+        *header = hdr;
     }
 
     switch (hdr.media_type) {
@@ -643,8 +631,8 @@ receive_next:
 
     /* parse the RFC 5277 notification envelope; choose the parse type by encoding */
     dt = (format == LYD_XML) ? LYD_TYPE_NOTIF_NETCONF : LYD_TYPE_NOTIF_RESTCONF;
-    if (lyd_parse_op(ly_ctx, NULL, in, format, dt, 0, &envp, notif)) {
-        TLOG_ERR("Failed to parse notification: %s", ly_err_last(ly_ctx)->msg);
+    if (lyd_parse_op(st->ly_ctx, NULL, in, format, dt, 0, &envp, notif)) {
+        TLOG_ERR("Failed to parse notification: %s", ly_err_last(st->ly_ctx)->msg);
         goto cleanup;
     }
 
@@ -660,146 +648,227 @@ cleanup:
 }
 
 /**
- * @brief Receive and parse a notification from UDP socket.
+ * @brief Check whether the test is running under valgrind.
  *
- * @param[in] sockfd UDP socket FD.
- * @param[in] ly_ctx libyang context for parsing.
- * @param[in] timeout_ms Total deadline in milliseconds.
- * @param[out] notif Parsed notification (caller must free), NULL on timeout.
- * @param[out] header Optional parsed header (can be NULL).
+ * @return 1 if it is, 0 otherwise.
+ */
+static int
+running_with_valgrind(void)
+{
+    char *ld_preload;
+
+    ld_preload = getenv("LD_PRELOAD");
+    if (ld_preload && strstr(ld_preload, "vgpreload")) {
+        return 1;
+    }
+    return 0;
+}
+
+/**
+ * @brief Scale a timeout that is consumed in full for the current environment.
+ *
+ * Only for the negative assertions and the drains. Every millisecond of those is spent on every
+ * single run, so they cannot be made generous the way ::NOTIF_TIMEOUT_MS is, but the unscaled
+ * window would not prove anything under valgrind, where the daemon can be delayed a lot.
+ *
+ * @param[in] st Test state.
+ * @param[in] timeout_ms Base timeout in milliseconds.
+ * @return Scaled timeout in milliseconds.
+ */
+static uint32_t
+tmo(const struct state *st, uint32_t timeout_ms)
+{
+    return timeout_ms * st->timeout_mul;
+}
+
+/**
+ * @brief Receive one notification, the single receive primitive.
+ *
+ * Reassembles segmented UDP-Notif messages. If @p path is set, notifications with a different path
+ * are discarded and receiving continues until the deadline, which is a total for the whole call.
+ *
+ * @param[in] st Test state.
+ * @param[in] sockfd Socket to receive on.
+ * @param[in] path Optional path of the notification to wait for, NULL for any.
+ * @param[in] timeout_ms Total deadline in milliseconds, already scaled.
+ * @param[out] notif Received notification (caller must free), NULL on timeout.
+ * @param[out] header Optional parsed UDP-Notif header (can be NULL).
  * @param[out] src_addr Optional buffer for the source address (can be NULL).
  * @param[in] src_addr_len Size of @p src_addr.
  * @return ::NOTIF_RECV_OK, ::NOTIF_RECV_TIMEOUT or ::NOTIF_RECV_ERR.
  */
 static int
-receive_notification_ext(int sockfd, const struct ly_ctx *ly_ctx, int timeout_ms,
+recv_notif(struct state *st, int sockfd, const char *path, uint32_t timeout_ms,
         struct lyd_node **notif, udp_notif_header_t *header, char *src_addr, size_t src_addr_len)
 {
+    struct lyd_node *received = NULL;
     struct timespec deadline;
-
-    deadline_set(timeout_ms, &deadline);
-    return receive_notification_deadline(sockfd, ly_ctx, &deadline, notif, header, src_addr, src_addr_len);
-}
-
-static int
-receive_notification(int sockfd, const struct ly_ctx *ly_ctx, struct lyd_node **notif,
-        udp_notif_header_t *header)
-{
-    return receive_notification_ext(sockfd, ly_ctx, NOTIF_TIMEOUT_MS, notif, header, NULL, 0);
-}
-
-/**
- * @brief Receive notification with custom timeout.
- */
-static int
-receive_notification_timeout(int sockfd, const struct ly_ctx *ly_ctx, int timeout_ms,
-        struct lyd_node **notif, udp_notif_header_t *header)
-{
-    return receive_notification_ext(sockfd, ly_ctx, timeout_ms, notif, header, NULL, 0);
-}
-
-/**
- * @brief Wait for a specific notification by path.
- *
- * Reads notifications from the socket until one with the expected path is found or the deadline
- * expires. Notifications of other types are discarded. The deadline is a total for the whole wait,
- * so a notification that never arrives fails the wait instead of blocking forever.
- *
- * @param[in] sockfd UDP socket FD.
- * @param[in] ly_ctx libyang context for parsing.
- * @param[in] timeout_ms Total deadline in milliseconds.
- * @param[in] expected_path Expected notification path.
- * @param[out] notif Parsed notification (caller must free), NULL on timeout.
- * @param[out] header Optional parsed header (can be NULL).
- * @param[out] src_addr Optional buffer for the source address (can be NULL).
- * @param[in] src_addr_len Size of @p src_addr.
- * @return ::NOTIF_RECV_OK, ::NOTIF_RECV_TIMEOUT or ::NOTIF_RECV_ERR.
- */
-static int
-receive_specific_notification_ext(int sockfd, const struct ly_ctx *ly_ctx, int timeout_ms,
-        const char *expected_path, struct lyd_node **notif, udp_notif_header_t *header,
-        char *src_addr, size_t src_addr_len)
-{
-    udp_notif_header_t hdr;
-    struct lyd_node *received_notif = NULL;
-    struct timespec deadline;
+    char *received_path;
     int r;
-    char *notif_path = NULL;
-    char recv_src_addr[INET6_ADDRSTRLEN] = {0};
 
     *notif = NULL;
     deadline_set(timeout_ms, &deadline);
 
     while (1) {
-        r = receive_notification_deadline(sockfd, ly_ctx, &deadline, &received_notif, &hdr,
-                recv_src_addr, sizeof(recv_src_addr));
+        r = receive_notif_deadline(st, sockfd, &deadline, &received, header, src_addr, src_addr_len);
         if (r != NOTIF_RECV_OK) {
-            if (r == NOTIF_RECV_TIMEOUT) {
-                TLOG_WRN("Timeout waiting for notification \"%s\"", expected_path);
-            }
             return r;
         }
 
-        notif_path = lyd_path(received_notif, LYD_PATH_STD, NULL, 0);
-        r = strcmp(notif_path, expected_path);
-        free(notif_path);
-        if (!r) {
-            *notif = received_notif;
-            if (header) {
-                *header = hdr;
-            }
-            if (src_addr && src_addr_len) {
-                strncpy(src_addr, recv_src_addr, src_addr_len - 1);
-                src_addr[src_addr_len - 1] = '\0';
-            }
+        if (!path) {
+            *notif = received;
             return NOTIF_RECV_OK;
         }
 
-        /* not the expected notification, free and keep waiting */
-        lyd_free_all(received_notif);
-        received_notif = NULL;
+        received_path = lyd_path(received, LYD_PATH_STD, NULL, 0);
+        r = received_path ? strcmp(received_path, path) : 1;
+        free(received_path);
+        if (!r) {
+            *notif = received;
+            return NOTIF_RECV_OK;
+        }
+
+        /* not the notification we are waiting for, discard it and keep waiting */
+        lyd_free_all(received);
+        received = NULL;
     }
 }
 
-static int
-receive_specific_notification(int sockfd, const struct ly_ctx *ly_ctx, const char *expected_path,
-        struct lyd_node **notif, udp_notif_header_t *header)
-{
-    return receive_specific_notification_ext(sockfd, ly_ctx, NOTIF_TIMEOUT_MS, expected_path, notif, header, NULL, 0);
-}
-
 /**
- * @brief Wait for a specific notification with custom timeout.
+ * @brief Assert a notification with @p path arrives on @p sockfd, outputting its header.
+ *
+ * @param[in] st Test state.
+ * @param[in] sockfd Socket to receive on.
+ * @param[in] path Path of the notification to wait for.
+ * @param[out] header Optional parsed UDP-Notif header (can be NULL).
+ * @param[out] src_addr Optional buffer for the source address (can be NULL).
+ * @param[in] src_addr_len Size of @p src_addr.
+ * @return The notification, caller must free.
  */
-static int
-receive_specific_notification_timeout(int sockfd, const struct ly_ctx *ly_ctx, int timeout_ms,
-        const char *expected_path, struct lyd_node **notif, udp_notif_header_t *header)
+static struct lyd_node *
+expect_notif_full(struct state *st, int sockfd, const char *path, udp_notif_header_t *header,
+        char *src_addr, size_t src_addr_len)
 {
-    return receive_specific_notification_ext(sockfd, ly_ctx, timeout_ms, expected_path, notif, header, NULL, 0);
+    struct lyd_node *notif = NULL;
+    int r;
+
+    TLOG_INF("Waiting for \"%s\"", path);
+
+    r = recv_notif(st, sockfd, path, NOTIF_TIMEOUT_MS, &notif, header, src_addr, src_addr_len);
+    if (r != NOTIF_RECV_OK) {
+        TLOG_ERR("Did not receive \"%s\" (%s)", path, (r == NOTIF_RECV_TIMEOUT) ? "timeout" : "error");
+    }
+    assert_int_equal(r, NOTIF_RECV_OK);
+    assert_non_null(notif);
+
+    return notif;
 }
 
 /**
- * @brief Count the notifications of a single type received until the socket goes quiet.
+ * @brief Assert a notification with @p path arrives; return it, caller must free.
+ */
+static struct lyd_node *
+expect_notif(struct state *st, const char *path)
+{
+    return expect_notif_full(st, st->udp_sockfd, path, NULL, NULL, 0);
+}
+
+/**
+ * @brief As expect_notif(), also outputting the UDP-Notif header.
+ */
+static struct lyd_node *
+expect_notif_hdr(struct state *st, const char *path, udp_notif_header_t *header)
+{
+    return expect_notif_full(st, st->udp_sockfd, path, header, NULL, 0);
+}
+
+/**
+ * @brief As expect_notif(), on an explicit socket.
+ */
+static struct lyd_node *
+expect_notif_on(struct state *st, int sockfd, const char *path)
+{
+    return expect_notif_full(st, sockfd, path, NULL, NULL, 0);
+}
+
+/**
+ * @brief As expect_notif(), also outputting the source address the datagram came from.
+ */
+static struct lyd_node *
+expect_notif_src(struct state *st, const char *path, char *src_addr, size_t src_addr_len)
+{
+    return expect_notif_full(st, st->udp_sockfd, path, NULL, src_addr, src_addr_len);
+}
+
+/**
+ * @brief Assert a notification with @p path arrives, then free it.
+ */
+static void
+skip_notif(struct state *st, const char *path)
+{
+    lyd_free_all(expect_notif(st, path));
+}
+
+/**
+ * @brief Assert that a notification arrives for each of the given paths, in any order.
  *
- * Waits for the first notification of any type and then keeps reading until nothing else arrives, so
- * that a duplicate is detected instead of silently ignored.
+ * The daemon does not guarantee the relative order of unrelated notifications, so waiting for them
+ * one by one would discard the ones that arrive early.
  *
- * @param[in] sockfd UDP socket FD.
- * @param[in] ly_ctx libyang context.
+ * @param[in] st Test state.
+ * @param[in] paths NULL-terminated array of paths that must all arrive.
+ */
+static void
+expect_notifs(struct state *st, const char **paths)
+{
+    struct lyd_node *notif = NULL;
+    char *notif_path;
+    uint8_t seen[8] = {0};
+    uint32_t i, count, found = 0;
+
+    for (count = 0; paths[count]; ++count) {}
+    assert_true(count <= sizeof seen);
+
+    while (found < count) {
+        if (recv_notif(st, st->udp_sockfd, NULL, NOTIF_TIMEOUT_MS, &notif, NULL, NULL, 0) != NOTIF_RECV_OK) {
+            TLOG_ERR("Received only %" PRIu32 " of %" PRIu32 " expected notifications", found, count);
+            fail();
+        }
+
+        notif_path = lyd_path(notif, LYD_PATH_STD, NULL, 0);
+        for (i = 0; i < count; ++i) {
+            if (!seen[i] && notif_path && !strcmp(paths[i], notif_path)) {
+                seen[i] = 1;
+                ++found;
+                break;
+            }
+        }
+        free(notif_path);
+        lyd_free_all(notif);
+        notif = NULL;
+    }
+}
+
+/**
+ * @brief Count the notifications with @p path received until the socket goes quiet.
+ *
+ * Waits for the first notification of any type and then keeps reading until nothing else arrives,
+ * so that a duplicate is detected instead of silently ignored.
+ *
+ * @param[in] st Test state.
  * @param[in] path Path of the notification to count.
  * @return Number of notifications matching @p path, notifications of other types are discarded.
  */
 static uint32_t
-count_notifications(int sockfd, const struct ly_ctx *ly_ctx, const char *path)
+count_notifs(struct state *st, const char *path)
 {
     struct lyd_node *notif = NULL;
     char *notif_path;
-    uint32_t count = 0;
-    int timeout_ms = NOTIF_TIMEOUT_MS;
+    uint32_t count = 0, timeout_ms = NOTIF_TIMEOUT_MS;
 
-    while (receive_notification_ext(sockfd, ly_ctx, timeout_ms, &notif, NULL, NULL, 0) == NOTIF_RECV_OK) {
+    while (recv_notif(st, st->udp_sockfd, NULL, timeout_ms, &notif, NULL, NULL, 0) == NOTIF_RECV_OK) {
         /* the first notification may take a while, any further one is already waiting */
-        timeout_ms = DRAIN_TIMEOUT_MS;
+        timeout_ms = tmo(st, QUIET_TIMEOUT_MS);
 
         notif_path = lyd_path(notif, LYD_PATH_STD, NULL, 0);
         if (notif_path && !strcmp(notif_path, path)) {
@@ -811,6 +880,39 @@ count_notifications(int sockfd, const struct ly_ctx *ly_ctx, const char *path)
     }
 
     return count;
+}
+
+/**
+ * @brief Discard every notification until the socket goes quiet.
+ *
+ * Only for the per-test reset; inside a test, expect the notification instead of discarding it.
+ *
+ * @param[in] st Test state.
+ */
+static void
+drain_notifs(struct state *st)
+{
+    uint8_t buffer[UDP_MAX_SIZE];
+    struct timespec deadline;
+    ssize_t recv_len;
+    int count = 0;
+
+    while (1) {
+        deadline_set(tmo(st, QUIET_TIMEOUT_MS), &deadline);
+        if (poll_for_data(st->udp_sockfd, &deadline) <= 0) {
+            break;
+        }
+
+        recv_len = recv(st->udp_sockfd, buffer, sizeof(buffer), 0);
+        if (recv_len <= 0) {
+            break;
+        }
+        ++count;
+    }
+
+    if (count) {
+        TLOG_INF("Drained %d pending notification(s)", count);
+    }
 }
 
 static int
@@ -867,46 +969,41 @@ find_alternate_loopback_ipv4(const char *current_address, char *alternate_addres
 }
 
 /**
- * @brief Drain all pending notifications from the socket.
- *
- * Reads and discards all notifications until no more data is available.
- * Uses poll() with a short timeout for robustness on slow machines.
- *
- * @param[in] sockfd UDP socket FD.
+ * @brief A YANG module installed for the tests.
  */
-static void
-drain_notifications(int sockfd)
-{
-    uint8_t buffer[UDP_MAX_SIZE];
-    struct timespec deadline;
-    ssize_t recv_len;
-    int count;
-    int poll_ret;
+struct test_module {
+    const char *path;           /**< path to the schema file */
+    const char **features;      /**< NULL-terminated enabled features, NULL for none */
+};
 
-    count = 0;
+/** Features needed from ietf-subscribed-notifications */
+static const char *sub_ntf_feats[] = {
+    "configured", "xpath", "replay", "subtree", "encode-xml", "encode-json", NULL
+};
 
-    /* read and discard all pending notifications */
-    while (1) {
-        deadline_set(DRAIN_TIMEOUT_MS, &deadline);
-        poll_ret = poll_for_data(sockfd, &deadline);
-        if (poll_ret <= 0) {
-            break;
-        }
-
-        recv_len = recv(sockfd, buffer, sizeof(buffer), 0);
-        if (recv_len <= 0) {
-            break;
-        }
-        count++;
-    }
-
-    if (count > 0) {
-        TLOG_INF("Drained %d pending notification(s)", count);
-    }
-}
+/** Modules installed for the tests, in dependency order */
+static const struct test_module test_modules[] = {
+    {SN_YANG_DIR "/ietf-interfaces@2018-02-20.yang", NULL},
+    {SN_YANG_DIR "/iana-if-type@2014-05-08.yang", NULL},
+    {SN_YANG_DIR "/ietf-ip@2018-02-22.yang", NULL},
+    {SN_YANG_DIR "/ietf-network-instance@2019-01-21.yang", NULL},
+    {SN_YANG_DIR "/ietf-restconf@2017-01-26.yang", NULL},
+    {SN_YANG_DIR "/ietf-subscribed-notifications@2019-09-09.yang", sub_ntf_feats},
+    {SN_YANG_DIR "/ietf-subscribed-notif-receivers@2024-02-01.yang", NULL},
+    {SN_YANG_DIR "/ietf-crypto-types@2024-10-10.yang", NULL},
+    {SN_YANG_DIR "/iana-tls-cipher-suite-algs@2024-03-16.yang", NULL},
+    {SN_YANG_DIR "/ietf-keystore@2024-10-10.yang", NULL},
+    {SN_YANG_DIR "/ietf-truststore@2024-10-10.yang", NULL},
+    {SN_YANG_DIR "/ietf-tls-common@2024-10-10.yang", NULL},
+    {SN_YANG_DIR "/ietf-tls-client@2024-03-16.yang", NULL},
+    {SN_YANG_DIR "/ietf-udp-client@2025-05-14.yang", NULL},
+    {SN_YANG_DIR "/ietf-udp-notif-transport@2025-06-04.yang", NULL},
+    {TESTS_SRC_DIR "/files/test.yang", NULL},
+    {TESTS_SRC_DIR "/files/notifd-other-publisher.yang", NULL},
+};
 
 /**
- * @brief Install required YANG modules for testing.
+ * @brief Install the YANG modules needed by the tests.
  *
  * @param[in] conn Sysrepo connection.
  * @return 0 on success, non-zero on failure.
@@ -914,40 +1011,24 @@ drain_notifications(int sockfd)
 static int
 install_test_modules(sr_conn_ctx_t *conn)
 {
-    const char *schema_paths[] = {
-        SN_YANG_DIR "/ietf-interfaces@2018-02-20.yang",
-        SN_YANG_DIR "/iana-if-type@2014-05-08.yang",
-        SN_YANG_DIR "/ietf-ip@2018-02-22.yang",
-        SN_YANG_DIR "/ietf-network-instance@2019-01-21.yang",
-        SN_YANG_DIR "/ietf-restconf@2017-01-26.yang",
-        SN_YANG_DIR "/ietf-subscribed-notifications@2019-09-09.yang",
-        SN_YANG_DIR "/ietf-subscribed-notif-receivers@2024-02-01.yang",
-        SN_YANG_DIR "/ietf-crypto-types@2024-10-10.yang",
-        SN_YANG_DIR "/iana-tls-cipher-suite-algs@2024-03-16.yang",
-        SN_YANG_DIR "/ietf-keystore@2024-10-10.yang",
-        SN_YANG_DIR "/ietf-truststore@2024-10-10.yang",
-        SN_YANG_DIR "/ietf-tls-common@2024-10-10.yang",
-        SN_YANG_DIR "/ietf-tls-client@2024-03-16.yang",
-        SN_YANG_DIR "/ietf-udp-client@2025-05-14.yang",
-        SN_YANG_DIR "/ietf-udp-notif-transport@2025-06-04.yang",
-        TESTS_SRC_DIR "/files/test.yang",
-        TESTS_SRC_DIR "/files/notifd-other-publisher.yang",
-        NULL
-    };
-    const char *sub_ntf_feats[] = {"configured", "xpath", "replay", "subtree", "encode-xml", "encode-json", NULL};
-    const char **features[] = {
-        NULL, NULL, NULL, NULL, NULL,  /* interfaces, iana-if-type, ip, network-instance, restconf */
-        sub_ntf_feats,                 /* ietf-subscribed-notifications */
-        NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,  /* other modules */
-        NULL,                          /* test.yang */
-        NULL                           /* notifd-other-publisher.yang */
-    };
+    const char *schema_paths[(sizeof test_modules / sizeof *test_modules) + 1];
+    const char **features[sizeof test_modules / sizeof *test_modules];
+    uint32_t i;
+
+    for (i = 0; i < sizeof test_modules / sizeof *test_modules; ++i) {
+        schema_paths[i] = test_modules[i].path;
+        features[i] = test_modules[i].features;
+    }
+    schema_paths[i] = NULL;
 
     return sr_install_modules(conn, schema_paths, SN_YANG_DIR, features);
 }
 
 /**
  * @brief Remove test YANG modules.
+ *
+ * Listed explicitly rather than derived from ::test_modules because they must be removed in the
+ * reverse dependency order; keep the two in sync.
  *
  * @param[in] conn Sysrepo connection.
  * @return 0 on success, non-zero on failure.
@@ -1117,292 +1198,653 @@ stop_notifd(pid_t pid)
     }
 }
 
+/** Subscription xpath prefix, takes a uint32_t subscription ID */
+#define SUB_XP "/ietf-subscribed-notifications:subscriptions/subscription[id='%" PRIu32 "']"
+
+/** Subscription receiver xpath prefix, takes a uint32_t subscription ID and a receiver name */
+#define RECV_XP SUB_XP "/receivers/receiver[name='%s']"
+
+/** Subscription receiver xpath without predicates, for subscribing to all of them */
+#define ANY_RECV_XP "/ietf-subscribed-notifications:subscriptions/subscription/receivers/receiver"
+
+/** Receiver instance xpath prefix, takes a receiver instance name */
+#define INST_XP "/ietf-subscribed-notifications:subscriptions" \
+        "/ietf-subscribed-notif-receivers:receiver-instances/receiver-instance[name='%s']"
+
+/** UDP-Notif receiver xpath prefix, takes a receiver instance name */
+#define UDP_INST_XP INST_XP "/ietf-udp-notif-transport:udp-notif-receiver"
+
+/** Named stream filter xpath prefix, takes a filter name */
+#define FILTER_XP "/ietf-subscribed-notifications:filters/stream-filter[name='%s']"
+
+/** Transport identity of every subscription created by the tests */
+#define UDP_TRANSPORT "ietf-udp-notif-transport:udp-notif"
+
+/** Transport identity of a notification publisher other than sysrepo-notifd */
+#define OTHER_TRANSPORT "notifd-other-publisher:other-notif"
+
+/** Encoding identities */
+#define ENC_XML "ietf-subscribed-notifications:encode-xml"
+#define ENC_JSON "ietf-subscribed-notifications:encode-json"
+
+/** Paths of the notifications the tests wait for */
+#define SUB_STARTED "/ietf-subscribed-notifications:subscription-started"
+#define SUB_MODIFIED "/ietf-subscribed-notifications:subscription-modified"
+#define SUB_TERMINATED "/ietf-subscribed-notifications:subscription-terminated"
+#define NCC "/ietf-netconf-notifications:netconf-config-change"
+#define REPLAY_COMPLETED "/ietf-subscribed-notifications:replay-completed"
+#define SUB_COMPLETED "/ietf-subscribed-notifications:subscription-completed"
+
+/** Name of the receiver instance created by setup_sub() */
+#define TEST_RECV_INST "test-recv"
+
+/** Name of the subscription receiver created by setup_sub() */
+#define TEST_RECV "recv1"
+
 /**
- * @brief Set common subscription fields (stream, transport, receiver-instance-ref).
+ * @brief Stage a leaf at a printf-formatted xpath on an explicit session, asserting success.
  *
- * @param[in] sess Sysrepo session.
- * @param[in] sub_id Subscription ID.
- * @param[in] stream Stream name.
- * @param[in] recv_inst_name Receiver instance name to reference.
- * @return 0 on success, error code on failure.
+ * @param[in] sess Session to stage onto.
+ * @param[in] value Value to set, NULL to create the node without one.
+ * @param[in] xpath_fmt Printf format of the xpath.
+ * @param[in] ... Format arguments.
  */
-static int
-_set_sub_common(sr_session_ctx_t *sess, uint32_t sub_id, const char *stream,
-        const char *recv_inst_name)
+static void
+set_node_on(sr_session_ctx_t *sess, const char *value, const char *xpath_fmt, ...)
 {
-    int rc;
-    char path[512];
+    char xpath[1024];
+    va_list ap;
 
-    snprintf(path, sizeof(path),
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='%u']/stream", sub_id);
-    rc = sr_set_item_str(sess, path, stream, NULL, 0);
-    if (rc) {
-        return rc;
-    }
+    va_start(ap, xpath_fmt);
+    vsnprintf(xpath, sizeof xpath, xpath_fmt, ap);
+    va_end(ap);
 
-    snprintf(path, sizeof(path),
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='%u']/transport", sub_id);
-    rc = sr_set_item_str(sess, path, "ietf-udp-notif-transport:udp-notif", NULL, 0);
-    if (rc) {
-        return rc;
-    }
-
-    snprintf(path, sizeof(path),
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='%u']"
-            "/receivers/receiver[name='recv1']/ietf-subscribed-notif-receivers:receiver-instance-ref", sub_id);
-    rc = sr_set_item_str(sess, path, recv_inst_name, NULL, 0);
-    if (rc) {
-        return rc;
-    }
-
-    return SR_ERR_OK;
+    assert_int_equal(sr_set_item_str(sess, xpath, value, NULL, 0), SR_ERR_OK);
 }
 
 /**
- * @brief Create a configured subscription via sysrepo edit.
+ * @brief Stage a leaf at a printf-formatted xpath, asserting success.
  *
- * @param[in] sess Sysrepo session.
- * @param[in] sub_id Subscription ID.
- * @param[in] stream Stream name.
- * @param[in] filter Optional XPath filter.
- * @param[in] recv_inst_name Receiver instance name to reference.
- * @return 0 on success, error code on failure.
+ * @param[in] st Test state.
+ * @param[in] value Value to set, NULL to create the node without one.
+ * @param[in] xpath_fmt Printf format of the xpath.
+ * @param[in] ... Format arguments.
  */
-static int
-create_subscription(sr_session_ctx_t *sess, uint32_t sub_id, const char *stream,
-        const char *filter, const char *recv_inst_name)
+static void
+set_node(struct state *st, const char *value, const char *xpath_fmt, ...)
 {
-    int rc;
-    char path[512];
+    char xpath[1024];
+    va_list ap;
 
-    rc = _set_sub_common(sess, sub_id, stream, recv_inst_name);
-    if (rc) {
-        return rc;
-    }
+    va_start(ap, xpath_fmt);
+    vsnprintf(xpath, sizeof xpath, xpath_fmt, ap);
+    va_end(ap);
 
-    if (filter) {
-        snprintf(path, sizeof(path),
-                "/ietf-subscribed-notifications:subscriptions/subscription[id='%u']/stream-xpath-filter", sub_id);
-        rc = sr_set_item_str(sess, path, filter, NULL, 0);
-        if (rc) {
-            return rc;
-        }
-    }
-
-    return SR_ERR_OK;
+    assert_int_equal(sr_set_item_str(st->sess, xpath, value, NULL, 0), SR_ERR_OK);
 }
 
 /**
- * @brief Create a configured subscription with subtree filter via sysrepo edit.
+ * @brief Stage a delete of a printf-formatted xpath, asserting success.
  *
- * @param[in] sess Sysrepo session.
- * @param[in] sub_id Subscription ID.
- * @param[in] stream Stream name.
- * @param[in] subtree_filter_xml Subtree filter in XML format.
- * @param[in] recv_inst_name Receiver instance name to reference.
- * @return 0 on success, error code on failure.
+ * @param[in] st Test state.
+ * @param[in] xpath_fmt Printf format of the xpath.
+ * @param[in] ... Format arguments.
  */
-static int
-create_subscription_subtree(sr_session_ctx_t *sess, uint32_t sub_id, const char *stream,
-        const char *subtree_filter_xml, const char *recv_inst_name)
+static void
+del_node(struct state *st, const char *xpath_fmt, ...)
 {
-    int rc;
-    char path[512];
+    char xpath[1024];
+    va_list ap;
+
+    va_start(ap, xpath_fmt);
+    vsnprintf(xpath, sizeof xpath, xpath_fmt, ap);
+    va_end(ap);
+
+    assert_int_equal(sr_delete_item(st->sess, xpath, 0), SR_ERR_OK);
+}
+
+/**
+ * @brief Stage an anydata node at a printf-formatted xpath, asserting success.
+ *
+ * @param[in] st Test state.
+ * @param[in] xml Anydata XML content.
+ * @param[in] xpath_fmt Printf format of the xpath.
+ * @param[in] ... Format arguments.
+ */
+static void
+set_anydata(struct state *st, const char *xml, const char *xpath_fmt, ...)
+{
+    char xpath[1024];
     sr_val_t val;
+    va_list ap;
 
-    rc = _set_sub_common(sess, sub_id, stream, recv_inst_name);
-    if (rc) {
-        return rc;
-    }
+    va_start(ap, xpath_fmt);
+    vsnprintf(xpath, sizeof xpath, xpath_fmt, ap);
+    va_end(ap);
 
-    if (subtree_filter_xml) {
-        memset(&val, 0, sizeof(val));
-        val.type = SR_ANYDATA_T;
-        val.data.anydata_val = (char *)subtree_filter_xml;
-
-        snprintf(path, sizeof(path),
-                "/ietf-subscribed-notifications:subscriptions/subscription[id='%u']/stream-subtree-filter", sub_id);
-        rc = sr_set_item(sess, path, &val, 0);
-        if (rc) {
-            return rc;
-        }
-    }
-
-    return SR_ERR_OK;
-}
-
-/**
- * @brief Create a UDP receiver instance via sysrepo edit.
- *
- * @param[in] sess Sysrepo session.
- * @param[in] name Receiver instance name.
- * @param[in] address Remote address.
- * @param[in] port Remote port.
- * @return 0 on success, error code on failure.
- */
-static int
-create_receiver_instance(sr_session_ctx_t *sess, const char *name, const char *address, uint16_t port)
-{
-    int rc;
-    char path[512], port_str[16];
-
-    snprintf(port_str, sizeof(port_str), "%u", port);
-
-    snprintf(path, sizeof(path),
-            "/ietf-subscribed-notifications:subscriptions"
-            "/ietf-subscribed-notif-receivers:receiver-instances"
-            "/receiver-instance[name='%s']"
-            "/ietf-udp-notif-transport:udp-notif-receiver/remote-address", name);
-    rc = sr_set_item_str(sess, path, address, NULL, 0);
-    if (rc) {
-        return rc;
-    }
-
-    snprintf(path, sizeof(path),
-            "/ietf-subscribed-notifications:subscriptions"
-            "/ietf-subscribed-notif-receivers:receiver-instances"
-            "/receiver-instance[name='%s']"
-            "/ietf-udp-notif-transport:udp-notif-receiver/remote-port", name);
-    rc = sr_set_item_str(sess, path, port_str, NULL, 0);
-    if (rc) {
-        return rc;
-    }
-
-    return SR_ERR_OK;
-}
-
-/**
- * @brief Delete a configured subscription.
- *
- * @param[in] sess Sysrepo session.
- * @param[in] sub_id Subscription ID.
- * @return 0 on success, error code on failure.
- */
-static int
-delete_subscription(sr_session_ctx_t *sess, uint32_t sub_id)
-{
-    char path[256];
-
-    snprintf(path, sizeof(path),
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='%u']", sub_id);
-    return sr_delete_item(sess, path, 0);
-}
-
-/**
- * @brief Delete a receiver instance.
- *
- * @param[in] sess Sysrepo session.
- * @param[in] name Receiver instance name.
- * @return 0 on success, error code on failure.
- */
-static int
-delete_receiver_instance(sr_session_ctx_t *sess, const char *name)
-{
-    char path[256];
-
-    snprintf(path, sizeof(path),
-            "/ietf-subscribed-notifications:subscriptions"
-            "/ietf-subscribed-notif-receivers:receiver-instances"
-            "/receiver-instance[name='%s']", name);
-    return sr_delete_item(sess, path, 0);
-}
-
-/**
- * @brief Create a named XPath stream filter.
- *
- * @param[in] sess Sysrepo session.
- * @param[in] filter_name Name of the filter.
- * @param[in] xpath_filter XPath filter expression.
- * @return 0 on success, error code on failure.
- */
-static int
-create_xpath_stream_filter(sr_session_ctx_t *sess, const char *filter_name, const char *xpath_filter)
-{
-    int rc;
-    char path[512];
-
-    snprintf(path, sizeof(path),
-            "/ietf-subscribed-notifications:filters/stream-filter[name='%s']/stream-xpath-filter",
-            filter_name);
-    rc = sr_set_item_str(sess, path, xpath_filter, NULL, 0);
-
-    return rc;
-}
-
-/**
- * @brief Create a named subtree stream filter.
- *
- * @param[in] sess Sysrepo session.
- * @param[in] filter_name Name of the filter.
- * @param[in] subtree_filter_xml Subtree filter in XML format.
- * @return 0 on success, error code on failure.
- */
-static int
-create_subtree_stream_filter(sr_session_ctx_t *sess, const char *filter_name, const char *subtree_filter_xml)
-{
-    int rc;
-    char path[512];
-    sr_val_t val;
-
-    memset(&val, 0, sizeof(val));
+    memset(&val, 0, sizeof val);
     val.type = SR_ANYDATA_T;
-    val.data.anydata_val = (char *)subtree_filter_xml;
+    val.data.anydata_val = (char *)xml;
 
-    snprintf(path, sizeof(path),
-            "/ietf-subscribed-notifications:filters/stream-filter[name='%s']/stream-subtree-filter",
-            filter_name);
-    rc = sr_set_item(sess, path, &val, 0);
+    assert_int_equal(sr_set_item(st->sess, xpath, &val, 0), SR_ERR_OK);
+}
 
+/**
+ * @brief Stage the leaves given as (relative path, value) pairs below a prefix.
+ *
+ * @param[in] sess Session to stage onto.
+ * @param[in] prefix Already formatted xpath prefix.
+ * @param[in] ap NULL-terminated (relative leaf path, value) pairs.
+ */
+static void
+set_leaves(sr_session_ctx_t *sess, const char *prefix, va_list ap)
+{
+    const char *leaf, *value;
+    char xpath[1024];
+
+    while ((leaf = va_arg(ap, const char *))) {
+        value = va_arg(ap, const char *);
+        snprintf(xpath, sizeof xpath, "%s/%s", prefix, leaf);
+        assert_int_equal(sr_set_item_str(sess, xpath, value, NULL, 0), SR_ERR_OK);
+    }
+}
+
+/**
+ * @brief Stage subscription leaves on an explicit session.
+ *
+ * @param[in] sess Session to stage onto.
+ * @param[in] sub_id Subscription ID.
+ * @param[in] ... NULL-terminated (relative leaf path, value) pairs. A NULL value creates the node
+ * without one, for empty leaves such as configured-replay.
+ */
+static void
+add_sub_on(sr_session_ctx_t *sess, uint32_t sub_id, ...)
+{
+    char prefix[512];
+    va_list ap;
+
+    snprintf(prefix, sizeof prefix, SUB_XP, sub_id);
+
+    va_start(ap, sub_id);
+    set_leaves(sess, prefix, ap);
+    va_end(ap);
+}
+
+/**
+ * @brief Stage subscription leaves.
+ *
+ * @param[in] st Test state.
+ * @param[in] sub_id Subscription ID.
+ * @param[in] ... NULL-terminated (relative leaf path, value) pairs.
+ */
+static void
+add_sub(struct state *st, uint32_t sub_id, ...)
+{
+    char prefix[512];
+    va_list ap;
+
+    snprintf(prefix, sizeof prefix, SUB_XP, sub_id);
+
+    va_start(ap, sub_id);
+    set_leaves(st->sess, prefix, ap);
+    va_end(ap);
+}
+
+/**
+ * @brief Stage a udp-notif receiver instance on an explicit session.
+ *
+ * @param[in] sess Session to stage onto.
+ * @param[in] name Receiver instance name.
+ * @param[in] port Remote port, the address is always 127.0.0.1.
+ * @param[in] ... NULL-terminated (relative leaf path, value) pairs below udp-notif-receiver.
+ */
+static void
+add_recv_inst_on(sr_session_ctx_t *sess, const char *name, uint32_t port, ...)
+{
+    char prefix[512], port_str[16];
+    va_list ap;
+
+    snprintf(prefix, sizeof prefix, UDP_INST_XP, name);
+    snprintf(port_str, sizeof port_str, "%" PRIu32, port);
+
+    set_node_on(sess, "127.0.0.1", "%s/remote-address", prefix);
+    set_node_on(sess, port_str, "%s/remote-port", prefix);
+
+    va_start(ap, port);
+    set_leaves(sess, prefix, ap);
+    va_end(ap);
+}
+
+/**
+ * @brief Stage a udp-notif receiver instance.
+ *
+ * @param[in] st Test state.
+ * @param[in] name Receiver instance name.
+ * @param[in] port Remote port, the address is always 127.0.0.1.
+ * @param[in] ... NULL-terminated (relative leaf path, value) pairs below udp-notif-receiver.
+ */
+static void
+add_recv_inst(struct state *st, const char *name, uint32_t port, ...)
+{
+    char prefix[512], port_str[16];
+    va_list ap;
+
+    snprintf(prefix, sizeof prefix, UDP_INST_XP, name);
+    snprintf(port_str, sizeof port_str, "%" PRIu32, port);
+
+    set_node(st, "127.0.0.1", "%s/remote-address", prefix);
+    set_node(st, port_str, "%s/remote-port", prefix);
+
+    va_start(ap, port);
+    set_leaves(st->sess, prefix, ap);
+    va_end(ap);
+}
+
+/**
+ * @brief Stage the receiver-instance-ref binding a subscription receiver to a receiver instance.
+ *
+ * @param[in] st Test state.
+ * @param[in] sub_id Subscription ID.
+ * @param[in] recv_name Subscription receiver name.
+ * @param[in] inst_name Receiver instance name to point at.
+ */
+static void
+bind_sub_recv(struct state *st, uint32_t sub_id, const char *recv_name, const char *inst_name)
+{
+    set_node(st, inst_name, RECV_XP "/ietf-subscribed-notif-receivers:receiver-instance-ref",
+            sub_id, recv_name);
+}
+
+/**
+ * @brief Stage an anydata subtree filter on a subscription.
+ *
+ * @param[in] st Test state.
+ * @param[in] sub_id Subscription ID.
+ * @param[in] xml Subtree filter in XML.
+ */
+static void
+add_sub_subtree_filter(struct state *st, uint32_t sub_id, const char *xml)
+{
+    set_anydata(st, xml, SUB_XP "/stream-subtree-filter", sub_id);
+}
+
+/**
+ * @brief Stage a named xpath stream filter.
+ *
+ * @param[in] st Test state.
+ * @param[in] name Filter name.
+ * @param[in] xpath XPath filter expression.
+ */
+static void
+add_xpath_filter(struct state *st, const char *name, const char *xpath)
+{
+    set_node(st, xpath, FILTER_XP "/stream-xpath-filter", name);
+}
+
+/**
+ * @brief Stage a named subtree stream filter.
+ *
+ * @param[in] st Test state.
+ * @param[in] name Filter name.
+ * @param[in] xml Subtree filter in XML.
+ */
+static void
+add_subtree_filter(struct state *st, const char *name, const char *xml)
+{
+    set_anydata(st, xml, FILTER_XP "/stream-subtree-filter", name);
+}
+
+/**
+ * @brief Apply the staged changes, asserting success.
+ *
+ * @param[in] st Test state.
+ */
+static void
+apply(struct state *st)
+{
+    assert_int_equal(sr_apply_changes(st->sess, 0), SR_ERR_OK);
+}
+
+/**
+ * @brief Stage the common setup: a receiver instance on the test port and a subscription on the
+ * NETCONF stream over udp-notif with a single receiver bound to it. Does not apply.
+ *
+ * @param[in] st Test state.
+ * @param[in] sub_id Subscription ID.
+ * @param[in] ... NULL-terminated (relative leaf path, value) pairs of extra subscription leaves.
+ */
+static void
+stage_sub(struct state *st, uint32_t sub_id, ...)
+{
+    char prefix[512];
+    va_list ap;
+
+    add_recv_inst(st, TEST_RECV_INST, st->udp_port, NULL);
+
+    snprintf(prefix, sizeof prefix, SUB_XP, sub_id);
+    set_node(st, "NETCONF", "%s/stream", prefix);
+    set_node(st, UDP_TRANSPORT, "%s/transport", prefix);
+
+    va_start(ap, sub_id);
+    set_leaves(st->sess, prefix, ap);
+    va_end(ap);
+
+    bind_sub_recv(st, sub_id, TEST_RECV, TEST_RECV_INST);
+}
+
+/**
+ * @brief Stage the common setup with stage_sub() and apply it.
+ *
+ * @param[in] st Test state.
+ * @param[in] sub_id Subscription ID.
+ * @param[in] ... NULL-terminated (relative leaf path, value) pairs of extra subscription leaves.
+ */
+static void
+setup_sub(struct state *st, uint32_t sub_id, ...)
+{
+    char prefix[512];
+    va_list ap;
+
+    add_recv_inst(st, TEST_RECV_INST, st->udp_port, NULL);
+
+    snprintf(prefix, sizeof prefix, SUB_XP, sub_id);
+    set_node(st, "NETCONF", "%s/stream", prefix);
+    set_node(st, UDP_TRANSPORT, "%s/transport", prefix);
+
+    va_start(ap, sub_id);
+    set_leaves(st->sess, prefix, ap);
+    va_end(ap);
+
+    bind_sub_recv(st, sub_id, TEST_RECV, TEST_RECV_INST);
+    apply(st);
+}
+
+/**
+ * @brief Assert a descendant leaf of a notification exists and has a value.
+ *
+ * @param[in] notif Notification to check.
+ * @param[in] name Relative path of the leaf.
+ * @param[in] value Expected value.
+ */
+static void
+assert_notif_leaf(const struct lyd_node *notif, const char *name, const char *value)
+{
+    struct lyd_node *node = NULL;
+
+    assert_int_equal(lyd_find_path(notif, name, 0, &node), LY_SUCCESS);
+    assert_non_null(node);
+    assert_string_equal(lyd_get_value(node), value);
+}
+
+/**
+ * @brief Assert how many nodes of a data tree match an xpath.
+ *
+ * @param[in] tree Data tree to search.
+ * @param[in] count Expected number of matches.
+ * @param[in] xpath_fmt Printf format of the xpath.
+ * @param[in] ... Format arguments.
+ */
+static void
+assert_node_count(const struct lyd_node *tree, uint32_t count, const char *xpath_fmt, ...)
+{
+    struct ly_set *set = NULL;
+    char xpath[1024];
+    va_list ap;
+
+    va_start(ap, xpath_fmt);
+    vsnprintf(xpath, sizeof xpath, xpath_fmt, ap);
+    va_end(ap);
+
+    assert_int_equal(lyd_find_xpath(tree, xpath, &set), LY_SUCCESS);
+    if (set->count != count) {
+        TLOG_ERR("Expected %" PRIu32 " nodes matching \"%s\", found %" PRIu32, count, xpath, set->count);
+    }
+    assert_int_equal(set->count, count);
+    ly_set_free(set, NULL);
+}
+
+/**
+ * @brief Assert a descendant leaf of a notification is absent.
+ *
+ * @param[in] notif Notification to check.
+ * @param[in] name Relative path of the leaf.
+ */
+static void
+assert_no_notif_leaf(const struct lyd_node *notif, const char *name)
+{
+    struct lyd_node *node = NULL;
+
+    assert_int_equal(lyd_find_path(notif, name, 0, &node), LY_ENOTFOUND);
+}
+
+/**
+ * @brief Read a leaf from the operational datastore without asserting.
+ *
+ * @param[in] st Test state.
+ * @param[out] value Leaf value, caller must free. Untouched if the leaf is absent.
+ * @param[in] xpath_fmt Printf format of the leaf xpath.
+ * @param[in] ... Format arguments.
+ * @return 0 on success, -1 if the leaf could not be read.
+ */
+static int
+try_oper(struct state *st, char **value, const char *xpath_fmt, ...)
+{
+    sr_data_t *data = NULL;
+    struct lyd_node *node = NULL;
+    char xpath[1024];
+    va_list ap;
+    int rc = -1;
+
+    va_start(ap, xpath_fmt);
+    vsnprintf(xpath, sizeof xpath, xpath_fmt, ap);
+    va_end(ap);
+
+    if (sr_get_data(st->oper_sess, xpath, 0, 0, 0, &data) || !data || !data->tree) {
+        goto cleanup;
+    }
+    if (lyd_find_path(data->tree, xpath, 0, &node) || !node) {
+        goto cleanup;
+    }
+
+    *value = strdup(lyd_get_value(node));
+    assert_non_null(*value);
+    rc = 0;
+
+cleanup:
+    sr_release_data(data);
     return rc;
 }
 
 /**
- * @brief Delete a named stream filter.
+ * @brief Read a leaf from the operational datastore, asserting it exists.
  *
- * @param[in] sess Sysrepo session.
- * @param[in] filter_name Name of the filter.
- * @return 0 on success, error code on failure.
+ * @param[in] st Test state.
+ * @param[in] xpath_fmt Printf format of the leaf xpath.
+ * @param[in] ... Format arguments.
+ * @return Leaf value, caller must free.
  */
-static int
-delete_stream_filter(sr_session_ctx_t *sess, const char *filter_name)
+static char *
+get_oper(struct state *st, const char *xpath_fmt, ...)
 {
-    char path[256];
+    char xpath[1024], *value = NULL;
+    va_list ap;
 
-    snprintf(path, sizeof(path),
-            "/ietf-subscribed-notifications:filters/stream-filter[name='%s']", filter_name);
-    return sr_delete_item(sess, path, 0);
+    va_start(ap, xpath_fmt);
+    vsnprintf(xpath, sizeof xpath, xpath_fmt, ap);
+    va_end(ap);
+
+    if (try_oper(st, &value, "%s", xpath)) {
+        TLOG_ERR("Failed to read operational leaf \"%s\"", xpath);
+        fail();
+    }
+
+    return value;
 }
 
 /**
- * @brief Create a subscription with a filter name reference.
+ * @brief Read a leaf from the operational datastore and assert its value.
  *
- * @param[in] sess Sysrepo session.
- * @param[in] sub_id Subscription ID.
- * @param[in] stream Stream name.
- * @param[in] filter_name Name of the filter to reference.
- * @param[in] recv_inst_name Receiver instance name to reference.
- * @return 0 on success, error code on failure.
+ * @param[in] st Test state.
+ * @param[in] value Expected value. Given before the format because the format must come last.
+ * @param[in] xpath_fmt Printf format of the leaf xpath.
+ * @param[in] ... Format arguments.
+ */
+static void
+assert_oper(struct state *st, const char *value, const char *xpath_fmt, ...)
+{
+    char xpath[1024], *read = NULL;
+    va_list ap;
+
+    va_start(ap, xpath_fmt);
+    vsnprintf(xpath, sizeof xpath, xpath_fmt, ap);
+    va_end(ap);
+
+    read = get_oper(st, "%s", xpath);
+    assert_string_equal(read, value);
+    free(read);
+}
+
+/**
+ * @brief Read a uint64 leaf from the operational datastore without asserting.
+ *
+ * @param[in] st Test state.
+ * @param[out] value Parsed value.
+ * @param[in] xpath_fmt Printf format of the leaf xpath.
+ * @param[in] ... Format arguments.
+ * @return 0 on success, -1 if the leaf could not be read.
  */
 static int
-create_subscription_filter_ref(sr_session_ctx_t *sess, uint32_t sub_id, const char *stream,
-        const char *filter_name, const char *recv_inst_name)
+try_oper_u64(struct state *st, uint64_t *value, const char *xpath_fmt, ...)
 {
-    int rc;
-    char path[512];
+    char xpath[1024], *str = NULL;
+    va_list ap;
 
-    rc = _set_sub_common(sess, sub_id, stream, recv_inst_name);
-    if (rc) {
-        return rc;
+    va_start(ap, xpath_fmt);
+    vsnprintf(xpath, sizeof xpath, xpath_fmt, ap);
+    va_end(ap);
+
+    if (try_oper(st, &str, "%s", xpath)) {
+        return -1;
     }
 
-    snprintf(path, sizeof(path),
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='%u']/stream-filter-name", sub_id);
-    rc = sr_set_item_str(sess, path, filter_name, NULL, 0);
-    if (rc) {
-        return rc;
+    *value = strtoull(str, NULL, 10);
+    free(str);
+    return 0;
+}
+
+/**
+ * @brief Poll a uint64 operational leaf until it exceeds a baseline, asserting that it does.
+ *
+ * Used instead of waiting for a socket timeout to prove that a notification was filtered.
+ *
+ * @param[in] st Test state.
+ * @param[in] baseline Value the leaf must exceed.
+ * @param[in] xpath_fmt Printf format of the leaf xpath.
+ * @param[in] ... Format arguments.
+ */
+static void
+wait_oper_above(struct state *st, uint64_t baseline, const char *xpath_fmt, ...)
+{
+    char xpath[1024];
+    uint64_t current;
+    uint32_t elapsed_ms = 0;
+    va_list ap;
+
+    va_start(ap, xpath_fmt);
+    vsnprintf(xpath, sizeof xpath, xpath_fmt, ap);
+    va_end(ap);
+
+    while (elapsed_ms < OPER_WAIT_MS) {
+        usleep(OPER_POLL_MS * 1000);
+        elapsed_ms += OPER_POLL_MS;
+
+        if (!try_oper_u64(st, &current, "%s", xpath) && (current > baseline)) {
+            return;
+        }
     }
 
-    return SR_ERR_OK;
+    TLOG_ERR("Operational leaf \"%s\" did not rise above %" PRIu64, xpath, baseline);
+    fail();
+}
+
+/**
+ * @brief Read a whole operational subtree in one get, asserting success.
+ *
+ * Unlike get_oper(), this returns the tree so that several assertions can be made about a single
+ * get; a test proving that getting the whole subtree works must not fall back to one get per leaf.
+ *
+ * @param[in] st Test state.
+ * @param[in] xpath_fmt Printf format of the subtree xpath.
+ * @param[in] ... Format arguments.
+ * @return Retrieved data, caller must release.
+ */
+static sr_data_t *
+get_oper_tree(struct state *st, const char *xpath_fmt, ...)
+{
+    sr_data_t *data = NULL;
+    char xpath[1024];
+    va_list ap;
+
+    va_start(ap, xpath_fmt);
+    vsnprintf(xpath, sizeof xpath, xpath_fmt, ap);
+    va_end(ap);
+
+    assert_int_equal(sr_get_data(st->oper_sess, xpath, 0, 0, 0, &data), SR_ERR_OK);
+    assert_non_null(data);
+    assert_non_null(data->tree);
+
+    return data;
+}
+
+/**
+ * @brief Invoke the reset action of a subscription receiver, asserting it is answered.
+ *
+ * @param[in] st Test state.
+ * @param[in] sub_id Subscription ID.
+ * @param[in] recv_name Receiver name.
+ */
+static void
+send_reset(struct state *st, uint32_t sub_id, const char *recv_name)
+{
+    sr_val_t *output = NULL;
+    size_t output_count = 0;
+    char xpath[1024];
+
+    snprintf(xpath, sizeof xpath, RECV_XP "/reset", sub_id, recv_name);
+    assert_int_equal(sr_rpc_send(st->sess, xpath, NULL, 0, 0, &output, &output_count), SR_ERR_OK);
+    assert_non_null(output);
+    assert_int_equal(output_count, 1);
+    sr_free_values(output, output_count);
+}
+
+/**
+ * @brief Wait until the daemon reports no configured subscriptions left.
+ *
+ * @param[in] st Test state.
+ */
+static void
+wait_no_subs(struct state *st)
+{
+    sr_data_t *data = NULL;
+    uint32_t elapsed_ms = 0;
+    int empty = 0;
+
+    while (elapsed_ms < OPER_WAIT_MS) {
+        if (!sr_get_data(st->oper_sess, "/ietf-subscribed-notifications:subscriptions/subscription",
+                0, 0, 0, &data)) {
+            empty = !data || !data->tree;
+            sr_release_data(data);
+            data = NULL;
+            if (empty) {
+                return;
+            }
+        }
+
+        usleep(OPER_POLL_MS * 1000);
+        elapsed_ms += OPER_POLL_MS;
+    }
+
+    TLOG_WRN("Subscriptions still present after the teardown wait");
 }
 
 /**
@@ -1419,6 +1861,8 @@ setup(void **state)
         return 1;
     }
     *state = st;
+    st->udp_sockfd = -1;
+    st->timeout_mul = running_with_valgrind() ? VALGRIND_TIMEOUT_MUL : 1;
 
     /* connect to sysrepo */
     rc = sr_connect(0, &st->conn);
@@ -1437,8 +1881,13 @@ setup(void **state)
     /* get libyang context */
     st->ly_ctx = sr_acquire_context(st->conn);
 
-    /* start session */
+    /* start the running and operational sessions */
     rc = sr_session_start(st->conn, SR_DS_RUNNING, &st->sess);
+    if (rc) {
+        TLOG_ERR("sr_session_start failed: %s", sr_strerror(rc));
+        return 1;
+    }
+    rc = sr_session_start(st->conn, SR_DS_OPERATIONAL, &st->oper_sess);
     if (rc) {
         TLOG_ERR("sr_session_start failed: %s", sr_strerror(rc));
         return 1;
@@ -1480,7 +1929,7 @@ teardown(void **state)
 
     /* cleanup pending messages */
     for (i = 0; i < MAX_PENDING_MESSAGES; i++) {
-        free_pending_message(&pending_messages[i]);
+        free_pending_message(&st->reasm.msgs[i]);
     }
 
     /* release context */
@@ -1499,239 +1948,42 @@ teardown(void **state)
 }
 
 /**
- * @brief Clear any existing subscriptions and unread notifications before each test to ensure a clean state.
+ * @brief Teardown: drop the subscription a test created.
+ *
+ * Runs even if the test failed on an assertion. test_reset() only clears the datastore, so a
+ * subscription owned by the test process would otherwise survive into the next test.
  */
 static int
-clear_subs_notifs(void **state)
+unsubscribe_test_subscr(void **state)
+{
+    struct state *st = *state;
+
+    sr_unsubscribe(st->test_subscr);
+    st->test_subscr = NULL;
+    return 0;
+}
+
+/**
+ * @brief Reset the datastore and the socket before each test.
+ *
+ * Deletes all subscriptions, receiver instances, named filters and test data, waits until the
+ * daemon has actually torn the subscriptions down, and only then discards the notifications that
+ * caused. Draining before the daemon is done would leave them for the next test to trip over.
+ */
+static int
+test_reset(void **state)
 {
     struct state *st = *state;
 
     sr_delete_item(st->sess, "/ietf-subscribed-notifications:subscriptions", 0);
+    sr_delete_item(st->sess, "/ietf-subscribed-notifications:filters", 0);
+    sr_delete_item(st->sess, "/test:test-leaf", 0);
+    sr_delete_item(st->sess, "/test:cont", 0);
     sr_apply_changes(st->sess, 0);
 
-    /* drain any remaining notifications */
-    drain_notifications(st->udp_sockfd);
+    wait_no_subs(st);
+    drain_notifs(st);
     return 0;
-}
-
-/**
- * @brief Create a receiver instance and subscription, then apply changes.
- *
- * @param[in] sess Sysrepo session.
- * @param[in] port UDP port for the receiver.
- * @param[in] sub_id Subscription ID.
- * @param[in] stream Stream name.
- * @param[in] xpath_filter Optional XPath filter (can be NULL).
- */
-static void
-setup_sub(sr_session_ctx_t *sess, uint16_t port, uint32_t sub_id,
-        const char *stream, const char *xpath_filter)
-{
-    int ret;
-
-    ret = create_receiver_instance(sess, "test-recv", "127.0.0.1", port);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = create_subscription(sess, sub_id, stream, xpath_filter, "test-recv");
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-}
-
-/**
- * @brief Create a receiver instance and subscription with subtree filter, then apply changes.
- *
- * @param[in] sess Sysrepo session.
- * @param[in] port UDP port for the receiver.
- * @param[in] sub_id Subscription ID.
- * @param[in] stream Stream name.
- * @param[in] subtree_filter_xml Subtree filter in XML format.
- */
-static void
-setup_sub_subtree(sr_session_ctx_t *sess, uint16_t port, uint32_t sub_id,
-        const char *stream, const char *subtree_filter_xml)
-{
-    int ret;
-
-    ret = create_receiver_instance(sess, "test-recv", "127.0.0.1", port);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = create_subscription_subtree(sess, sub_id, stream, subtree_filter_xml, "test-recv");
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-}
-
-/**
- * @brief Create a receiver instance, XPath stream filter, and filter-ref subscription, then apply changes.
- *
- * @param[in] sess Sysrepo session.
- * @param[in] port UDP port for the receiver.
- * @param[in] sub_id Subscription ID.
- * @param[in] stream Stream name.
- * @param[in] filter_name Name of the XPath stream filter.
- * @param[in] xpath_filter XPath filter expression.
- */
-static void
-setup_sub_filter_ref(sr_session_ctx_t *sess, uint16_t port, uint32_t sub_id,
-        const char *stream, const char *filter_name, const char *xpath_filter)
-{
-    int ret;
-
-    ret = create_receiver_instance(sess, "test-recv", "127.0.0.1", port);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = create_xpath_stream_filter(sess, filter_name, xpath_filter);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = create_subscription_filter_ref(sess, sub_id, stream, filter_name, "test-recv");
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-}
-
-/**
- * @brief Delete a subscription and its receiver instance, then apply changes.
- *
- * @param[in] sess Sysrepo session.
- * @param[in] sub_id Subscription ID.
- */
-static void
-cleanup_sub(sr_session_ctx_t *sess, uint32_t sub_id)
-{
-    delete_subscription(sess, sub_id);
-    delete_receiver_instance(sess, "test-recv");
-    sr_apply_changes(sess, 0);
-}
-
-/**
- * @brief Read a single operational data leaf value.
- *
- * Switches to operational datastore, reads the leaf at the given XPath,
- * and switches back to running datastore. Caller must free the returned string.
- *
- * @param[in] sess Sysrepo session.
- * @param[in] xpath XPath of the leaf to read.
- * @return Newly allocated string with the leaf value, or NULL on error.
- */
-static char *
-get_oper_leaf_str(sr_session_ctx_t *sess, const char *xpath)
-{
-    sr_data_t *data = NULL;
-    struct lyd_node *node = NULL;
-    char *value = NULL;
-    int ret;
-
-    ret = sr_session_switch_ds(sess, SR_DS_OPERATIONAL);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = sr_get_data(sess, xpath, 0, 0, 0, &data);
-    assert_int_equal(ret, SR_ERR_OK);
-    assert_non_null(data);
-    assert_non_null(data->tree);
-
-    assert_int_equal(lyd_find_path(data->tree, xpath, 0, &node), LY_SUCCESS);
-    assert_non_null(node);
-    value = strdup(lyd_get_value(node));
-
-    sr_release_data(data);
-
-    ret = sr_session_switch_ds(sess, SR_DS_RUNNING);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    return value;
-}
-
-/**
- * @brief Read an operational counter value without asserting.
- *
- * Similar to get_oper_leaf_str but returns the value as a uint64_t
- * and returns an error code instead of asserting on failure.
- *
- * @param[in] sess Sysrepo session.
- * @param[in] xpath XPath of the leaf to read.
- * @param[out] counter Parsed counter value.
- * @return 0 on success, -1 on error.
- */
-static int
-get_oper_counter(sr_session_ctx_t *sess, const char *xpath, uint64_t *counter)
-{
-    sr_data_t *data = NULL;
-    struct lyd_node *node = NULL;
-    char *value = NULL;
-    int ret;
-
-    ret = sr_session_switch_ds(sess, SR_DS_OPERATIONAL);
-    if (ret) {
-        return -1;
-    }
-
-    ret = sr_get_data(sess, xpath, 0, 0, 0, &data);
-    if (ret || !data || !data->tree) {
-        if (data) {
-            sr_release_data(data);
-        }
-        sr_session_switch_ds(sess, SR_DS_RUNNING);
-        return -1;
-    }
-
-    if (lyd_find_path(data->tree, xpath, 0, &node) || !node) {
-        sr_release_data(data);
-        sr_session_switch_ds(sess, SR_DS_RUNNING);
-        return -1;
-    }
-
-    value = strdup(lyd_get_value(node));
-    *counter = strtoull(value, NULL, 10);
-    free(value);
-
-    sr_release_data(data);
-
-    ret = sr_session_switch_ds(sess, SR_DS_RUNNING);
-    if (ret) {
-        return -1;
-    }
-
-    return 0;
-}
-
-/**
- * @brief Wait for excluded-event-records to increment above a baseline.
- *
- * Polls the operational datastore counter in a loop until it exceeds
- * the baseline value or the timeout expires. Used instead of waiting
- * for a socket timeout to prove that a notification was filtered.
- *
- * @param[in] sess Sysrepo session.
- * @param[in] sub_id Subscription ID.
- * @param[in] baseline Baseline counter value.
- * @param[in] timeout_ms Total timeout in milliseconds.
- * @return 0 if counter incremented, -1 on timeout.
- */
-static int
-wait_for_excluded_records_increment(sr_session_ctx_t *sess, uint32_t sub_id,
-        uint64_t baseline, int timeout_ms)
-{
-    char xpath[512];
-    uint64_t current;
-    int elapsed_ms = 0;
-    int ret;
-
-    snprintf(xpath, sizeof(xpath),
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='%u']"
-            "/receivers/receiver[name='recv1']/excluded-event-records", sub_id);
-
-    while (elapsed_ms < timeout_ms) {
-        usleep(COUNTER_POLL_MS * 1000);
-        elapsed_ms += COUNTER_POLL_MS;
-
-        ret = get_oper_counter(sess, xpath, &current);
-        if (ret) {
-            continue;
-        }
-
-        if (current > baseline) {
-            return 0;
-        }
-    }
-
-    return -1;
 }
 
 /* ========== TESTS ========== */
@@ -1743,34 +1995,20 @@ static void
 test_subscription_started(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL;
+    struct lyd_node *notif;
     udp_notif_header_t header;
-    int ret;
 
-    TLOG_INF("Creating receiver instance and subscription...");
+    setup_sub(st, 1, NULL);
 
-    setup_sub(st->sess, st->udp_port, 1, "NETCONF", NULL);
-
-    TLOG_INF("Waiting for subscription-started notification...");
-
-    /* receive notification */
-    ret = receive_notification(st->udp_sockfd, st->ly_ctx, &notif, &header);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-
-    /* verify it's a subscription-started notification */
+    notif = expect_notif_hdr(st, SUB_STARTED, &header);
     assert_string_equal(notif->schema->name, "subscription-started");
 
     /* verify header fields */
     assert_int_equal(header.version, UDP_NOTIF_VERSION);
     assert_int_equal(header.s_flag, 0);
-    assert_true(header.media_type == UDP_NOTIF_MT_JSON || header.media_type == UDP_NOTIF_MT_XML);
-
-    TLOG_INF("Received subscription-started notification successfully");
+    assert_true((header.media_type == UDP_NOTIF_MT_JSON) || (header.media_type == UDP_NOTIF_MT_XML));
 
     lyd_free_all(notif);
-
-    cleanup_sub(st->sess, 1);
 }
 
 /**
@@ -1784,89 +2022,24 @@ static void
 test_subscription_started_fields(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL, *node = NULL;
-    char path[512];
-    int ret;
+    struct lyd_node *notif;
 
-    TLOG_INF("Creating receiver instance and subscription with all fields...");
+    setup_sub(st, 100,
+            "stream-xpath-filter", "/ietf-netconf-notifications:*",
+            "encoding", ENC_XML,
+            "purpose", "test-purpose", NULL);
 
-    ret = create_receiver_instance(st->sess, "test-recv", "127.0.0.1", st->udp_port);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = _set_sub_common(st->sess, 100, "NETCONF", "test-recv");
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* set xpath filter */
-    snprintf(path, sizeof(path),
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='100']/stream-xpath-filter");
-    ret = sr_set_item_str(st->sess, path, "/ietf-netconf-notifications:*", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* set encoding */
-    snprintf(path, sizeof(path),
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='100']/encoding");
-    ret = sr_set_item_str(st->sess, path, "ietf-subscribed-notifications:encode-xml", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* set purpose */
-    snprintf(path, sizeof(path),
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='100']/purpose");
-    ret = sr_set_item_str(st->sess, path, "test-purpose", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    TLOG_INF("Waiting for subscription-started notification...");
-
-    ret = receive_notification(st->udp_sockfd, st->ly_ctx, &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-
-    /* verify it's a subscription-started notification */
+    notif = expect_notif(st, SUB_STARTED);
     assert_string_equal(notif->schema->name, "subscription-started");
 
-    /* verify id */
-    ret = lyd_find_path(notif, "id", 0, &node);
-    assert_int_equal(ret, LY_SUCCESS);
-    assert_non_null(node);
-    assert_int_equal(strtoul(lyd_get_value(node), NULL, 10), 100);
-
-    /* verify stream */
-    ret = lyd_find_path(notif, "stream", 0, &node);
-    assert_int_equal(ret, LY_SUCCESS);
-    assert_non_null(node);
-    assert_string_equal(lyd_get_value(node), "NETCONF");
-
-    /* verify transport */
-    ret = lyd_find_path(notif, "transport", 0, &node);
-    assert_int_equal(ret, LY_SUCCESS);
-    assert_non_null(node);
-    assert_string_equal(lyd_get_value(node), "ietf-udp-notif-transport:udp-notif");
-
-    /* verify encoding */
-    ret = lyd_find_path(notif, "encoding", 0, &node);
-    assert_int_equal(ret, LY_SUCCESS);
-    assert_non_null(node);
-    assert_string_equal(lyd_get_value(node), "ietf-subscribed-notifications:encode-xml");
-
-    /* verify purpose */
-    ret = lyd_find_path(notif, "purpose", 0, &node);
-    assert_int_equal(ret, LY_SUCCESS);
-    assert_non_null(node);
-    assert_string_equal(lyd_get_value(node), "test-purpose");
-
-    /* verify stream-xpath-filter */
-    ret = lyd_find_path(notif, "stream-xpath-filter", 0, &node);
-    assert_int_equal(ret, LY_SUCCESS);
-    assert_non_null(node);
-    assert_string_equal(lyd_get_value(node), "/ietf-netconf-notifications:*");
-
-    TLOG_INF("All subscription-started fields verified successfully");
+    assert_notif_leaf(notif, "id", "100");
+    assert_notif_leaf(notif, "stream", "NETCONF");
+    assert_notif_leaf(notif, "transport", UDP_TRANSPORT);
+    assert_notif_leaf(notif, "encoding", ENC_XML);
+    assert_notif_leaf(notif, "purpose", "test-purpose");
+    assert_notif_leaf(notif, "stream-xpath-filter", "/ietf-netconf-notifications:*");
 
     lyd_free_all(notif);
-
-    cleanup_sub(st->sess, 100);
 }
 
 /**
@@ -1880,40 +2053,20 @@ static void
 test_subscription_started_filter_ref(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL, *node = NULL;
-    int ret;
+    struct lyd_node *notif;
 
-    TLOG_INF("Creating receiver instance, stream filter, and filter-ref subscription...");
+    add_xpath_filter(st, "field-test-filter", "/ietf-netconf-notifications:*");
+    setup_sub(st, 101, "stream-filter-name", "field-test-filter", NULL);
 
-    setup_sub_filter_ref(st->sess, st->udp_port, 101, "NETCONF", "field-test-filter",
-            "/ietf-netconf-notifications:*");
-
-    TLOG_INF("Waiting for subscription-started notification...");
-
-    ret = receive_notification(st->udp_sockfd, st->ly_ctx, &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-
-    /* verify it's a subscription-started notification */
+    notif = expect_notif(st, SUB_STARTED);
     assert_string_equal(notif->schema->name, "subscription-started");
 
-    /* verify stream-filter-name is present */
-    ret = lyd_find_path(notif, "stream-filter-name", 0, &node);
-    assert_int_equal(ret, LY_SUCCESS);
-    assert_non_null(node);
-    assert_string_equal(lyd_get_value(node), "field-test-filter");
+    assert_notif_leaf(notif, "stream-filter-name", "field-test-filter");
 
-    /* verify stream-xpath-filter is NOT present (choice: by-reference takes precedence) */
-    ret = lyd_find_path(notif, "stream-xpath-filter", 0, &node);
-    assert_int_equal(ret, LY_ENOTFOUND);
-
-    TLOG_INF("stream-filter-name verified successfully");
+    /* the choice is by-reference, so the inline filter must not be reported */
+    assert_no_notif_leaf(notif, "stream-xpath-filter");
 
     lyd_free_all(notif);
-
-    cleanup_sub(st->sess, 101);
-    delete_stream_filter(st->sess, "field-test-filter");
-    sr_apply_changes(st->sess, 0);
 }
 
 /**
@@ -1927,93 +2080,26 @@ static void
 test_subscription_started_json(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL, *node = NULL;
+    struct lyd_node *notif;
     udp_notif_header_t header;
-    char path[512];
-    int ret;
 
-    TLOG_INF("Creating receiver instance and JSON-encoded subscription...");
+    setup_sub(st, 102,
+            "stream-xpath-filter", "/ietf-netconf-notifications:*",
+            "encoding", ENC_JSON,
+            "purpose", "test-purpose-json", NULL);
 
-    ret = create_receiver_instance(st->sess, "test-recv", "127.0.0.1", st->udp_port);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = _set_sub_common(st->sess, 102, "NETCONF", "test-recv");
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* set xpath filter */
-    snprintf(path, sizeof(path),
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='102']/stream-xpath-filter");
-    ret = sr_set_item_str(st->sess, path, "/ietf-netconf-notifications:*", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* set encoding to JSON */
-    snprintf(path, sizeof(path),
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='102']/encoding");
-    ret = sr_set_item_str(st->sess, path, "ietf-subscribed-notifications:encode-json", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* set purpose */
-    snprintf(path, sizeof(path),
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='102']/purpose");
-    ret = sr_set_item_str(st->sess, path, "test-purpose-json", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    TLOG_INF("Waiting for subscription-started notification...");
-
-    ret = receive_notification(st->udp_sockfd, st->ly_ctx, &notif, &header);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-
-    /* verify media type is JSON */
+    notif = expect_notif_hdr(st, SUB_STARTED, &header);
     assert_int_equal(header.media_type, UDP_NOTIF_MT_JSON);
-
-    /* verify it's a subscription-started notification */
     assert_string_equal(notif->schema->name, "subscription-started");
 
-    /* verify id */
-    ret = lyd_find_path(notif, "id", 0, &node);
-    assert_int_equal(ret, LY_SUCCESS);
-    assert_non_null(node);
-    assert_int_equal(strtoul(lyd_get_value(node), NULL, 10), 102);
-
-    /* verify stream */
-    ret = lyd_find_path(notif, "stream", 0, &node);
-    assert_int_equal(ret, LY_SUCCESS);
-    assert_non_null(node);
-    assert_string_equal(lyd_get_value(node), "NETCONF");
-
-    /* verify transport */
-    ret = lyd_find_path(notif, "transport", 0, &node);
-    assert_int_equal(ret, LY_SUCCESS);
-    assert_non_null(node);
-    assert_string_equal(lyd_get_value(node), "ietf-udp-notif-transport:udp-notif");
-
-    /* verify encoding */
-    ret = lyd_find_path(notif, "encoding", 0, &node);
-    assert_int_equal(ret, LY_SUCCESS);
-    assert_non_null(node);
-    assert_string_equal(lyd_get_value(node), "ietf-subscribed-notifications:encode-json");
-
-    /* verify purpose */
-    ret = lyd_find_path(notif, "purpose", 0, &node);
-    assert_int_equal(ret, LY_SUCCESS);
-    assert_non_null(node);
-    assert_string_equal(lyd_get_value(node), "test-purpose-json");
-
-    /* verify stream-xpath-filter */
-    ret = lyd_find_path(notif, "stream-xpath-filter", 0, &node);
-    assert_int_equal(ret, LY_SUCCESS);
-    assert_non_null(node);
-    assert_string_equal(lyd_get_value(node), "/ietf-netconf-notifications:*");
-
-    TLOG_INF("JSON subscription-started notification verified successfully");
+    assert_notif_leaf(notif, "id", "102");
+    assert_notif_leaf(notif, "stream", "NETCONF");
+    assert_notif_leaf(notif, "transport", UDP_TRANSPORT);
+    assert_notif_leaf(notif, "encoding", ENC_JSON);
+    assert_notif_leaf(notif, "purpose", "test-purpose-json");
+    assert_notif_leaf(notif, "stream-xpath-filter", "/ietf-netconf-notifications:*");
 
     lyd_free_all(notif);
-
-    cleanup_sub(st->sess, 102);
 }
 
 /**
@@ -2023,41 +2109,14 @@ static void
 test_subscription_terminated(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL;
-    int ret;
 
-    TLOG_INF("Creating receiver instance and subscription...");
+    setup_sub(st, 2, NULL);
+    skip_notif(st, SUB_STARTED);
 
-    setup_sub(st->sess, st->udp_port, 2, "NETCONF", NULL);
+    del_node(st, SUB_XP, 2);
+    apply(st);
 
-    /* receive subscription-started notification first */
-    ret = receive_notification(st->udp_sockfd, st->ly_ctx, &notif, NULL);
-    assert_int_equal(ret, 0);
-    lyd_free_all(notif);
-    notif = NULL;
-
-    TLOG_INF("Deleting subscription...");
-
-    /* delete subscription */
-    ret = delete_subscription(st->sess, 2);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    TLOG_INF("Waiting for subscription-terminated notification...");
-
-    /* receive notification */
-    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
-            "/ietf-subscribed-notifications:subscription-terminated", &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-
-    TLOG_INF("Received subscription-terminated notification successfully");
-
-    lyd_free_all(notif);
-
-    delete_receiver_instance(st->sess, "test-recv");
-    sr_apply_changes(st->sess, 0);
+    skip_notif(st, SUB_TERMINATED);
 }
 
 /**
@@ -2067,37 +2126,14 @@ static void
 test_subscription_modified(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL;
-    char path[512];
-    int ret;
 
-    TLOG_INF("Creating receiver instance and subscription...");
-
-    setup_sub(st->sess, st->udp_port, 3, "NETCONF", "/ietf-netconf-notifications:*");
-
-    TLOG_INF("Modifying subscription filter...");
+    setup_sub(st, 3, "stream-xpath-filter", "/ietf-netconf-notifications:*", NULL);
 
     /* modify the filter */
-    snprintf(path, sizeof(path),
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='3']/stream-xpath-filter");
-    ret = sr_set_item_str(st->sess, path, "/ietf-netconf-notifications:netconf-config-change", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
+    set_node(st, "/ietf-netconf-notifications:netconf-config-change", SUB_XP "/stream-xpath-filter", 3);
+    apply(st);
 
-    TLOG_INF("Waiting for subscription-modified notification...");
-
-    /* receive notification */
-    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
-            "/ietf-subscribed-notifications:subscription-modified", &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-
-    TLOG_INF("Received subscription-modified notification successfully");
-
-    lyd_free_all(notif);
-
-    cleanup_sub(st->sess, 3);
+    skip_notif(st, SUB_MODIFIED);
 }
 
 /**
@@ -2108,33 +2144,25 @@ test_multiple_subscriptions(void **state)
 {
     struct state *st = *state;
     struct lyd_node *notif = NULL, *node = NULL;
-    int ret, i, timeout_ms = NOTIF_TIMEOUT_MS;
-    int started_count = 0, seen[3] = {0};
-    uint32_t id;
+    uint32_t id, timeout_ms = NOTIF_TIMEOUT_MS;
+    int i, started_count = 0, seen[3] = {0};
 
-    TLOG_INF("Creating receiver instance and multiple subscriptions...");
-
-    /* create receiver */
-    ret = create_receiver_instance(st->sess, "test-recv", "127.0.0.1", st->udp_port);
-    assert_int_equal(ret, SR_ERR_OK);
+    add_recv_inst(st, TEST_RECV_INST, st->udp_port, NULL);
 
     /* create 3 subscriptions; the filter keeps out the netconf-config-change that applying this
      * very change produces, the subscription state change notifications are sent regardless of it */
     for (i = 1; i <= 3; i++) {
-        ret = create_subscription(st->sess, 10 + i, "NETCONF", "/ietf-subscribed-notifications:*", "test-recv");
-        assert_int_equal(ret, SR_ERR_OK);
+        add_sub(st, 10 + i, "stream", "NETCONF", "transport", UDP_TRANSPORT,
+                "stream-xpath-filter", "/ietf-subscribed-notifications:*", NULL);
+        bind_sub_recv(st, 10 + i, TEST_RECV, TEST_RECV_INST);
     }
-
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    TLOG_INF("Waiting for subscription-started notifications...");
+    apply(st);
 
     /* read until the socket goes quiet, so that an unexpected extra notification fails the test
      * instead of being left behind for the next one */
-    while (receive_notification_ext(st->udp_sockfd, st->ly_ctx, timeout_ms, &notif, NULL, NULL, 0) == NOTIF_RECV_OK) {
+    while (recv_notif(st, st->udp_sockfd, NULL, timeout_ms, &notif, NULL, NULL, 0) == NOTIF_RECV_OK) {
         /* the first notification may take a while, any further one is already waiting */
-        timeout_ms = DRAIN_TIMEOUT_MS;
+        timeout_ms = tmo(st, QUIET_TIMEOUT_MS);
 
         assert_string_equal(notif->schema->name, "subscription-started");
 
@@ -2151,14 +2179,6 @@ test_multiple_subscriptions(void **state)
     }
 
     assert_int_equal(started_count, 3);
-    TLOG_INF("Received %d subscription-started notifications", started_count);
-
-    /* cleanup */
-    for (i = 1; i <= 3; i++) {
-        delete_subscription(st->sess, 10 + i);
-    }
-    delete_receiver_instance(st->sess, "test-recv");
-    sr_apply_changes(st->sess, 0);
 }
 
 /**
@@ -2168,36 +2188,14 @@ static void
 test_config_change_notification(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL;
-    int ret;
 
-    TLOG_INF("Creating subscription for netconf-config-change...");
-
-    setup_sub(st->sess, st->udp_port, 20, "NETCONF",
-            "/ietf-netconf-notifications:netconf-config-change");
-
-    TLOG_INF("Making configuration change to trigger notification...");
+    setup_sub(st, 20, "stream-xpath-filter", NCC, NULL);
 
     /* make a configuration change */
-    ret = sr_set_item_str(st->sess, "/test:test-leaf", "67", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
+    set_node(st, "67", "/test:test-leaf");
+    apply(st);
 
-    TLOG_INF("Waiting for netconf-config-change notification...");
-
-    /* try to receive config-change notification */
-    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
-            "/ietf-netconf-notifications:netconf-config-change", &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-
-    TLOG_INF("Received netconf-config-change notification successfully");
-
-    /* cleanup */
-    lyd_free_all(notif);
-    sr_delete_item(st->sess, "/test:test-leaf", 0);
-    cleanup_sub(st->sess, 20);
+    skip_notif(st, NCC);
 }
 
 /**
@@ -2207,25 +2205,18 @@ static void
 test_udp_notif_header(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL;
+    struct lyd_node *notif;
     udp_notif_header_t header;
-    int ret;
 
-    TLOG_INF("Creating subscription to test UDP-Notif header...");
+    setup_sub(st, 30, NULL);
 
-    setup_sub(st->sess, st->udp_port, 30, "NETCONF", NULL);
+    notif = expect_notif_hdr(st, SUB_STARTED, &header);
 
-    /* receive notification and check header */
-    ret = receive_notification(st->udp_sockfd, st->ly_ctx, &notif, &header);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-
-    /* verify UDP-Notif header fields */
     assert_int_equal(header.version, UDP_NOTIF_VERSION);
 
     /* standard space */
     assert_int_equal(header.s_flag, 0);
-    assert_true(header.media_type == UDP_NOTIF_MT_JSON || header.media_type == UDP_NOTIF_MT_XML);
+    assert_true((header.media_type == UDP_NOTIF_MT_JSON) || (header.media_type == UDP_NOTIF_MT_XML));
 
     /* no options */
     assert_int_equal(header.header_len, UDP_NOTIF_HDR_SIZE);
@@ -2233,12 +2224,7 @@ test_udp_notif_header(void **state)
     assert_true(header.publisher_id > 0);
     assert_true(header.message_id > 0);
 
-    TLOG_INF("UDP-Notif header validated: version=%d, MT=%d, pub_id=%u, msg_id=%u",
-            header.version, header.media_type, header.publisher_id, header.message_id);
-
     lyd_free_all(notif);
-
-    cleanup_sub(st->sess, 30);
 }
 
 /**
@@ -2248,37 +2234,22 @@ static void
 test_message_id_increment(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL;
+    struct lyd_node *notif;
     udp_notif_header_t header1, header2;
-    int ret;
 
-    TLOG_INF("Testing message ID incrementing...");
+    setup_sub(st, 40, NULL);
 
-    setup_sub(st->sess, st->udp_port, 40, "NETCONF", NULL);
-
-    /* receive first notification */
-    ret = receive_notification(st->udp_sockfd, st->ly_ctx, &notif, &header1);
-    assert_int_equal(ret, 0);
+    notif = expect_notif_hdr(st, SUB_STARTED, &header1);
     lyd_free_all(notif);
-    notif = NULL;
 
-    /* delete and re-create to generate another notification */
-    delete_subscription(st->sess, 40);
-    sr_apply_changes(st->sess, 0);
+    /* delete the subscription to generate another notification */
+    del_node(st, SUB_XP, 40);
+    apply(st);
 
-    /* receive second notification (subscription-terminated) */
-    ret = receive_notification(st->udp_sockfd, st->ly_ctx, &notif, &header2);
-    assert_int_equal(ret, 0);
+    notif = expect_notif_hdr(st, SUB_TERMINATED, &header2);
     lyd_free_all(notif);
-    notif = NULL;
 
-    /* message ID should have incremented */
     assert_true(header2.message_id > header1.message_id);
-    TLOG_INF("Message ID incremented from %u to %u", header1.message_id, header2.message_id);
-
-    /* cleanup */
-    delete_receiver_instance(st->sess, "test-recv");
-    sr_apply_changes(st->sess, 0);
 }
 
 /**
@@ -2291,36 +2262,13 @@ static void
 test_xpath_filter_match(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL;
-    int ret;
 
-    TLOG_INF("Testing XPath filter that matches notifications...");
+    setup_sub(st, 50, "stream-xpath-filter", NCC, NULL);
 
-    setup_sub(st->sess, st->udp_port, 50, "NETCONF",
-            "/ietf-netconf-notifications:netconf-config-change");
+    set_node(st, "42", "/test:test-leaf");
+    apply(st);
 
-    TLOG_INF("Making configuration change to trigger notification...");
-
-    /* make a configuration change - this should produce a netconf-config-change notification */
-    ret = sr_set_item_str(st->sess, "/test:test-leaf", "42", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    TLOG_INF("Waiting for netconf-config-change notification (should match filter)...");
-
-    /* the XPath filter should match and we should receive the notification */
-    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
-            "/ietf-netconf-notifications:netconf-config-change", &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-
-    TLOG_INF("Received netconf-config-change notification - XPath filter matched successfully");
-
-    lyd_free_all(notif);
-
-    sr_delete_item(st->sess, "/test:test-leaf", 0);
-    cleanup_sub(st->sess, 50);
+    skip_notif(st, NCC);
 }
 
 /**
@@ -2333,41 +2281,20 @@ static void
 test_xpath_filter_nomatch(void **state)
 {
     struct state *st = *state;
-    uint64_t excluded_baseline;
-    int ret;
+    uint64_t baseline;
 
-    TLOG_INF("Testing XPath filter that should not match...");
+    setup_sub(st, 51, "stream-xpath-filter",
+            "/ietf-netconf-notifications:netconf-config-change[datastore='startup']", NULL);
+    skip_notif(st, SUB_STARTED);
 
-    setup_sub(st->sess, st->udp_port, 51, "NETCONF",
-            "/ietf-netconf-notifications:netconf-config-change[datastore='startup']");
-
-    /* discard notifs that we don't care about */
-    drain_notifications(st->udp_sockfd);
-
-    /* read baseline excluded-event-records counter */
-    ret = get_oper_counter(st->sess,
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='51']"
-            "/receivers/receiver[name='recv1']/excluded-event-records", &excluded_baseline);
-    assert_int_equal(ret, 0);
-
-    TLOG_INF("Making configuration change to running datastore...");
+    assert_int_equal(try_oper_u64(st, &baseline, RECV_XP "/excluded-event-records", 51, TEST_RECV), 0);
 
     /* make a configuration change to running datastore */
-    ret = sr_set_item_str(st->sess, "/test:test-leaf", "55", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
+    set_node(st, "55", "/test:test-leaf");
+    apply(st);
 
-    TLOG_INF("Waiting for excluded-event-records to increment (notification was filtered)...");
-
-    /* wait for excluded-event-records to increment, proving the notification was filtered */
-    ret = wait_for_excluded_records_increment(st->sess, 51, excluded_baseline, COUNTER_WAIT_MS);
-    assert_int_equal(ret, 0);
-
-    TLOG_INF("excluded-event-records incremented - XPath filter correctly filtered out the notification");
-
-    sr_delete_item(st->sess, "/test:test-leaf", 0);
-    cleanup_sub(st->sess, 51);
+    /* the counter incrementing proves the daemon filtered the notification out */
+    wait_oper_above(st, baseline, RECV_XP "/excluded-event-records", 51, TEST_RECV);
 }
 
 /**
@@ -2380,62 +2307,25 @@ static void
 test_xpath_filter_edit_target(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL;
-    uint64_t excluded_baseline;
-    int ret;
+    uint64_t baseline;
 
-    TLOG_INF("Testing XPath filter matching edit target...");
+    setup_sub(st, 52, "stream-xpath-filter",
+            "/ietf-netconf-notifications:netconf-config-change[edit/target=\"/test:test-leaf\"]", NULL);
+    skip_notif(st, SUB_STARTED);
 
-    setup_sub(st->sess, st->udp_port, 52, "NETCONF",
-            "/ietf-netconf-notifications:netconf-config-change[edit/target=\"/test:test-leaf\"]");
+    assert_int_equal(try_oper_u64(st, &baseline, RECV_XP "/excluded-event-records", 52, TEST_RECV), 0);
 
-    /* discard notifs that we don't care about */
-    drain_notifications(st->udp_sockfd);
+    /* change a different target, this must not match the filter */
+    set_node(st, "67", "/test:cont/dflt-leaf");
+    apply(st);
 
-    /* read baseline excluded-event-records counter */
-    ret = get_oper_counter(st->sess,
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='52']"
-            "/receivers/receiver[name='recv1']/excluded-event-records", &excluded_baseline);
-    assert_int_equal(ret, 0);
+    wait_oper_above(st, baseline, RECV_XP "/excluded-event-records", 52, TEST_RECV);
 
-    TLOG_INF("Making configuration change to a different target...");
+    /* change the target the filter selects, this must match */
+    set_node(st, "77", "/test:test-leaf");
+    apply(st);
 
-    /* change test:cont/dflt-leaf - this should NOT match the filter since the target is different */
-    ret = sr_set_item_str(st->sess, "/test:cont/dflt-leaf", "67", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    TLOG_INF("Waiting for excluded-event-records to increment (notification was filtered)...");
-
-    /* wait for excluded-event-records to increment, proving the notification was filtered */
-    ret = wait_for_excluded_records_increment(st->sess, 52, excluded_baseline, COUNTER_WAIT_MS);
-    assert_int_equal(ret, 0);
-
-    TLOG_INF("excluded-event-records incremented - XPath filter correctly filtered out the notification based on edit target");
-
-    TLOG_INF("Making configuration change to test:test-leaf...");
-
-    /* change test:test-leaf - this should match the filter */
-    ret = sr_set_item_str(st->sess, "/test:test-leaf", "77", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    TLOG_INF("Waiting for notification with matching edit target...");
-
-    /* should receive notification since edit target matches */
-    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
-            "/ietf-netconf-notifications:netconf-config-change", &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-
-    TLOG_INF("Received notification - XPath filter with edit/target matched successfully");
-
-    lyd_free_all(notif);
-
-    sr_delete_item(st->sess, "/test:test-leaf", 0);
-    cleanup_sub(st->sess, 52);
+    skip_notif(st, NCC);
 }
 
 /**
@@ -2448,8 +2338,6 @@ static void
 test_subtree_filter_match(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL;
-    int ret;
 
     /*
      * subtree filter that matches netconf-config-change notifications
@@ -2458,32 +2346,14 @@ test_subtree_filter_match(void **state)
     const char *subtree_filter =
             "<netconf-config-change xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\"/>";
 
-    TLOG_INF("Testing subtree filter that matches notifications...");
+    stage_sub(st, 60, NULL);
+    add_sub_subtree_filter(st, 60, subtree_filter);
+    apply(st);
 
-    setup_sub_subtree(st->sess, st->udp_port, 60, "NETCONF", subtree_filter);
+    set_node(st, "88", "/test:test-leaf");
+    apply(st);
 
-    TLOG_INF("Making configuration change to trigger notification...");
-
-    /* make a configuration change */
-    ret = sr_set_item_str(st->sess, "/test:test-leaf", "88", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    TLOG_INF("Waiting for netconf-config-change notification (should match subtree filter)...");
-
-    /* should receive notification since subtree filter matches */
-    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
-            "/ietf-netconf-notifications:netconf-config-change", &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-
-    TLOG_INF("Received netconf-config-change notification - subtree filter matched successfully");
-
-    lyd_free_all(notif);
-
-    sr_delete_item(st->sess, "/test:test-leaf", 0);
-    cleanup_sub(st->sess, 60);
+    skip_notif(st, NCC);
 }
 
 /**
@@ -2496,8 +2366,7 @@ static void
 test_subtree_filter_nomatch(void **state)
 {
     struct state *st = *state;
-    uint64_t excluded_baseline;
-    int ret;
+    uint64_t baseline;
 
     /*
      * subtree filter that matches only netconf-config-change with datastore=startup
@@ -2508,37 +2377,17 @@ test_subtree_filter_nomatch(void **state)
             "<datastore>startup</datastore>"
             "</netconf-config-change>";
 
-    TLOG_INF("Testing subtree filter that should not match...");
+    stage_sub(st, 61, NULL);
+    add_sub_subtree_filter(st, 61, subtree_filter);
+    apply(st);
+    skip_notif(st, SUB_STARTED);
 
-    setup_sub_subtree(st->sess, st->udp_port, 61, "NETCONF", subtree_filter);
+    assert_int_equal(try_oper_u64(st, &baseline, RECV_XP "/excluded-event-records", 61, TEST_RECV), 0);
 
-    /* discard notifs that we don't care about */
-    drain_notifications(st->udp_sockfd);
+    set_node(st, "99", "/test:test-leaf");
+    apply(st);
 
-    /* read baseline excluded-event-records counter */
-    ret = get_oper_counter(st->sess,
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='61']"
-            "/receivers/receiver[name='recv1']/excluded-event-records", &excluded_baseline);
-    assert_int_equal(ret, 0);
-
-    TLOG_INF("Making configuration change to running datastore...");
-
-    /* make a configuration change to running datastore */
-    ret = sr_set_item_str(st->sess, "/test:test-leaf", "99", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    TLOG_INF("Waiting for excluded-event-records to increment (notification was filtered)...");
-
-    /* wait for excluded-event-records to increment, proving the notification was filtered */
-    ret = wait_for_excluded_records_increment(st->sess, 61, excluded_baseline, COUNTER_WAIT_MS);
-    assert_int_equal(ret, 0);
-
-    TLOG_INF("excluded-event-records incremented - subtree filter correctly filtered out the notification");
-
-    sr_delete_item(st->sess, "/test:test-leaf", 0);
-    cleanup_sub(st->sess, 61);
+    wait_oper_above(st, baseline, RECV_XP "/excluded-event-records", 61, TEST_RECV);
 }
 
 /**
@@ -2551,75 +2400,34 @@ static void
 test_subtree_filter_containment(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL;
-    uint64_t excluded_baseline;
-    int ret;
+    uint64_t baseline;
 
-    /*
-     * subtree filter that matches netconf-config-change with datastore=running
-     */
+    /* subtree filter that matches netconf-config-change with datastore=running */
     const char *subtree_filter =
             "<netconf-config-change xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
             "<datastore>running</datastore>"
             "</netconf-config-change>";
 
-    TLOG_INF("Testing subtree filter with containment node...");
+    stage_sub(st, 62, NULL);
+    add_sub_subtree_filter(st, 62, subtree_filter);
+    apply(st);
+    skip_notif(st, SUB_STARTED);
 
-    setup_sub_subtree(st->sess, st->udp_port, 62, "NETCONF", subtree_filter);
+    assert_int_equal(try_oper_u64(st, &baseline, RECV_XP "/excluded-event-records", 62, TEST_RECV), 0);
 
-    /* discard notifs that we don't care about */
-    drain_notifications(st->udp_sockfd);
+    /* change the startup datastore, the filter selects running so this must not match */
+    assert_int_equal(sr_session_switch_ds(st->sess, SR_DS_STARTUP), SR_ERR_OK);
+    set_node(st, "100", "/test:test-leaf");
+    apply(st);
+    assert_int_equal(sr_session_switch_ds(st->sess, SR_DS_RUNNING), SR_ERR_OK);
 
-    /* read baseline excluded-event-records counter */
-    ret = get_oper_counter(st->sess,
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='62']"
-            "/receivers/receiver[name='recv1']/excluded-event-records", &excluded_baseline);
-    assert_int_equal(ret, 0);
+    wait_oper_above(st, baseline, RECV_XP "/excluded-event-records", 62, TEST_RECV);
 
-    TLOG_INF("Making configuration change to startup datastore...");
+    /* change the running datastore, this must match */
+    set_node(st, "111", "/test:test-leaf");
+    apply(st);
 
-    /* make a configuration change to startup datastore - this should NOT match since the filter is for datastore=running */
-    ret = sr_session_switch_ds(st->sess, SR_DS_STARTUP);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/test:test-leaf", "100", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* switch back to running before reading operational data */
-    ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    TLOG_INF("Waiting for excluded-event-records to increment (notification was filtered)...");
-
-    /* wait for excluded-event-records to increment, proving the notification was filtered */
-    ret = wait_for_excluded_records_increment(st->sess, 62, excluded_baseline, COUNTER_WAIT_MS);
-    assert_int_equal(ret, 0);
-
-    TLOG_INF("excluded-event-records incremented - subtree filter correctly filtered out the notification based on datastore");
-
-    TLOG_INF("Making configuration change to running datastore...");
-
-    /* make a configuration change to running datastore - should match */
-    ret = sr_set_item_str(st->sess, "/test:test-leaf", "111", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    TLOG_INF("Waiting for notification matching subtree containment filter...");
-
-    /* should receive notification since we're changing running datastore */
-    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
-            "/ietf-netconf-notifications:netconf-config-change", &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-
-    TLOG_INF("Received notification - subtree containment filter matched successfully");
-
-    lyd_free_all(notif);
-
-    sr_delete_item(st->sess, "/test:test-leaf", 0);
-    cleanup_sub(st->sess, 62);
+    skip_notif(st, NCC);
 }
 
 /**
@@ -2632,40 +2440,16 @@ static void
 test_filter_ref_xpath_match(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL;
-    int ret;
 
-    TLOG_INF("Testing subscription with XPath filter reference...");
-
-    setup_sub_filter_ref(st->sess, st->udp_port, 70, "NETCONF", "my-xpath-filter",
+    add_xpath_filter(st, "my-xpath-filter",
             "/ietf-netconf-notifications:netconf-config-change[datastore='running']");
+    setup_sub(st, 70, "stream-filter-name", "my-xpath-filter", NULL);
+    skip_notif(st, SUB_STARTED);
 
-    /* drain subscription-started notification */
-    drain_notifications(st->udp_sockfd);
+    set_node(st, "200", "/test:test-leaf");
+    apply(st);
 
-    TLOG_INF("Making configuration change to running datastore to trigger notification...");
-
-    /* make a configuration change to running datastore */
-    ret = sr_set_item_str(st->sess, "/test:test-leaf", "200", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    TLOG_INF("Waiting for netconf-config-change notification (should match xpath filter ref for datastore=running)...");
-
-    /* should receive notification since xpath filter reference matches running datastore */
-    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
-            "/ietf-netconf-notifications:netconf-config-change", &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-
-    TLOG_INF("Received netconf-config-change notification - XPath filter reference with datastore predicate worked");
-
-    lyd_free_all(notif);
-
-    sr_delete_item(st->sess, "/test:test-leaf", 0);
-    delete_stream_filter(st->sess, "my-xpath-filter");
-    cleanup_sub(st->sess, 70);
+    skip_notif(st, NCC);
 }
 
 /**
@@ -2678,8 +2462,6 @@ static void
 test_filter_ref_subtree_match(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL;
-    int ret;
 
     /*
      * subtree filter that matches netconf-config-change notifications
@@ -2690,49 +2472,14 @@ test_filter_ref_subtree_match(void **state)
             "<datastore>running</datastore>"
             "</netconf-config-change>";
 
-    TLOG_INF("Testing subscription with subtree filter reference...");
+    add_subtree_filter(st, "my-subtree-filter", subtree_filter);
+    setup_sub(st, 71, "stream-filter-name", "my-subtree-filter", NULL);
+    skip_notif(st, SUB_STARTED);
 
-    /* create receiver instance */
-    ret = create_receiver_instance(st->sess, "test-recv", "127.0.0.1", st->udp_port);
-    assert_int_equal(ret, SR_ERR_OK);
+    set_node(st, "201", "/test:test-leaf");
+    apply(st);
 
-    /* create a named subtree filter */
-    ret = create_subtree_stream_filter(st->sess, "my-subtree-filter", subtree_filter);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* create subscription referencing the filter by name */
-    ret = create_subscription_filter_ref(st->sess, 71, "NETCONF", "my-subtree-filter", "test-recv");
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* drain subscription-started notification */
-    drain_notifications(st->udp_sockfd);
-
-    TLOG_INF("Making configuration change to running datastore to trigger notification...");
-
-    /* make a configuration change to running datastore */
-    ret = sr_set_item_str(st->sess, "/test:test-leaf", "201", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    TLOG_INF("Waiting for netconf-config-change notification (should match subtree filter ref for datastore=running)...");
-
-    /* should receive notification since subtree filter reference matches running datastore */
-    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
-            "/ietf-netconf-notifications:netconf-config-change", &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-
-    TLOG_INF("Received netconf-config-change notification - subtree filter reference with containment worked");
-
-    lyd_free_all(notif);
-
-    sr_delete_item(st->sess, "/test:test-leaf", 0);
-    delete_stream_filter(st->sess, "my-subtree-filter");
-    cleanup_sub(st->sess, 71);
+    skip_notif(st, NCC);
 }
 
 /**
@@ -2745,42 +2492,16 @@ static void
 test_filter_ref_xpath_modify(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL;
-    char path[512];
-    int ret;
 
-    TLOG_INF("Testing modification of referenced XPath filter...");
-
-    setup_sub_filter_ref(st->sess, st->udp_port, 72, "NETCONF", "modifiable-filter",
-            "/ietf-netconf-notifications:netconf-config-change");
-
-    /* drain subscription-started notification */
-    drain_notifications(st->udp_sockfd);
-
-    TLOG_INF("Modifying the referenced filter...");
+    add_xpath_filter(st, "modifiable-filter", NCC);
+    setup_sub(st, 72, "stream-filter-name", "modifiable-filter", NULL);
+    skip_notif(st, SUB_STARTED);
 
     /* modify the referenced filter */
-    snprintf(path, sizeof(path),
-            "/ietf-subscribed-notifications:filters/stream-filter[name='modifiable-filter']/stream-xpath-filter");
-    ret = sr_set_item_str(st->sess, path, "/ietf-netconf-notifications:*", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
+    add_xpath_filter(st, "modifiable-filter", "/ietf-netconf-notifications:*");
+    apply(st);
 
-    TLOG_INF("Waiting for subscription-modified notification...");
-
-    /* should receive subscription-modified notification */
-    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
-            "/ietf-subscribed-notifications:subscription-modified", &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-
-    TLOG_INF("Received subscription-modified notification after filter modification");
-
-    lyd_free_all(notif);
-
-    delete_stream_filter(st->sess, "modifiable-filter");
-    cleanup_sub(st->sess, 72);
+    skip_notif(st, SUB_MODIFIED);
 }
 
 /**
@@ -2793,10 +2514,6 @@ static void
 test_filter_ref_subtree_modify(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL;
-    char path[512];
-    sr_val_t val;
-    int ret;
 
     /* initial subtree filter */
     const char *subtree_filter1 =
@@ -2808,54 +2525,15 @@ test_filter_ref_subtree_modify(void **state)
             "<datastore>running</datastore>"
             "</netconf-config-change>";
 
-    TLOG_INF("Testing modification of referenced subtree filter...");
-
-    /* create receiver instance */
-    ret = create_receiver_instance(st->sess, "test-recv", "127.0.0.1", st->udp_port);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* create a named subtree filter */
-    ret = create_subtree_stream_filter(st->sess, "modifiable-subtree-filter", subtree_filter1);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* create subscription referencing the filter by name */
-    ret = create_subscription_filter_ref(st->sess, 73, "NETCONF", "modifiable-subtree-filter", "test-recv");
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* drain subscription-started notification */
-    drain_notifications(st->udp_sockfd);
-
-    TLOG_INF("Modifying the referenced subtree filter...");
+    add_subtree_filter(st, "modifiable-subtree-filter", subtree_filter1);
+    setup_sub(st, 73, "stream-filter-name", "modifiable-subtree-filter", NULL);
+    skip_notif(st, SUB_STARTED);
 
     /* modify the referenced filter */
-    memset(&val, 0, sizeof(val));
-    val.type = SR_ANYDATA_T;
-    val.data.anydata_val = (char *)subtree_filter2;
+    add_subtree_filter(st, "modifiable-subtree-filter", subtree_filter2);
+    apply(st);
 
-    snprintf(path, sizeof(path),
-            "/ietf-subscribed-notifications:filters/stream-filter[name='modifiable-subtree-filter']/stream-subtree-filter");
-    ret = sr_set_item(st->sess, path, &val, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    TLOG_INF("Waiting for subscription-modified notification...");
-
-    /* should receive subscription-modified notification */
-    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
-            "/ietf-subscribed-notifications:subscription-modified", &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-
-    TLOG_INF("Received subscription-modified notification after subtree filter modification");
-
-    lyd_free_all(notif);
-
-    delete_stream_filter(st->sess, "modifiable-subtree-filter");
-    cleanup_sub(st->sess, 73);
+    skip_notif(st, SUB_MODIFIED);
 }
 
 /**
@@ -2868,58 +2546,28 @@ static void
 test_filter_ref_multiple_subs(void **state)
 {
     struct state *st = *state;
-    char path[512];
-    int ret;
-    uint32_t modified_count;
 
-    TLOG_INF("Testing multiple subscriptions referencing the same filter...");
-
-    /* create receiver instance */
-    ret = create_receiver_instance(st->sess, "test-recv", "127.0.0.1", st->udp_port);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* create a named xpath filter */
-    ret = create_xpath_stream_filter(st->sess, "shared-filter",
-            "/ietf-netconf-notifications:netconf-config-change");
-    assert_int_equal(ret, SR_ERR_OK);
+    add_recv_inst(st, TEST_RECV_INST, st->udp_port, NULL);
+    add_xpath_filter(st, "shared-filter", NCC);
 
     /* create two subscriptions referencing the same filter */
-    ret = create_subscription_filter_ref(st->sess, 74, "NETCONF", "shared-filter", "test-recv");
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = create_subscription_filter_ref(st->sess, 75, "NETCONF", "shared-filter", "test-recv");
-    assert_int_equal(ret, SR_ERR_OK);
+    add_sub(st, 74, "stream", "NETCONF", "transport", UDP_TRANSPORT,
+            "stream-filter-name", "shared-filter", NULL);
+    bind_sub_recv(st, 74, TEST_RECV, TEST_RECV_INST);
+    add_sub(st, 75, "stream", "NETCONF", "transport", UDP_TRANSPORT,
+            "stream-filter-name", "shared-filter", NULL);
+    bind_sub_recv(st, 75, TEST_RECV, TEST_RECV_INST);
+    apply(st);
 
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* drain subscription-started notifications */
-    drain_notifications(st->udp_sockfd);
-
-    TLOG_INF("Modifying the shared filter...");
+    drain_notifs(st);
 
     /* modify the shared filter */
-    snprintf(path, sizeof(path),
-            "/ietf-subscribed-notifications:filters/stream-filter[name='shared-filter']/stream-xpath-filter");
-    ret = sr_set_item_str(st->sess, path, "/ietf-netconf-notifications:*", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    TLOG_INF("Waiting for subscription-modified notifications from both subscriptions...");
+    add_xpath_filter(st, "shared-filter", "/ietf-netconf-notifications:*");
+    apply(st);
 
     /* exactly two subscription-modified notifications must arrive, one per subscription; count
      * until the socket goes quiet so that a third one fails the test instead of going unnoticed */
-    modified_count = count_notifications(st->udp_sockfd, st->ly_ctx,
-            "/ietf-subscribed-notifications:subscription-modified");
-    assert_int_equal(modified_count, 2);
-    TLOG_INF("Received %d subscription-modified notifications - both subscriptions were notified", modified_count);
-
-    /* cleanup */
-    delete_subscription(st->sess, 74);
-    delete_subscription(st->sess, 75);
-    delete_stream_filter(st->sess, "shared-filter");
-    delete_receiver_instance(st->sess, "test-recv");
-    sr_apply_changes(st->sess, 0);
+    assert_int_equal(count_notifs(st, SUB_MODIFIED), 2);
 }
 
 /**
@@ -2932,42 +2580,19 @@ static void
 test_filter_ref_xpath_nomatch(void **state)
 {
     struct state *st = *state;
-    uint64_t excluded_baseline;
-    int ret;
+    uint64_t baseline;
 
-    TLOG_INF("Testing XPath filter reference that should not match...");
+    add_xpath_filter(st, "nomatch-filter", "/ietf-netconf-notifications:netconf-session-start");
+    setup_sub(st, 76, "stream-filter-name", "nomatch-filter", NULL);
+    skip_notif(st, SUB_STARTED);
 
-    setup_sub_filter_ref(st->sess, st->udp_port, 76, "NETCONF", "nomatch-filter",
-            "/ietf-netconf-notifications:netconf-session-start");
+    assert_int_equal(try_oper_u64(st, &baseline, RECV_XP "/excluded-event-records", 76, TEST_RECV), 0);
 
-    /* drain subscription-started notification */
-    drain_notifications(st->udp_sockfd);
+    /* this generates netconf-config-change, not netconf-session-start */
+    set_node(st, "34", "/test:test-leaf");
+    apply(st);
 
-    /* read baseline excluded-event-records counter */
-    ret = get_oper_counter(st->sess,
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='76']"
-            "/receivers/receiver[name='recv1']/excluded-event-records", &excluded_baseline);
-    assert_int_equal(ret, 0);
-
-    TLOG_INF("Making configuration change to trigger notification...");
-
-    /* make a configuration change - this generates netconf-config-change, not session-start */
-    ret = sr_set_item_str(st->sess, "/test:test-leaf", "34", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    TLOG_INF("Waiting for excluded-event-records to increment (notification was filtered)...");
-
-    /* wait for excluded-event-records to increment, proving the notification was filtered */
-    ret = wait_for_excluded_records_increment(st->sess, 76, excluded_baseline, COUNTER_WAIT_MS);
-    assert_int_equal(ret, 0);
-
-    TLOG_INF("excluded-event-records incremented - XPath filter reference correctly filtered out the notification");
-
-    sr_delete_item(st->sess, "/test:test-leaf", 0);
-    delete_stream_filter(st->sess, "nomatch-filter");
-    cleanup_sub(st->sess, 76);
+    wait_oper_above(st, baseline, RECV_XP "/excluded-event-records", 76, TEST_RECV);
 }
 
 /**
@@ -2980,81 +2605,25 @@ static void
 test_oper_data_get_all_supported(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL;
-    struct lyd_node *node = NULL;
-    sr_data_t *data = NULL;
-    LY_ERR lyrc;
-    int ret;
+    char *value = NULL;
+    uint64_t sent;
 
-    TLOG_INF("Testing retrieval of all supported operational leaves...");
+    setup_sub(st, 90, NULL);
+    skip_notif(st, SUB_STARTED);
 
-    setup_sub(st->sess, st->udp_port, 90, "NETCONF", NULL);
-
-    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
-            "/ietf-subscribed-notifications:subscription-started", &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-    lyd_free_all(notif);
-    notif = NULL;
-
-    TLOG_INF("Retrieving operational data for the subscription...");
-
-    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = sr_get_data(st->sess, "/ietf-subscribed-notifications:subscriptions/subscription[id='90']", 0, 0, 0, &data);
-    assert_int_equal(ret, SR_ERR_OK);
-    assert_non_null(data);
-    assert_non_null(data->tree);
-
-    /* check for presence of all supported leaves */
-    lyrc = lyd_find_path(data->tree,
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='90']/replay-start-time", 0, &node);
-    if (lyrc == LY_SUCCESS) {
-        /* some notifications may remain in the replay log at the time we read operational data */
-        assert_non_null(node);
-        assert_non_null(lyd_get_value(node));
-    } else {
-        assert_int_equal(lyrc, LY_EINCOMPLETE);
+    /* some notifications may remain in the replay log at the time we read operational data, so
+     * replay-start-time is optional; when present it must have a value */
+    if (!try_oper(st, &value, SUB_XP "/replay-start-time", 90)) {
+        assert_non_null(value);
+        free(value);
     }
 
-    lyrc = lyd_find_path(data->tree,
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='90']/configured-subscription-state", 0, &node);
-    assert_int_equal(lyrc, LY_SUCCESS);
-    assert_non_null(node);
-    assert_non_null(lyd_get_value(node));
-    assert_string_equal(lyd_get_value(node), "valid");
+    assert_oper(st, "valid", SUB_XP "/configured-subscription-state", 90);
+    assert_oper(st, "active", RECV_XP "/state", 90, TEST_RECV);
+    assert_oper(st, "0", RECV_XP "/excluded-event-records", 90, TEST_RECV);
 
-    lyrc = lyd_find_path(data->tree,
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='90']/receivers/receiver[name='recv1']/sent-event-records", 0,
-            &node);
-    assert_int_equal(lyrc, LY_SUCCESS);
-    assert_non_null(node);
-    assert_non_null(lyd_get_value(node));
-    assert_true(atoi(lyd_get_value(node)) > 0);
-
-    lyrc = lyd_find_path(data->tree,
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='90']/receivers/receiver[name='recv1']/excluded-event-records",
-            0, &node);
-    assert_int_equal(lyrc, LY_SUCCESS);
-    assert_non_null(node);
-    assert_non_null(lyd_get_value(node));
-    assert_int_equal(atoi(lyd_get_value(node)), 0);
-
-    lyrc = lyd_find_path(data->tree,
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='90']/receivers/receiver[name='recv1']/state", 0, &node);
-    assert_int_equal(lyrc, LY_SUCCESS);
-    assert_non_null(node);
-    assert_non_null(lyd_get_value(node));
-    assert_string_equal(lyd_get_value(node), "active");
-
-    sr_release_data(data);
-    data = NULL;
-
-    ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    cleanup_sub(st->sess, 90);
+    assert_int_equal(try_oper_u64(st, &sent, RECV_XP "/sent-event-records", 90, TEST_RECV), 0);
+    assert_true(sent > 0);
 }
 
 /**
@@ -3064,271 +2633,111 @@ static void
 test_oper_data_sent_event_records_change(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL;
-    char *val_str = NULL;
     uint64_t sent_before, sent_after;
-    int ret;
 
-    TLOG_INF("Testing sent-event-records operational counter change...");
+    setup_sub(st, 91, "stream-xpath-filter", NCC, NULL);
 
-    setup_sub(st->sess, st->udp_port, 91, "NETCONF",
-            "/ietf-netconf-notifications:netconf-config-change");
+    /* the subscription-started and the netconf-config-change caused by creating the subscription */
+    skip_notif(st, SUB_STARTED);
+    skip_notif(st, NCC);
 
-    /* drain subscription-started and initial netconf-config-change notifications */
-    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
-            "/ietf-subscribed-notifications:subscription-started", &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-    lyd_free_all(notif);
-    notif = NULL;
+    assert_int_equal(try_oper_u64(st, &sent_before, RECV_XP "/sent-event-records", 91, TEST_RECV), 0);
 
-    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
-            "/ietf-netconf-notifications:netconf-config-change", &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-    lyd_free_all(notif);
-    notif = NULL;
+    set_node(st, "67", "/test:test-leaf");
+    apply(st);
 
-    TLOG_INF("Retrieving initial sent-event-records value...");
+    skip_notif(st, NCC);
 
-    val_str = get_oper_leaf_str(st->sess,
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='91']/receivers/receiver[name='recv1']/sent-event-records");
-    assert_non_null(val_str);
-    sent_before = strtoull(val_str, NULL, 10);
-    free(val_str);
-
-    TLOG_INF("Making configuration change to trigger notification...");
-
-    ret = sr_set_item_str(st->sess, "/test:test-leaf", "67", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
-            "/ietf-netconf-notifications:netconf-config-change", &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-    lyd_free_all(notif);
-    notif = NULL;
-
-    TLOG_INF("Retrieving sent-event-records value after sending another notification...");
-
-    val_str = get_oper_leaf_str(st->sess,
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='91']/receivers/receiver[name='recv1']/sent-event-records");
-    assert_non_null(val_str);
-    sent_after = strtoull(val_str, NULL, 10);
-    free(val_str);
+    assert_int_equal(try_oper_u64(st, &sent_after, RECV_XP "/sent-event-records", 91, TEST_RECV), 0);
     assert_true(sent_after > sent_before);
-
-    sr_delete_item(st->sess, "/test:test-leaf", 0);
-    cleanup_sub(st->sess, 91);
 }
 
+/**
+ * @brief Test: Receiver reset action moves the receiver to connecting and it reconnects on backoff.
+ */
 static void
 test_receiver_reset_action(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL;
     sr_val_t *output = NULL;
-    char *state_val = NULL;
+    char path[512];
     size_t output_count = 0;
-    int ret;
 
-    TLOG_INF("Testing receiver reset action with backoff reconnect...");
+    setup_sub(st, 91, "stream-xpath-filter", NCC, NULL);
 
-    setup_sub(st->sess, st->udp_port, 91, "NETCONF",
-            "/ietf-netconf-notifications:netconf-config-change");
+    /* the subscription-started and the netconf-config-change caused by creating the subscription */
+    skip_notif(st, SUB_STARTED);
+    skip_notif(st, NCC);
 
-    /* drain subscription-started notification */
-    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
-            "/ietf-subscribed-notifications:subscription-started", &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-    lyd_free_all(notif);
-    notif = NULL;
-
-    /* drain netconf-config-change caused by creating the subscription */
-    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
-            "/ietf-netconf-notifications:netconf-config-change", &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-    lyd_free_all(notif);
-    notif = NULL;
-
-    TLOG_INF("Checking initial state of the receiver...");
-
-    state_val = get_oper_leaf_str(st->sess,
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='91']/receivers/receiver[name='recv1']/state");
-    assert_non_null(state_val);
-    assert_string_equal(state_val, "active");
-    free(state_val);
-
-    TLOG_INF("Performing receiver reset action...");
+    assert_oper(st, "active", RECV_XP "/state", 91, TEST_RECV);
 
     /* perform the receiver reset action */
-    ret = sr_rpc_send(st->sess, "/ietf-subscribed-notifications:subscriptions/subscription[id='91']/receivers/receiver[name='recv1']/reset",
-            NULL, 0, 0, &output, &output_count);
-    assert_int_equal(ret, SR_ERR_OK);
+    snprintf(path, sizeof path, RECV_XP "/reset", 91, TEST_RECV);
+    assert_int_equal(sr_rpc_send(st->sess, path, NULL, 0, 0, &output, &output_count), SR_ERR_OK);
     assert_non_null(output);
     assert_int_equal(output_count, 1);
     sr_free_values(output, output_count);
 
-    TLOG_INF("Receiver reset action performed, checking state of the receiver...");
+    assert_oper(st, "connecting", RECV_XP "/state", 91, TEST_RECV);
 
-    state_val = get_oper_leaf_str(st->sess,
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='91']/receivers/receiver[name='recv1']/state");
-    assert_non_null(state_val);
-    assert_string_equal(state_val, "connecting");
-    free(state_val);
+    /* make a config change, the daemon must auto-reconnect and deliver the notification */
+    set_node(st, "104", "/test:test-leaf");
+    apply(st);
 
-    TLOG_INF("Triggering a notification to cause backoff reconnect...");
+    /* the daemon reconnects and sends subscription-started first */
+    skip_notif(st, SUB_STARTED);
+    skip_notif(st, NCC);
 
-    /* make a config change - the daemon should auto-reconnect and deliver the notification */
-    ret = sr_set_item_str(st->sess, "/test:test-leaf", "104", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    TLOG_INF("Waiting for subscription-started (from backoff reconnect)...");
-
-    /* first, the daemon reconnects and sends subscription-started - use long timeout for backoff */
-    ret = receive_specific_notification_timeout(st->udp_sockfd, st->ly_ctx, LONG_TIMEOUT_MS,
-            "/ietf-subscribed-notifications:subscription-started", &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-    lyd_free_all(notif);
-    notif = NULL;
-
-    TLOG_INF("Waiting for netconf-config-change (after reconnect)...");
-
-    /* then, the actual notification is sent */
-    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
-            "/ietf-netconf-notifications:netconf-config-change", &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-    lyd_free_all(notif);
-    notif = NULL;
-
-    TLOG_INF("Checking receiver state after backoff reconnect...");
-
-    state_val = get_oper_leaf_str(st->sess,
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='91']/receivers/receiver[name='recv1']/state");
-    assert_non_null(state_val);
-    assert_string_equal(state_val, "active");
-    free(state_val);
-
-    sr_delete_item(st->sess, "/test:test-leaf", 0);
-    cleanup_sub(st->sess, 91);
+    assert_oper(st, "active", RECV_XP "/state", 91, TEST_RECV);
 }
 
 /**
  * @brief Test: Set configured-replay before replay support, then enable replay and verify delivery.
  *
- * Sets configured-replay before sr_set_module_replay_support, expecting
- * subscription-terminated with replay-not-supported. Then enables replay,
- * makes a config change (stored for replay), deletes and re-sets
- * configured-replay, and verifies: replayed netconf-config-change +
- * subscription-modified + live netconf-config-change.
+ * Sets configured-replay before sr_set_module_replay_support, expecting the change to be rejected.
+ * Then enables replay, makes a config change (stored for replay), re-sets configured-replay, and
+ * verifies: subscription-modified + replayed netconf-config-change + replay-completed.
  */
 static void
 test_configured_replay(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL;
-    char replay_path[256];
-    int ret;
-    int got_modified = 0, got_ncc = 0, got_replay_completed = 0;
-    time_t deadline;
 
-    memset(replay_path, 0, sizeof(replay_path));
+    setup_sub(st, 93, "stream-xpath-filter", NCC, NULL);
+    skip_notif(st, SUB_STARTED);
 
-    snprintf(replay_path, sizeof(replay_path),
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='93']/configured-replay");
+    /* the netconf-config-change from creating the subscription */
+    skip_notif(st, NCC);
 
-    TLOG_INF("Testing configured-replay...");
+    /* set configured-replay before enabling replay support, this must be rejected */
+    set_node(st, NULL, SUB_XP "/configured-replay", 93);
+    assert_int_equal(sr_apply_changes(st->sess, 0), SR_ERR_UNSUPPORTED);
 
-    setup_sub(st->sess, st->udp_port, 93, "NETCONF",
-            "/ietf-netconf-notifications:netconf-config-change");
+    assert_int_equal(sr_set_module_replay_support(st->conn, "ietf-netconf-notifications", 1), SR_ERR_OK);
 
-    /* receive subscription-started */
-    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
-            "/ietf-subscribed-notifications:subscription-started", &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-    lyd_free_all(notif);
-    notif = NULL;
+    /* make a config change, it is stored for replay (the subscription is invalid and will not
+     * receive it live) */
+    set_node(st, "42", "/test:test-leaf");
+    apply(st);
 
-    /* drain the netconf-config-change from creating the subscription */
-    drain_notifications(st->udp_sockfd);
+    /* set configured-replay again, now replay is supported */
+    set_node(st, NULL, SUB_XP "/configured-replay", 93);
+    apply(st);
 
-    TLOG_INF("Setting configured-replay before replay support is enabled, expecting failure...");
+    /* the daemon does not order these three relative to each other */
+    expect_notifs(st, (const char *[]) {SUB_MODIFIED, NCC, REPLAY_COMPLETED, NULL});
+}
 
-    /* set configured-replay BEFORE enabling replay support - should fail */
-    ret = sr_set_item_str(st->sess, replay_path, NULL, NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_UNSUPPORTED);
+/**
+ * @brief Teardown: disable the replay support enabled by test_configured_replay.
+ */
+static int
+disable_replay_support(void **state)
+{
+    struct state *st = *state;
 
-    TLOG_INF("Enabling replay support...");
-
-    /* enable replay support */
-    ret = sr_set_module_replay_support(st->conn, "ietf-netconf-notifications", 1);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    TLOG_INF("Making config change to generate notification stored for replay...");
-
-    /* make a config change - generates ncc stored for replay (sub is INVALID, won't receive live) */
-    ret = sr_set_item_str(st->sess, "/test:test-leaf", "42", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    TLOG_INF("Re-setting configured-replay...");
-
-    /* set configured-replay again - now replay is supported */
-    ret = sr_set_item_str(st->sess, replay_path, NULL, NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    TLOG_INF("Waiting for subscription-modified, replayed ncc, and replay-completed...");
-
-    /* expect: subscription-modified + replayed ncc + replay-completed within a bounded total time */
-    got_modified = got_ncc = got_replay_completed = 0;
-    deadline = time(NULL) + 15;
-
-    while ((time(NULL) < deadline) && !(got_modified && got_ncc && got_replay_completed)) {
-        ret = receive_notification_timeout(st->udp_sockfd, st->ly_ctx, 500, &notif, NULL);
-        if (ret == 1) {
-            /* short timeout expired, retry within deadline */
-            continue;
-        }
-        assert_int_equal(ret, 0);
-        assert_non_null(notif);
-
-        if (!strcmp(notif->schema->name, "subscription-modified")) {
-            got_modified = 1;
-        } else if (!strcmp(notif->schema->name, "netconf-config-change")) {
-            got_ncc = 1;
-        } else if (!strcmp(notif->schema->name, "replay-completed")) {
-            got_replay_completed = 1;
-        }
-
-        lyd_free_all(notif);
-        notif = NULL;
-    }
-
-    assert_true(got_modified && got_ncc && got_replay_completed);
-
-    if (notif) {
-        lyd_free_all(notif);
-        notif = NULL;
-    }
-
-    /* cleanup */
     sr_set_module_replay_support(st->conn, "ietf-netconf-notifications", 0);
-    sr_delete_item(st->sess, "/test:test-leaf", 0);
-    cleanup_sub(st->sess, 93);
+    return 0;
 }
 
 /**
@@ -3338,181 +2747,73 @@ static void
 test_source_address_modify(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL;
-    char path[512];
-    char first_source[INET_ADDRSTRLEN];
-    char second_source[INET_ADDRSTRLEN];
-    char alternate_source[INET_ADDRSTRLEN];
+    struct lyd_node *notif;
+    char first_source[INET_ADDRSTRLEN] = {0};
+    char second_source[INET_ADDRSTRLEN] = {0};
+    char alternate_source[INET_ADDRSTRLEN] = {0};
     const char *initial_source = "127.0.0.1";
-    int ret;
 
-    memset(first_source, 0, sizeof(first_source));
-    memset(second_source, 0, sizeof(second_source));
-    memset(alternate_source, 0, sizeof(alternate_source));
-
-    if (!find_alternate_loopback_ipv4(initial_source, alternate_source, sizeof(alternate_source))) {
+    if (!find_alternate_loopback_ipv4(initial_source, alternate_source, sizeof alternate_source)) {
         skip();
         return;
     }
 
     TLOG_INF("Testing source-address change from %s to %s", initial_source, alternate_source);
 
-    ret = create_receiver_instance(st->sess, "test-recv", "127.0.0.1", st->udp_port);
-    assert_int_equal(ret, SR_ERR_OK);
+    setup_sub(st, 92, "source-address", initial_source, NULL);
 
-    ret = create_subscription(st->sess, 92, "NETCONF", NULL, "test-recv");
-    assert_int_equal(ret, SR_ERR_OK);
-
-    snprintf(path, sizeof(path),
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='92']/source-address");
-    ret = sr_set_item_str(st->sess, path, initial_source, NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = receive_specific_notification_ext(st->udp_sockfd, st->ly_ctx, NOTIF_TIMEOUT_MS,
-            "/ietf-subscribed-notifications:subscription-started", &notif, NULL,
-            first_source, sizeof(first_source));
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
+    notif = expect_notif_src(st, SUB_STARTED, first_source, sizeof first_source);
     assert_string_equal(first_source, initial_source);
     lyd_free_all(notif);
-    notif = NULL;
 
-    /* drain the initial netconf-config-change notification caused by the subscription creation */
-    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
-            "/ietf-netconf-notifications:netconf-config-change", &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-    lyd_free_all(notif);
-    notif = NULL;
+    /* the netconf-config-change caused by creating the subscription */
+    skip_notif(st, NCC);
 
-    TLOG_INF("Modifying source-address to %s", alternate_source);
+    set_node(st, alternate_source, SUB_XP "/source-address", 92);
+    apply(st);
 
-    ret = sr_set_item_str(st->sess, path, alternate_source, NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* source address modified, so we should receive a subscription-modified notification with the new source IP */
-    ret = receive_specific_notification_ext(st->udp_sockfd, st->ly_ctx, NOTIF_TIMEOUT_MS,
-            "/ietf-subscribed-notifications:subscription-modified", &notif, NULL,
-            second_source, sizeof(second_source));
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
+    /* the subscription-modified must come from the new source IP */
+    notif = expect_notif_src(st, SUB_MODIFIED, second_source, sizeof second_source);
     assert_string_equal(second_source, alternate_source);
     lyd_free_all(notif);
-    notif = NULL;
-
-    cleanup_sub(st->sess, 92);
 }
 
 /**
  * @brief Test: Change receiver instance reference from one receiver to another.
  *
- * Creates a subscription with receiver instance A, then changes the subscription
- * to point to receiver instance B. Verifies the configuration change is applied
- * successfully and that subscription-started and subscription-terminated notifications are sent to the correct receivers.
+ * Creates a subscription with receiver instance A, then changes the subscription to point to
+ * receiver instance B. Verifies subscription-terminated goes to the old receiver and
+ * subscription-started to the new one.
  */
 static void
 test_receiver_instance_ref_change(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL;
-    char path[512];
-    int ret, recv2_sockfd = -1;
     uint16_t recv2_port = 0;
+    int recv2_sockfd;
 
-    TLOG_INF("Creating first and second receiver instances...");
-
-    /* create a socket for the second receiver first, its port is assigned by the system */
+    /* a socket for the second receiver, its port is assigned by the system */
     recv2_sockfd = create_udp_receiver_socket(&recv2_port);
     assert_true(recv2_sockfd >= 0);
 
-    /*
-     Create two receiver instances
-     */
-    ret = create_receiver_instance(st->sess, "recv-1", "127.0.0.1", st->udp_port);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = create_receiver_instance(st->sess, "recv-2", "127.0.0.1", recv2_port);
-    assert_int_equal(ret, SR_ERR_OK);
+    add_recv_inst(st, "recv-1", st->udp_port, NULL);
+    add_recv_inst(st, "recv-2", recv2_port, NULL);
 
-    /*
-     Create subscription pointing to recv-1
-     */
-    ret = create_subscription(st->sess, 100, "NETCONF", NULL, "recv-1");
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
+    add_sub(st, 100, "stream", "NETCONF", "transport", UDP_TRANSPORT, NULL);
+    bind_sub_recv(st, 100, TEST_RECV, "recv-1");
+    apply(st);
 
-    TLOG_INF("Created subscription pointing to recv-1");
+    drain_notifs(st);
 
-    /* Drain notifications */
-    drain_notifications(st->udp_sockfd);
+    /* point the subscription at the second receiver instance */
+    bind_sub_recv(st, 100, TEST_RECV, "recv-2");
+    apply(st);
 
-    TLOG_INF("Changing receiver instance reference from recv-1 to recv-2...");
+    /* the old receiver is terminated and the new one started */
+    skip_notif(st, SUB_TERMINATED);
+    lyd_free_all(expect_notif_on(st, recv2_sockfd, SUB_STARTED));
 
-    /*
-     Change subscription to point to recv-2
-     */
-    snprintf(path, sizeof(path),
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='100']/receivers/receiver[name='recv1']/ietf-subscribed-notif-receivers:receiver-instance-ref");
-    ret = sr_set_item_str(st->sess, path, "recv-2", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    TLOG_INF("Receiver instance reference changed to recv-2");
-
-    /*
-     Receive subscription-terminated
-     */
-    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
-            "/ietf-subscribed-notifications:subscription-terminated", &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-    TLOG_INF("Received subscription-terminated notification");
-
-    lyd_free_all(notif);
-    notif = NULL;
-
-    /*
-     Receive subscription-started, it will be sent to the new receiver instance (recv-2)
-     */
-    ret = receive_specific_notification(recv2_sockfd, st->ly_ctx,
-            "/ietf-subscribed-notifications:subscription-started", &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-    TLOG_INF("Received subscription-started notification");
-
-    lyd_free_all(notif);
-    notif = NULL;
-
-    /*
-     Cleanup
-     */
-    delete_subscription(st->sess, 100);
-    delete_receiver_instance(st->sess, "recv-1");
-    delete_receiver_instance(st->sess, "recv-2");
-    sr_apply_changes(st->sess, 0);
-    if (recv2_sockfd >= 0) {
-        close(recv2_sockfd);
-    }
-}
-
-static int
-running_with_valgrind(void)
-{
-    char *ld_preload;
-
-    ld_preload = getenv("LD_PRELOAD");
-    if (ld_preload && strstr(ld_preload, "vgpreload")) {
-        return 1;
-    }
-    return 0;
+    close(recv2_sockfd);
 }
 
 /**
@@ -3522,392 +2823,168 @@ static void
 test_stop_time_concluded(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL;
-    time_t now;
     char stop_time_str[64];
-    char *state_val = NULL;
-    char path[512];
-    int ret;
+    time_t now;
 
-    TLOG_INF("Testing stop-time reaching concluded state...");
+    /* stop-time a few seconds from now, scaled because valgrind can delay the daemon a lot */
+    now = time(NULL) + (3 * st->timeout_mul);
+    strftime(stop_time_str, sizeof stop_time_str, "%Y-%m-%dT%H:%M:%SZ", gmtime(&now));
 
-    /* create receiver instance */
-    ret = create_receiver_instance(st->sess, "test-recv", "127.0.0.1", st->udp_port);
-    assert_int_equal(ret, SR_ERR_OK);
+    setup_sub(st, 200, "stop-time", stop_time_str, NULL);
 
-    /* create subscription */
-    ret = create_subscription(st->sess, 200, "NETCONF", NULL, "test-recv");
-    assert_int_equal(ret, SR_ERR_OK);
+    skip_notif(st, SUB_STARTED);
+    skip_notif(st, SUB_COMPLETED);
 
-    /* set stop-time to a few seconds from now */
-    now = time(NULL);
-    if (running_with_valgrind()) {
-        /* Valgrind can cause significant delays, so set a longer stop-time */
-        now += 6;
-    } else {
-        now += 3;
-    }
-    strftime(stop_time_str, sizeof(stop_time_str), "%Y-%m-%dT%H:%M:%SZ", gmtime(&now));
-
-    snprintf(path, sizeof(path),
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='200']/stop-time");
-    ret = sr_set_item_str(st->sess, path, stop_time_str, NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* apply all changes */
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    TLOG_INF("Waiting for subscription-started notification...");
-
-    /* receive subscription-started */
-    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
-            "/ietf-subscribed-notifications:subscription-started", &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-    lyd_free_all(notif);
-    notif = NULL;
-
-    TLOG_INF("Waiting for subscription-completed notification (stop-time will expire)...");
-
-    /* wait for subscription-completed after stop-time expires, using a long timeout */
-    ret = receive_specific_notification_timeout(st->udp_sockfd, st->ly_ctx, LONG_TIMEOUT_MS,
-            "/ietf-subscribed-notifications:subscription-completed", &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-
-    TLOG_INF("Received subscription-completed notification successfully");
-
-    lyd_free_all(notif);
-    notif = NULL;
-
-    TLOG_INF("Checking operational state is 'concluded'...");
-
-    state_val = get_oper_leaf_str(st->sess,
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='200']/configured-subscription-state");
-    assert_non_null(state_val);
-    assert_string_equal(state_val, "concluded");
-    free(state_val);
-
-    cleanup_sub(st->sess, 200);
+    assert_oper(st, "concluded", SUB_XP "/configured-subscription-state", 200);
 }
 
 /**
  * @brief Test: Verify that adding and removing receivers of a live subscription keeps the
  * notification dispatch coherent.
  *
- * Adding and removing receivers moves the remaining ones in the receivers array, so the callback data
- * pointer held by the srsn read dispatch must stay valid. Otherwise the dispatch thread accesses freed
- * memory and notifd crashes or wedges, blocking any further configuration change.
+ * Adding and removing receivers moves the remaining ones in the receivers array, so the callback
+ * data pointer held by the srsn read dispatch must stay valid. Otherwise the dispatch thread
+ * accesses freed memory and notifd crashes or wedges, blocking any further configuration change.
  */
 static void
 test_receiver_add_delete_dispatch(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL;
-    char path[512], *state_val;
-    int ret, i;
-
-    TLOG_INF("Testing receiver add/delete keeps notification dispatch coherent...");
+    char recv_name[16], *sub_state;
+    int i;
 
     /* subscription with a single receiver "recv1", only config change notifications */
-    setup_sub(st->sess, st->udp_port, 210, "NETCONF",
-            "/ietf-netconf-notifications:netconf-config-change");
-
-    /* receive subscription-started for recv1 */
-    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
-            "/ietf-subscribed-notifications:subscription-started", &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-    lyd_free_all(notif);
-    notif = NULL;
-
-    drain_notifications(st->udp_sockfd);
-
-    TLOG_INF("Adding more receivers, reallocating the receivers array...");
+    setup_sub(st, 210, "stream-xpath-filter", NCC, NULL);
+    skip_notif(st, SUB_STARTED);
+    drain_notifs(st);
 
     /* each added receiver reallocates the receivers array, moving the already dispatched ones */
     for (i = 2; i <= 4; ++i) {
-        snprintf(path, sizeof(path),
-                "/ietf-subscribed-notifications:subscriptions/subscription[id='210']"
-                "/receivers/receiver[name='recv%d']/ietf-subscribed-notif-receivers:receiver-instance-ref", i);
-        ret = sr_set_item_str(st->sess, path, "test-recv", NULL, 0);
-        assert_int_equal(ret, SR_ERR_OK);
-        ret = sr_apply_changes(st->sess, 0);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        drain_notifications(st->udp_sockfd);
+        snprintf(recv_name, sizeof recv_name, "recv%d", i);
+        bind_sub_recv(st, 210, recv_name, TEST_RECV_INST);
+        apply(st);
+        drain_notifs(st);
     }
-
-    TLOG_INF("Deleting receivers, compacting the receivers array...");
 
     /* deleting a receiver stops its dispatch and moves the last receiver into its place */
     for (i = 1; i <= 3; ++i) {
-        snprintf(path, sizeof(path),
-                "/ietf-subscribed-notifications:subscriptions/subscription[id='210']"
-                "/receivers/receiver[name='recv%d']", i);
-        ret = sr_delete_item(st->sess, path, 0);
-        assert_int_equal(ret, SR_ERR_OK);
-        ret = sr_apply_changes(st->sess, 0);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        drain_notifications(st->udp_sockfd);
+        snprintf(recv_name, sizeof recv_name, "recv%d", i);
+        del_node(st, RECV_XP, 210, recv_name);
+        apply(st);
+        drain_notifs(st);
     }
 
-    TLOG_INF("Checking notifd survived the churn and is still fully functional...");
-
     /* notifd must still be alive and serving operational data */
-    state_val = get_oper_leaf_str(st->sess,
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='210']"
-            "/configured-subscription-state");
-    assert_non_null(state_val);
-    free(state_val);
+    sub_state = get_oper(st, SUB_XP "/configured-subscription-state", 210);
+    free(sub_state);
 
     /* and it must still process configuration changes and set up new dispatches, so replace the
      * churned subscription with a fresh one and expect it to come up normally */
-    cleanup_sub(st->sess, 210);
-    drain_notifications(st->udp_sockfd);
+    del_node(st, SUB_XP, 210);
+    apply(st);
+    drain_notifs(st);
 
-    setup_sub(st->sess, st->udp_port, 211, "NETCONF",
-            "/ietf-netconf-notifications:netconf-config-change");
-
-    ret = receive_specific_notification_timeout(st->udp_sockfd, st->ly_ctx, LONG_TIMEOUT_MS,
-            "/ietf-subscribed-notifications:subscription-started", &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-    lyd_free_all(notif);
-
-    cleanup_sub(st->sess, 211);
+    setup_sub(st, 211, "stream-xpath-filter", NCC, NULL);
+    skip_notif(st, SUB_STARTED);
 }
 
 /**
- * @brief Test: Verify that deleting one receiver leaves the subscription and its other receivers alone.
+ * @brief Test: Verify that deleting one receiver leaves the subscription and its other receivers
+ * alone.
  *
- * The deleted receiver is reported as a created/deleted list entry followed by its descendant nodes,
- * which carry no operation of their own. Processing those descendants after the entry itself has been
- * destroyed fails to find the receiver and invalidates the whole subscription, terminating every other
- * receiver with it.
+ * The deleted receiver is reported as a created/deleted list entry followed by its descendant
+ * nodes, which carry no operation of their own. Processing those descendants after the entry itself
+ * has been destroyed fails to find the receiver and invalidates the whole subscription, terminating
+ * every other receiver with it.
  */
 static void
 test_receiver_delete_keeps_subscription(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL;
-    char path[512], *sub_state;
-    int ret;
-    uint32_t count;
-
-    TLOG_INF("Testing that deleting a receiver keeps the subscription...");
 
     /* subscription with receivers "recv1" and "recv2" */
-    setup_sub(st->sess, st->udp_port, 220, "NETCONF", "/ietf-netconf-notifications:netconf-config-change");
-    snprintf(path, sizeof(path),
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='220']"
-            "/receivers/receiver[name='recv2']/ietf-subscribed-notif-receivers:receiver-instance-ref");
-    ret = sr_set_item_str(st->sess, path, "test-recv", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
+    setup_sub(st, 220, "stream-xpath-filter", NCC, NULL);
+    bind_sub_recv(st, 220, "recv2", TEST_RECV_INST);
+    apply(st);
 
-    drain_notifications(st->udp_sockfd);
+    drain_notifs(st);
 
-    TLOG_INF("Deleting receiver \"recv1\"...");
-
-    snprintf(path, sizeof(path),
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='220']/receivers/receiver[name='recv1']");
-    ret = sr_delete_item(st->sess, path, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
+    del_node(st, RECV_XP, 220, TEST_RECV);
+    apply(st);
 
     /* only the deleted receiver may be terminated, "recv2" must be left alone */
-    count = count_notifications(st->udp_sockfd, st->ly_ctx,
-            "/ietf-subscribed-notifications:subscription-terminated");
-    assert_int_equal(count, 1);
+    assert_int_equal(count_notifs(st, SUB_TERMINATED), 1);
 
     /* and the subscription itself must still be valid */
-    sub_state = get_oper_leaf_str(st->sess,
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='220']/configured-subscription-state");
-    assert_non_null(sub_state);
-    assert_string_equal(sub_state, "valid");
-    free(sub_state);
+    assert_oper(st, "valid", SUB_XP "/configured-subscription-state", 220);
 
-    TLOG_INF("Checking that \"recv2\" still receives notifications...");
+    /* "recv2" must still receive notifications */
+    set_node(st, "220", "/test:test-leaf");
+    apply(st);
 
-    ret = sr_set_item_str(st->sess, "/test:test-leaf", "220", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
-            "/ietf-netconf-notifications:netconf-config-change", &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-    lyd_free_all(notif);
-
-    cleanup_sub(st->sess, 220);
+    skip_notif(st, NCC);
 }
 
 /**
  * @brief Test: Verify that restarting the daemon over an existing configuration works.
  *
- * On the "enabled" event the whole configuration is presented as a single created subtree, with only
- * the top-level node carrying the operation. Every subscription and receiver below it therefore looks
- * created without saying so, and processing them in the modify steps as well as in the create ones
- * would set up a second dispatch for every receiver, delivering each notification twice.
+ * On the "enabled" event the whole configuration is presented as a single created subtree, with
+ * only the top-level node carrying the operation. Every subscription and receiver below it
+ * therefore looks created without saying so, and processing them in the modify steps as well as in
+ * the create ones would set up a second dispatch for every receiver, delivering each notification
+ * twice.
  */
 static void
 test_restart_existing_config(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL;
-    char *sub_state;
-    int ret;
-    uint32_t count;
 
-    TLOG_INF("Creating a subscription to be loaded again on restart...");
-
-    setup_sub(st->sess, st->udp_port, 221, "NETCONF", "/ietf-netconf-notifications:netconf-config-change");
-    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
-            "/ietf-subscribed-notifications:subscription-started", &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-    lyd_free_all(notif);
-    notif = NULL;
-    drain_notifications(st->udp_sockfd);
-
-    TLOG_INF("Restarting sysrepo-notifd with the configuration in place...");
+    setup_sub(st, 221, "stream-xpath-filter", NCC, NULL);
+    skip_notif(st, SUB_STARTED);
+    drain_notifs(st);
 
     stop_notifd(st->notifd_pid);
     st->notifd_pid = 0;
-    drain_notifications(st->udp_sockfd);
+    drain_notifs(st);
 
-    ret = start_notifd(&st->notifd_pid);
-    assert_int_equal(ret, 0);
+    assert_int_equal(start_notifd(&st->notifd_pid), 0);
 
     /* the subscription must be picked up from the datastore and started again */
-    ret = receive_specific_notification_timeout(st->udp_sockfd, st->ly_ctx, LONG_TIMEOUT_MS,
-            "/ietf-subscribed-notifications:subscription-started", &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-    lyd_free_all(notif);
-    notif = NULL;
+    skip_notif(st, SUB_STARTED);
 
-    sub_state = get_oper_leaf_str(st->sess,
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='221']/configured-subscription-state");
-    assert_non_null(sub_state);
-    assert_string_equal(sub_state, "valid");
-    free(sub_state);
+    assert_oper(st, "valid", SUB_XP "/configured-subscription-state", 221);
 
-    drain_notifications(st->udp_sockfd);
+    drain_notifs(st);
 
-    TLOG_INF("Checking that the restarted receiver is dispatched exactly once...");
+    set_node(st, "221", "/test:test-leaf");
+    apply(st);
 
-    ret = sr_set_item_str(st->sess, "/test:test-leaf", "221", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    count = count_notifications(st->udp_sockfd, st->ly_ctx,
-            "/ietf-netconf-notifications:netconf-config-change");
-    assert_int_equal(count, 1);
-
-    cleanup_sub(st->sess, 221);
+    /* the restarted receiver must be dispatched exactly once */
+    assert_int_equal(count_notifs(st, NCC), 1);
 }
 
 /**
- * @brief Create the configuration of another notification publisher.
+ * @brief Stage the configuration of another notification publisher.
  *
- * A receiver instance with a transport this daemon does not implement and two subscriptions
- * using it, one declaring the transport of the other publisher and one with no
- * subscription-level transport at all, which the model allows.
+ * A receiver instance with a transport this daemon does not implement, and two subscriptions using
+ * it: one declaring the transport of the other publisher and one with no subscription-level
+ * transport at all, which the model allows.
  *
- * @param[in] sess Sysrepo session.
- * @return 0 on success, error code on failure.
+ * @param[in] st Test state.
  */
-static int
-create_other_publisher_config(sr_session_ctx_t *sess)
+static void
+add_other_publisher_config(struct state *st)
 {
-    int rc;
+    /* the receiver instance xpath is transport-agnostic, only the transport case below it differs */
+    set_node(st, "https://[::1]/telemetry",
+            INST_XP "/notifd-other-publisher:other-notif-receiver/endpoint", "other-inst");
 
-    rc = sr_set_item_str(sess, "/ietf-subscribed-notifications:subscriptions"
-            "/ietf-subscribed-notif-receivers:receiver-instances/receiver-instance[name='other-inst']"
-            "/notifd-other-publisher:other-notif-receiver/endpoint", "https://[::1]/telemetry", NULL, 0);
-    if (rc) {
-        return rc;
-    }
+    add_sub(st, 241, "stream", "NETCONF", "transport", OTHER_TRANSPORT, NULL);
+    bind_sub_recv(st, 241, "other-recv", "other-inst");
 
-    rc = sr_set_item_str(sess, "/ietf-subscribed-notifications:subscriptions/subscription[id='241']/stream",
-            "NETCONF", NULL, 0);
-    if (rc) {
-        return rc;
-    }
-    rc = sr_set_item_str(sess, "/ietf-subscribed-notifications:subscriptions/subscription[id='241']/transport",
-            "notifd-other-publisher:other-notif", NULL, 0);
-    if (rc) {
-        return rc;
-    }
-    rc = sr_set_item_str(sess, "/ietf-subscribed-notifications:subscriptions/subscription[id='241']"
-            "/receivers/receiver[name='other-recv']/ietf-subscribed-notif-receivers:receiver-instance-ref",
-            "other-inst", NULL, 0);
-    if (rc) {
-        return rc;
-    }
-
-    rc = sr_set_item_str(sess, "/ietf-subscribed-notifications:subscriptions/subscription[id='242']/stream",
-            "NETCONF", NULL, 0);
-    if (rc) {
-        return rc;
-    }
-    rc = sr_set_item_str(sess, "/ietf-subscribed-notifications:subscriptions/subscription[id='242']"
-            "/receivers/receiver[name='other-recv']/ietf-subscribed-notif-receivers:receiver-instance-ref",
-            "other-inst", NULL, 0);
-    if (rc) {
-        return rc;
-    }
-
-    return SR_ERR_OK;
-}
-
-/**
- * @brief Read the operational data of all the configured subscriptions.
- *
- * @param[in] sess Sysrepo session.
- * @param[out] data Retrieved data.
- * @return Error code (SR_ERR_OK on success).
- */
-static int
-get_oper_subscriptions(sr_session_ctx_t *sess, sr_data_t **data)
-{
-    int ret;
-
-    ret = sr_session_switch_ds(sess, SR_DS_OPERATIONAL);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = sr_get_data(sess, "/ietf-subscribed-notifications:subscriptions", 0, 0, 0, data);
-
-    assert_int_equal(sr_session_switch_ds(sess, SR_DS_RUNNING), SR_ERR_OK);
-    return ret;
-}
-
-/**
- * @brief Count the instances of a node in a data tree.
- *
- * @param[in] tree Data tree to search.
- * @param[in] xpath XPath to evaluate.
- * @return Number of the matching nodes.
- */
-static uint32_t
-node_count(const struct lyd_node *tree, const char *xpath)
-{
-    struct ly_set *set = NULL;
-    uint32_t count;
-
-    assert_int_equal(lyd_find_xpath(tree, xpath, &set), LY_SUCCESS);
-    count = set->count;
-    ly_set_free(set, NULL);
-
-    return count;
+    /* no "transport" leaf at all */
+    add_sub(st, 242, "stream", "NETCONF", NULL);
+    bind_sub_recv(st, 242, "other-recv", "other-inst");
 }
 
 /**
@@ -3975,380 +3052,184 @@ other_publisher_reset_cb(sr_session_ctx_t *session, uint32_t sub_id, const char 
 /**
  * @brief Test: Subscriptions of another notification publisher are ignored, not broken.
  *
- * The "subscriptions" subtree is shared by all the notification publishers on the system, so it
- * may contain subscriptions with a transport this daemon does not implement (an HTTP-based
- * telemetry server, for example). The daemon must neither reject their configuration nor
- * provide (or delete) any of their state, while keeping its own subscriptions serviced.
+ * The "subscriptions" subtree is shared by all the notification publishers on the system, so it may
+ * contain subscriptions with a transport this daemon does not implement (an HTTP-based telemetry
+ * server, for example). The daemon must neither reject their configuration nor provide (or delete)
+ * any of their state, while keeping its own subscriptions serviced.
  */
 static void
 test_other_publisher(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL;
-    sr_subscription_ctx_t *subscr = NULL;
-    sr_data_t *data = NULL;
-    sr_val_t *output = NULL;
-    size_t output_count = 0;
-    char *state_val;
-    int ret;
+    sr_data_t *data;
 
-    TLOG_INF("Creating a subscription serviced by the daemon...");
-
-    setup_sub(st->sess, st->udp_port, 240, "NETCONF", NULL);
-    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
-            "/ietf-subscribed-notifications:subscription-started", &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-    lyd_free_all(notif);
-    notif = NULL;
-    drain_notifications(st->udp_sockfd);
-
-    TLOG_INF("Creating the configuration of another publisher...");
+    /* a subscription serviced by the daemon */
+    setup_sub(st, 240, NULL);
+    skip_notif(st, SUB_STARTED);
+    drain_notifs(st);
 
     /* neither an unimplemented transport nor a subscription without any transport may be rejected */
-    ret = create_other_publisher_config(st->sess);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    drain_notifications(st->udp_sockfd);
+    add_other_publisher_config(st);
+    apply(st);
+    drain_notifs(st);
 
-    TLOG_INF("Reading the operational data of all the subscriptions...");
-
-    /* used to fail as a whole, the daemon answered "Item not found" for the receivers it does not service */
-    ret = get_oper_subscriptions(st->sess, &data);
-    assert_int_equal(ret, SR_ERR_OK);
-    assert_non_null(data);
+    /* used to fail as a whole, the daemon answered "Item not found" for receivers it does not
+     * service, so read the entire subtree in one get and assert on that single result */
+    data = get_oper_tree(st, "/ietf-subscribed-notifications:subscriptions");
 
     /* the state of our own receiver is provided ... */
-    assert_int_equal(node_count(data->tree, "/ietf-subscribed-notifications:subscriptions"
-            "/subscription[id='240']/receivers/receiver[name='recv1']/state"), 1);
-    assert_int_equal(node_count(data->tree, "/ietf-subscribed-notifications:subscriptions"
-            "/subscription[id='240']/configured-subscription-state"), 1);
+    assert_node_count(data->tree, 1, RECV_XP "/state", 240, TEST_RECV);
+    assert_node_count(data->tree, 1, SUB_XP "/configured-subscription-state", 240);
 
     /* ... the state of the other publisher's subscriptions is not, we know nothing about them */
-    assert_int_equal(node_count(data->tree, "/ietf-subscribed-notifications:subscriptions"
-            "/subscription[id='241']/receivers/receiver[name='other-recv']/state"), 0);
-    assert_int_equal(node_count(data->tree, "/ietf-subscribed-notifications:subscriptions"
-            "/subscription[id='241']/configured-subscription-state"), 0);
-    assert_int_equal(node_count(data->tree, "/ietf-subscribed-notifications:subscriptions"
-            "/subscription[id='242']/receivers/receiver[name='other-recv']/state"), 0);
-    assert_int_equal(node_count(data->tree, "/ietf-subscribed-notifications:subscriptions"
-            "/subscription[id='242']/configured-subscription-state"), 0);
+    assert_node_count(data->tree, 0, RECV_XP "/state", 241, "other-recv");
+    assert_node_count(data->tree, 0, SUB_XP "/configured-subscription-state", 241);
+    assert_node_count(data->tree, 0, RECV_XP "/state", 242, "other-recv");
+    assert_node_count(data->tree, 0, SUB_XP "/configured-subscription-state", 242);
     sr_release_data(data);
-    data = NULL;
 
-    TLOG_INF("Modifying a subscription of the other publisher...");
-
-    ret = sr_set_item_str(st->sess, "/ietf-subscribed-notifications:subscriptions/subscription[id='241']/purpose",
-            "telemetry", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    drain_notifications(st->udp_sockfd);
-
-    /* the daemon is alive and its own subscription untouched */
-    state_val = get_oper_leaf_str(st->sess, "/ietf-subscribed-notifications:subscriptions"
-            "/subscription[id='240']/configured-subscription-state");
-    assert_non_null(state_val);
-    assert_string_equal(state_val, "valid");
-    free(state_val);
-
-    TLOG_INF("Providing the state of the other publisher's receivers...");
+    /* modifying a foreign subscription must leave the daemon and its own subscription alone */
+    set_node(st, "telemetry", SUB_XP "/purpose", 241);
+    apply(st);
+    drain_notifs(st);
+    assert_oper(st, "valid", SUB_XP "/configured-subscription-state", 240);
 
     /* the other publisher provides the state of its receivers on the very paths the daemon uses */
-    ret = sr_oper_get_subscribe(st->sess, "ietf-subscribed-notifications",
-            "/ietf-subscribed-notifications:subscriptions/subscription/receivers/receiver/state",
-            other_publisher_state_cb, NULL, SR_SUBSCR_OPER_MERGE, &subscr);
-    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(sr_oper_get_subscribe(st->sess, "ietf-subscribed-notifications", ANY_RECV_XP "/state",
+            other_publisher_state_cb, NULL, SR_SUBSCR_OPER_MERGE, &st->test_subscr), SR_ERR_OK);
 
     /* the state of both publishers is in the operational data */
-    state_val = get_oper_leaf_str(st->sess, "/ietf-subscribed-notifications:subscriptions"
-            "/subscription[id='241']/receivers/receiver[name='other-recv']/state");
-    assert_non_null(state_val);
-    assert_string_equal(state_val, "suspended");
-    free(state_val);
-    state_val = get_oper_leaf_str(st->sess, "/ietf-subscribed-notifications:subscriptions"
-            "/subscription[id='240']/receivers/receiver[name='recv1']/state");
-    assert_non_null(state_val);
-    assert_string_equal(state_val, "active");
-    free(state_val);
+    assert_oper(st, "suspended", RECV_XP "/state", 241, "other-recv");
+    assert_oper(st, "active", RECV_XP "/state", 240, TEST_RECV);
 
-    TLOG_INF("Restarting the daemon with the other publisher's provider in place...");
-
-    /* the daemon could not even subscribe for the operational data without SR_SUBSCR_OPER_MERGE now */
+    /* the daemon could not even subscribe for the operational data without SR_SUBSCR_OPER_MERGE */
     stop_notifd(st->notifd_pid);
     st->notifd_pid = 0;
-    drain_notifications(st->udp_sockfd);
-    ret = start_notifd(&st->notifd_pid);
-    assert_int_equal(ret, 0);
+    drain_notifs(st);
+    assert_int_equal(start_notifd(&st->notifd_pid), 0);
 
-    ret = receive_specific_notification_timeout(st->udp_sockfd, st->ly_ctx, LONG_TIMEOUT_MS,
-            "/ietf-subscribed-notifications:subscription-started", &notif, NULL);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-    lyd_free_all(notif);
-    notif = NULL;
-    drain_notifications(st->udp_sockfd);
+    skip_notif(st, SUB_STARTED);
+    assert_oper(st, "valid", SUB_XP "/configured-subscription-state", 240);
 
-    state_val = get_oper_leaf_str(st->sess, "/ietf-subscribed-notifications:subscriptions"
-            "/subscription[id='240']/configured-subscription-state");
-    assert_non_null(state_val);
-    assert_string_equal(state_val, "valid");
-    free(state_val);
+    /* deleting the foreign configuration must leave our own subscription serviced */
+    del_node(st, SUB_XP, 241);
+    del_node(st, SUB_XP, 242);
+    del_node(st, INST_XP, "other-inst");
+    apply(st);
+    drain_notifs(st);
+    assert_oper(st, "active", RECV_XP "/state", 240, TEST_RECV);
 
-    TLOG_INF("Deleting the configuration of the other publisher...");
+    /* the reset action is subscribed by both publishers, each with its own priority (sysrepo allows
+     * a single subscription per priority) and the daemon must keep answering for its own receivers.
+     * sysrepo keeps only the reply of the lowest-priority subscriber, so the mandatory "time"
+     * output of the other publisher is discarded while this daemon is subscribed with priority 0 */
+    assert_int_equal(sr_rpc_subscribe_tree(st->sess, ANY_RECV_XP "/reset", other_publisher_reset_cb,
+            NULL, 1, 0, &st->test_subscr), SR_ERR_OK);
 
-    assert_int_equal(delete_subscription(st->sess, 241), SR_ERR_OK);
-    assert_int_equal(delete_subscription(st->sess, 242), SR_ERR_OK);
-    assert_int_equal(delete_receiver_instance(st->sess, "other-inst"), SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    drain_notifications(st->udp_sockfd);
-
-    /* our own subscription is still serviced */
-    state_val = get_oper_leaf_str(st->sess, "/ietf-subscribed-notifications:subscriptions"
-            "/subscription[id='240']/receivers/receiver[name='recv1']/state");
-    assert_non_null(state_val);
-    assert_string_equal(state_val, "active");
-    free(state_val);
-
-    TLOG_INF("Resetting our receiver with the other publisher subscribed for the action...");
-
-    /* the reset action is subscribed by both publishers, each with its own priority (sysrepo
-     * allows a single subscription per priority) and the daemon must keep answering for its
-     * own receivers */
-    ret = sr_rpc_subscribe_tree(st->sess, "/ietf-subscribed-notifications:subscriptions"
-            "/subscription/receivers/receiver/reset", other_publisher_reset_cb, NULL, 1, 0, &subscr);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = sr_rpc_send(st->sess, "/ietf-subscribed-notifications:subscriptions"
-            "/subscription[id='240']/receivers/receiver[name='recv1']/reset", NULL, 0, 0,
-            &output, &output_count);
-    assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(output_count, 1);
-    sr_free_values(output, output_count);
-
-    state_val = get_oper_leaf_str(st->sess, "/ietf-subscribed-notifications:subscriptions"
-            "/subscription[id='240']/receivers/receiver[name='recv1']/state");
-    assert_non_null(state_val);
-    assert_string_equal(state_val, "connecting");
-    free(state_val);
-
-    sr_unsubscribe(subscr);
-    cleanup_sub(st->sess, 240);
+    send_reset(st, 240, TEST_RECV);
+    assert_oper(st, "connecting", RECV_XP "/state", 240, TEST_RECV);
 }
 
 /**
- * @brief Test: Verify that changing the encoding of an existing subscription
- * takes effect on subsequent notifications.
+ * @brief Test: Verify that changing the encoding of an existing subscription takes effect on
+ * subsequent notifications.
  *
- * Creates a subscription with JSON encoding, triggers a notification and
- * verifies it is received as JSON. Then modifies the encoding to XML, triggers
- * another notification and verifies it is received as XML. This catches a receiver
- * sending in the encoding configured when its dispatch was started instead of the
- * one currently configured for the subscription.
+ * Creates a subscription with JSON encoding, triggers a notification and verifies it is received as
+ * JSON. Then modifies the encoding to XML, triggers another notification and verifies it is
+ * received as XML. This catches a receiver sending in the encoding configured when its dispatch was
+ * started instead of the one currently configured for the subscription.
  */
 static void
 test_encoding_modify(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL;
+    struct lyd_node *notif;
     udp_notif_header_t header;
-    char path[512];
-    int ret;
 
-    TLOG_INF("Creating subscription with JSON encoding...");
+    setup_sub(st, 120, "stream-xpath-filter", NCC, "encoding", ENC_JSON, NULL);
+    skip_notif(st, SUB_STARTED);
 
-    ret = create_receiver_instance(st->sess, "test-recv", "127.0.0.1", st->udp_port);
-    assert_int_equal(ret, SR_ERR_OK);
+    set_node(st, "1", "/test:test-leaf");
+    apply(st);
 
-    /* set common fields and an XPath filter that matches netconf-config-change */
-    ret = _set_sub_common(st->sess, 120, "NETCONF", "test-recv");
-    assert_int_equal(ret, SR_ERR_OK);
-
-    snprintf(path, sizeof(path),
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='120']/stream-xpath-filter");
-    ret = sr_set_item_str(st->sess, path, "/ietf-netconf-notifications:netconf-config-change", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* set encoding to JSON */
-    snprintf(path, sizeof(path),
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='120']/encoding");
-    ret = sr_set_item_str(st->sess, path, "ietf-subscribed-notifications:encode-json", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    TLOG_INF("Waiting for subscription-started notification...");
-
-    /* receive and discard subscription-started */
-    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
-            "/ietf-subscribed-notifications:subscription-started", &notif, NULL);
-    assert_int_equal(ret, 0);
-    lyd_free_all(notif);
-    notif = NULL;
-
-    TLOG_INF("Triggering a notification (should be JSON)...");
-
-    /* make a config change to produce a netconf-config-change notification */
-    ret = sr_set_item_str(st->sess, "/test:test-leaf", "1", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* receive the notification and verify it is JSON */
-    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
-            "/ietf-netconf-notifications:netconf-config-change", &notif, &header);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
+    notif = expect_notif_hdr(st, NCC, &header);
     assert_int_equal(header.media_type, UDP_NOTIF_MT_JSON);
     lyd_free_all(notif);
-    notif = NULL;
-
-    TLOG_INF("Modifying encoding to XML...");
 
     /* change the encoding to XML */
-    ret = sr_set_item_str(st->sess, path, "ietf-subscribed-notifications:encode-xml", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
+    set_node(st, ENC_XML, SUB_XP "/encoding", 120);
+    apply(st);
 
-    TLOG_INF("Waiting for subscription-modified notification...");
+    skip_notif(st, SUB_MODIFIED);
 
-    /* receive and discard subscription-modified */
-    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
-            "/ietf-subscribed-notifications:subscription-modified", &notif, NULL);
-    assert_int_equal(ret, 0);
-    lyd_free_all(notif);
-    notif = NULL;
+    set_node(st, "2", "/test:test-leaf");
+    apply(st);
 
-    TLOG_INF("Triggering another notification (should be XML)...");
-
-    /* make another config change to produce a second notification */
-    ret = sr_set_item_str(st->sess, "/test:test-leaf", "2", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* receive the notification and verify it is now XML */
-    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
-            "/ietf-netconf-notifications:netconf-config-change", &notif, &header);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
+    notif = expect_notif_hdr(st, NCC, &header);
     assert_int_equal(header.media_type, UDP_NOTIF_MT_XML);
-
-    TLOG_INF("Encoding change took effect on subsequent notifications");
-
     lyd_free_all(notif);
-
-    sr_delete_item(st->sess, "/test:test-leaf", 0);
-    cleanup_sub(st->sess, 120);
 }
 
 /**
  * @brief Test: Configuring CBOR encoding must be rejected (not implemented).
  *
- * Attempts to create a subscription with the encode-cbor identity and verifies
- * that it is rejected with an error, since CBOR serialization is not implemented
- * by the daemon (registry entry has implemented = 0).
+ * Attempts to create a subscription with the encode-cbor identity and verifies that it is rejected,
+ * since CBOR serialization is not implemented by the daemon.
  */
 static void
 test_encoding_cbor_unsupported(void **state)
 {
     struct state *st = *state;
     sr_session_ctx_t *tmp_sess = NULL;
-    char path[512];
-    int ret;
-
-    TLOG_INF("Attempting to create subscription with CBOR encoding...");
 
     /* use a throwaway session so that the edit left behind by the failing apply is dropped with it
-     * instead of being applied on top of by the cleanup */
-    ret = sr_session_start(st->conn, SR_DS_RUNNING, &tmp_sess);
-    assert_int_equal(ret, SR_ERR_OK);
+     * instead of being applied on top of by the reset */
+    assert_int_equal(sr_session_start(st->conn, SR_DS_RUNNING, &tmp_sess), SR_ERR_OK);
 
-    ret = create_receiver_instance(tmp_sess, "test-recv", "127.0.0.1", st->udp_port);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = _set_sub_common(tmp_sess, 112, "NETCONF", "test-recv");
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* set encoding to CBOR */
-    snprintf(path, sizeof(path),
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='112']/encoding");
-    ret = sr_set_item_str(tmp_sess, path, "ietf-udp-notif-transport:encode-cbor", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
+    add_recv_inst_on(tmp_sess, TEST_RECV_INST, st->udp_port, NULL);
+    add_sub_on(tmp_sess, 112, "stream", "NETCONF", "transport", UDP_TRANSPORT,
+            "encoding", "ietf-udp-notif-transport:encode-cbor", NULL);
+    set_node_on(tmp_sess, TEST_RECV_INST,
+            RECV_XP "/ietf-subscribed-notif-receivers:receiver-instance-ref", 112, TEST_RECV);
 
     /* CBOR is not implemented by the daemon, the apply must be rejected by its validation */
-    ret = sr_apply_changes(tmp_sess, 0);
-    assert_int_equal(ret, SR_ERR_UNSUPPORTED);
-
-    TLOG_INF("CBOR encoding correctly rejected as unsupported");
+    assert_int_equal(sr_apply_changes(tmp_sess, 0), SR_ERR_UNSUPPORTED);
 
     sr_session_stop(tmp_sess);
 }
 
 /**
- * @brief Test: Verify transport default encoding when encoding leaf is not set.
+ * @brief Test: Verify transport default encoding when the encoding leaf is not set.
  *
- * Creates a subscription without setting the encoding leaf, then verifies that
- * the feature-aware transport default encoding is used: the highest-priority
- * encoding whose YANG feature is enabled (XML). The UDP-Notif media type must
- * be XML and the subscription-started notification must carry the encoding
- * leaf set to encode-xml.
+ * Creates a subscription without setting the encoding leaf, then verifies that the feature-aware
+ * transport default encoding is used: the highest-priority encoding whose YANG feature is enabled
+ * (XML). The UDP-Notif media type must be XML and the subscription-started notification must carry
+ * the encoding leaf set to encode-xml.
  */
 static void
 test_default_encoding(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL, *node = NULL;
+    struct lyd_node *notif;
     udp_notif_header_t header;
-    int ret;
 
-    TLOG_INF("Creating subscription without encoding to test transport default...");
+    setup_sub(st, 110, NULL);
 
-    ret = create_receiver_instance(st->sess, "test-recv", "127.0.0.1", st->udp_port);
-    assert_int_equal(ret, SR_ERR_OK);
+    notif = expect_notif_hdr(st, SUB_STARTED, &header);
 
-    /* set only the common fields (stream, transport, receiver-ref); no encoding */
-    ret = _set_sub_common(st->sess, 110, "NETCONF", "test-recv");
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    TLOG_INF("Waiting for subscription-started notification...");
-
-    ret = receive_notification(st->udp_sockfd, st->ly_ctx, &notif, &header);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-
-    /* verify it's a subscription-started notification */
-    assert_string_equal(notif->schema->name, "subscription-started");
-
-    /* media type must be XML (the highest-priority encoding with an enabled feature) */
+    /* the highest-priority encoding with an enabled feature */
     assert_int_equal(header.media_type, UDP_NOTIF_MT_XML);
-
-    /* the encoding leaf must be present and set to encode-xml */
-    ret = lyd_find_path(notif, "encoding", 0, &node);
-    assert_int_equal(ret, LY_SUCCESS);
-    assert_non_null(node);
-    assert_string_equal(lyd_get_value(node), "ietf-subscribed-notifications:encode-xml");
-
-    TLOG_INF("Default encoding (XML) verified successfully");
+    assert_notif_leaf(notif, "encoding", ENC_XML);
 
     lyd_free_all(notif);
-
-    cleanup_sub(st->sess, 110);
 }
 
 /**
  * @brief Teardown: re-enable the encoding features after test_encoding_feature_disabled.
  *
- * Runs even if the test failed on an assertion, so that subsequent test runs
- * start with both features enabled. Must release the context reference so that
- * sr_enable_module_feature can acquire the write lock it needs.
+ * Runs even if the test failed on an assertion, so that subsequent test runs start with both
+ * features enabled. Must release the context reference so that sr_enable_module_feature can acquire
+ * the write lock it needs.
  */
 static int
 re_enable_encoding_features(void **state)
@@ -4381,13 +3262,12 @@ re_enable_encoding_features(void **state)
 /**
  * @brief Test: Default encoding resolution skips disabled features.
  *
- * Disables the encode-json and encode-xml features and verifies that creating
- * a subscription without an explicit encoding fails (there is no usable
- * default). Then re-enables encode-json only and verifies that explicitly
- * configuring encode-xml is rejected (its feature is disabled), and that
- * a subscription without an explicit encoding is created, uses the JSON media
- * type, and carries the encoding leaf set to encode-json (the higher-priority
- * encode-xml is skipped because its feature is disabled).
+ * Disables the encode-json and encode-xml features and verifies that creating a subscription
+ * without an explicit encoding fails (there is no usable default). Then re-enables encode-json only
+ * and verifies that explicitly configuring encode-xml is rejected (its feature is disabled), and
+ * that a subscription without an explicit encoding is created, uses the JSON media type, and
+ * carries the encoding leaf set to encode-json (the higher-priority encode-xml is skipped because
+ * its feature is disabled).
  *
  * Must be the last test in the suite because it disables YANG features.
  */
@@ -4395,126 +3275,80 @@ static void
 test_encoding_feature_disabled(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL, *node = NULL;
+    struct lyd_node *notif;
     udp_notif_header_t header;
     sr_session_ctx_t *tmp_sess = NULL;
-    char path[512];
+    char xpath[512];
     int ret;
 
-    TLOG_INF("Disabling encode-json and encode-xml features...");
-
-    /* release the context reference so the feature changes can acquire
-     * the write lock they need to change the libyang context */
+    /* release the context reference so the feature changes can acquire the write lock they need to
+     * change the libyang context */
     sr_release_context(st->conn);
     st->ly_ctx = NULL;
 
-    ret = sr_disable_module_feature(st->conn, "ietf-subscribed-notifications", "encode-json");
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_disable_module_feature(st->conn, "ietf-subscribed-notifications", "encode-xml");
-    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(sr_disable_module_feature(st->conn, "ietf-subscribed-notifications", "encode-json"), SR_ERR_OK);
+    assert_int_equal(sr_disable_module_feature(st->conn, "ietf-subscribed-notifications", "encode-xml"), SR_ERR_OK);
 
-    /* re-acquire the context (now with both encoding features disabled) */
+    /* re-acquire the context, now with both encoding features disabled */
     st->ly_ctx = sr_acquire_context(st->conn);
 
-    /* use a throwaway session for the failing apply so that any state left
-     * by the failed change is dropped with it */
-    ret = sr_session_start(st->conn, SR_DS_RUNNING, &tmp_sess);
-    assert_int_equal(ret, SR_ERR_OK);
+    /* use a throwaway session for the failing apply so that any state left by the failed change is
+     * dropped with it */
+    assert_int_equal(sr_session_start(st->conn, SR_DS_RUNNING, &tmp_sess), SR_ERR_OK);
 
-    TLOG_INF("Creating subscription without encoding (no usable default)...");
-
-    ret = create_receiver_instance(tmp_sess, "test-recv", "127.0.0.1", st->udp_port);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = _set_sub_common(tmp_sess, 111, "NETCONF", "test-recv");
-    assert_int_equal(ret, SR_ERR_OK);
+    add_recv_inst_on(tmp_sess, TEST_RECV_INST, st->udp_port, NULL);
+    add_sub_on(tmp_sess, 111, "stream", "NETCONF", "transport", UDP_TRANSPORT, NULL);
+    set_node_on(tmp_sess, TEST_RECV_INST,
+            RECV_XP "/ietf-subscribed-notif-receivers:receiver-instance-ref", 111, TEST_RECV);
 
     /* must fail, there is no encoding the daemon could use */
-    ret = sr_apply_changes(tmp_sess, 0);
-    assert_int_not_equal(ret, SR_ERR_OK);
-
+    assert_int_not_equal(sr_apply_changes(tmp_sess, 0), SR_ERR_OK);
     sr_session_stop(tmp_sess);
-
-    TLOG_INF("Re-enabling encode-json only...");
 
     sr_release_context(st->conn);
     st->ly_ctx = NULL;
 
-    ret = sr_enable_module_feature(st->conn, "ietf-subscribed-notifications", "encode-json");
-    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(sr_enable_module_feature(st->conn, "ietf-subscribed-notifications", "encode-json"), SR_ERR_OK);
 
-    /* re-acquire the context (now with encode-json enabled, encode-xml disabled) */
+    /* re-acquire the context, now with encode-json enabled and encode-xml disabled */
     st->ly_ctx = sr_acquire_context(st->conn);
 
-    /* verify that explicitly configuring a disabled-feature encoding is rejected */
-    TLOG_INF("Attempting to explicitly configure encode-xml (feature disabled)...");
+    /* explicitly configuring a disabled-feature encoding must be rejected */
+    assert_int_equal(sr_session_start(st->conn, SR_DS_RUNNING, &tmp_sess), SR_ERR_OK);
 
-    ret = sr_session_start(st->conn, SR_DS_RUNNING, &tmp_sess);
-    assert_int_equal(ret, SR_ERR_OK);
+    add_recv_inst_on(tmp_sess, TEST_RECV_INST, st->udp_port, NULL);
+    add_sub_on(tmp_sess, 113, "stream", "NETCONF", "transport", UDP_TRANSPORT, NULL);
+    set_node_on(tmp_sess, TEST_RECV_INST,
+            RECV_XP "/ietf-subscribed-notif-receivers:receiver-instance-ref", 113, TEST_RECV);
 
-    ret = create_receiver_instance(tmp_sess, "test-recv", "127.0.0.1", st->udp_port);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = _set_sub_common(tmp_sess, 113, "NETCONF", "test-recv");
-    assert_int_equal(ret, SR_ERR_OK);
-
-    snprintf(path, sizeof(path),
-            "/ietf-subscribed-notifications:subscriptions/subscription[id='113']/encoding");
-    ret = sr_set_item_str(tmp_sess, path, "ietf-subscribed-notifications:encode-xml", NULL, 0);
-    if (ret == SR_ERR_OK) {
-        /* if the identity was accepted, the validation must still reject it */
+    /* an identity disabled by if-feature is refused already when staging the edit if the context
+     * has the parsed module data, which is not the case for a printed context, then the edit is
+     * created, passes the libyang validation for the same reason, and is rejected only by the
+     * change event validation of the daemon */
+    snprintf(xpath, sizeof xpath, SUB_XP "/encoding", 113);
+    ret = sr_set_item_str(tmp_sess, xpath, ENC_XML, NULL, 0);
+    if (!ret) {
         ret = sr_apply_changes(tmp_sess, 0);
     }
     assert_int_not_equal(ret, SR_ERR_OK);
-
     sr_session_stop(tmp_sess);
 
-    TLOG_INF("Explicitly configured disabled-feature encoding correctly rejected");
+    /* a subscription without an explicit encoding must fall back to JSON, skipping the
+     * higher-priority encode-xml whose feature is disabled */
+    setup_sub(st, 111, NULL);
 
-    TLOG_INF("Creating subscription without encoding (encode-xml default skipped)...");
-
-    ret = create_receiver_instance(st->sess, "test-recv", "127.0.0.1", st->udp_port);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = _set_sub_common(st->sess, 111, "NETCONF", "test-recv");
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    TLOG_INF("Waiting for subscription-started notification...");
-
-    ret = receive_notification(st->udp_sockfd, st->ly_ctx, &notif, &header);
-    assert_int_equal(ret, 0);
-    assert_non_null(notif);
-
-    /* verify it's a subscription-started notification */
-    assert_string_equal(notif->schema->name, "subscription-started");
-
-    /* media type must be JSON, the XML default is skipped because its feature is disabled */
+    notif = expect_notif_hdr(st, SUB_STARTED, &header);
     assert_int_equal(header.media_type, UDP_NOTIF_MT_JSON);
-
-    /* verify id is present (sanity check that the notification is well-formed) */
-    ret = lyd_find_path(notif, "id", 0, &node);
-    assert_int_equal(ret, LY_SUCCESS);
-    assert_non_null(node);
-    assert_int_equal(strtoul(lyd_get_value(node), NULL, 10), 111);
-
-    /* the encoding leaf must be present and set to encode-json */
-    ret = lyd_find_path(notif, "encoding", 0, &node);
-    assert_int_equal(ret, LY_SUCCESS);
-    assert_non_null(node);
-    assert_string_equal(lyd_get_value(node), "ietf-subscribed-notifications:encode-json");
-
-    TLOG_INF("Default encoding correctly resolved to JSON with encode-xml disabled");
-
+    assert_notif_leaf(notif, "id", "111");
+    assert_notif_leaf(notif, "encoding", ENC_JSON);
     lyd_free_all(notif);
 
-    /* release context before cleanup so notifd can process the deletion */
+    /* release context before the cleanup so notifd can process the deletion */
     sr_release_context(st->conn);
     st->ly_ctx = NULL;
 
-    cleanup_sub(st->sess, 111);
+    del_node(st, SUB_XP, 111);
+    apply(st);
 
     /* re-acquire context for the teardown function */
     st->ly_ctx = sr_acquire_context(st->conn);
@@ -4525,44 +3359,44 @@ int
 main(void)
 {
     const struct CMUnitTest tests[] = {
-        cmocka_unit_test_setup(test_subscription_started, clear_subs_notifs),
-        cmocka_unit_test_setup(test_subscription_started_fields, clear_subs_notifs),
-        cmocka_unit_test_setup(test_subscription_started_filter_ref, clear_subs_notifs),
-        cmocka_unit_test_setup(test_subscription_started_json, clear_subs_notifs),
-        cmocka_unit_test_setup(test_subscription_terminated, clear_subs_notifs),
-        cmocka_unit_test_setup(test_subscription_modified, clear_subs_notifs),
-        cmocka_unit_test_setup(test_multiple_subscriptions, clear_subs_notifs),
-        cmocka_unit_test_setup(test_config_change_notification, clear_subs_notifs),
-        cmocka_unit_test_setup(test_udp_notif_header, clear_subs_notifs),
-        cmocka_unit_test_setup(test_message_id_increment, clear_subs_notifs),
-        cmocka_unit_test_setup(test_xpath_filter_match, clear_subs_notifs),
-        cmocka_unit_test_setup(test_xpath_filter_nomatch, clear_subs_notifs),
-        cmocka_unit_test_setup(test_xpath_filter_edit_target, clear_subs_notifs),
-        cmocka_unit_test_setup(test_subtree_filter_match, clear_subs_notifs),
-        cmocka_unit_test_setup(test_subtree_filter_nomatch, clear_subs_notifs),
-        cmocka_unit_test_setup(test_subtree_filter_containment, clear_subs_notifs),
-        cmocka_unit_test_setup(test_filter_ref_xpath_match, clear_subs_notifs),
-        cmocka_unit_test_setup(test_filter_ref_subtree_match, clear_subs_notifs),
-        cmocka_unit_test_setup(test_filter_ref_xpath_modify, clear_subs_notifs),
-        cmocka_unit_test_setup(test_filter_ref_subtree_modify, clear_subs_notifs),
-        cmocka_unit_test_setup(test_filter_ref_multiple_subs, clear_subs_notifs),
-        cmocka_unit_test_setup(test_filter_ref_xpath_nomatch, clear_subs_notifs),
-        cmocka_unit_test_setup(test_oper_data_get_all_supported, clear_subs_notifs),
-        cmocka_unit_test_setup(test_oper_data_sent_event_records_change, clear_subs_notifs),
-        cmocka_unit_test_setup(test_receiver_reset_action, clear_subs_notifs),
-        cmocka_unit_test_setup(test_configured_replay, clear_subs_notifs),
-        cmocka_unit_test_setup(test_source_address_modify, clear_subs_notifs),
-        cmocka_unit_test_setup(test_receiver_instance_ref_change, clear_subs_notifs),
-        cmocka_unit_test_setup(test_receiver_add_delete_dispatch, clear_subs_notifs),
-        cmocka_unit_test_setup(test_receiver_delete_keeps_subscription, clear_subs_notifs),
-        cmocka_unit_test_setup(test_restart_existing_config, clear_subs_notifs),
-        cmocka_unit_test_setup(test_other_publisher, clear_subs_notifs),
-        cmocka_unit_test_setup(test_stop_time_concluded, clear_subs_notifs),
-        cmocka_unit_test_setup(test_encoding_cbor_unsupported, clear_subs_notifs),
-        cmocka_unit_test_setup(test_default_encoding, clear_subs_notifs),
-        cmocka_unit_test_setup(test_encoding_modify, clear_subs_notifs),
+        cmocka_unit_test_setup(test_subscription_started, test_reset),
+        cmocka_unit_test_setup(test_subscription_started_fields, test_reset),
+        cmocka_unit_test_setup(test_subscription_started_filter_ref, test_reset),
+        cmocka_unit_test_setup(test_subscription_started_json, test_reset),
+        cmocka_unit_test_setup(test_subscription_terminated, test_reset),
+        cmocka_unit_test_setup(test_subscription_modified, test_reset),
+        cmocka_unit_test_setup(test_multiple_subscriptions, test_reset),
+        cmocka_unit_test_setup(test_config_change_notification, test_reset),
+        cmocka_unit_test_setup(test_udp_notif_header, test_reset),
+        cmocka_unit_test_setup(test_message_id_increment, test_reset),
+        cmocka_unit_test_setup(test_xpath_filter_match, test_reset),
+        cmocka_unit_test_setup(test_xpath_filter_nomatch, test_reset),
+        cmocka_unit_test_setup(test_xpath_filter_edit_target, test_reset),
+        cmocka_unit_test_setup(test_subtree_filter_match, test_reset),
+        cmocka_unit_test_setup(test_subtree_filter_nomatch, test_reset),
+        cmocka_unit_test_setup(test_subtree_filter_containment, test_reset),
+        cmocka_unit_test_setup(test_filter_ref_xpath_match, test_reset),
+        cmocka_unit_test_setup(test_filter_ref_subtree_match, test_reset),
+        cmocka_unit_test_setup(test_filter_ref_xpath_modify, test_reset),
+        cmocka_unit_test_setup(test_filter_ref_subtree_modify, test_reset),
+        cmocka_unit_test_setup(test_filter_ref_multiple_subs, test_reset),
+        cmocka_unit_test_setup(test_filter_ref_xpath_nomatch, test_reset),
+        cmocka_unit_test_setup(test_oper_data_get_all_supported, test_reset),
+        cmocka_unit_test_setup(test_oper_data_sent_event_records_change, test_reset),
+        cmocka_unit_test_setup(test_receiver_reset_action, test_reset),
+        cmocka_unit_test_setup_teardown(test_configured_replay, test_reset, disable_replay_support),
+        cmocka_unit_test_setup(test_source_address_modify, test_reset),
+        cmocka_unit_test_setup(test_receiver_instance_ref_change, test_reset),
+        cmocka_unit_test_setup(test_receiver_add_delete_dispatch, test_reset),
+        cmocka_unit_test_setup(test_receiver_delete_keeps_subscription, test_reset),
+        cmocka_unit_test_setup(test_restart_existing_config, test_reset),
+        cmocka_unit_test_setup_teardown(test_other_publisher, test_reset, unsubscribe_test_subscr),
+        cmocka_unit_test_setup(test_stop_time_concluded, test_reset),
+        cmocka_unit_test_setup(test_encoding_cbor_unsupported, test_reset),
+        cmocka_unit_test_setup(test_default_encoding, test_reset),
+        cmocka_unit_test_setup(test_encoding_modify, test_reset),
         /* test_encoding_feature_disabled must be last: it disables the encoding features */
-        cmocka_unit_test_setup_teardown(test_encoding_feature_disabled, clear_subs_notifs, re_enable_encoding_features),
+        cmocka_unit_test_setup_teardown(test_encoding_feature_disabled, test_reset, re_enable_encoding_features),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
