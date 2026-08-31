@@ -377,7 +377,10 @@ struct notif_sub_s {
     char *stream;                       /**< stream name */
     char *filter_ref;                   /**< optional stream filter name (e.g., XPath or subtree filter) */
     char *xpath_filter;                 /**< optional XPath filter */
-    char *transport;                    /**< notification transport identity-ref (e.g. "ietf-udp-notif-transport:udp-notif") */
+    const notif_transport_ops_t *ops;   /**< transport servicing the subscription, only the
+                                             subscriptions with a transport of this daemon are
+                                             tracked at all; NULL only if the "transport" leaf
+                                             was removed by a configuration change */
     notif_encoding_t encoding;          /**< notification encoding */
     struct timespec stop_time;          /**< optional stop time */
     int replay;                         /**< whether to replay notifications */

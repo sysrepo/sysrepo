@@ -69,7 +69,6 @@ subscription_state_change_notif_new(const struct ly_ctx *ly_ctx, notif_sub_t *su
     char *id_str = NULL, *stop_time_str = NULL, *start_time_str = NULL;
     struct timespec *start_time, *stop_time;
     notif_encoding_t encoding;
-    const notif_transport_ops_t *ops = NULL;
     const notif_encoding_info_t *enc_info = NULL;
 
     *notif = NULL;
@@ -144,8 +143,8 @@ subscription_state_change_notif_new(const struct ly_ctx *ly_ctx, notif_sub_t *su
     }
 
     /* transport */
-    if ((fields & NOTIF_FIELD_TRANSPORT) && sub->transport) {
-        if (lyd_new_path(tree, ly_ctx, "transport", sub->transport, 0, NULL)) {
+    if ((fields & NOTIF_FIELD_TRANSPORT) && sub->ops) {
+        if (lyd_new_path(tree, ly_ctx, "transport", sub->ops->transport_identity, 0, NULL)) {
             rc = SR_ERR_LY;
             goto cleanup;
         }
@@ -154,8 +153,7 @@ subscription_state_change_notif_new(const struct ly_ctx *ly_ctx, notif_sub_t *su
     /* encoding */
     if (fields & NOTIF_FIELD_ENCODING) {
         /* resolve the encoding (shared path: transport default + feature check) */
-        ops = notif_transport_find_by_identity(sub->transport);
-        encoding = notif_encoding_resolve(sub->encoding, ly_ctx, ops);
+        encoding = notif_encoding_resolve(sub->encoding, ly_ctx, sub->ops);
         enc_info = notif_encoding_info_find(encoding);
         if (!enc_info) {
             SRNTF_LOG_ERR("Failed to resolve encoding for subscription %" PRIu32 ".", sub->id);
