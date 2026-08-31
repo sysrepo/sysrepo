@@ -850,6 +850,31 @@ expect_notifs(struct state *st, const char **paths)
 }
 
 /**
+ * @brief Assert no notification with @p path arrives while the socket stays quiet.
+ *
+ * @param[in] st Test state.
+ * @param[in] path Path that must not arrive, NULL for no notification at all.
+ */
+static void
+expect_no_notif(struct state *st, const char *path)
+{
+    struct lyd_node *notif = NULL;
+    char *notif_path;
+    int r;
+
+    r = recv_notif(st, st->udp_sockfd, path, tmo(st, QUIET_TIMEOUT_MS), &notif, NULL, NULL, 0);
+    assert_int_not_equal(r, NOTIF_RECV_ERR);
+
+    if (r == NOTIF_RECV_OK) {
+        notif_path = lyd_path(notif, LYD_PATH_STD, NULL, 0);
+        TLOG_ERR("Received unexpected notification \"%s\"", notif_path);
+        free(notif_path);
+        lyd_free_all(notif);
+        fail();
+    }
+}
+
+/**
  * @brief Count the notifications with @p path received until the socket goes quiet.
  *
  * Waits for the first notification of any type and then keeps reading until nothing else arrives,
@@ -1988,8 +2013,21 @@ test_reset(void **state)
 
 /* ========== TESTS ========== */
 
+/*
+ * Every test uses its own subscription IDs so that a subscription leaked by a failing test is
+ * attributable to it instead of surfacing in an unrelated one:
+ *
+ *   1        started              2        terminated           3        modified
+ *   11-13    multiple             40       message_id           50-52    xpath filters
+ *   60,62    subtree filters      70-76    filter refs          90,91    oper data
+ *   92       source_address       93       configured_replay    94       receiver_reset
+ *   100-102  started fields       110-114  encodings            200      stop_time
+ *   210,211  receiver churn       220      receiver delete      221      restart
+ *   230      receiver inst ref
+ */
+
 /**
- * @brief Test: Create subscription and receive subscription-started notification.
+ * @brief Test: Create subscription, receive subscription-started and validate its UDP-Notif header.
  */
 static void
 test_subscription_started(void **state)
@@ -2003,10 +2041,18 @@ test_subscription_started(void **state)
     notif = expect_notif_hdr(st, SUB_STARTED, &header);
     assert_string_equal(notif->schema->name, "subscription-started");
 
-    /* verify header fields */
     assert_int_equal(header.version, UDP_NOTIF_VERSION);
+
+    /* standard space */
     assert_int_equal(header.s_flag, 0);
     assert_true((header.media_type == UDP_NOTIF_MT_JSON) || (header.media_type == UDP_NOTIF_MT_XML));
+
+    /* no options, the notification fits into a single segment */
+    assert_int_equal(header.header_len, UDP_NOTIF_HDR_SIZE);
+    assert_int_equal(header.seg_count, 1);
+    assert_true(header.message_len > UDP_NOTIF_HDR_SIZE);
+    assert_true(header.publisher_id > 0);
+    assert_true(header.message_id > 0);
 
     lyd_free_all(notif);
 }
@@ -2182,52 +2228,6 @@ test_multiple_subscriptions(void **state)
 }
 
 /**
- * @brief Test: netconf-config-change notification through configured subscription.
- */
-static void
-test_config_change_notification(void **state)
-{
-    struct state *st = *state;
-
-    setup_sub(st, 20, "stream-xpath-filter", NCC, NULL);
-
-    /* make a configuration change */
-    set_node(st, "67", "/test:test-leaf");
-    apply(st);
-
-    skip_notif(st, NCC);
-}
-
-/**
- * @brief Test: UDP-Notif header validation.
- */
-static void
-test_udp_notif_header(void **state)
-{
-    struct state *st = *state;
-    struct lyd_node *notif;
-    udp_notif_header_t header;
-
-    setup_sub(st, 30, NULL);
-
-    notif = expect_notif_hdr(st, SUB_STARTED, &header);
-
-    assert_int_equal(header.version, UDP_NOTIF_VERSION);
-
-    /* standard space */
-    assert_int_equal(header.s_flag, 0);
-    assert_true((header.media_type == UDP_NOTIF_MT_JSON) || (header.media_type == UDP_NOTIF_MT_XML));
-
-    /* no options */
-    assert_int_equal(header.header_len, UDP_NOTIF_HDR_SIZE);
-    assert_true(header.message_len > UDP_NOTIF_HDR_SIZE);
-    assert_true(header.publisher_id > 0);
-    assert_true(header.message_id > 0);
-
-    lyd_free_all(notif);
-}
-
-/**
  * @brief Test: Message ID incrementing.
  */
 static void
@@ -2237,7 +2237,9 @@ test_message_id_increment(void **state)
     struct lyd_node *notif;
     udp_notif_header_t header1, header2;
 
-    setup_sub(st, 40, NULL);
+    /* filter out netconf-config-change so that the started/terminated pair are the only two
+     * notifications sent to this receiver and their message IDs must be consecutive */
+    setup_sub(st, 40, "stream-xpath-filter", "/ietf-subscribed-notifications:*", NULL);
 
     notif = expect_notif_hdr(st, SUB_STARTED, &header1);
     lyd_free_all(notif);
@@ -2249,7 +2251,7 @@ test_message_id_increment(void **state)
     notif = expect_notif_hdr(st, SUB_TERMINATED, &header2);
     lyd_free_all(notif);
 
-    assert_true(header2.message_id > header1.message_id);
+    assert_int_equal(header2.message_id, header1.message_id + 1);
 }
 
 /**
@@ -2264,6 +2266,11 @@ test_xpath_filter_match(void **state)
     struct state *st = *state;
 
     setup_sub(st, 50, "stream-xpath-filter", NCC, NULL);
+    skip_notif(st, SUB_STARTED);
+    /* the apply that created the subscription is itself a running change and its
+     * netconf-config-change matches this filter, consume it so that the assertions below are about
+     * the change this test triggers */
+    skip_notif(st, NCC);
 
     set_node(st, "42", "/test:test-leaf");
     apply(st);
@@ -2295,6 +2302,9 @@ test_xpath_filter_nomatch(void **state)
 
     /* the counter incrementing proves the daemon filtered the notification out */
     wait_oper_above(st, baseline, RECV_XP "/excluded-event-records", 51, TEST_RECV);
+
+    /* the counter proves the daemon filtered it, this proves it put nothing on the wire */
+    expect_no_notif(st, NULL);
 }
 
 /**
@@ -2320,6 +2330,7 @@ test_xpath_filter_edit_target(void **state)
     apply(st);
 
     wait_oper_above(st, baseline, RECV_XP "/excluded-event-records", 52, TEST_RECV);
+    expect_no_notif(st, NCC);
 
     /* change the target the filter selects, this must match */
     set_node(st, "77", "/test:test-leaf");
@@ -2349,6 +2360,11 @@ test_subtree_filter_match(void **state)
     stage_sub(st, 60, NULL);
     add_sub_subtree_filter(st, 60, subtree_filter);
     apply(st);
+    skip_notif(st, SUB_STARTED);
+    /* the apply that created the subscription is itself a running change and its
+     * netconf-config-change matches this filter, consume it so that the assertions below are about
+     * the change this test triggers */
+    skip_notif(st, NCC);
 
     set_node(st, "88", "/test:test-leaf");
     apply(st);
@@ -2357,47 +2373,13 @@ test_subtree_filter_match(void **state)
 }
 
 /**
- * @brief Test: Subtree filter that does not match notifications.
+ * @brief Test: Subtree filter selecting on a containment node.
  *
- * Creates a subscription with a subtree filter that filters out notifications
- * based on content and verifies that non-matching notifications are not received.
+ * Uses a subtree filter with a <datastore> containment node and checks both directions: a change
+ * to a different datastore must be filtered out, a change to the selected one must be delivered.
  */
 static void
-test_subtree_filter_nomatch(void **state)
-{
-    struct state *st = *state;
-    uint64_t baseline;
-
-    /*
-     * subtree filter that matches only netconf-config-change with datastore=startup
-     * we're changing running, so this should NOT match
-     */
-    const char *subtree_filter =
-            "<netconf-config-change xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
-            "<datastore>startup</datastore>"
-            "</netconf-config-change>";
-
-    stage_sub(st, 61, NULL);
-    add_sub_subtree_filter(st, 61, subtree_filter);
-    apply(st);
-    skip_notif(st, SUB_STARTED);
-
-    assert_int_equal(try_oper_u64(st, &baseline, RECV_XP "/excluded-event-records", 61, TEST_RECV), 0);
-
-    set_node(st, "99", "/test:test-leaf");
-    apply(st);
-
-    wait_oper_above(st, baseline, RECV_XP "/excluded-event-records", 61, TEST_RECV);
-}
-
-/**
- * @brief Test: Subtree filter with containment node filtering.
- *
- * Creates a subscription with a subtree filter that uses containment nodes
- * to match specific notification content.
- */
-static void
-test_subtree_filter_containment(void **state)
+test_subtree_filter_datastore(void **state)
 {
     struct state *st = *state;
     uint64_t baseline;
@@ -2412,6 +2394,10 @@ test_subtree_filter_containment(void **state)
     add_sub_subtree_filter(st, 62, subtree_filter);
     apply(st);
     skip_notif(st, SUB_STARTED);
+    /* the apply that created the subscription is itself a running change and its
+     * netconf-config-change matches this filter, consume it so that the assertions below are about
+     * the change this test triggers */
+    skip_notif(st, NCC);
 
     assert_int_equal(try_oper_u64(st, &baseline, RECV_XP "/excluded-event-records", 62, TEST_RECV), 0);
 
@@ -2422,6 +2408,7 @@ test_subtree_filter_containment(void **state)
     assert_int_equal(sr_session_switch_ds(st->sess, SR_DS_RUNNING), SR_ERR_OK);
 
     wait_oper_above(st, baseline, RECV_XP "/excluded-event-records", 62, TEST_RECV);
+    expect_no_notif(st, NCC);
 
     /* change the running datastore, this must match */
     set_node(st, "111", "/test:test-leaf");
@@ -2445,6 +2432,10 @@ test_filter_ref_xpath_match(void **state)
             "/ietf-netconf-notifications:netconf-config-change[datastore='running']");
     setup_sub(st, 70, "stream-filter-name", "my-xpath-filter", NULL);
     skip_notif(st, SUB_STARTED);
+    /* the apply that created the subscription is itself a running change and its
+     * netconf-config-change matches this filter, consume it so that the assertions below are about
+     * the change this test triggers */
+    skip_notif(st, NCC);
 
     set_node(st, "200", "/test:test-leaf");
     apply(st);
@@ -2475,6 +2466,10 @@ test_filter_ref_subtree_match(void **state)
     add_subtree_filter(st, "my-subtree-filter", subtree_filter);
     setup_sub(st, 71, "stream-filter-name", "my-subtree-filter", NULL);
     skip_notif(st, SUB_STARTED);
+    /* the apply that created the subscription is itself a running change and its
+     * netconf-config-change matches this filter, consume it so that the assertions below are about
+     * the change this test triggers */
+    skip_notif(st, NCC);
 
     set_node(st, "201", "/test:test-leaf");
     apply(st);
@@ -2593,6 +2588,9 @@ test_filter_ref_xpath_nomatch(void **state)
     apply(st);
 
     wait_oper_above(st, baseline, RECV_XP "/excluded-event-records", 76, TEST_RECV);
+
+    /* the counter proves the daemon filtered it, this proves it put nothing on the wire */
+    expect_no_notif(st, NULL);
 }
 
 /**
@@ -2606,7 +2604,6 @@ test_oper_data_get_all_supported(void **state)
 {
     struct state *st = *state;
     char *value = NULL;
-    uint64_t sent;
 
     setup_sub(st, 90, NULL);
     skip_notif(st, SUB_STARTED);
@@ -2622,8 +2619,8 @@ test_oper_data_get_all_supported(void **state)
     assert_oper(st, "active", RECV_XP "/state", 90, TEST_RECV);
     assert_oper(st, "0", RECV_XP "/excluded-event-records", 90, TEST_RECV);
 
-    assert_int_equal(try_oper_u64(st, &sent, RECV_XP "/sent-event-records", 90, TEST_RECV), 0);
-    assert_true(sent > 0);
+    /* the counter is updated after the send, so poll instead of reading it once */
+    wait_oper_above(st, 0, RECV_XP "/sent-event-records", 90, TEST_RECV);
 }
 
 /**
@@ -2663,22 +2660,22 @@ test_receiver_reset_action(void **state)
     char path[512];
     size_t output_count = 0;
 
-    setup_sub(st, 91, "stream-xpath-filter", NCC, NULL);
+    setup_sub(st, 94, "stream-xpath-filter", NCC, NULL);
 
     /* the subscription-started and the netconf-config-change caused by creating the subscription */
     skip_notif(st, SUB_STARTED);
     skip_notif(st, NCC);
 
-    assert_oper(st, "active", RECV_XP "/state", 91, TEST_RECV);
+    assert_oper(st, "active", RECV_XP "/state", 94, TEST_RECV);
 
     /* perform the receiver reset action */
-    snprintf(path, sizeof path, RECV_XP "/reset", 91, TEST_RECV);
+    snprintf(path, sizeof path, RECV_XP "/reset", 94, TEST_RECV);
     assert_int_equal(sr_rpc_send(st->sess, path, NULL, 0, 0, &output, &output_count), SR_ERR_OK);
     assert_non_null(output);
     assert_int_equal(output_count, 1);
     sr_free_values(output, output_count);
 
-    assert_oper(st, "connecting", RECV_XP "/state", 91, TEST_RECV);
+    assert_oper(st, "connecting", RECV_XP "/state", 94, TEST_RECV);
 
     /* make a config change, the daemon must auto-reconnect and deliver the notification */
     set_node(st, "104", "/test:test-leaf");
@@ -2688,7 +2685,7 @@ test_receiver_reset_action(void **state)
     skip_notif(st, SUB_STARTED);
     skip_notif(st, NCC);
 
-    assert_oper(st, "active", RECV_XP "/state", 91, TEST_RECV);
+    assert_oper(st, "active", RECV_XP "/state", 94, TEST_RECV);
 }
 
 /**
@@ -2799,14 +2796,14 @@ test_receiver_instance_ref_change(void **state)
     add_recv_inst(st, "recv-1", st->udp_port, NULL);
     add_recv_inst(st, "recv-2", recv2_port, NULL);
 
-    add_sub(st, 100, "stream", "NETCONF", "transport", UDP_TRANSPORT, NULL);
-    bind_sub_recv(st, 100, TEST_RECV, "recv-1");
+    add_sub(st, 230, "stream", "NETCONF", "transport", UDP_TRANSPORT, NULL);
+    bind_sub_recv(st, 230, TEST_RECV, "recv-1");
     apply(st);
 
     drain_notifs(st);
 
     /* point the subscription at the second receiver instance */
-    bind_sub_recv(st, 100, TEST_RECV, "recv-2");
+    bind_sub_recv(st, 230, TEST_RECV, "recv-2");
     apply(st);
 
     /* the old receiver is terminated and the new one started */
@@ -3071,7 +3068,11 @@ test_other_publisher(void **state)
     /* neither an unimplemented transport nor a subscription without any transport may be rejected */
     add_other_publisher_config(st);
     apply(st);
-    drain_notifs(st);
+
+    /* our own established receiver still gets the change, but this daemon must not start a
+     * dispatch for the foreign subscriptions */
+    skip_notif(st, NCC);
+    expect_no_notif(st, SUB_STARTED);
 
     /* used to fail as a whole, the daemon answered "Item not found" for receivers it does not
      * service, so read the entire subtree in one get and assert on that single result */
@@ -3148,6 +3149,10 @@ test_encoding_modify(void **state)
 
     setup_sub(st, 120, "stream-xpath-filter", NCC, "encoding", ENC_JSON, NULL);
     skip_notif(st, SUB_STARTED);
+    /* the apply that created the subscription is itself a running change and its
+     * netconf-config-change matches this filter, consume it so that the assertions below are about
+     * the change this test triggers */
+    skip_notif(st, NCC);
 
     set_node(st, "1", "/test:test-leaf");
     apply(st);
@@ -3297,9 +3302,9 @@ test_encoding_feature_disabled(void **state)
     assert_int_equal(sr_session_start(st->conn, SR_DS_RUNNING, &tmp_sess), SR_ERR_OK);
 
     add_recv_inst_on(tmp_sess, TEST_RECV_INST, st->udp_port, NULL);
-    add_sub_on(tmp_sess, 111, "stream", "NETCONF", "transport", UDP_TRANSPORT, NULL);
+    add_sub_on(tmp_sess, 114, "stream", "NETCONF", "transport", UDP_TRANSPORT, NULL);
     set_node_on(tmp_sess, TEST_RECV_INST,
-            RECV_XP "/ietf-subscribed-notif-receivers:receiver-instance-ref", 111, TEST_RECV);
+            RECV_XP "/ietf-subscribed-notif-receivers:receiver-instance-ref", 114, TEST_RECV);
 
     /* must fail, there is no encoding the daemon could use */
     assert_int_not_equal(sr_apply_changes(tmp_sess, 0), SR_ERR_OK);
@@ -3366,15 +3371,12 @@ main(void)
         cmocka_unit_test_setup(test_subscription_terminated, test_reset),
         cmocka_unit_test_setup(test_subscription_modified, test_reset),
         cmocka_unit_test_setup(test_multiple_subscriptions, test_reset),
-        cmocka_unit_test_setup(test_config_change_notification, test_reset),
-        cmocka_unit_test_setup(test_udp_notif_header, test_reset),
         cmocka_unit_test_setup(test_message_id_increment, test_reset),
         cmocka_unit_test_setup(test_xpath_filter_match, test_reset),
         cmocka_unit_test_setup(test_xpath_filter_nomatch, test_reset),
         cmocka_unit_test_setup(test_xpath_filter_edit_target, test_reset),
         cmocka_unit_test_setup(test_subtree_filter_match, test_reset),
-        cmocka_unit_test_setup(test_subtree_filter_nomatch, test_reset),
-        cmocka_unit_test_setup(test_subtree_filter_containment, test_reset),
+        cmocka_unit_test_setup(test_subtree_filter_datastore, test_reset),
         cmocka_unit_test_setup(test_filter_ref_xpath_match, test_reset),
         cmocka_unit_test_setup(test_filter_ref_subtree_match, test_reset),
         cmocka_unit_test_setup(test_filter_ref_xpath_modify, test_reset),
