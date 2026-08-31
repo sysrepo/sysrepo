@@ -501,7 +501,9 @@ typedef enum {
                         in this phase by returning an error from the callback. */
     SR_EV_DONE,    /**< Occurs just after the changes have been successfully committed to the datastore,
                         the subscriber can apply the changes now, but it cannot deny the changes in this
-                        phase anymore even if it returns an error. */
+                        phase anymore even if it returns an error. The `netconf-config-change` notification
+                        of the commit is generated before this event, so a notification subscription created
+                        in this callback is younger than it and will not receive it. */
     SR_EV_ABORT,   /**< Occurs in case that the commit transaction has failed because one of the verifiers
                         has denied the change (returned an error). The subscriber is supposed to return the managed
                         application to the state before the commit. This event is also generated for RPC subscriptions
