@@ -379,8 +379,10 @@ struct notif_sub_s {
     char *xpath_filter;                 /**< optional XPath filter */
     const notif_transport_ops_t *ops;   /**< transport servicing the subscription, only the
                                              subscriptions with a transport of this daemon are
-                                             tracked at all; NULL only if the "transport" leaf
-                                             was removed by a configuration change */
+                                             tracked at all; the receiver instances of all its
+                                             receivers must use this very transport; NULL only
+                                             if the "transport" leaf was removed by a
+                                             configuration change */
     notif_encoding_t encoding;          /**< notification encoding */
     struct timespec stop_time;          /**< optional stop time */
     int replay;                         /**< whether to replay notifications */
