@@ -4535,7 +4535,7 @@ sr_error_info_t *
 sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session, int shmmod_session_del,
         uint32_t timeout_ms, sr_lock_mode_t has_change_sub_lock, int *changes_stored, sr_error_info_t **err_info2)
 {
-    sr_error_info_t *err_info = NULL;
+    sr_error_info_t *err_info = NULL, *tmp_err = NULL;
     struct sr_denied denied = {0};
     sr_lock_mode_t change_sub_lock = has_change_sub_lock;
     uint32_t sid = 0, err_count;
@@ -4706,13 +4706,17 @@ store:
         goto cleanup;
     }
 
-    /* publish "done" event, all changes were applied */
-    if ((err_info = sr_shmsub_change_notify_change_done(mod_info, sid, orig_name, orig_data, timeout_ms, err_info2))) {
-        goto cleanup;
+    /* generate the netconf-config-change notification before the "done" event, the changes are
+     * already committed at this point; otherwise a notification subscription created by a "done"
+     * callback would receive this change, which predates it */
+    if (session && (tmp_err = sr_modinfo_generate_config_change_notif(mod_info, session))) {
+        /* the "done" event is published even if generating the notification failed */
+        sr_errinfo_merge(&err_info, tmp_err);
     }
 
-    /* generate netconf-config-change notification */
-    if (session && (err_info = sr_modinfo_generate_config_change_notif(mod_info, session))) {
+    /* publish "done" event, all changes were applied */
+    if ((tmp_err = sr_shmsub_change_notify_change_done(mod_info, sid, orig_name, orig_data, timeout_ms, err_info2))) {
+        sr_errinfo_merge(&err_info, tmp_err);
         goto cleanup;
     }
 

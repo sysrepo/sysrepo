@@ -2289,6 +2289,42 @@ test_message_id_increment(void **state)
 }
 
 /**
+ * @brief Test: creating a subscription does not deliver the config change that created it.
+ *
+ * The commit that brings a subscription into existence is itself a running datastore change, so it
+ * produces a netconf-config-change. That event predates the subscription and must not be delivered
+ * to it: only subscription-started may arrive. A change made afterwards must still be delivered,
+ * and must be the one the receiver sees.
+ */
+static void
+test_no_config_change_on_start(void **state)
+{
+    struct state *st = *state;
+    struct lyd_node *notif;
+    struct ly_set *set = NULL;
+
+    setup_sub(st, 53, "stream-xpath-filter", NCC, NULL);
+
+    /* only subscription-started, nothing about the commit that created the subscription */
+    skip_notif(st, SUB_STARTED);
+    expect_no_notif(st, NULL);
+
+    /* a change made after the subscription exists must be delivered */
+    set_node(st, "53", "/test:test-leaf");
+    apply(st);
+
+    notif = expect_notif(st, NCC);
+
+    /* and it must be that change, not the one that created the subscription */
+    assert_int_equal(lyd_find_xpath(notif, "edit/target", &set), LY_SUCCESS);
+    assert_int_equal(set->count, 1);
+    assert_string_equal(lyd_get_value(set->dnodes[0]), "/test:test-leaf");
+    ly_set_free(set, NULL);
+
+    lyd_free_all(notif);
+}
+
+/**
  * @brief Test: XPath filter that matches notifications.
  *
  * Creates a subscription with an XPath filter that matches netconf-config-change
@@ -2301,10 +2337,6 @@ test_xpath_filter_match(void **state)
 
     setup_sub(st, 50, "stream-xpath-filter", NCC, NULL);
     skip_notif(st, SUB_STARTED);
-    /* the apply that created the subscription is itself a running change and its
-     * netconf-config-change matches this filter, consume it so that the assertions below are about
-     * the change this test triggers */
-    skip_notif(st, NCC);
 
     set_node(st, "42", "/test:test-leaf");
     apply(st);
@@ -2395,10 +2427,6 @@ test_subtree_filter_match(void **state)
     add_sub_subtree_filter(st, 60, subtree_filter);
     apply(st);
     skip_notif(st, SUB_STARTED);
-    /* the apply that created the subscription is itself a running change and its
-     * netconf-config-change matches this filter, consume it so that the assertions below are about
-     * the change this test triggers */
-    skip_notif(st, NCC);
 
     set_node(st, "88", "/test:test-leaf");
     apply(st);
@@ -2428,10 +2456,6 @@ test_subtree_filter_datastore(void **state)
     add_sub_subtree_filter(st, 62, subtree_filter);
     apply(st);
     skip_notif(st, SUB_STARTED);
-    /* the apply that created the subscription is itself a running change and its
-     * netconf-config-change matches this filter, consume it so that the assertions below are about
-     * the change this test triggers */
-    skip_notif(st, NCC);
 
     assert_int_equal(try_oper_u64(st, &baseline, RECV_XP "/excluded-event-records", 62, TEST_RECV), 0);
 
@@ -2466,10 +2490,6 @@ test_filter_ref_xpath_match(void **state)
             "/ietf-netconf-notifications:netconf-config-change[datastore='running']");
     setup_sub(st, 70, "stream-filter-name", "my-xpath-filter", NULL);
     skip_notif(st, SUB_STARTED);
-    /* the apply that created the subscription is itself a running change and its
-     * netconf-config-change matches this filter, consume it so that the assertions below are about
-     * the change this test triggers */
-    skip_notif(st, NCC);
 
     set_node(st, "200", "/test:test-leaf");
     apply(st);
@@ -2500,10 +2520,6 @@ test_filter_ref_subtree_match(void **state)
     add_subtree_filter(st, "my-subtree-filter", subtree_filter);
     setup_sub(st, 71, "stream-filter-name", "my-subtree-filter", NULL);
     skip_notif(st, SUB_STARTED);
-    /* the apply that created the subscription is itself a running change and its
-     * netconf-config-change matches this filter, consume it so that the assertions below are about
-     * the change this test triggers */
-    skip_notif(st, NCC);
 
     set_node(st, "201", "/test:test-leaf");
     apply(st);
@@ -2653,6 +2669,12 @@ test_oper_data_get_all_supported(void **state)
     assert_oper(st, "active", RECV_XP "/state", 90, TEST_RECV);
     assert_oper(st, "0", RECV_XP "/excluded-event-records", 90, TEST_RECV);
 
+    /* sent-event-records counts event records, not subscription state change notifications, so
+     * trigger a real one */
+    set_node(st, "90", "/test:test-leaf");
+    apply(st);
+    skip_notif(st, NCC);
+
     /* the counter is updated after the send, so poll instead of reading it once */
     wait_oper_above(st, 0, RECV_XP "/sent-event-records", 90, TEST_RECV);
 }
@@ -2668,9 +2690,7 @@ test_oper_data_sent_event_records_change(void **state)
 
     setup_sub(st, 91, "stream-xpath-filter", NCC, NULL);
 
-    /* the subscription-started and the netconf-config-change caused by creating the subscription */
     skip_notif(st, SUB_STARTED);
-    skip_notif(st, NCC);
 
     assert_int_equal(try_oper_u64(st, &sent_before, RECV_XP "/sent-event-records", 91, TEST_RECV), 0);
 
@@ -2696,9 +2716,7 @@ test_receiver_reset_action(void **state)
 
     setup_sub(st, 94, "stream-xpath-filter", NCC, NULL);
 
-    /* the subscription-started and the netconf-config-change caused by creating the subscription */
     skip_notif(st, SUB_STARTED);
-    skip_notif(st, NCC);
 
     assert_oper(st, "active", RECV_XP "/state", 94, TEST_RECV);
 
@@ -2736,9 +2754,6 @@ test_configured_replay(void **state)
 
     setup_sub(st, 93, "stream-xpath-filter", NCC, NULL);
     skip_notif(st, SUB_STARTED);
-
-    /* the netconf-config-change from creating the subscription */
-    skip_notif(st, NCC);
 
     /* set configured-replay before enabling replay support, this must be rejected */
     set_node(st, NULL, SUB_XP "/configured-replay", 93);
@@ -2796,9 +2811,6 @@ test_source_address_modify(void **state)
     notif = expect_notif_src(st, SUB_STARTED, first_source, sizeof first_source);
     assert_string_equal(first_source, initial_source);
     lyd_free_all(notif);
-
-    /* the netconf-config-change caused by creating the subscription */
-    skip_notif(st, NCC);
 
     set_node(st, alternate_source, SUB_XP "/source-address", 92);
     apply(st);
@@ -3183,10 +3195,6 @@ test_encoding_modify(void **state)
 
     setup_sub(st, 120, "stream-xpath-filter", NCC, "encoding", ENC_JSON, NULL);
     skip_notif(st, SUB_STARTED);
-    /* the apply that created the subscription is itself a running change and its
-     * netconf-config-change matches this filter, consume it so that the assertions below are about
-     * the change this test triggers */
-    skip_notif(st, NCC);
 
     set_node(st, "1", "/test:test-leaf");
     apply(st);
@@ -3481,6 +3489,7 @@ main(void)
         cmocka_unit_test_setup(test_subscription_modified, test_reset),
         cmocka_unit_test_setup(test_multiple_subscriptions, test_reset),
         cmocka_unit_test_setup(test_message_id_increment, test_reset),
+        cmocka_unit_test_setup(test_no_config_change_on_start, test_reset),
         cmocka_unit_test_setup(test_xpath_filter_match, test_reset),
         cmocka_unit_test_setup(test_xpath_filter_nomatch, test_reset),
         cmocka_unit_test_setup(test_xpath_filter_edit_target, test_reset),
