@@ -317,6 +317,33 @@ subscription_state2str(notif_sub_state_t state)
     }
 }
 
+/**
+ * @brief Check that a receiver instance uses the transport of a subscription.
+ *
+ * RFC 8639 makes the subscription "transport" leaf apply to all the receivers of the
+ * subscription, so a receiver instance of any other transport cannot be serviced, even
+ * when this daemon implements it. The instance transport is the one actually used for
+ * the delivery, while the subscription transport is the one announced in the
+ * subscription state change notifications and the one deciding whether the whole
+ * subscription is serviced by this daemon at all.
+ *
+ * @param[in] sub Subscription of the receiver.
+ * @param[in] recv_inst Receiver instance referenced by the receiver.
+ * @return SR_ERR_OK if the transports match, error code otherwise.
+ */
+static int
+receiver_inst_transport_check(const notif_sub_t *sub, const notif_receiver_inst_t *recv_inst)
+{
+    if (recv_inst->ops == sub->ops) {
+        return SR_ERR_OK;
+    }
+
+    SRNTF_LOG_ERR("Receiver instance \"%s\" uses transport \"%s\" instead of the transport \"%s\" of "
+            "subscription %" PRIu32 ".", recv_inst->name, recv_inst->ops->transport_identity,
+            sub->ops ? sub->ops->transport_identity : "none", sub->id);
+    return SR_ERR_UNSUPPORTED;
+}
+
 const char *
 receiver_state2str(notif_recv_state_t state)
 {
@@ -1041,6 +1068,9 @@ handle_receiver_instance_ref(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const s
             rc = SR_ERR_NOT_FOUND;
             goto cleanup;
         }
+        if ((rc = receiver_inst_transport_check(sub, new_inst))) {
+            goto cleanup;
+        }
     } else if (op == SR_OP_DELETED) {
         /* the instance ref is being removed */
         new_inst = NULL;
@@ -1336,6 +1366,9 @@ receiver_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, notif_
             rc = SR_ERR_NOT_FOUND;
             goto cleanup;
         }
+        if ((rc = receiver_inst_transport_check(receiver->sub, receiver->inst))) {
+            goto cleanup;
+        }
         receiver->ops = receiver->inst->ops;
     }
 
@@ -1381,6 +1414,10 @@ receiver_create_from_node(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const stru
     }
 
 cleanup:
+    if (rc) {
+        /* the subscription cannot be serviced with this receiver */
+        sub_invalidate(sub, NULL);
+    }
     return rc;
 }
 
@@ -1813,6 +1850,38 @@ cleanup:
     return rc;
 }
 
+/**
+ * @brief Validate that a receiver instance uses the transport of the subscription referencing it.
+ *
+ * Only the instances already created by this daemon can be checked. An instance created by
+ * the very same change is not created yet and the transport of an instance of another
+ * publisher is unknown, both are reported by ::receiver_inst_transport_check() when the
+ * change is being applied.
+ *
+ * @param[in] notifd_ctx Daemon context.
+ * @param[in] session Implicit session.
+ * @param[in] event Sysrepo event.
+ * @param[in] inst_name Name of the referenced receiver instance.
+ * @param[in] ops Transport of the subscription.
+ * @return SR_ERR_OK if the transports match, error code otherwise.
+ */
+static int
+sub_change_validate_recv_inst(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session, sr_event_t event,
+        const char *inst_name, const notif_transport_ops_t *ops)
+{
+    notif_receiver_inst_t *recv_inst;
+
+    recv_inst = receiver_inst_find_by_name(notifd_ctx, inst_name);
+    if (!recv_inst || (recv_inst->ops == ops)) {
+        return SR_ERR_OK;
+    }
+
+    SRNTF_VALIDATE_ERR(session, event, SR_ERR_UNSUPPORTED, "Receiver instance \"%s\" uses transport \"%s\" "
+            "instead of the subscription transport \"%s\".", inst_name, recv_inst->ops->transport_identity,
+            ops ? ops->transport_identity : "none");
+    return SR_ERR_UNSUPPORTED;
+}
+
 int
 sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session, sr_event_t event)
 {
@@ -1822,8 +1891,10 @@ sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session, sr_even
     const struct lyd_node *node;
     const char *prev_value, *prev_list, *node_name;
     struct lyd_node *n;
+    struct ly_set *set = NULL;
     const char *stream, *xpath_filter;
     struct timespec stop_time, start_time;
+    uint32_t i;
     notif_sub_t *sub;
     const notif_transport_ops_t *ops;
 
@@ -1849,6 +1920,20 @@ sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session, sr_even
             rc = r;
             goto cleanup;
         }
+
+        /* all the receivers must use receiver instances of the subscription transport */
+        if (lyd_find_xpath(node, "receivers/receiver/ietf-subscribed-notif-receivers:receiver-instance-ref", &set)) {
+            rc = SR_ERR_LY;
+            goto cleanup;
+        }
+        for (i = 0; i < set->count; i++) {
+            if ((r = sub_change_validate_recv_inst(notifd_ctx, session, event, lyd_get_value(set->dnodes[i]), ops))) {
+                rc = r;
+                goto cleanup;
+            }
+        }
+        ly_set_free(set, NULL);
+        set = NULL;
 
         /* encoding */
         if (!lyd_find_path(node, "encoding", 0, &n)) {
@@ -1981,6 +2066,12 @@ sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session, sr_even
                 rc = r;
                 goto cleanup;
             }
+        } else if (!strcmp(node_name, "receiver-instance-ref")) {
+            /* the referenced instance must use the transport of the subscription */
+            if ((r = sub_change_validate_recv_inst(notifd_ctx, session, event, lyd_get_value(node), sub->ops))) {
+                rc = r;
+                goto cleanup;
+            }
         } else if (!strcmp(node_name, "stop-time")) {
             if (ly_time_str2ts(lyd_get_value(node), &stop_time)) {
                 rc = SR_ERR_LY;
@@ -2016,6 +2107,7 @@ sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session, sr_even
 
 cleanup:
     sr_free_change_iter(iter);
+    ly_set_free(set, NULL);
     return rc;
 }
 
