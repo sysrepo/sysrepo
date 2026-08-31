@@ -2107,9 +2107,10 @@ static void
 test_multiple_subscriptions(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL;
-    int ret, i;
-    int started_count = 0;
+    struct lyd_node *notif = NULL, *node = NULL;
+    int ret, i, timeout_ms = NOTIF_TIMEOUT_MS;
+    int started_count = 0, seen[3] = {0};
+    uint32_t id;
 
     TLOG_INF("Creating receiver instance and multiple subscriptions...");
 
@@ -2117,9 +2118,10 @@ test_multiple_subscriptions(void **state)
     ret = create_receiver_instance(st->sess, "test-recv", "127.0.0.1", st->udp_port);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* create 3 subscriptions */
+    /* create 3 subscriptions; the filter keeps out the netconf-config-change that applying this
+     * very change produces, the subscription state change notifications are sent regardless of it */
     for (i = 1; i <= 3; i++) {
-        ret = create_subscription(st->sess, 10 + i, "NETCONF", NULL, "test-recv");
+        ret = create_subscription(st->sess, 10 + i, "NETCONF", "/ietf-subscribed-notifications:*", "test-recv");
         assert_int_equal(ret, SR_ERR_OK);
     }
 
@@ -2128,14 +2130,22 @@ test_multiple_subscriptions(void **state)
 
     TLOG_INF("Waiting for subscription-started notifications...");
 
-    /* receive all subscription-started notifications */
-    for (i = 0; i < 3; i++) {
-        ret = receive_notification(st->udp_sockfd, st->ly_ctx, &notif, NULL);
-        assert_int_equal(ret, 0);
-        assert_non_null(notif);
-        if (strcmp(notif->schema->name, "subscription-started") == 0) {
-            started_count++;
-        }
+    /* read until the socket goes quiet, so that an unexpected extra notification fails the test
+     * instead of being left behind for the next one */
+    while (receive_notification_ext(st->udp_sockfd, st->ly_ctx, timeout_ms, &notif, NULL, NULL, 0) == NOTIF_RECV_OK) {
+        /* the first notification may take a while, any further one is already waiting */
+        timeout_ms = DRAIN_TIMEOUT_MS;
+
+        assert_string_equal(notif->schema->name, "subscription-started");
+
+        /* every subscription must report started exactly once */
+        assert_int_equal(lyd_find_path(notif, "id", 0, &node), LY_SUCCESS);
+        id = strtoul(lyd_get_value(node), NULL, 10);
+        assert_true((id >= 11) && (id <= 13));
+        assert_int_equal(seen[id - 11], 0);
+        seen[id - 11] = 1;
+        ++started_count;
+
         lyd_free_all(notif);
         notif = NULL;
     }
@@ -2858,9 +2868,9 @@ static void
 test_filter_ref_multiple_subs(void **state)
 {
     struct state *st = *state;
-    struct lyd_node *notif = NULL;
     char path[512];
-    int ret, modified_count;
+    int ret;
+    uint32_t modified_count;
 
     TLOG_INF("Testing multiple subscriptions referencing the same filter...");
 
@@ -2897,24 +2907,10 @@ test_filter_ref_multiple_subs(void **state)
 
     TLOG_INF("Waiting for subscription-modified notifications from both subscriptions...");
 
-    /* should receive two subscription-modified notifications */
-    modified_count = 0;
-    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
-            "/ietf-subscribed-notifications:subscription-modified", &notif, NULL);
-    if ((ret == 0) && notif) {
-        modified_count++;
-        lyd_free_all(notif);
-        notif = NULL;
-    }
-
-    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
-            "/ietf-subscribed-notifications:subscription-modified", &notif, NULL);
-    if ((ret == 0) && notif) {
-        modified_count++;
-        lyd_free_all(notif);
-        notif = NULL;
-    }
-
+    /* exactly two subscription-modified notifications must arrive, one per subscription; count
+     * until the socket goes quiet so that a third one fails the test instead of going unnoticed */
+    modified_count = count_notifications(st->udp_sockfd, st->ly_ctx,
+            "/ietf-subscribed-notifications:subscription-modified");
     assert_int_equal(modified_count, 2);
     TLOG_INF("Received %d subscription-modified notifications - both subscriptions were notified", modified_count);
 
@@ -4261,30 +4257,36 @@ static void
 test_encoding_cbor_unsupported(void **state)
 {
     struct state *st = *state;
+    sr_session_ctx_t *tmp_sess = NULL;
     char path[512];
     int ret;
 
     TLOG_INF("Attempting to create subscription with CBOR encoding...");
 
-    ret = create_receiver_instance(st->sess, "test-recv", "127.0.0.1", st->udp_port);
+    /* use a throwaway session so that the edit left behind by the failing apply is dropped with it
+     * instead of being applied on top of by the cleanup */
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &tmp_sess);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = _set_sub_common(st->sess, 112, "NETCONF", "test-recv");
+    ret = create_receiver_instance(tmp_sess, "test-recv", "127.0.0.1", st->udp_port);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = _set_sub_common(tmp_sess, 112, "NETCONF", "test-recv");
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set encoding to CBOR */
     snprintf(path, sizeof(path),
             "/ietf-subscribed-notifications:subscriptions/subscription[id='112']/encoding");
-    ret = sr_set_item_str(st->sess, path, "ietf-udp-notif-transport:encode-cbor", NULL, 0);
-    if (ret == SR_ERR_OK) {
-        /* CBOR is not implemented, the apply must fail at validation */
-        ret = sr_apply_changes(st->sess, 0);
-    }
-    assert_int_not_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(tmp_sess, path, "ietf-udp-notif-transport:encode-cbor", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* CBOR is not implemented by the daemon, the apply must be rejected by its validation */
+    ret = sr_apply_changes(tmp_sess, 0);
+    assert_int_equal(ret, SR_ERR_UNSUPPORTED);
 
     TLOG_INF("CBOR encoding correctly rejected as unsupported");
 
-    cleanup_sub(st->sess, 112);
+    sr_session_stop(tmp_sess);
 }
 
 /**
