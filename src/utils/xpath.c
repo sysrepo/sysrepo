@@ -553,7 +553,7 @@ sr_xpath_node_name(const char *xpath)
 {
     const char *res = NULL, *quot = NULL;
 
-    if (NULL != xpath) {
+    if (xpath && xpath[0]) {
         res = xpath + strlen(xpath) - 1;
         while (res != xpath && (quot != NULL || *res != '/')) {
             if ((quot != NULL) && (*res == *quot)) {
