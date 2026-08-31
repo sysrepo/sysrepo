@@ -332,6 +332,44 @@ cleanup:
 }
 
 /**
+ * @brief Learn the length of a path without its last predicate.
+ *
+ * @param[in] path Path to use.
+ * @return Length of @p path without its last predicate.
+ */
+static uint32_t
+srsn_yp_ntf_change_edit_path_no_last_pred_len(const char *path)
+{
+    sr_error_info_t *err_info = NULL;
+    const char *ptr;
+    int quot = 0;
+
+    ptr = (path + strlen(path)) - 1;
+    if (ptr[0] != ']') {
+        return (ptr + 1) - path;
+    }
+
+    do {
+        --ptr;
+        if (ptr == path) {
+            SR_ERRINFO_INT(&err_info);
+            sr_errinfo_free(&err_info);
+            return 0;
+        }
+
+        if (ptr[0] == quot) {
+            /* quoted end */
+            quot = 0;
+        } else if ((ptr[0] == '\'') || (ptr[0] == '\"')) {
+            /* quoted start */
+            quot = ptr[0];
+        }
+    } while (quot || (ptr[0] != '['));
+
+    return ptr - path;
+}
+
+/**
  * @brief Append a new edit (change) to a YANG patch.
  *
  * @param[in] ly_yp YANG patch node to append to.
@@ -353,7 +391,7 @@ srsn_yp_ntf_change_edit_append(struct lyd_node *ly_yp, srsn_yp_change_t yp_op, c
     sr_error_info_t *err_info = NULL;
     struct lyd_node *ly_edit, *value_tree = NULL;
     char buf[26], *point = NULL, quot, *xml;
-    uint32_t edit_id;
+    uint32_t edit_id, path_len;
 
     /* remove any previous change of this target */
     if ((err_info = srsn_yp_ntf_change_edit_clear_target(ly_yp, path))) {
@@ -384,16 +422,28 @@ srsn_yp_ntf_change_edit_append(struct lyd_node *ly_yp, srsn_yp_change_t yp_op, c
         if (lysc_is_dup_inst_list(node->schema) || (node->schema->nodetype == LYS_LEAFLIST)) {
             assert(prev_value);
             if (prev_value[0]) {
-                quot = strchr(prev_value, '\'') ? '\"' : '\'';
-                if (asprintf(&point, "%s[.=%c%s%c]", path, quot, prev_value, quot) == -1) {
-                    SR_ERRINFO_MEM(&err_info);
-                    goto cleanup;
+                path_len = srsn_yp_ntf_change_edit_path_no_last_pred_len(path);
+                if (lysc_is_dup_inst_list(node->schema)) {
+                    /* position */
+                    if (asprintf(&point, "%.*s[%s]", (int)path_len, path, prev_value) == -1) {
+                        SR_ERRINFO_MEM(&err_info);
+                        goto cleanup;
+                    }
+                } else {
+                    /* value */
+                    quot = strchr(prev_value, '\'') ? '\"' : '\'';
+                    if (asprintf(&point, "%.*s[.=%c%s%c]", (int)path_len, path, quot, prev_value, quot) == -1) {
+                        SR_ERRINFO_MEM(&err_info);
+                        goto cleanup;
+                    }
                 }
             }
         } else {
             assert(prev_list);
             if (prev_list[0]) {
-                if (asprintf(&point, "%s%s", path, prev_list) == -1) {
+                /* list keys */
+                path_len = srsn_yp_ntf_change_edit_path_no_last_pred_len(path);
+                if (asprintf(&point, "%.*s%s", (int)path_len, path, prev_list) == -1) {
                     SR_ERRINFO_MEM(&err_info);
                     goto cleanup;
                 }
@@ -446,6 +496,54 @@ cleanup:
 }
 
 /**
+ * @brief Generate the yang-patch target path of a node. State leaf-lists and key-less lists need their absolute
+ * position, which is learned from the previous instance position.
+ *
+ * @param[in] node Node to use.
+ * @param[in] prev_value Optional previous value to use.
+ * @param[out] node_path Generated node path.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+srsn_yp_on_change_target_path(const struct lyd_node *node, const char *prev_value, char **node_path)
+{
+    sr_error_info_t *err_info = NULL;
+    char *tmp = NULL, *ptr;
+    uint32_t pos;
+
+    *node_path = NULL;
+
+    if (lysc_is_dup_inst_list(node->schema)) {
+        /* generate path for the node without the predicate */
+        assert(prev_value);
+        tmp = lyd_path(node, LYD_PATH_STD_NO_LAST_PRED, NULL, 0);
+        SR_CHECK_MEM_GOTO(!tmp, err_info, cleanup);
+
+        /* parse the position, the instance is after it */
+        if (prev_value[0]) {
+            pos = strtoul(prev_value, &ptr, 10) + 1;
+            SR_CHECK_INT_GOTO(ptr[0], err_info, cleanup);
+        } else {
+            pos = 1;
+        }
+
+        /* path with the correct position */
+        if (asprintf(node_path, "%s[%" PRIu32 "]", tmp, pos) == -1) {
+            SR_ERRINFO_MEM(&err_info);
+            goto cleanup;
+        }
+    } else {
+        /* standard path */
+        *node_path = lyd_path(node, LYD_PATH_STD, NULL, 0);
+        SR_CHECK_MEM_GOTO(!*node_path, err_info, cleanup);
+    }
+
+cleanup:
+    free(tmp);
+    return err_info;
+}
+
+/**
  * @brief Module change callback for yang-push data changes.
  */
 static int
@@ -489,10 +587,11 @@ srsn_yp_on_change_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const c
     }
 
     while (!sr_get_change_tree_next(session, iter, &op, &node, &prev_value, &prev_list, NULL)) {
-        /* get the node path */
+        /* get the (target) node path */
         free(node_path);
-        node_path = lyd_path(node, LYD_PATH_STD, NULL, 0);
-        SR_CHECK_MEM_GOTO(!node_path, err_info, cleanup);
+        if ((err_info = srsn_yp_on_change_target_path(node, prev_value, &node_path))) {
+            goto cleanup;
+        }
 
         /* check 'target' NACM */
         if ((err_info = sr_nacm_check_yp_change_target(sub->nacm_user, groups, group_count, node_path, node->schema,
