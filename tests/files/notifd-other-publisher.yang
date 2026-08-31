@@ -1,0 +1,40 @@
+module notifd-other-publisher {
+    namespace "urn:notifd-other-publisher";
+    prefix nop;
+
+    yang-version 1.1;
+
+    import ietf-subscribed-notifications {
+        prefix sn;
+    }
+
+    import ietf-subscribed-notif-receivers {
+        prefix snr;
+    }
+
+    description
+        "Transport of a notification publisher other than sysrepo-notifd, such as an
+         HTTP-notif based server. The daemon must ignore the subscriptions and the
+         receiver instances using it, they are none of its business.";
+
+    identity other-notif {
+        base sn:transport;
+        description
+            "Transport implemented by another notification publisher.";
+    }
+
+    augment "/sn:subscriptions/snr:receiver-instances/snr:receiver-instance/snr:transport-type" {
+        case other-notif {
+            container other-notif-receiver {
+                description
+                    "Configuration of a receiver of the other publisher.";
+                leaf endpoint {
+                    type string;
+                    mandatory true;
+                    description
+                        "Opaque address of the receiver.";
+                }
+            }
+        }
+    }
+}

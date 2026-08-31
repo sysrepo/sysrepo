@@ -846,6 +846,7 @@ install_test_modules(sr_conn_ctx_t *conn)
         SN_YANG_DIR "/ietf-udp-client@2025-05-14.yang",
         SN_YANG_DIR "/ietf-udp-notif-transport@2025-06-04.yang",
         TESTS_SRC_DIR "/files/test.yang",
+        TESTS_SRC_DIR "/files/notifd-other-publisher.yang",
         NULL
     };
     const char *sub_ntf_feats[] = {"configured", "xpath", "replay", "subtree", "encode-xml", "encode-json", NULL};
@@ -853,7 +854,8 @@ install_test_modules(sr_conn_ctx_t *conn)
         NULL, NULL, NULL, NULL, NULL,  /* interfaces, iana-if-type, ip, network-instance, restconf */
         sub_ntf_feats,                 /* ietf-subscribed-notifications */
         NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,  /* other modules */
-        NULL                           /* test.yang */
+        NULL,                          /* test.yang */
+        NULL                           /* notifd-other-publisher.yang */
     };
 
     return sr_install_modules(conn, schema_paths, SN_YANG_DIR, features);
@@ -869,6 +871,7 @@ static int
 remove_test_modules(sr_conn_ctx_t *conn)
 {
     const char *module_names[] = {
+        "notifd-other-publisher",
         "test",
         "ietf-udp-notif-transport",
         "ietf-udp-client",
@@ -3732,6 +3735,329 @@ test_restart_existing_config(void **state)
 }
 
 /**
+ * @brief Create the configuration of another notification publisher.
+ *
+ * A receiver instance with a transport this daemon does not implement and two subscriptions
+ * using it, one declaring the transport of the other publisher and one with no
+ * subscription-level transport at all, which the model allows.
+ *
+ * @param[in] sess Sysrepo session.
+ * @return 0 on success, error code on failure.
+ */
+static int
+create_other_publisher_config(sr_session_ctx_t *sess)
+{
+    int rc;
+
+    rc = sr_set_item_str(sess, "/ietf-subscribed-notifications:subscriptions"
+            "/ietf-subscribed-notif-receivers:receiver-instances/receiver-instance[name='other-inst']"
+            "/notifd-other-publisher:other-notif-receiver/endpoint", "https://[::1]/telemetry", NULL, 0);
+    if (rc) {
+        return rc;
+    }
+
+    rc = sr_set_item_str(sess, "/ietf-subscribed-notifications:subscriptions/subscription[id='241']/stream",
+            "NETCONF", NULL, 0);
+    if (rc) {
+        return rc;
+    }
+    rc = sr_set_item_str(sess, "/ietf-subscribed-notifications:subscriptions/subscription[id='241']/transport",
+            "notifd-other-publisher:other-notif", NULL, 0);
+    if (rc) {
+        return rc;
+    }
+    rc = sr_set_item_str(sess, "/ietf-subscribed-notifications:subscriptions/subscription[id='241']"
+            "/receivers/receiver[name='other-recv']/ietf-subscribed-notif-receivers:receiver-instance-ref",
+            "other-inst", NULL, 0);
+    if (rc) {
+        return rc;
+    }
+
+    rc = sr_set_item_str(sess, "/ietf-subscribed-notifications:subscriptions/subscription[id='242']/stream",
+            "NETCONF", NULL, 0);
+    if (rc) {
+        return rc;
+    }
+    rc = sr_set_item_str(sess, "/ietf-subscribed-notifications:subscriptions/subscription[id='242']"
+            "/receivers/receiver[name='other-recv']/ietf-subscribed-notif-receivers:receiver-instance-ref",
+            "other-inst", NULL, 0);
+    if (rc) {
+        return rc;
+    }
+
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Read the operational data of all the configured subscriptions.
+ *
+ * @param[in] sess Sysrepo session.
+ * @param[out] data Retrieved data.
+ * @return Error code (SR_ERR_OK on success).
+ */
+static int
+get_oper_subscriptions(sr_session_ctx_t *sess, sr_data_t **data)
+{
+    int ret;
+
+    ret = sr_session_switch_ds(sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_get_data(sess, "/ietf-subscribed-notifications:subscriptions", 0, 0, 0, data);
+
+    assert_int_equal(sr_session_switch_ds(sess, SR_DS_RUNNING), SR_ERR_OK);
+    return ret;
+}
+
+/**
+ * @brief Count the instances of a node in a data tree.
+ *
+ * @param[in] tree Data tree to search.
+ * @param[in] xpath XPath to evaluate.
+ * @return Number of the matching nodes.
+ */
+static uint32_t
+node_count(const struct lyd_node *tree, const char *xpath)
+{
+    struct ly_set *set = NULL;
+    uint32_t count;
+
+    assert_int_equal(lyd_find_xpath(tree, xpath, &set), LY_SUCCESS);
+    count = set->count;
+    ly_set_free(set, NULL);
+
+    return count;
+}
+
+/**
+ * @brief Operational get callback of another notification publisher.
+ *
+ * Provides the state of its own receivers, the very nodes the daemon provides for its receivers.
+ */
+static int
+other_publisher_state_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *path,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
+{
+    struct lyd_node *node;
+
+    (void)session;
+    (void)sub_id;
+    (void)module_name;
+    (void)path;
+    (void)request_xpath;
+    (void)request_id;
+    (void)private_data;
+
+    if (!parent || !*parent) {
+        return SR_ERR_OK;
+    }
+
+    /* provide the state of the receivers of the other publisher only */
+    if (lyd_find_path(*parent, "name", 0, &node) || strcmp(lyd_get_value(node), "other-recv")) {
+        return SR_ERR_OK;
+    }
+    if (lyd_new_term(*parent, NULL, "state", "suspended", 0, NULL)) {
+        return SR_ERR_LY;
+    }
+
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Reset action callback of another notification publisher.
+ */
+static int
+other_publisher_reset_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_path,
+        const struct lyd_node *input, sr_event_t event, uint32_t request_id, struct lyd_node *output,
+        void *private_data)
+{
+    struct lyd_node *node;
+
+    (void)session;
+    (void)sub_id;
+    (void)op_path;
+    (void)event;
+    (void)request_id;
+    (void)private_data;
+
+    /* answer for the receivers of the other publisher only */
+    if (lyd_find_path(lyd_parent(input), "name", 0, &node) || strcmp(lyd_get_value(node), "other-recv")) {
+        return SR_ERR_OK;
+    }
+    if (lyd_new_term(output, NULL, "time", "2026-01-01T00:00:00Z", LYD_NEW_VAL_OUTPUT, NULL)) {
+        return SR_ERR_LY;
+    }
+
+    return SR_ERR_OK;
+}
+
+/**
+ * @brief Test: Subscriptions of another notification publisher are ignored, not broken.
+ *
+ * The "subscriptions" subtree is shared by all the notification publishers on the system, so it
+ * may contain subscriptions with a transport this daemon does not implement (an HTTP-based
+ * telemetry server, for example). The daemon must neither reject their configuration nor
+ * provide (or delete) any of their state, while keeping its own subscriptions serviced.
+ */
+static void
+test_other_publisher(void **state)
+{
+    struct state *st = *state;
+    struct lyd_node *notif = NULL;
+    sr_subscription_ctx_t *subscr = NULL;
+    sr_data_t *data = NULL;
+    sr_val_t *output = NULL;
+    size_t output_count = 0;
+    char *state_val;
+    int ret;
+
+    TLOG_INF("Creating a subscription serviced by the daemon...");
+
+    setup_sub(st->sess, st->udp_port, 240, "NETCONF", NULL);
+    ret = receive_specific_notification(st->udp_sockfd, st->ly_ctx,
+            "/ietf-subscribed-notifications:subscription-started", &notif, NULL);
+    assert_int_equal(ret, 0);
+    assert_non_null(notif);
+    lyd_free_all(notif);
+    notif = NULL;
+    drain_notifications(st->udp_sockfd);
+
+    TLOG_INF("Creating the configuration of another publisher...");
+
+    /* neither an unimplemented transport nor a subscription without any transport may be rejected */
+    ret = create_other_publisher_config(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    drain_notifications(st->udp_sockfd);
+
+    TLOG_INF("Reading the operational data of all the subscriptions...");
+
+    /* used to fail as a whole, the daemon answered "Item not found" for the receivers it does not service */
+    ret = get_oper_subscriptions(st->sess, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_non_null(data);
+
+    /* the state of our own receiver is provided ... */
+    assert_int_equal(node_count(data->tree, "/ietf-subscribed-notifications:subscriptions"
+            "/subscription[id='240']/receivers/receiver[name='recv1']/state"), 1);
+    assert_int_equal(node_count(data->tree, "/ietf-subscribed-notifications:subscriptions"
+            "/subscription[id='240']/configured-subscription-state"), 1);
+
+    /* ... the state of the other publisher's subscriptions is not, we know nothing about them */
+    assert_int_equal(node_count(data->tree, "/ietf-subscribed-notifications:subscriptions"
+            "/subscription[id='241']/receivers/receiver[name='other-recv']/state"), 0);
+    assert_int_equal(node_count(data->tree, "/ietf-subscribed-notifications:subscriptions"
+            "/subscription[id='241']/configured-subscription-state"), 0);
+    assert_int_equal(node_count(data->tree, "/ietf-subscribed-notifications:subscriptions"
+            "/subscription[id='242']/receivers/receiver[name='other-recv']/state"), 0);
+    assert_int_equal(node_count(data->tree, "/ietf-subscribed-notifications:subscriptions"
+            "/subscription[id='242']/configured-subscription-state"), 0);
+    sr_release_data(data);
+    data = NULL;
+
+    TLOG_INF("Modifying a subscription of the other publisher...");
+
+    ret = sr_set_item_str(st->sess, "/ietf-subscribed-notifications:subscriptions/subscription[id='241']/purpose",
+            "telemetry", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    drain_notifications(st->udp_sockfd);
+
+    /* the daemon is alive and its own subscription untouched */
+    state_val = get_oper_leaf_str(st->sess, "/ietf-subscribed-notifications:subscriptions"
+            "/subscription[id='240']/configured-subscription-state");
+    assert_non_null(state_val);
+    assert_string_equal(state_val, "valid");
+    free(state_val);
+
+    TLOG_INF("Providing the state of the other publisher's receivers...");
+
+    /* the other publisher provides the state of its receivers on the very paths the daemon uses */
+    ret = sr_oper_get_subscribe(st->sess, "ietf-subscribed-notifications",
+            "/ietf-subscribed-notifications:subscriptions/subscription/receivers/receiver/state",
+            other_publisher_state_cb, NULL, SR_SUBSCR_OPER_MERGE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* the state of both publishers is in the operational data */
+    state_val = get_oper_leaf_str(st->sess, "/ietf-subscribed-notifications:subscriptions"
+            "/subscription[id='241']/receivers/receiver[name='other-recv']/state");
+    assert_non_null(state_val);
+    assert_string_equal(state_val, "suspended");
+    free(state_val);
+    state_val = get_oper_leaf_str(st->sess, "/ietf-subscribed-notifications:subscriptions"
+            "/subscription[id='240']/receivers/receiver[name='recv1']/state");
+    assert_non_null(state_val);
+    assert_string_equal(state_val, "active");
+    free(state_val);
+
+    TLOG_INF("Restarting the daemon with the other publisher's provider in place...");
+
+    /* the daemon could not even subscribe for the operational data without SR_SUBSCR_OPER_MERGE now */
+    stop_notifd(st->notifd_pid);
+    st->notifd_pid = 0;
+    drain_notifications(st->udp_sockfd);
+    ret = start_notifd(&st->notifd_pid);
+    assert_int_equal(ret, 0);
+
+    ret = receive_specific_notification_timeout(st->udp_sockfd, st->ly_ctx, LONG_TIMEOUT_MS,
+            "/ietf-subscribed-notifications:subscription-started", &notif, NULL);
+    assert_int_equal(ret, 0);
+    assert_non_null(notif);
+    lyd_free_all(notif);
+    notif = NULL;
+    drain_notifications(st->udp_sockfd);
+
+    state_val = get_oper_leaf_str(st->sess, "/ietf-subscribed-notifications:subscriptions"
+            "/subscription[id='240']/configured-subscription-state");
+    assert_non_null(state_val);
+    assert_string_equal(state_val, "valid");
+    free(state_val);
+
+    TLOG_INF("Deleting the configuration of the other publisher...");
+
+    assert_int_equal(delete_subscription(st->sess, 241), SR_ERR_OK);
+    assert_int_equal(delete_subscription(st->sess, 242), SR_ERR_OK);
+    assert_int_equal(delete_receiver_instance(st->sess, "other-inst"), SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    drain_notifications(st->udp_sockfd);
+
+    /* our own subscription is still serviced */
+    state_val = get_oper_leaf_str(st->sess, "/ietf-subscribed-notifications:subscriptions"
+            "/subscription[id='240']/receivers/receiver[name='recv1']/state");
+    assert_non_null(state_val);
+    assert_string_equal(state_val, "active");
+    free(state_val);
+
+    TLOG_INF("Resetting our receiver with the other publisher subscribed for the action...");
+
+    /* the reset action is subscribed by both publishers, each with its own priority (sysrepo
+     * allows a single subscription per priority) and the daemon must keep answering for its
+     * own receivers */
+    ret = sr_rpc_subscribe_tree(st->sess, "/ietf-subscribed-notifications:subscriptions"
+            "/subscription/receivers/receiver/reset", other_publisher_reset_cb, NULL, 1, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_rpc_send(st->sess, "/ietf-subscribed-notifications:subscriptions"
+            "/subscription[id='240']/receivers/receiver[name='recv1']/reset", NULL, 0, 0,
+            &output, &output_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(output_count, 1);
+    sr_free_values(output, output_count);
+
+    state_val = get_oper_leaf_str(st->sess, "/ietf-subscribed-notifications:subscriptions"
+            "/subscription[id='240']/receivers/receiver[name='recv1']/state");
+    assert_non_null(state_val);
+    assert_string_equal(state_val, "connecting");
+    free(state_val);
+
+    sr_unsubscribe(subscr);
+    cleanup_sub(st->sess, 240);
+}
+
+/**
  * @brief Test: Verify that changing the encoding of an existing subscription
  * takes effect on subsequent notifications.
  *
@@ -4143,6 +4469,7 @@ main(void)
         cmocka_unit_test_setup(test_receiver_add_delete_dispatch, clear_subs_notifs),
         cmocka_unit_test_setup(test_receiver_delete_keeps_subscription, clear_subs_notifs),
         cmocka_unit_test_setup(test_restart_existing_config, clear_subs_notifs),
+        cmocka_unit_test_setup(test_other_publisher, clear_subs_notifs),
         cmocka_unit_test_setup(test_stop_time_concluded, clear_subs_notifs),
         cmocka_unit_test_setup(test_encoding_cbor_unsupported, clear_subs_notifs),
         cmocka_unit_test_setup(test_default_encoding, clear_subs_notifs),
