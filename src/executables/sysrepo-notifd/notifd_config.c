@@ -31,6 +31,7 @@
 
 /* forward declarations */
 void receiver_destroy(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_receiver_t *receiver);
+static void receiver_instance_destroy(notifd_ctx_t *notifd_ctx, notif_receiver_inst_t *recv_inst);
 
 /*
  * ---------------------------------------------------------------------------
@@ -91,6 +92,61 @@ notif_transport_find_by_container(const char *container_name)
     for (i = 0; transport_registry[i]; i++) {
         if (!strcmp(transport_registry[i]->config_container_name, container_name)) {
             return transport_registry[i];
+        }
+    }
+
+    return NULL;
+}
+
+/**
+ * @brief Find the transport this daemon would use to service a configured subscription.
+ *
+ * The subscriptions list is shared with every other notification publisher on the system.
+ * This daemon services only the subscriptions with a transport it implements, all the others are
+ * ignored completely - their configuration and their state alike belong to the publisher servicing them.
+ *
+ * Note that the subscription-level "transport" leaf is not mandatory in the model, since
+ * ietf-subscribed-notif-receivers moved the transport down to the receiver instances. This
+ * daemon requires it nevertheless, it is what tells its own subscriptions apart from the rest.
+ *
+ * @param[in] node Subscription list node.
+ * @return Transport of the subscription, NULL if it is not serviced by this daemon.
+ */
+static const notif_transport_ops_t *
+notif_transport_find_by_sub_node(const struct lyd_node *node)
+{
+    struct lyd_node *n;
+
+    if (lyd_find_path(node, "transport", 0, &n)) {
+        /* no transport, the subscription is none of our business */
+        return NULL;
+    }
+
+    return notif_transport_find_by_identity(lyd_get_value(n));
+}
+
+/**
+ * @brief Find the transport of a receiver instance, which is the case of its "transport-type" choice.
+ *
+ * Receiver instances of transports this daemon does not implement belong to another publisher,
+ * just like the subscriptions using them (see ::notif_transport_find_by_sub_node()).
+ *
+ * @param[in] node Receiver-instance list node.
+ * @param[out] config_node Transport configuration container of the instance, NULL if there is none.
+ * @return Transport of the receiver instance, NULL if it is not serviced by this daemon.
+ */
+static const notif_transport_ops_t *
+notif_transport_find_by_recv_inst_node(const struct lyd_node *node, const struct lyd_node **config_node)
+{
+    const struct lyd_node *child;
+    const notif_transport_ops_t *ops;
+
+    *config_node = NULL;
+
+    LY_LIST_FOR(lyd_child(node), child) {
+        if ((ops = notif_transport_find_by_container(LYD_NAME(child)))) {
+            *config_node = child;
+            return ops;
         }
     }
 
@@ -860,20 +916,13 @@ handle_transport(notif_sub_t *sub, const struct lyd_node *node, sr_change_oper_t
 {
     int rc = SR_ERR_OK;
 
-    /* mandatory leaf, need to handle all but move */
+    /* the subscription is tracked, so it was created with a transport of ours, need to handle all but move */
     if ((op == SR_OP_CREATED) || (op == SR_OP_MODIFIED)) {
-        /* switch to the new value */
-        free(sub->transport);
-        sub->transport = strdup(lyd_get_value(node));
-        if (!sub->transport) {
-            rc = SR_ERR_NO_MEMORY;
-            ERRMEM;
-            goto cleanup;
-        }
+        /* switch to the new transport */
+        sub->ops = notif_transport_find_by_identity(lyd_get_value(node));
     } else if (op == SR_OP_DELETED) {
-        /* clear transport */
-        free(sub->transport);
-        sub->transport = NULL;
+        /* clear the transport */
+        sub->ops = NULL;
     }
 
     if ((op == SR_OP_CREATED) || (op == SR_OP_MODIFIED) || (op == SR_OP_DELETED)) {
@@ -881,10 +930,6 @@ handle_transport(notif_sub_t *sub, const struct lyd_node *node, sr_change_oper_t
         sub->modified = 1;
     }
 
-cleanup:
-    if (rc) {
-        sub_invalidate(sub, NULL);
-    }
     return rc;
 }
 
@@ -1106,18 +1151,6 @@ subscription_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, no
         }
     }
 
-    /* transport (mandatory for configured subs, even though it is not mandatory in the model), refine "transport" */
-    if ((rc = get_descendant_mandatory(node, "transport", &n))) {
-        goto cleanup;
-    }
-    if (!notif_transport_find_by_identity(lyd_get_value(n))) {
-        SRNTF_LOG_ERR("Unsupported transport \"%s\".", lyd_get_value(n));
-        rc = SR_ERR_UNSUPPORTED;
-        goto cleanup;
-    }
-    sub->transport = strdup(lyd_get_value(n));
-    CHECK_ERRMEM_GOTO(sub->transport, rc, cleanup);
-
     /* purpose */
     get_descendant_optional(node, "purpose", &n);
     if (n) {
@@ -1170,7 +1203,14 @@ int
 subscription_create_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *node)
 {
     int rc = SR_ERR_OK;
+    const notif_transport_ops_t *ops;
     notif_sub_t *sub, **sub_ptr = NULL;
+
+    /* only the subscriptions with a transport of ours are serviced by this daemon */
+    if (!(ops = notif_transport_find_by_sub_node(node))) {
+        SRNTF_LOG_DBG("Ignoring subscription \"%s\" of another publisher.", lyd_get_value(lyd_child(node)));
+        return SR_ERR_OK;
+    }
 
     /* create a new sub and add it to the context array */
     sub = calloc(1, sizeof *sub);
@@ -1179,13 +1219,16 @@ subscription_create_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *n
     *sub_ptr = sub;
     sub->state = NOTIF_SUB_STATE_VALID;
 
-    /* parse the subscription */
+    /* the transport is resolved, the rest of the configuration is parsed below */
+    sub->ops = ops;
     if ((rc = subscription_from_node(notifd_ctx, node, sub))) {
         goto cleanup;
     }
 
 cleanup:
     if (rc) {
+        /* keep the subscription tracked but invalid, its state is reported in the operational data
+         * and the daemon is expected to service it once its configuration is fixed */
         subscription_receivers_disconnect(notifd_ctx, sub);
         sub_invalidate(sub, NULL);
         if (!sub_ptr) {
@@ -1214,7 +1257,6 @@ subscription_destroy(notifd_ctx_t *notifd_ctx, notif_sub_t *sub)
     free(sub->stream);
     free(sub->xpath_filter);
     free(sub->filter_ref);
-    free(sub->transport);
     free(sub->purpose);
     free(sub->local_address);
     for (i = LY_ARRAY_COUNT(sub->receivers); i > 0; i--) {
@@ -1240,8 +1282,10 @@ subscription_destroy_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *
 
     /* try to find the sub */
     if (!(sub = subscription_find_by_node(notifd_ctx, node))) {
-        SRNTF_LOG_ERR("Failed to find subscription \"%s\" for destruction.", lyd_get_value(lyd_child(node)));
-        return SR_ERR_NOT_FOUND;
+        /* not tracked, so serviced by another publisher */
+        SRNTF_LOG_DBG("Ignoring destruction of subscription \"%s\" of another publisher.",
+                lyd_get_value(lyd_child(node)));
+        return SR_ERR_OK;
     }
 
     /* if the sub is still valid, send subscription-terminated notification to all receivers */
@@ -1394,12 +1438,11 @@ cleanup:
  */
 
 static int
-receiver_instance_from_node(const struct lyd_node *node, notif_receiver_inst_t *recv_inst)
+receiver_instance_from_node(const struct lyd_node *node, const struct lyd_node *config_node,
+        const notif_transport_ops_t *ops, notif_receiver_inst_t *recv_inst)
 {
     int rc = SR_ERR_OK;
     struct lyd_node *n;
-    struct lyd_node *child;
-    const notif_transport_ops_t *ops;
 
     /* receiver instance name */
     if ((rc = get_descendant_mandatory(node, "name", &n))) {
@@ -1408,18 +1451,11 @@ receiver_instance_from_node(const struct lyd_node *node, notif_receiver_inst_t *
     recv_inst->name = strdup(lyd_get_value(n));
     CHECK_ERRMEM_GOTO(recv_inst->name, rc, cleanup);
 
-    /* find the transport config container by iterating children */
-    LY_LIST_FOR(lyd_child(node), child) {
-        ops = notif_transport_find_by_container(LYD_NAME(child));
-        if (ops) {
-            recv_inst->type = ops->type;
-            recv_inst->ops = ops;
-
-            if ((rc = ops->config_parse(child, &recv_inst->transport_config))) {
-                goto cleanup;
-            }
-            break;
-        }
+    /* transport and its configuration, both already resolved by the caller */
+    recv_inst->type = ops->type;
+    recv_inst->ops = ops;
+    if ((rc = ops->config_parse(config_node, &recv_inst->transport_config))) {
+        goto cleanup;
     }
 
 cleanup:
@@ -1430,20 +1466,37 @@ int
 receiver_instance_create_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *node)
 {
     int rc = SR_ERR_OK;
-    notif_receiver_inst_t *recv_inst, **recv_inst_ptr;
+    const struct lyd_node *config_node;
+    const notif_transport_ops_t *ops;
+    notif_receiver_inst_t *recv_inst, **recv_inst_ptr = NULL;
+
+    /* only the receiver instances with a transport of ours are serviced by this daemon */
+    if (!(ops = notif_transport_find_by_recv_inst_node(node, &config_node))) {
+        SRNTF_LOG_DBG("Ignoring receiver instance \"%s\" of another publisher.", lyd_get_value(lyd_child(node)));
+        return SR_ERR_OK;
+    }
 
     /* create a new receiver instance and add it to the context array */
-    LY_ARRAY_NEW_GOTO(LYD_CTX(node), notifd_ctx->recv_insts, recv_inst_ptr, rc, cleanup);
     recv_inst = calloc(1, sizeof *recv_inst);
-    CHECK_ERRMEM_GOTO(recv_inst, rc, cleanup);
+    CHECK_ERRMEM_RET(recv_inst);
+    LY_ARRAY_NEW_GOTO(LYD_CTX(node), notifd_ctx->recv_insts, recv_inst_ptr, rc, cleanup);
     *recv_inst_ptr = recv_inst;
 
     /* parse the receiver instance */
-    if ((rc = receiver_instance_from_node(node, recv_inst))) {
+    if ((rc = receiver_instance_from_node(node, config_node, ops, recv_inst))) {
         goto cleanup;
     }
 
 cleanup:
+    if (rc) {
+        /* unlike a subscription, an unusable receiver instance has no state of its own to report,
+         * the subscriptions referencing it are invalidated instead */
+        if (recv_inst_ptr) {
+            receiver_instance_destroy(notifd_ctx, recv_inst);
+        } else {
+            free(recv_inst);
+        }
+    }
     return rc;
 }
 
@@ -1482,8 +1535,10 @@ receiver_instance_destroy_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_n
 
     /* find the receiver instance */
     if (!(recv_inst = receiver_inst_find_by_node(notifd_ctx, node))) {
-        SRNTF_LOG_ERR("Receiver instance with name \"%s\" not found for deletion.", lyd_get_value(lyd_child(node)));
-        return SR_ERR_NOT_FOUND;
+        /* not tracked, so serviced by another publisher */
+        SRNTF_LOG_DBG("Ignoring destruction of receiver instance \"%s\" of another publisher.",
+                lyd_get_value(lyd_child(node)));
+        return SR_ERR_OK;
     }
 
     /* destroy the receiver instance, no need to lock as no subs can point to it anymore */
@@ -1770,6 +1825,7 @@ sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session, sr_even
     const char *stream, *xpath_filter;
     struct timespec stop_time, start_time;
     notif_sub_t *sub;
+    const notif_transport_ops_t *ops;
 
     /* validate created subscriptions */
     if ((rc = sr_get_changes_iter(session, "/ietf-subscribed-notifications:subscriptions/subscription", &iter))) {
@@ -1782,20 +1838,16 @@ sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session, sr_even
             continue;
         }
 
-        /* transport - validate against registered transports */
-        if (!lyd_find_path(node, "transport", 0, &n)) {
-            const notif_transport_ops_t *ops;
+        /* validate only the subscriptions serviced by this daemon, the configuration of the others
+         * is not ours to reject */
+        if (!(ops = notif_transport_find_by_sub_node(node))) {
+            continue;
+        }
 
-            ops = notif_transport_find_by_identity(lyd_get_value(n));
-            if (!ops) {
-                SRNTF_VALIDATE_ERR(session, event, SR_ERR_UNSUPPORTED, "Unsupported transport \"%s\".", lyd_get_value(n));
-                rc = SR_ERR_UNSUPPORTED;
-                goto cleanup;
-            }
-            if (ops->config_validate && (r = ops->config_validate(node))) {
-                rc = r;
-                goto cleanup;
-            }
+        /* transport-specific validation */
+        if (ops->config_validate && (r = ops->config_validate(node))) {
+            rc = r;
+            goto cleanup;
         }
 
         /* encoding */
@@ -1887,6 +1939,13 @@ sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session, sr_even
             continue;
         }
 
+        /* validate only the changes of the subscriptions serviced by this daemon; the diff of
+         * a modified subscription does not include its "transport" leaf, so it is the tracked
+         * state that decides here (see ::notif_transport_find_by_sub_node()) */
+        if (!(sub = subscription_find_by_node(notifd_ctx, node))) {
+            continue;
+        }
+
         if (!strcmp(node_name, "stream")) {
             /* stream changed - validate new stream exists */
             if ((r = sub_change_validate_stream(notifd_ctx, session, event, lyd_get_value(node), NULL))) {
@@ -1895,8 +1954,7 @@ sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session, sr_even
             }
 
             /* if configured-replay is set on the existing sub, also check replay support for new stream */
-            sub = subscription_find_by_node(notifd_ctx, node);
-            if (sub && sub->replay) {
+            if (sub->replay) {
                 if ((r = stream_supports_replay(notifd_ctx, lyd_get_value(node), sub->xpath_filter,
                         &start_time))) {
                     SRNTF_VALIDATE_ERR(session, event, r, "Stream \"%s\" does not support replay.", lyd_get_value(node));
@@ -1930,10 +1988,9 @@ sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session, sr_even
             }
 
             /* check stop-time is not in the past */
-            sub = subscription_find_by_node(notifd_ctx, node);
             start_time.tv_sec = 0;
             start_time.tv_nsec = 0;
-            if (sub && (sub->start_time.tv_sec || sub->start_time.tv_nsec)) {
+            if (sub->start_time.tv_sec || sub->start_time.tv_nsec) {
                 start_time = sub->start_time;
             }
 
@@ -1944,8 +2001,7 @@ sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session, sr_even
             }
         } else if (!strcmp(node_name, "configured-replay")) {
             /* replay being enabled on existing sub, check stream supports it */
-            sub = subscription_find_by_node(notifd_ctx, node);
-            if (sub && sub->stream) {
+            if (sub->stream) {
                 if ((r = stream_supports_replay(notifd_ctx, sub->stream, sub->xpath_filter,
                         &start_time))) {
                     SRNTF_VALIDATE_ERR(session, event, r, "Stream \"%s\" does not support replay.", sub->stream);

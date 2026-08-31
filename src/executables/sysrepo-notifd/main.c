@@ -532,7 +532,10 @@ sub_change_modify_recv_instances(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *ses
 
         /* all these nodes are under the receiver-instance list, so find it */
         recv_inst = receiver_inst_find_by_node(notifd_ctx, node);
-        assert(recv_inst);
+        if (!recv_inst) {
+            /* not tracked, so serviced by another publisher */
+            continue;
+        }
 
         r = receiver_inst_config_change(recv_inst, node, op);
 
@@ -610,7 +613,10 @@ sub_change_modify_subscriptions(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *sess
 
         /* all these nodes are under the subscription list, so find it */
         sub = subscription_find_by_node(notifd_ctx, node);
-        assert(sub);
+        if (!sub) {
+            /* not tracked, so serviced by another publisher */
+            continue;
+        }
 
         if (!strcmp(node_name, "stream")) {
             r = handle_stream(sub, node, op);
@@ -678,7 +684,10 @@ sub_change_modify_receivers(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session)
 
         /* all these nodes are under the receiver list, so find the subscription */
         sub = subscription_find_by_node(notifd_ctx, node);
-        assert(sub);
+        if (!sub) {
+            /* not tracked, so serviced by another publisher */
+            continue;
+        }
 
         if (!strcmp(node_name, "receiver")) {
             if (op == SR_OP_CREATED) {
@@ -936,7 +945,8 @@ replay_start_time_oper_get(sr_session_ctx_t *UNUSED(session), uint32_t UNUSED(su
     }
 
     if (!(sub = subscription_find_by_node(notifd_ctx, *parent))) {
-        SRNTF_LOG_ERR("Failed to find subscription for replay-start-time operational data request.");
+        /* not serviced by this daemon, its state is provided by the publisher that services it */
+        SRNTF_LOG_DBG("Providing no replay-start-time of a subscription of another publisher.");
         goto cleanup;
     }
 
@@ -977,7 +987,8 @@ configured_sub_state_oper_get(sr_session_ctx_t *UNUSED(session), uint32_t UNUSED
     }
 
     if (!(sub = subscription_find_by_node(notifd_ctx, *parent))) {
-        SRNTF_LOG_ERR("Failed to find subscription for \"%s\" operational data request.", path);
+        /* not serviced by this daemon, its state is provided by the publisher that services it */
+        SRNTF_LOG_DBG("Providing no \"%s\" data of a subscription of another publisher.", path);
         goto cleanup;
     }
 
@@ -1012,7 +1023,8 @@ sent_event_records_oper_get(sr_session_ctx_t *UNUSED(session), uint32_t UNUSED(s
     }
 
     if (!(sub = subscription_find_by_node(notifd_ctx, *parent))) {
-        SRNTF_LOG_ERR("Failed to find subscription for \"%s\" operational data request.", path);
+        /* not serviced by this daemon, its state is provided by the publisher that services it */
+        SRNTF_LOG_DBG("Providing no \"%s\" data of a subscription of another publisher.", path);
         goto cleanup;
     }
 
@@ -1020,8 +1032,16 @@ sent_event_records_oper_get(sr_session_ctx_t *UNUSED(session), uint32_t UNUSED(s
         goto cleanup;
     }
     if (!(recv = receiver_find_by_name(sub, lyd_get_value(name_node)))) {
-        SRNTF_LOG_ERR("Failed to find receiver for \"%s\" operational data request.", path);
-        rc = SR_ERR_NOT_FOUND;
+        /* the subscription is ours but the receiver was not created, it has no state to provide */
+        SRNTF_LOG_DBG("Providing no \"%s\" data of receiver \"%s\", it is not serviced.", path,
+                lyd_get_value(name_node));
+        goto cleanup;
+    }
+
+    if (!recv->srsn_data.sub_id) {
+        /* dispatch is not running for this receiver, there are no counters to provide */
+        SRNTF_LOG_DBG("Providing no \"%s\" data of receiver \"%s\", its dispatch is not running.", path,
+                recv->name);
         goto cleanup;
     }
 
@@ -1064,7 +1084,8 @@ excluded_event_records_oper_get(sr_session_ctx_t *UNUSED(session), uint32_t UNUS
     }
 
     if (!(sub = subscription_find_by_node(notifd_ctx, *parent))) {
-        SRNTF_LOG_ERR("Failed to find subscription for \"%s\" operational data request.", path);
+        /* not serviced by this daemon, its state is provided by the publisher that services it */
+        SRNTF_LOG_DBG("Providing no \"%s\" data of a subscription of another publisher.", path);
         goto cleanup;
     }
 
@@ -1072,8 +1093,16 @@ excluded_event_records_oper_get(sr_session_ctx_t *UNUSED(session), uint32_t UNUS
         goto cleanup;
     }
     if (!(recv = receiver_find_by_name(sub, lyd_get_value(name_node)))) {
-        SRNTF_LOG_ERR("Failed to find receiver for \"%s\" operational data request.", path);
-        rc = SR_ERR_NOT_FOUND;
+        /* the subscription is ours but the receiver was not created, it has no state to provide */
+        SRNTF_LOG_DBG("Providing no \"%s\" data of receiver \"%s\", it is not serviced.", path,
+                lyd_get_value(name_node));
+        goto cleanup;
+    }
+
+    if (!recv->srsn_data.sub_id) {
+        /* dispatch is not running for this receiver, there are no counters to provide */
+        SRNTF_LOG_DBG("Providing no \"%s\" data of receiver \"%s\", its dispatch is not running.", path,
+                recv->name);
         goto cleanup;
     }
 
@@ -1114,7 +1143,8 @@ receiver_state_oper_get(sr_session_ctx_t *UNUSED(session), uint32_t UNUSED(sub_i
     }
 
     if (!(sub = subscription_find_by_node(notifd_ctx, *parent))) {
-        SRNTF_LOG_ERR("Failed to find subscription for \"%s\" operational data request.", path);
+        /* not serviced by this daemon, its state is provided by the publisher that services it */
+        SRNTF_LOG_DBG("Providing no \"%s\" data of a subscription of another publisher.", path);
         goto cleanup;
     }
 
@@ -1122,8 +1152,9 @@ receiver_state_oper_get(sr_session_ctx_t *UNUSED(session), uint32_t UNUSED(sub_i
         goto cleanup;
     }
     if (!(recv = receiver_find_by_name(sub, lyd_get_value(name_node)))) {
-        SRNTF_LOG_ERR("Failed to find receiver for \"%s\" operational data request.", path);
-        rc = SR_ERR_NOT_FOUND;
+        /* the subscription is ours but the receiver was not created, it has no state to provide */
+        SRNTF_LOG_DBG("Providing no \"%s\" data of receiver \"%s\", it is not serviced.", path,
+                lyd_get_value(name_node));
         goto cleanup;
     }
 
@@ -1156,10 +1187,15 @@ register_oper_data_providers(notifd_ctx_t *notifd_ctx, sr_subscription_ctx_t **s
         return r;
     }
 
+    /*
+     * All the providers are subscribed with ::SR_SUBSCR_OPER_MERGE because this daemon is not the only
+     * publisher of the shared ietf-subscribed-notifications:subscriptions subtree.
+     */
+
     /* replay-start-time */
     if (replay_enabled) {
         path = "/ietf-subscribed-notifications:subscriptions/subscription/replay-start-time";
-        if ((r = sr_oper_get_subscribe(sess, module, path, replay_start_time_oper_get, notifd_ctx, 0, subscr))) {
+        if ((r = sr_oper_get_subscribe(sess, module, path, replay_start_time_oper_get, notifd_ctx, SR_SUBSCR_OPER_MERGE, subscr))) {
             SRNTF_LOG_ERR("Failed to subscribe for replay-start-time operational data.");
             return r;
         }
@@ -1167,28 +1203,28 @@ register_oper_data_providers(notifd_ctx_t *notifd_ctx, sr_subscription_ctx_t **s
 
     /* configured-subscription-state */
     path = "/ietf-subscribed-notifications:subscriptions/subscription/configured-subscription-state";
-    if ((r = sr_oper_get_subscribe(sess, module, path, configured_sub_state_oper_get, notifd_ctx, 0, subscr))) {
+    if ((r = sr_oper_get_subscribe(sess, module, path, configured_sub_state_oper_get, notifd_ctx, SR_SUBSCR_OPER_MERGE, subscr))) {
         SRNTF_LOG_ERR("Failed to subscribe for configured-subscription-state operational data.");
         return r;
     }
 
     /* sent-event-records */
     path = "/ietf-subscribed-notifications:subscriptions/subscription/receivers/receiver/sent-event-records";
-    if ((r = sr_oper_get_subscribe(sess, module, path, sent_event_records_oper_get, notifd_ctx, 0, subscr))) {
+    if ((r = sr_oper_get_subscribe(sess, module, path, sent_event_records_oper_get, notifd_ctx, SR_SUBSCR_OPER_MERGE, subscr))) {
         SRNTF_LOG_ERR("Failed to subscribe for sent-event-records operational data.");
         return r;
     }
 
     /* excluded-event-records */
     path = "/ietf-subscribed-notifications:subscriptions/subscription/receivers/receiver/excluded-event-records";
-    if ((r = sr_oper_get_subscribe(sess, module, path, excluded_event_records_oper_get, notifd_ctx, 0, subscr))) {
+    if ((r = sr_oper_get_subscribe(sess, module, path, excluded_event_records_oper_get, notifd_ctx, SR_SUBSCR_OPER_MERGE, subscr))) {
         SRNTF_LOG_ERR("Failed to subscribe for excluded-event-records operational data.");
         return r;
     }
 
     /* receiver state */
     path = "/ietf-subscribed-notifications:subscriptions/subscription/receivers/receiver/state";
-    if ((r = sr_oper_get_subscribe(sess, module, path, receiver_state_oper_get, notifd_ctx, 0, subscr))) {
+    if ((r = sr_oper_get_subscribe(sess, module, path, receiver_state_oper_get, notifd_ctx, SR_SUBSCR_OPER_MERGE, subscr))) {
         SRNTF_LOG_ERR("Failed to subscribe for receiver state operational data.");
         return r;
     }
@@ -1228,7 +1264,11 @@ receiver_reset_rpc_cb(sr_session_ctx_t *UNUSED(session), uint32_t UNUSED(sub_id)
     state_locked = 1;
 
     if (!(sub = subscription_find_by_node(notifd_ctx, input))) {
-        SRNTF_LOG_ERR("Failed to find subscription for receiver reset RPC.");
+        /*
+         * Not serviced by this daemon, the reset belongs to the publisher that services it.
+         * (sysrepo keeps only the reply of the lowest prio subscriber of an action)
+         */
+        SRNTF_LOG_DBG("Ignoring the reset action of a subscription of another publisher.");
         goto cleanup;
     }
 
@@ -1237,8 +1277,9 @@ receiver_reset_rpc_cb(sr_session_ctx_t *UNUSED(session), uint32_t UNUSED(sub_id)
         goto cleanup;
     }
     if (!(recv = receiver_find_by_name(sub, lyd_get_value(name_node)))) {
-        SRNTF_LOG_ERR("Failed to find receiver for receiver reset RPC.");
-        rc = SR_ERR_NOT_FOUND;
+        /* the subscription is ours but the receiver was not created, there is nothing to reset */
+        SRNTF_LOG_DBG("Ignoring the reset action of receiver \"%s\", it is not serviced.",
+                lyd_get_value(name_node));
         goto cleanup;
     }
 
