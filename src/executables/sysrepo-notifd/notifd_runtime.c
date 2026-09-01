@@ -632,10 +632,15 @@ notification_dispatch_data_free(notif_receiver_t *receiver)
 }
 
 int
-notification_dispatch_start(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_receiver_t *receiver)
+notification_dispatch_start(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_receiver_t *receiver, int *state_locked)
 {
-    int rc = SR_ERR_OK, unlocked = 0;
+    int rc = SR_ERR_OK, r, unlocked = 0;
     struct timespec *stop_time, *start_time;
+
+    if (!*state_locked) {
+        /* the state lock was already lost, the state must not be touched and there is nothing to unlock */
+        return SR_ERR_LOCKED;
+    }
 
     stop_time = (sub->stop_time.tv_sec || sub->stop_time.tv_nsec) ? &sub->stop_time : NULL;
     start_time = (sub->start_time.tv_sec || sub->start_time.tv_nsec) ? &sub->start_time : NULL;
@@ -677,10 +682,9 @@ cleanup:
 
     if (unlocked) {
         /* WR LOCK, reacquire to finish updating the config */
-        if (notifd_rwlock_lock(&notifd_ctx->state_rwlock, 1, NOTIFD_CONTEXT_LOCK_TIMEOUT_MS, __func__)) {
-            SRNTF_LOG_ERR("Internal error: failed to acquire state lock to start notification dispatch for "
-                    "receiver \"%s\".", receiver->name);
-            return rc ? rc : SR_ERR_INTERNAL;
+        if ((r = notifd_state_wr_relock(notifd_ctx, __func__, state_locked))) {
+            /* the state lock is lost, unwind without touching the state */
+            return r;
         }
     }
 
@@ -691,8 +695,19 @@ cleanup:
 }
 
 void
-notification_dispatch_stop(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver)
+notification_dispatch_stop(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver, int *state_locked)
 {
+    if (!*state_locked) {
+        /* the state lock was already lost, the state must not be touched and there is nothing to unlock */
+        return;
+    }
+
+    if (!receiver->srsn_data.sub_id && (receiver->srsn_data.fd == -1) && !receiver->cb_data) {
+        /* dispatch was never started (or was already stopped), there is nothing to wait for so keep the
+         * state lock and avoid the unlock/relock window altogether */
+        goto unsubscribe;
+    }
+
     /* UNLOCK state lock, srsn_terminate will call notif cb, which will try to acquire the state lock to send
      * any remaining notifs. Nobody can steal our WR lock here, because the caller MUST hold config_apply_mutex,
      * which prevents another thread from acquiring the state WR lock in this window */
@@ -710,17 +725,17 @@ notification_dispatch_stop(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver)
         receiver->srsn_data.fd = -1;
     }
 
-    /* free before the lock is reacquired, which may fail */
+    /* free while the dispatch is guaranteed not to reference it anymore */
     free(receiver->cb_data);
     receiver->cb_data = NULL;
 
     /* WR LOCK, reacquire to finish updating the config before checking retval of srsn_terminate */
-    if (notifd_rwlock_lock(&notifd_ctx->state_rwlock, 1, NOTIFD_CONTEXT_LOCK_TIMEOUT_MS, __func__)) {
-        SRNTF_LOG_ERR("Internal error: failed to acquire state lock to stop notification dispatch for receiver \"%s\".",
-                receiver->name);
+    if (notifd_state_wr_relock(notifd_ctx, __func__, state_locked)) {
+        /* the state lock is lost, unwind without touching the state */
         return;
     }
 
+unsubscribe:
     if (receiver->srsn_data.sr_subscr) {
         sr_unsubscribe(receiver->srsn_data.sr_subscr);
         receiver->srsn_data.sr_subscr = NULL;
@@ -769,6 +784,11 @@ notifd_notification_cb(const struct lyd_node *notif, const struct timespec *time
     assert(data);
     notifd_ctx = data->ctx;
     assert(notifd_ctx);
+
+    if (ATOMIC_LOAD_RELAXED(notifd_ctx->state_wr_lost)) {
+        /* the state lock was lost, the state must not be read nor modified anymore */
+        return;
+    }
 
     /* STATE RD LOCK */
     if (notifd_rwlock_lock(&notifd_ctx->state_rwlock, 0, NOTIFD_CONTEXT_LOCK_TIMEOUT_MS, __func__)) {

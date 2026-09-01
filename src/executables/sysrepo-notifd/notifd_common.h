@@ -248,9 +248,11 @@ notif_receiver_inst_t *receiver_inst_find_by_node(notifd_ctx_t *notifd_ctx, cons
  *
  * @param[in,out] notifd_ctx Daemon context (subscription is added to its array).
  * @param[in] node The YANG `subscription` list entry node.
- * @return ::SR_ERR_OK on success, error code on failure.
+ * @param[in,out] state_locked Whether the state write lock is held, set to 0 if it was lost, in
+ * which case the caller must unwind without accessing the shared state and without unlocking it.
+ * @return ::SR_ERR_OK on success, ::SR_ERR_LOCKED if the state lock was lost, error code on failure.
  */
-int subscription_create_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *node);
+int subscription_create_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, int *state_locked);
 
 /**
  * @brief Destroy a subscription identified by a YANG node within its subtree.
@@ -260,9 +262,11 @@ int subscription_create_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_nod
  *
  * @param[in,out] notifd_ctx Daemon context.
  * @param[in] node YANG node within the subscription subtree to be deleted.
+ * @param[in,out] state_locked Whether the state write lock is held, set to 0 if it was lost, in
+ * which case the caller must unwind without accessing the shared state and without unlocking it.
  * @return ::SR_ERR_OK on success, ::SR_ERR_NOT_FOUND if the subscription cannot be found.
  */
-int subscription_destroy_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *node);
+int subscription_destroy_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, int *state_locked);
 
 /**
  * @brief Create a new receiver within a subscription from a YANG `receiver` node.
@@ -274,9 +278,12 @@ int subscription_destroy_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_no
  * @param[in,out] notifd_ctx Daemon context.
  * @param[in,out] sub Parent subscription (receiver is added to its array).
  * @param[in] node The YANG `receiver` list entry node.
- * @return ::SR_ERR_OK on success, error code on failure.
+ * @param[in,out] state_locked Whether the state write lock is held, set to 0 if it was lost, in
+ * which case the caller must unwind without accessing the shared state and without unlocking it.
+ * @return ::SR_ERR_OK on success, ::SR_ERR_LOCKED if the state lock was lost, error code on failure.
  */
-int receiver_create_from_node(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const struct lyd_node *node);
+int receiver_create_from_node(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const struct lyd_node *node,
+        int *state_locked);
 
 /**
  * @brief Destroy a receiver identified by a YANG node within its subtree.
@@ -287,9 +294,12 @@ int receiver_create_from_node(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const 
  * @param[in,out] notifd_ctx Daemon context.
  * @param[in,out] sub Parent subscription.
  * @param[in] node YANG node within the receiver subtree to be deleted.
+ * @param[in,out] state_locked Whether the state write lock is held, set to 0 if it was lost, in
+ * which case the caller must unwind without accessing the shared state and without unlocking it.
  * @return ::SR_ERR_OK on success, ::SR_ERR_NOT_FOUND if the receiver cannot be found.
  */
-int receiver_destroy_from_node(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const struct lyd_node *node);
+int receiver_destroy_from_node(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const struct lyd_node *node,
+        int *state_locked);
 
 /**
  * @brief Create a new receiver instance from a YANG `receiver-instance` node.
@@ -509,8 +519,10 @@ int handle_stream_filter(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, 
  * Resets the modified, resubscribe, and modif_err_reason flags.
  *
  * @param[in,out] notifd_ctx Daemon context.
+ * @param[in,out] state_locked Whether the state write lock is held, set to 0 if it was lost, in
+ * which case the caller must unwind without accessing the shared state and without unlocking it.
  */
-void process_modified_subscriptions(notifd_ctx_t *notifd_ctx);
+void process_modified_subscriptions(notifd_ctx_t *notifd_ctx, int *state_locked);
 
 /**
  * @brief Post-processing pass after receiver-instance configuration changes.
@@ -531,9 +543,12 @@ void process_modified_receiver_instances(notifd_ctx_t *notifd_ctx);
  *
  * @param[in] notifd_ctx Daemon context.
  * @param[in,out] sub Subscription to resubscribe.
- * @return ::SR_ERR_OK on success, error code from notification_dispatch_start on failure.
+ * @param[in,out] state_locked Whether the state write lock is held, set to 0 if it was lost, in
+ * which case the caller must unwind without accessing the shared state and without unlocking it.
+ * @return ::SR_ERR_OK on success, ::SR_ERR_LOCKED if the state lock was lost, error code from
+ * notification_dispatch_start on failure.
  */
-int subscription_resubscribe(notifd_ctx_t *notifd_ctx, notif_sub_t *sub);
+int subscription_resubscribe(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, int *state_locked);
 
 /**
  * @brief Validate subscription changes during SR_EV_CHANGE or SR_EV_ENABLED (read-only).
@@ -582,8 +597,10 @@ int module_feature_is_enabled(notifd_ctx_t *notifd_ctx, const char *module_name,
  * The ::notifd_ctx_t struct itself is NOT freed (caller's responsibility).
  *
  * @param[in,out] notifd_ctx Daemon context to destroy. If NULL, returns immediately.
+ * @param[in,out] state_locked Whether the state write lock is held, set to 0 if it was lost, in
+ * which case the caller must unwind without accessing the shared state and without unlocking it.
  */
-void notifd_ctx_destroy(notifd_ctx_t *notifd_ctx);
+void notifd_ctx_destroy(notifd_ctx_t *notifd_ctx, int *state_locked);
 
 /*
  * ---------------------------------------------------------------------------
@@ -768,31 +785,40 @@ int notif_receiver_send(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver, co
  *
  * @warning The caller MUST hold both state_rwlock (write) AND config_apply_mutex.
  * The config_apply_mutex prevents another thread from stealing the write-lock
- * in the unlock/relock window.
+ * in the unlock/relock window. The write lock is held again on return unless
+ * @p state_locked was cleared.
  *
  * @param[in] notifd_ctx Daemon context (its sr_sess is used as the srsn subscription session,
  * its state_rwlock is temporarily unlocked/relocked).
  * @param[in] sub Subscription defining the stream, filter, and stop/start times.
  * @param[in] receiver Receiver whose srsn_data and cb_data will be populated.
- * @return ::SR_ERR_OK on success, error code on failure.
+ * @param[in,out] state_locked Whether the state write lock is held, set to 0 if it was lost, in
+ * which case the caller must unwind without accessing the shared state and without unlocking it.
+ * @return ::SR_ERR_OK on success, ::SR_ERR_LOCKED if the state lock was lost, another error code
+ * on failure.
  */
-int notification_dispatch_start(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_receiver_t *receiver);
+int notification_dispatch_start(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_receiver_t *receiver,
+        int *state_locked);
 
 /**
  * @brief Stop notification dispatch for a receiver.
  *
  * Terminates the srsn subscription and cleans up resources. Temporarily drops
  * the state write lock to allow srsn_terminate() to invoke the notification
- * callback (which acquires the state read lock).
+ * callback (which acquires the state read lock). If the dispatch was never
+ * started, the lock is not dropped at all.
  *
  * @warning The caller MUST hold both state_rwlock (write) AND config_apply_mutex.
  * The config_apply_mutex prevents another thread from stealing the write-lock
- * in the unlock/relock window.
+ * in the unlock/relock window. The write lock is held again on return unless
+ * @p state_locked was cleared.
  *
- * @param[in] notifd_ctx Daemon context (its state_rwlock is temporarily unlocked/relocked).
+ * @param[in] notifd_ctx Daemon context (its state_rwlock may be temporarily unlocked/relocked).
  * @param[in] receiver Receiver whose dispatch is being stopped.
+ * @param[in,out] state_locked Whether the state write lock is held, set to 0 if it was lost, in
+ * which case the caller must unwind without accessing the shared state and without unlocking it.
  */
-void notification_dispatch_stop(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver);
+void notification_dispatch_stop(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver, int *state_locked);
 
 /**
  * @brief Main notification callback invoked by the srsn dispatch thread.
@@ -849,5 +875,27 @@ int notifd_rwlock_lock(pthread_rwlock_t *lock, int is_write, uint32_t timeout_ms
  * @param[in] func Calling function name for error reporting.
  */
 void notifd_rwlock_unlock(pthread_rwlock_t *lock, const char *func);
+
+/**
+ * @brief Reacquire the state write lock after it was temporarily dropped.
+ *
+ * Retries ::NOTIFD_STATE_RELOCK_ATTEMPTS times, readers are not excluded by config_apply_mutex so
+ * a single attempt can time out on a stuck reader. On final failure the shared state is left
+ * unprotected, so @p state_locked is cleared for the unwinding call chain,
+ * notifd_ctx_s.state_wr_lost is latched for the other threads, and daemon termination is requested.
+ *
+ * @param[in] notifd_ctx Daemon context.
+ * @param[in] func Calling function name for error reporting.
+ * @param[in,out] state_locked Whether the state write lock is held, set to 0 if it was lost.
+ * @return ::SR_ERR_OK if the lock is held again, ::SR_ERR_LOCKED if it was lost.
+ */
+int notifd_state_wr_relock(notifd_ctx_t *notifd_ctx, const char *func, int *state_locked);
+
+/**
+ * @brief Request a graceful termination of the daemon, as if a terminating signal was received.
+ *
+ * May be called from any thread, has no effect if the termination was already requested.
+ */
+void notifd_shutdown_request(void);
 
 #endif /* COMMON_H_ */

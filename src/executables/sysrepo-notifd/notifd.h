@@ -75,6 +75,14 @@
 #define NOTIFD_CONTEXT_LOCK_TIMEOUT_MS 10000
 
 /**
+ * @brief Number of attempts to reacquire the state write lock after it was temporarily dropped.
+ *
+ * Readers are not excluded by config_apply_mutex, so a stuck or continuous reader can make the
+ * reacquire time out. Give it a few tries before declaring the state lost, see ::notifd_ctx_s.state_wr_lost.
+ */
+#define NOTIFD_STATE_RELOCK_ATTEMPTS 3
+
+/**
  * @brief Base delay in seconds for receiver reconnect exponential backoff.
  */
 #define NOTIFD_RECV_RECONNECT_BASE_SEC 1
@@ -404,6 +412,10 @@ struct notifd_ctx_s {
     pthread_mutex_t config_apply_mutex;     /**< serialize config-apply operations; keeps a single apply
                                                  transaction active so state_rwlock write-lock ownership
                                                  cannot be stolen across temporary unlock/relock windows */
+    ATOMIC_T state_wr_lost;                 /**< Monotonic flag set permanently if state_rwlock
+                                                 could not be reacquired after a temporary unlock,
+                                                 indicating the shared state may be inconsistent
+                                                 and the daemon is shutting down. */
 
     notif_sub_t **subs;                     /**< configured subscriptions (sized-array, see libyang docs) */
     notif_receiver_inst_t **recv_insts;     /**< configured receiver instances (sized-array, see libyang docs) */
