@@ -1152,7 +1152,9 @@ start_notifd(pid_t *pid)
 child_error:
         /* setup or exec failed - signal parent by writing to pipe before exiting */
         c = 1;
-        write(pipefd[1], &c, 1);
+        if (write(pipefd[1], &c, 1) == -1) {
+            /* nothing more can be done, the exit code signals the failure as well */
+        }
         _exit(1);
     }
 
