@@ -1213,6 +1213,14 @@ cleanup:
 static sr_error_info_t *
 sr_nacm_allowed_tree(const struct lysc_node *root, const char *user, int *allowed)
 {
+    sr_error_info_t *err_info = NULL;
+
+    /* 0) opaque node, invalid */
+    if (!root) {
+        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Invalid opaque node subtree in NACM check.");
+        return err_info;
+    }
+
     /* 1) NACM is off */
     if (!nacm.enabled) {
         *allowed = 1;
@@ -1492,7 +1500,18 @@ sr_nacm_allowed_node(const struct lyd_node *node, const char *node_path, const s
     sr_error_info_t *err_info = NULL;
     struct sr_nacm_rule_list *rlist;
     struct sr_nacm_rule *r;
+
+    enum {
+        RULE_PARTIAL_MATCH_NONE = 0,
+        RULE_PARTIAL_MATCH_PERMIT = 1,
+        RULE_PARTIAL_MATCH_DENY = 2
+    } partial_access = RULE_PARTIAL_MATCH_NONE;
+    int path_match;
+    LY_ARRAY_COUNT_TYPE u;
     char *path;
+
+    assert(node || (node_path && node_schema));
+    assert(oper);
 
     *access = SR_NACM_ACCESS_DENY;
     if (rule) {
@@ -1502,19 +1521,12 @@ sr_nacm_allowed_node(const struct lyd_node *node, const char *node_path, const s
         *def = NULL;
     }
 
-    enum {
-        RULE_PARTIAL_MATCH_NONE = 0,
-        RULE_PARTIAL_MATCH_PERMIT = 1,
-        RULE_PARTIAL_MATCH_DENY = 2
-    } partial_access = RULE_PARTIAL_MATCH_NONE;
-    int path_match;
-    LY_ARRAY_COUNT_TYPE u;
-
-    assert(node || (node_path && node_schema));
-    assert(oper);
-
     if (!node_schema) {
         node_schema = node->schema;
+    }
+    if (!node_schema) {
+        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Invalid opaque node \"%s\" in NACM check.", LYD_NAME(node));
+        goto cleanup;
     }
 
     /*
@@ -1669,7 +1681,7 @@ cleanup:
         /* node itself is allowed but a rule denies access to some descendants */
         *access = SR_NACM_ACCESS_PARTIAL_PERMIT;
     }
-    return NULL;
+    return err_info;
 }
 
 sr_error_info_t *
@@ -1699,7 +1711,10 @@ sr_nacm_check_op(const char *nacm_user, const struct lyd_node *data, struct sr_d
 
     op = data;
     while (op) {
-        if (op->schema->nodetype & (LYS_RPC | LYS_ACTION | LYS_NOTIF)) {
+        if (!op->schema) {
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Invalid opaque node \"%s\" in NACM check.", LYD_NAME(op));
+            goto cleanup;
+        } else if (op->schema->nodetype & (LYS_RPC | LYS_ACTION | LYS_NOTIF)) {
             /* we found the desired node */
             break;
         }
@@ -1772,7 +1787,7 @@ sr_nacm_check_op(const char *nacm_user, const struct lyd_node *data, struct sr_d
     allowed = 1;
 
 cleanup:
-    if (!allowed && op) {
+    if (!err_info && !allowed && op) {
         if (op->schema->nodetype & (LYS_RPC | LYS_ACTION)) {
             ++nacm.denied_operations;
         } else {
