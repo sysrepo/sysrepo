@@ -30,7 +30,7 @@
 #include <libyang/libyang.h>
 
 /* forward declarations */
-void receiver_destroy(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_receiver_t *receiver);
+void receiver_destroy(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_receiver_t *receiver, int *state_locked);
 static void receiver_instance_destroy(notifd_ctx_t *notifd_ctx, notif_receiver_inst_t *recv_inst);
 
 /*
@@ -1107,7 +1107,7 @@ cleanup:
  */
 
 static int
-subscription_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, notif_sub_t *sub)
+subscription_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, notif_sub_t *sub, int *state_locked)
 {
     int rc = SR_ERR_OK;
     struct lyd_node *n, *filter;
@@ -1201,7 +1201,7 @@ subscription_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, no
         goto cleanup;
     }
     for (i = 0; i < set->count; i++) {
-        if ((rc = receiver_create_from_node(notifd_ctx, sub, set->dnodes[i]))) {
+        if ((rc = receiver_create_from_node(notifd_ctx, sub, set->dnodes[i], state_locked))) {
             goto cleanup;
         }
     }
@@ -1218,19 +1218,23 @@ cleanup:
  * @param[in] sub Subscription whose receivers should be disconnected.
  */
 static void
-subscription_receivers_disconnect(notifd_ctx_t *notifd_ctx, notif_sub_t *sub)
+subscription_receivers_disconnect(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, int *state_locked)
 {
     notif_receiver_t *receiver;
 
     LY_ARRAY_FOR(sub->receivers, notif_receiver_t, receiver) {
         /* disconnect the receiver */
-        notification_dispatch_stop(notifd_ctx, receiver);
+        notification_dispatch_stop(notifd_ctx, receiver, state_locked);
+        if (!*state_locked) {
+            /* the state lock is lost, leave the rest of the receivers alone */
+            break;
+        }
         notif_receiver_disconnect(receiver);
     }
 }
 
 int
-subscription_create_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *node)
+subscription_create_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, int *state_locked)
 {
     int rc = SR_ERR_OK;
     const notif_transport_ops_t *ops;
@@ -1251,15 +1255,24 @@ subscription_create_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *n
 
     /* the transport is resolved, the rest of the configuration is parsed below */
     sub->ops = ops;
-    if ((rc = subscription_from_node(notifd_ctx, node, sub))) {
+    if ((rc = subscription_from_node(notifd_ctx, node, sub, state_locked))) {
         goto cleanup;
     }
 
 cleanup:
     if (rc) {
+        if (!*state_locked) {
+            /* the state lock is lost, the receivers must not be disconnected (that needs the lock to be
+             * dropped and reacquired) and the sub must stay in the context array untouched */
+            return SR_ERR_LOCKED;
+        }
+
         /* keep the subscription tracked but invalid, its state is reported in the operational data
          * and the daemon is expected to service it once its configuration is fixed */
-        subscription_receivers_disconnect(notifd_ctx, sub);
+        subscription_receivers_disconnect(notifd_ctx, sub, state_locked);
+        if (!*state_locked) {
+            return SR_ERR_LOCKED;
+        }
         sub_invalidate(sub, NULL);
         if (!sub_ptr) {
             free(sub);
@@ -1275,7 +1288,7 @@ cleanup:
  * @param[in] sub Subscription to destroy.
  */
 static void
-subscription_destroy(notifd_ctx_t *notifd_ctx, notif_sub_t *sub)
+subscription_destroy(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, int *state_locked)
 {
     LY_ARRAY_COUNT_TYPE i;
 
@@ -1283,16 +1296,23 @@ subscription_destroy(notifd_ctx_t *notifd_ctx, notif_sub_t *sub)
         return;
     }
 
+    /* destroy the receivers first, so that the sub is left intact for the readers if the state lock is lost */
+    for (i = LY_ARRAY_COUNT(sub->receivers); i > 0; i--) {
+        receiver_destroy(notifd_ctx, sub, &sub->receivers[i - 1], state_locked);
+        if (!*state_locked) {
+            /* the state lock is lost, neither the receivers nor the context array may be touched anymore */
+            return;
+        }
+    }
+    LY_ARRAY_FREE(sub->receivers);
+    sub->receivers = NULL;
+
     /* free members */
     free(sub->stream);
     free(sub->xpath_filter);
     free(sub->filter_ref);
     free(sub->purpose);
     free(sub->local_address);
-    for (i = LY_ARRAY_COUNT(sub->receivers); i > 0; i--) {
-        receiver_destroy(notifd_ctx, sub, &sub->receivers[i - 1]);
-    }
-    LY_ARRAY_FREE(sub->receivers);
 
     /* replace with the last and decrement array */
     LY_ARRAY_FOR(notifd_ctx->subs, i) {
@@ -1306,7 +1326,7 @@ subscription_destroy(notifd_ctx_t *notifd_ctx, notif_sub_t *sub)
 }
 
 int
-subscription_destroy_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *node)
+subscription_destroy_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, int *state_locked)
 {
     notif_sub_t *sub;
 
@@ -1325,7 +1345,7 @@ subscription_destroy_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *
     }
 
     /* destroy the sub */
-    subscription_destroy(notifd_ctx, sub);
+    subscription_destroy(notifd_ctx, sub, state_locked);
 
     return SR_ERR_OK;
 }
@@ -1377,7 +1397,7 @@ cleanup:
 }
 
 int
-receiver_create_from_node(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const struct lyd_node *node)
+receiver_create_from_node(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const struct lyd_node *node, int *state_locked)
 {
     int rc = SR_ERR_OK, r;
     notif_receiver_t *receiver;
@@ -1393,7 +1413,7 @@ receiver_create_from_node(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const stru
     }
 
     /* start dispatch so this receiver can receive notifications */
-    if ((rc = notification_dispatch_start(notifd_ctx, sub, receiver))) {
+    if ((rc = notification_dispatch_start(notifd_ctx, sub, receiver, state_locked))) {
         goto cleanup;
     }
 
@@ -1414,7 +1434,7 @@ receiver_create_from_node(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const stru
     }
 
 cleanup:
-    if (rc) {
+    if (rc && *state_locked) {
         /* the subscription cannot be serviced with this receiver */
         sub_invalidate(sub, NULL);
     }
@@ -1422,14 +1442,18 @@ cleanup:
 }
 
 void
-receiver_destroy(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_receiver_t *receiver)
+receiver_destroy(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_receiver_t *receiver, int *state_locked)
 {
     if (!sub || !receiver) {
         return;
     }
 
     /* stop dispatch for this receiver */
-    notification_dispatch_stop(notifd_ctx, receiver);
+    notification_dispatch_stop(notifd_ctx, receiver, state_locked);
+    if (!*state_locked) {
+        /* the state lock is lost, the receiver array must stay as it is, the memory is freed on exit */
+        return;
+    }
 
     /* disconnect the receiver */
     notif_receiver_disconnect(receiver);
@@ -1444,7 +1468,7 @@ receiver_destroy(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_receiver_t *r
 }
 
 int
-receiver_destroy_from_node(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const struct lyd_node *node)
+receiver_destroy_from_node(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const struct lyd_node *node, int *state_locked)
 {
     int rc = SR_ERR_OK;
     notif_receiver_t *receiver;
@@ -1462,7 +1486,7 @@ receiver_destroy_from_node(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const str
     }
 
     /* destroy the receiver */
-    receiver_destroy(notifd_ctx, sub, receiver);
+    receiver_destroy(notifd_ctx, sub, receiver, state_locked);
 
 cleanup:
     return rc;
@@ -1590,17 +1614,21 @@ receiver_instance_destroy_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_n
  */
 
 int
-subscription_resubscribe(notifd_ctx_t *notifd_ctx, notif_sub_t *sub)
+subscription_resubscribe(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, int *state_locked)
 {
     int rc = SR_ERR_OK;
     notif_receiver_t *receiver;
 
     LY_ARRAY_FOR(sub->receivers, notif_receiver_t, receiver) {
         /* stop the dispatch, which will unsubscribe from sysrepo and stop all timers */
-        notification_dispatch_stop(notifd_ctx, receiver);
+        notification_dispatch_stop(notifd_ctx, receiver, state_locked);
+        if (!*state_locked) {
+            rc = SR_ERR_LOCKED;
+            goto cleanup;
+        }
 
         /* start the dispatch again with the new params, which will resubscribe to sysrepo and restart timers */
-        if ((rc = notification_dispatch_start(notifd_ctx, sub, receiver))) {
+        if ((rc = notification_dispatch_start(notifd_ctx, sub, receiver, state_locked))) {
             goto cleanup;
         }
     }
@@ -1610,7 +1638,7 @@ subscription_resubscribe(notifd_ctx_t *notifd_ctx, notif_sub_t *sub)
 }
 
 void
-process_modified_subscriptions(notifd_ctx_t *notifd_ctx)
+process_modified_subscriptions(notifd_ctx_t *notifd_ctx, int *state_locked)
 {
     int r;
     notif_sub_t **sub;
@@ -1618,7 +1646,11 @@ process_modified_subscriptions(notifd_ctx_t *notifd_ctx)
     /* go through all subs and send subscription-modified for those that are modified */
     LY_ARRAY_FOR(notifd_ctx->subs, notif_sub_t *, sub) {
         if ((*sub)->resubscribe) {
-            r = subscription_resubscribe(notifd_ctx, *sub);
+            r = subscription_resubscribe(notifd_ctx, *sub, state_locked);
+            if (!*state_locked) {
+                /* the state lock is lost, leave the rest of the subscriptions alone */
+                return;
+            }
             if (!r) {
                 (*sub)->state = NOTIF_SUB_STATE_VALID;
             } else {
@@ -2192,7 +2224,7 @@ cleanup:
 }
 
 void
-notifd_ctx_destroy(notifd_ctx_t *notifd_ctx)
+notifd_ctx_destroy(notifd_ctx_t *notifd_ctx, int *state_locked)
 {
     LY_ARRAY_COUNT_TYPE i;
 
@@ -2202,7 +2234,11 @@ notifd_ctx_destroy(notifd_ctx_t *notifd_ctx)
 
     /* destroy all subscriptions (includes stopping dispatch, disconnecting receivers, freeing memory) */
     for (i = LY_ARRAY_COUNT(notifd_ctx->subs); i > 0; i--) {
-        subscription_destroy(notifd_ctx, notifd_ctx->subs[i - 1]);
+        subscription_destroy(notifd_ctx, notifd_ctx->subs[i - 1], state_locked);
+        if (!*state_locked) {
+            /* the state lock is lost, the remaining memory is reclaimed by the process exit */
+            return;
+        }
     }
     notifd_ctx->subs = NULL;
 

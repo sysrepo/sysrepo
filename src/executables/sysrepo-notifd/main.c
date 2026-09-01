@@ -83,6 +83,19 @@ help_print(void)
             "\n");
 }
 
+void
+notifd_shutdown_request(void)
+{
+    pthread_mutex_lock(&lock);
+
+    if (!loop_finish) {
+        loop_finish = 1;
+        pthread_cond_signal(&cond);
+    }
+
+    pthread_mutex_unlock(&lock);
+}
+
 static void
 signal_handler(int sig)
 {
@@ -335,6 +348,28 @@ notifd_rwlock_unlock(pthread_rwlock_t *lock, const char *func)
     }
 }
 
+int
+notifd_state_wr_relock(notifd_ctx_t *notifd_ctx, const char *func, int *state_locked)
+{
+    uint32_t i;
+
+    for (i = 0; i < NOTIFD_STATE_RELOCK_ATTEMPTS; ++i) {
+        if (!notifd_rwlock_lock(&notifd_ctx->state_rwlock, 1, NOTIFD_CONTEXT_LOCK_TIMEOUT_MS, func)) {
+            return SR_ERR_OK;
+        }
+        SRNTF_LOG_WRN("%s: failed to reacquire the state lock, attempt %" PRIu32 " of %d.", func, i + 1,
+                NOTIFD_STATE_RELOCK_ATTEMPTS);
+    }
+
+    /* the shared state can no longer be accessed safely, there is nothing left to do but terminate */
+    SRNTF_LOG_ERR("%s: failed to reacquire the state lock, the daemon state is inconsistent, terminating.", func);
+    *state_locked = 0;
+    ATOMIC_STORE_RELAXED(notifd_ctx->state_wr_lost, 1);
+    notifd_shutdown_request();
+
+    return SR_ERR_LOCKED;
+}
+
 /**
   * @brief Send subscription-terminated notifications for all active subscriptions and mark them as concluded.
   *
@@ -345,7 +380,14 @@ notifd_graceful_shutdown(notifd_ctx_t *notifd_ctx)
 {
     LY_ARRAY_COUNT_TYPE i;
     notif_sub_t *sub;
-    int r;
+    int r, state_locked = 0;
+
+    if (ATOMIC_LOAD_RELAXED(notifd_ctx->state_wr_lost)) {
+        /* the state lock was lost, there is no safe way to terminate the subscriptions, the process exit
+         * closes all the receiver sockets anyway */
+        SRNTF_LOG_ERR("Skipping the graceful shutdown, the daemon state is inconsistent.");
+        return;
+    }
 
     /* CONFIG APPLY LOCK - needed because notification_dispatch_stop temporarily drops
      * state_rwlock while calling srsn_terminate(), and config_apply_mutex prevents
@@ -361,6 +403,7 @@ notifd_graceful_shutdown(notifd_ctx_t *notifd_ctx)
         notifd_mutex_unlock(&notifd_ctx->config_apply_mutex, __func__);
         return;
     }
+    state_locked = 1;
 
     LY_ARRAY_FOR(notifd_ctx->subs, i) {
         sub = notifd_ctx->subs[i];
@@ -374,10 +417,12 @@ notifd_graceful_shutdown(notifd_ctx_t *notifd_ctx)
     }
 
     /* destroy all subscriptions and receiver instances */
-    notifd_ctx_destroy(notifd_ctx);
+    notifd_ctx_destroy(notifd_ctx, &state_locked);
 
-    /* STATE UNLOCK */
-    notifd_rwlock_unlock(&notifd_ctx->state_rwlock, __func__);
+    if (state_locked) {
+        /* STATE UNLOCK */
+        notifd_rwlock_unlock(&notifd_ctx->state_rwlock, __func__);
+    }
 
     /* CONFIG APPLY UNLOCK */
     notifd_mutex_unlock(&notifd_ctx->config_apply_mutex, __func__);
@@ -555,7 +600,7 @@ cleanup:
 }
 
 static int
-sub_change_process_subscriptions(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session)
+sub_change_process_subscriptions(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session, int *state_locked)
 {
     int rc = SR_ERR_OK, r, prev_dflt;
     sr_change_iter_t *iter = NULL;
@@ -571,13 +616,19 @@ sub_change_process_subscriptions(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *ses
         assert(LYD_NAME(node) && !strcmp(LYD_NAME(node), "subscription"));
 
         if (op == SR_OP_CREATED) {
-            if ((r = subscription_create_from_node(notifd_ctx, node))) {
+            if ((r = subscription_create_from_node(notifd_ctx, node, state_locked))) {
                 rc = r;
             }
         } else if (op == SR_OP_DELETED) {
-            if ((r = subscription_destroy_from_node(notifd_ctx, node))) {
+            if ((r = subscription_destroy_from_node(notifd_ctx, node, state_locked))) {
                 rc = r;
             }
+        }
+
+        if (!*state_locked) {
+            /* the state lock is lost, abort the whole transaction */
+            rc = SR_ERR_LOCKED;
+            break;
         }
     }
 
@@ -587,7 +638,7 @@ cleanup:
 }
 
 static int
-sub_change_modify_subscriptions(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session)
+sub_change_modify_subscriptions(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session, int *state_locked)
 {
     int rc = SR_ERR_OK, r, prev_dflt;
     sr_change_iter_t *iter = NULL;
@@ -649,7 +700,11 @@ sub_change_modify_subscriptions(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *sess
     iter = NULL;
 
     /* send subscription-modified/subscription-terminated notification for all modified subs */
-    process_modified_subscriptions(notifd_ctx);
+    process_modified_subscriptions(notifd_ctx, state_locked);
+    if (!*state_locked) {
+        /* the state lock is lost, abort the whole transaction */
+        rc = SR_ERR_LOCKED;
+    }
 
 cleanup:
     sr_free_change_iter(iter);
@@ -657,7 +712,7 @@ cleanup:
 }
 
 static int
-sub_change_modify_receivers(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session)
+sub_change_modify_receivers(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session, int *state_locked)
 {
     int rc = SR_ERR_OK, r, prev_dflt;
     sr_change_iter_t *iter = NULL;
@@ -691,9 +746,9 @@ sub_change_modify_receivers(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session)
 
         if (!strcmp(node_name, "receiver")) {
             if (op == SR_OP_CREATED) {
-                r = receiver_create_from_node(notifd_ctx, sub, node);
+                r = receiver_create_from_node(notifd_ctx, sub, node, state_locked);
             } else if (op == SR_OP_DELETED) {
-                r = receiver_destroy_from_node(notifd_ctx, sub, node);
+                r = receiver_destroy_from_node(notifd_ctx, sub, node, state_locked);
             } else {
                 r = 0;
             }
@@ -706,12 +761,22 @@ sub_change_modify_receivers(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session)
         if (r) {
             rc = r;
         }
+
+        if (!*state_locked) {
+            /* the state lock is lost, abort the whole transaction */
+            rc = SR_ERR_LOCKED;
+            goto cleanup;
+        }
     }
     sr_free_change_iter(iter);
     iter = NULL;
 
     /* send subscription-modified/subscription-terminated for subs invalidated by receiver changes */
-    process_modified_subscriptions(notifd_ctx);
+    process_modified_subscriptions(notifd_ctx, state_locked);
+    if (!*state_locked) {
+        /* the state lock is lost, abort the whole transaction */
+        rc = SR_ERR_LOCKED;
+    }
 
 cleanup:
     sr_free_change_iter(iter);
@@ -766,6 +831,12 @@ subscribed_notifications_sub_change_cb(sr_session_ctx_t *session, uint32_t sub_i
     SRNTF_LOG_INF("Subscribed notifications subscription change callback with ID %" PRIu32 " invoked for event \"%s\".",
             operation_id, sr_event2str(event));
 
+    if (ATOMIC_LOAD_RELAXED(notifd_ctx->state_wr_lost)) {
+        /* the state lock was lost previously, the daemon state must not be touched anymore */
+        SRNTF_LOG_ERR("Refusing to apply the configuration, the daemon state is inconsistent.");
+        return SR_ERR_LOCKED;
+    }
+
     /* CONFIG APPLY LOCK */
     if ((rc = notifd_mutex_lock(&notifd_ctx->config_apply_mutex, NOTIFD_CONTEXT_LOCK_TIMEOUT_MS, __func__))) {
         return rc;
@@ -806,21 +877,30 @@ subscribed_notifications_sub_change_cb(sr_session_ctx_t *session, uint32_t sub_i
     }
 
     /* Step 3: process subscription list changes */
-    r = sub_change_process_subscriptions(notifd_ctx, session);
+    r = sub_change_process_subscriptions(notifd_ctx, session, &state_locked);
     if (r) {
         rc = r;
+    }
+    if (!state_locked) {
+        goto cleanup;
     }
 
     /* Step 4: modify subscriptions */
-    r = sub_change_modify_subscriptions(notifd_ctx, session);
+    r = sub_change_modify_subscriptions(notifd_ctx, session, &state_locked);
     if (r) {
         rc = r;
     }
+    if (!state_locked) {
+        goto cleanup;
+    }
 
     /* Step 5: add/modify/delete receivers */
-    r = sub_change_modify_receivers(notifd_ctx, session);
+    r = sub_change_modify_receivers(notifd_ctx, session, &state_locked);
     if (r) {
         rc = r;
+    }
+    if (!state_locked) {
+        goto cleanup;
     }
 
     /* Step 6: delete receiver instances */
@@ -860,6 +940,12 @@ subscribed_notifications_filter_change_cb(sr_session_ctx_t *session, uint32_t su
 
     SRNTF_LOG_INF("Subscribed notifications filter change callback with ID %" PRIu32 " invoked for event \"%s\".",
             operation_id, sr_event2str(event));
+
+    if (ATOMIC_LOAD_RELAXED(notifd_ctx->state_wr_lost)) {
+        /* the state lock was lost previously, the daemon state must not be touched anymore */
+        SRNTF_LOG_ERR("Refusing to apply the configuration, the daemon state is inconsistent.");
+        return SR_ERR_LOCKED;
+    }
 
     /* CONFIG APPLY LOCK */
     if ((rc = notifd_mutex_lock(&notifd_ctx->config_apply_mutex, NOTIFD_CONTEXT_LOCK_TIMEOUT_MS, __func__))) {
@@ -908,7 +994,11 @@ subscribed_notifications_filter_change_cb(sr_session_ctx_t *session, uint32_t su
     }
 
     /* send subscription-modified/subscription-terminated notification for affected subs */
-    process_modified_subscriptions(notifd_ctx);
+    process_modified_subscriptions(notifd_ctx, &state_locked);
+    if (!state_locked) {
+        /* the state lock is lost, abort the whole transaction */
+        rc = SR_ERR_LOCKED;
+    }
 
 cleanup:
     if (state_locked) {
@@ -1250,6 +1340,12 @@ receiver_reset_rpc_cb(sr_session_ctx_t *UNUSED(session), uint32_t UNUSED(sub_id)
     struct lyd_node *name_node = NULL;
     struct timespec ts_now;
     char *time_str = NULL;
+
+    if (ATOMIC_LOAD_RELAXED(notifd_ctx->state_wr_lost)) {
+        /* the state lock was lost previously, the daemon state must not be touched anymore */
+        SRNTF_LOG_ERR("Refusing to apply the configuration, the daemon state is inconsistent.");
+        return SR_ERR_LOCKED;
+    }
 
     /* CONFIG APPLY LOCK */
     if ((rc = notifd_mutex_lock(&notifd_ctx->config_apply_mutex, NOTIFD_CONTEXT_LOCK_TIMEOUT_MS, __func__))) {
