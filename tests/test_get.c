@@ -618,6 +618,103 @@ test_key(void **state)
 
 /* TEST */
 static void
+test_key_quotes(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_data_t *data;
+    sr_val_t *vals;
+    size_t val_count;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    /* disable the running cache so that the datastore plugin XPath filter is used */
+    sr_cache_running(0);
+
+    /* set lists with various quotes and special characters in their keys */
+    ret = sr_set_item_str(st->sess, "/defaults:l1[k='alpha']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/defaults:l1[k='with space']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/defaults:l1[k='a\"b']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/defaults:l1[k=\"o'clock\"]", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/defaults:l1[k='a/b[c]d:e@f,g+h-i.j*l?m(n)o<p>q{r}s|t~u^v\\w%x!#&=$;']",
+            NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read them back using double quotes in the predicates */
+    ret = sr_get_items(st->sess, "/defaults:l1[k=\"alpha\"]/k", 0, 0, &vals, &val_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(val_count, 1);
+    assert_string_equal(vals[0].data.string_val, "alpha");
+    sr_free_values(vals, val_count);
+
+    ret = sr_get_items(st->sess, "/defaults:l1[k=\"with space\"]/k", 0, 0, &vals, &val_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(val_count, 1);
+    assert_string_equal(vals[0].data.string_val, "with space");
+    sr_free_values(vals, val_count);
+
+    ret = sr_get_items(st->sess, "/defaults:l1[k=\"a/b[c]d:e@f,g+h-i.j*l?m(n)o<p>q{r}s|t~u^v\\w%x!#&=$;\"]/k", 0, 0,
+            &vals, &val_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(val_count, 1);
+    assert_string_equal(vals[0].data.string_val, "a/b[c]d:e@f,g+h-i.j*l?m(n)o<p>q{r}s|t~u^v\\w%x!#&=$;");
+    sr_free_values(vals, val_count);
+
+    /* a double quote in the key, single quotes must be used */
+    ret = sr_get_items(st->sess, "/defaults:l1[k='a\"b']/k", 0, 0, &vals, &val_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(val_count, 1);
+    assert_string_equal(vals[0].data.string_val, "a\"b");
+    sr_free_values(vals, val_count);
+
+    /* a single quote in the key, double quotes must be used */
+    ret = sr_get_items(st->sess, "/defaults:l1[k=\"o'clock\"]/k", 0, 0, &vals, &val_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(val_count, 1);
+    assert_string_equal(vals[0].data.string_val, "o'clock");
+    sr_free_values(vals, val_count);
+
+    /* read a list subtree using double quotes */
+    ret = sr_get_data(st->sess, "/defaults:l1[k=\"with space\"]/k", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
+    assert_int_equal(ret, 0);
+    sr_release_data(data);
+
+    str2 = "<l1 xmlns=\"urn:defaults\">\n"
+            "  <k>with space</k>\n"
+            "</l1>\n";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* remove an instance using double quotes */
+    ret = sr_delete_item(st->sess, "/defaults:l1[k=\"alpha\"]", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_get_items(st->sess, "/defaults:l1[k=\"alpha\"]/k", 0, 0, &vals, &val_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(val_count, 0);
+
+    /* cleanup */
+    sr_delete_item(st->sess, "/defaults:l1", 0);
+    sr_apply_changes(st->sess, 0);
+
+    /* enable the running cache back */
+    sr_cache_running(1);
+}
+
+/* TEST */
+static void
 test_factory_default(void **state)
 {
     struct state *st = (struct state *)*state;
@@ -888,6 +985,7 @@ main(void)
         cmocka_unit_test(test_oper_vals),
         cmocka_unit_test(test_union),
         cmocka_unit_test(test_key),
+        cmocka_unit_test(test_key_quotes),
         cmocka_unit_test(test_factory_default),
         cmocka_unit_test(test_subtree2xpath),
         cmocka_unit_test(test_max_depth),
