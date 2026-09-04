@@ -3594,24 +3594,25 @@ srpds_create_indices(redisContext *ctx, const char *mod_ns)
     sr_error_info_t *err_info = NULL;
     redis_bulk_t bulk = {0};
 
-    /* index for data */
+    /* index for data (use \x01 as the tag separator, a comma or any other printable
+     * character may appear in the data so separating tags with it would be wrong) */
     if ((err_info = srpds_bulk_query(ctx, &bulk,
             "FT.CREATE %s:data "
             "ON HASH PREFIX 1 %s:data: "
             "STOPWORDS 0 "
-            "SCHEMA a_path TAG CASESENSITIVE "
-            "b_name TAG CASESENSITIVE "
+            "SCHEMA a_path TAG SEPARATOR \x01 CASESENSITIVE "
+            "b_name TAG SEPARATOR \x01 CASESENSITIVE "
             "c_type NUMERIC "
-            "d_module_name TAG CASESENSITIVE "
+            "d_module_name TAG SEPARATOR \x01 CASESENSITIVE "
             "e_dflt_flag NUMERIC "
-            "f_keys TAG CASESENSITIVE "
-            "g_value TAG CASESENSITIVE "
+            "f_keys TAG SEPARATOR \x01 CASESENSITIVE "
+            "g_value TAG SEPARATOR \x01 CASESENSITIVE "
             "h_hints NUMERIC "
             "i_order NUMERIC "
-            "j_path_no_pred TAG CASESENSITIVE "
-            "k_prev TAG CASESENSITIVE "
+            "j_path_no_pred TAG SEPARATOR \x01 CASESENSITIVE "
+            "k_prev TAG SEPARATOR \x01 CASESENSITIVE "
             "l_is_prev_empty NUMERIC "
-            "m_path_modif TAG CASESENSITIVE "
+            "m_path_modif TAG SEPARATOR \x01 CASESENSITIVE "
             "n_meta_count NUMERIC ", mod_ns, mod_ns))) {
         goto cleanup;
     }
