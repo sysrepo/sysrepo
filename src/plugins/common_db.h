@@ -165,6 +165,18 @@ sr_error_info_t *srpds_uid2usr(const char *plg_name, uid_t uid, char **username)
 sr_error_info_t *srpds_gid2grp(const char *plg_name, gid_t gid, char **group);
 
 /**
+ * @brief Normalize the quotation of literals in a path to the canonical form used by lyd_path().
+ *
+ * Double quotes of literals are replaced with single quotes but only if the literal does not
+ * contain a single quote (otherwise double quotes must be kept, just like lyd_path() does).
+ * Needed so that a path can be used to match paths stored in the database that were generated
+ * by lyd_path().
+ *
+ * @param[in,out] path Path to normalize.
+ */
+void srpds_normalize_path_quotes(char *path);
+
+/**
  * @brief Get the escaped string for a MongoDB query.
  *
  * @param[in] plg_name Plugin name.

@@ -389,6 +389,47 @@ cleanup:
     return err_info;
 }
 
+void
+srpds_normalize_path_quotes(char *path)
+{
+    uint32_t i = 0, lit_start, len = strlen(path);
+    int convert;
+
+    while (i < len) {
+        if (path[i] == '\'') {
+            /* skip a single-quoted literal (it may contain double quotes) */
+            ++i;
+            while (i < len) {
+                if (path[i] == '\'') {
+                    break;
+                }
+                ++i;
+            }
+        } else if (path[i] == '"') {
+            /* a double-quoted literal, check whether it contains a single quote */
+            lit_start = i;
+            ++i;
+            convert = 1;
+            while (i < len) {
+                if (path[i] == '\'') {
+                    /* the literal can be expressed only with double quotes, just like lyd_path() does */
+                    convert = 0;
+                } else if (path[i] == '"') {
+                    break;
+                }
+                ++i;
+            }
+            if (convert) {
+                /* use single quotes if possible, that is the canonical form used by lyd_path() */
+                path[lit_start] = '\'';
+                assert(i < len);
+                path[i] = '\'';
+            }
+        }
+        ++i;
+    }
+}
+
 sr_error_info_t *
 srpds_escape_string(const char *plg_name, const char *string, char escape_character, char **escaped_string)
 {
