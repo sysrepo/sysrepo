@@ -343,7 +343,7 @@ notifd_rwlock_unlock(pthread_rwlock_t *lock, const char *func)
 static void
 notifd_graceful_shutdown(notifd_ctx_t *notifd_ctx)
 {
-    LY_ARRAY_COUNT_TYPE i;
+    LYA_COUNT_T i;
     notif_sub_t *sub;
     int r;
 
@@ -362,7 +362,7 @@ notifd_graceful_shutdown(notifd_ctx_t *notifd_ctx)
         return;
     }
 
-    LY_ARRAY_FOR(notifd_ctx->subs, i) {
+    LYA_FOR(notifd_ctx->subs, i) {
         sub = notifd_ctx->subs[i];
         if (sub->state != NOTIF_SUB_STATE_VALID) {
             continue;

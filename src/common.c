@@ -601,7 +601,7 @@ sr_remove_module_yang_r(const struct lys_module *ly_mod, const struct ly_ctx *ne
     sr_error_info_t *err_info = NULL;
     char *path;
     const struct lysp_module *pmod;
-    LY_ARRAY_COUNT_TYPE u;
+    LYA_COUNT_T u;
 
     if (sr_is_module_internal(ly_mod) || ly_ctx_get_module(new_ctx, ly_mod->name, ly_mod->revision) ||
             ly_set_contains(del_mod, (void *)ly_mod, NULL)) {
@@ -627,7 +627,7 @@ sr_remove_module_yang_r(const struct lys_module *ly_mod, const struct ly_ctx *ne
     }
 
     /* remove all submodule files */
-    LY_ARRAY_FOR(ly_mod->submodules, u) {
+    LYA_FOR(ly_mod->submodules, u) {
         if ((err_info = sr_path_yang_file(ly_mod->submodules[u].name,
                 ly_mod->submodules[u].revision, &path))) {
             goto cleanup;
@@ -645,7 +645,7 @@ sr_remove_module_yang_r(const struct lys_module *ly_mod, const struct ly_ctx *ne
     pmod = ly_mod->parsed;
     if (pmod) {
         /* remove all (unused) imports recursively */
-        LY_ARRAY_FOR(pmod->imports, u) {
+        LYA_FOR(pmod->imports, u) {
             if ((err_info = sr_remove_module_yang_r(pmod->imports[u].module, new_ctx, del_mod))) {
                 goto cleanup;
             }
@@ -866,7 +866,7 @@ sr_error_info_t *
 sr_store_module_yang_r(const struct lys_module *ly_mod)
 {
     sr_error_info_t *err_info = NULL;
-    LY_ARRAY_COUNT_TYPE u, v;
+    LYA_COUNT_T u, v;
 
     /* store module file */
     if ((err_info = sr_store_module_yang(ly_mod, NULL))) {
@@ -874,13 +874,13 @@ sr_store_module_yang_r(const struct lys_module *ly_mod)
     }
 
     /* store files of all submodules... */
-    LY_ARRAY_FOR(ly_mod->parsed->includes, u) {
+    LYA_FOR(ly_mod->parsed->includes, u) {
         if ((err_info = sr_store_module_yang(ly_mod, ly_mod->parsed->includes[u].submodule))) {
             return err_info;
         }
 
         /* ...and their imports */
-        LY_ARRAY_FOR(ly_mod->parsed->includes[u].submodule->imports, v) {
+        LYA_FOR(ly_mod->parsed->includes[u].submodule->imports, v) {
             if ((err_info = sr_store_module_yang_r(ly_mod->parsed->includes[u].submodule->imports[v].module))) {
                 return err_info;
             }
@@ -888,7 +888,7 @@ sr_store_module_yang_r(const struct lys_module *ly_mod)
     }
 
     /* recursively for all main module imports, as well */
-    LY_ARRAY_FOR(ly_mod->parsed->imports, u) {
+    LYA_FOR(ly_mod->parsed->imports, u) {
         if ((err_info = sr_store_module_yang_r(ly_mod->parsed->imports[u].module))) {
             return err_info;
         }
@@ -909,7 +909,7 @@ static sr_error_info_t *
 sr_collect_module_impl_deps_r(const struct lys_module *ly_mod, const struct lyd_node *sr_mods, struct ly_set *mod_set)
 {
     sr_error_info_t *err_info = NULL;
-    LY_ARRAY_COUNT_TYPE u;
+    LYA_COUNT_T u;
     struct ly_set *set = NULL;
     const struct lyd_node *node;
     const struct lys_module *dep_mod;
@@ -929,14 +929,14 @@ sr_collect_module_impl_deps_r(const struct lys_module *ly_mod, const struct lyd_
     }
 
     /* go through augments */
-    LY_ARRAY_FOR(ly_mod->augmented_by, u) {
+    LYA_FOR(ly_mod->augmented_by, u) {
         if ((err_info = sr_collect_module_impl_deps_r(ly_mod->augmented_by[u], sr_mods, mod_set))) {
             goto cleanup;
         }
     }
 
     /* go through deviations */
-    LY_ARRAY_FOR(ly_mod->deviated_by, u) {
+    LYA_FOR(ly_mod->deviated_by, u) {
         if ((err_info = sr_collect_module_impl_deps_r(ly_mod->deviated_by[u], sr_mods, mod_set))) {
             goto cleanup;
         }
@@ -1050,7 +1050,7 @@ sr_module_get_impl_inv_imports(const struct lys_module *ly_mod, struct ly_set *m
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *mod;
-    LY_ARRAY_COUNT_TYPE u, v;
+    LYA_COUNT_T u, v;
     uint32_t idx = 0;
     int found;
 
@@ -1062,7 +1062,7 @@ sr_module_get_impl_inv_imports(const struct lys_module *ly_mod, struct ly_set *m
         found = 0;
 
         /* check imports of the module */
-        LY_ARRAY_FOR(mod->parsed->imports, u) {
+        LYA_FOR(mod->parsed->imports, u) {
             if (mod->parsed->imports[u].module == ly_mod) {
                 found = 1;
                 break;
@@ -1071,8 +1071,8 @@ sr_module_get_impl_inv_imports(const struct lys_module *ly_mod, struct ly_set *m
 
         if (!found) {
             /* check import of all the submodules */
-            LY_ARRAY_FOR(mod->parsed->includes, v) {
-                LY_ARRAY_FOR(mod->parsed->includes[v].submodule->imports, u) {
+            LYA_FOR(mod->parsed->includes, v) {
+                LYA_FOR(mod->parsed->includes[v].submodule->imports, u) {
                     if (mod->parsed->includes[v].submodule->imports[u].module == ly_mod) {
                         found = 1;
                         break;
@@ -3095,7 +3095,7 @@ sr_schema_mount_create_contexts(struct ly_ctx *ly_ctx, const struct lyd_node *sr
     const struct lysc_node *snode = NULL;
     struct lysc_ext_instance *ext;
     ly_bool sm_data_free;
-    LY_ARRAY_COUNT_TYPE u;
+    LYA_COUNT_T u;
     uint32_t i;
 
     /* get all the extension instances */
@@ -3110,7 +3110,7 @@ sr_schema_mount_create_contexts(struct ly_ctx *ly_ctx, const struct lyd_node *sr
         }
 
         /* process all extensions of this node */
-        LY_ARRAY_FOR(snode->exts, u) {
+        LYA_FOR(snode->exts, u) {
             ext = &snode->exts[u];
             if (strcmp(ext->def->module->name, "ietf-yang-schema-mount") || strcmp(ext->def->name, "mount-point")) {
                 /* not a mount point extension */
@@ -4166,7 +4166,7 @@ sr_error_info_t *
 sr_sizedarray2nullarray(const char **sa, const char ***na)
 {
     sr_error_info_t *err_info = NULL;
-    LY_ARRAY_COUNT_TYPE c = LY_ARRAY_COUNT(sa);
+    LYA_COUNT_T c = LYA_COUNT(sa);
 
     if (!sa) {
         *na = NULL;
@@ -4510,7 +4510,7 @@ sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *sr_val, const char *xpath, 
     sr_error_info_t *err_info = NULL;
     struct lysc_node_leaf *sleaf;
     const struct lysc_type *t, *t2;
-    LY_ARRAY_COUNT_TYPE u;
+    LYA_COUNT_T u;
 
     *str = NULL;
 
@@ -4548,7 +4548,7 @@ sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *sr_val, const char *xpath, 
         }
         if (t->basetype == LY_TYPE_UNION) {
             t2 = NULL;
-            LY_ARRAY_FOR(((struct lysc_type_union *)t)->types, u) {
+            LYA_FOR(((struct lysc_type_union *)t)->types, u) {
                 if (((struct lysc_type_union *)t)->types[u]->basetype == LY_TYPE_DEC64) {
                     t2 = ((struct lysc_type_union *)t)->types[u];
                     break;

@@ -2018,7 +2018,7 @@ static LY_ERR
 sr_event_notif_lysc_dfs_cb(struct lysc_node *node, void *data, ly_bool *dfs_continue)
 {
     int *found = (int *)data;
-    LY_ARRAY_COUNT_TYPE u;
+    LYA_COUNT_T u;
     const struct lysc_ext *ext;
 
     (void)dfs_continue;
@@ -2029,7 +2029,7 @@ sr_event_notif_lysc_dfs_cb(struct lysc_node *node, void *data, ly_bool *dfs_cont
         /* just stop the traversal */
         return LY_EEXIST;
     } else {
-        LY_ARRAY_FOR(node->exts, u) {
+        LYA_FOR(node->exts, u) {
             ext = node->exts[u].def;
             if (!strcmp(ext->name, "mount-point") && !strcmp(ext->module->name, "ietf-yang-schema-mount")) {
                 /* any data including notifications could be mounted */

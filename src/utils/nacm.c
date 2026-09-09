@@ -1507,7 +1507,7 @@ sr_nacm_allowed_node(const struct lyd_node *node, const char *node_path, const s
         RULE_PARTIAL_MATCH_DENY = 2
     } partial_access = RULE_PARTIAL_MATCH_NONE;
     int path_match;
-    LY_ARRAY_COUNT_TYPE u;
+    LYA_COUNT_T u;
     char *path;
 
     assert(node || (node_path && node_schema));
@@ -1620,7 +1620,7 @@ sr_nacm_allowed_node(const struct lyd_node *node, const char *node_path, const s
 
 step10:
     /* 10) check default-deny-all extension */
-    LY_ARRAY_FOR(node_schema->exts, u) {
+    LYA_FOR(node_schema->exts, u) {
         if (!strcmp(node_schema->exts[u].def->module->name, "ietf-netconf-acm")) {
             if (!strcmp(node_schema->exts[u].def->name, "default-deny-all")) {
                 if (def) {

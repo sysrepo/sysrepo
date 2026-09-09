@@ -388,7 +388,7 @@ sr_modinfo_collect_ext_deps(const struct lysc_node *mp_node, struct sr_mod_info_
 {
     sr_error_info_t *err_info = NULL;
     char *path = NULL, *str_val = NULL, *mod_name;
-    LY_ARRAY_COUNT_TYPE u;
+    LYA_COUNT_T u;
     struct lysc_ext_instance *sm_ext = NULL;
     struct ly_set *set = NULL;
     struct lyd_node_term *term;
@@ -398,7 +398,7 @@ sr_modinfo_collect_ext_deps(const struct lysc_node *mp_node, struct sr_mod_info_
     uint32_t i;
 
     /* check there is a mount-point defined */
-    LY_ARRAY_FOR(mp_node->exts, u) {
+    LYA_FOR(mp_node->exts, u) {
         if (!strcmp(mp_node->exts[u].def->module->name, "ietf-yang-schema-mount") &&
                 !strcmp(mp_node->exts[u].def->name, "mount-point")) {
             sm_ext = &mp_node->exts[u];
@@ -3870,7 +3870,7 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
 
         /* edit target */
         if (!(xpath = lyd_path(elem, LYD_PATH_STD, NULL, 0))) {
-            LOGMEM(&err_info);
+            SR_ERRINFO_MEM(&err_info);
             goto cleanup;
         }
         err_info = sr_lyd_new_term(root, NULL, "target", xpath);

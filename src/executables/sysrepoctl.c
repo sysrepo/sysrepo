@@ -336,7 +336,7 @@ srctl_list_collect(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct list
     const char *str, *feat;
     int ret = SR_ERR_OK, enabled;
     uint32_t idx = 0;
-    LY_ARRAY_COUNT_TYPE u;
+    LYA_COUNT_T u;
 
     while ((ly_mod = ly_ctx_get_module_iter(ly_ctx, &idx))) {
         if (!strcmp(ly_mod->name, "sysrepo")) {
@@ -369,7 +369,7 @@ srctl_list_collect(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct list
 
         /* collect enabled features */
         if (ly_mod->implemented) {
-            LY_ARRAY_FOR(ly_mod->compiled->features, u) {
+            LYA_FOR(ly_mod->compiled->features, u) {
                 feat = ly_mod->compiled->features[u];
                 cur_item->features = realloc(cur_item->features, strlen(cur_item->features) + strlen(feat) + 2);
                 if (cur_item->features[0]) {
@@ -407,7 +407,7 @@ srctl_list_collect(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct list
         }
 
         /* new submodules */
-        LY_ARRAY_FOR(ly_mod->submodules, u) {
+        LYA_FOR(ly_mod->submodules, u) {
             *list = realloc(*list, (*list_count + 1) * sizeof **list);
             cur_item = &(*list)[*list_count];
             ++(*list_count);

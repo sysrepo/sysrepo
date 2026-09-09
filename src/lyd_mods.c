@@ -123,7 +123,7 @@ sr_lydmods_add_module_with_imps_r(struct lyd_node *sr_mods, const struct lys_mod
     void *mem;
     char *xpath = NULL;
     int found = 0;
-    LY_ARRAY_COUNT_TYPE i, j;
+    LYA_COUNT_T i, j;
 
     if (ly_mod->implemented) {
         if (*new_mod_count) {
@@ -169,16 +169,16 @@ sr_lydmods_add_module_with_imps_r(struct lyd_node *sr_mods, const struct lys_mod
     }
 
     /* all newly implemented modules will be added also from imports and includes, recursively */
-    LY_ARRAY_FOR(ly_mod->parsed->imports, i) {
+    LYA_FOR(ly_mod->parsed->imports, i) {
         if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod->parsed->imports[i].module, module_ds, owner,
                 group, perm, new_mods, new_mod_count))) {
             goto cleanup;
         }
     }
 
-    LY_ARRAY_FOR(ly_mod->parsed->includes, i) {
+    LYA_FOR(ly_mod->parsed->includes, i) {
         lysp_submod = ly_mod->parsed->includes[i].submodule;
-        LY_ARRAY_FOR(lysp_submod->imports, j) {
+        LYA_FOR(lysp_submod->imports, j) {
             if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, lysp_submod->imports[j].module, module_ds, owner,
                     group, perm, new_mods, new_mod_count))) {
                 goto cleanup;
@@ -212,7 +212,7 @@ sr_lydmods_add_module_with_imps(struct lyd_node *sr_mods, const struct lys_modul
 {
     sr_error_info_t *err_info = NULL;
     const struct lysp_submodule *lysp_submod;
-    LY_ARRAY_COUNT_TYPE i, j;
+    LYA_COUNT_T i, j;
 
     assert(ly_mod->implemented);
 
@@ -222,16 +222,16 @@ sr_lydmods_add_module_with_imps(struct lyd_node *sr_mods, const struct lys_modul
     }
 
     /* all newly implemented modules will be added also from imports and includes, recursively */
-    LY_ARRAY_FOR(ly_mod->parsed->imports, i) {
+    LYA_FOR(ly_mod->parsed->imports, i) {
         if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod->parsed->imports[i].module, module_ds, owner,
                 group, perm, new_mods, new_mod_count))) {
             goto cleanup;
         }
     }
 
-    LY_ARRAY_FOR(ly_mod->parsed->includes, i) {
+    LYA_FOR(ly_mod->parsed->includes, i) {
         lysp_submod = ly_mod->parsed->includes[i].submodule;
-        LY_ARRAY_FOR(lysp_submod->imports, j) {
+        LYA_FOR(lysp_submod->imports, j) {
             if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, lysp_submod->imports[j].module, module_ds, owner,
                     group, perm, new_mods, new_mod_count))) {
                 goto cleanup;
@@ -560,7 +560,7 @@ sr_lydmods_moddep_type(const struct lysc_type *type, const struct lysc_node *nod
     const struct lysc_type_leafref *lref;
     struct ly_set *atoms = NULL;
     char *default_val = NULL;
-    LY_ARRAY_COUNT_TYPE u;
+    LYA_COUNT_T u;
     uint32_t i;
     int valid;
 
@@ -621,7 +621,7 @@ sr_lydmods_moddep_type(const struct lysc_type *type, const struct lysc_node *nod
         break;
     case LY_TYPE_UNION:
         uni = (struct lysc_type_union *)type;
-        LY_ARRAY_FOR(uni->types, u) {
+        LYA_FOR(uni->types, u) {
             if ((err_info = sr_lydmods_moddep_type(uni->types[u], node, op_node, sr_deps))) {
                 goto cleanup;
             }
@@ -670,7 +670,7 @@ sr_lydmods_add_all_deps_dfs_cb(struct lysc_node *node, void *data, ly_bool *dfs_
     struct lysc_when **when = NULL;
     struct lysc_must *musts = NULL;
     const struct lysc_node *op_node;
-    LY_ARRAY_COUNT_TYPE u;
+    LYA_COUNT_T u;
     int atom_opts;
     struct sr_lydmods_deps_dfs_arg *arg = data;
     char *sm_ext_path = NULL;
@@ -713,7 +713,7 @@ sr_lydmods_add_all_deps_dfs_cb(struct lysc_node *node, void *data, ly_bool *dfs_
             goto cleanup;
         }
     }
-    LY_ARRAY_FOR(when, u) {
+    LYA_FOR(when, u) {
         if ((err_info = sr_lys_find_expr_atoms(when[u]->context, node->module, when[u]->cond, when[u]->prefixes,
                 atom_opts, &atoms))) {
             goto cleanup;
@@ -724,7 +724,7 @@ sr_lydmods_add_all_deps_dfs_cb(struct lysc_node *node, void *data, ly_bool *dfs_
             goto cleanup;
         }
     }
-    LY_ARRAY_FOR(musts, u) {
+    LYA_FOR(musts, u) {
         if ((err_info = sr_lys_find_expr_atoms(node, node->module, musts[u].cond, musts[u].prefixes, atom_opts, &atoms))) {
             goto cleanup;
         }
@@ -734,7 +734,7 @@ sr_lydmods_add_all_deps_dfs_cb(struct lysc_node *node, void *data, ly_bool *dfs_
             goto cleanup;
         }
     }
-    LY_ARRAY_FOR(node->exts, u) {
+    LYA_FOR(node->exts, u) {
         if (!strcmp(node->exts[u].def->module->name, "ietf-yang-schema-mount") &&
                 !strcmp(node->exts[u].def->name, "mount-point")) {
             /* add the schema mount point to sysrepo internal data */

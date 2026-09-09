@@ -246,7 +246,7 @@ subscription_state_change_notif_send(notifd_ctx_t *notifd_ctx, notif_sub_t *sub,
     int rc = SR_ERR_OK, r;
     const struct ly_ctx *ly_ctx;
     struct lyd_node *notif = NULL;
-    LY_ARRAY_COUNT_TYPE i, start, end;
+    LYA_COUNT_T i, start, end;
 
     if (!sub) {
         return SR_ERR_INVAL_ARG;
@@ -263,7 +263,7 @@ subscription_state_change_notif_send(notifd_ctx_t *notifd_ctx, notif_sub_t *sub,
         end = start + 1;
     } else {
         start = 0;
-        end = LY_ARRAY_COUNT(sub->receivers);
+        end = LYA_COUNT(sub->receivers);
     }
 
     for (i = start; i < end; i++) {
@@ -743,10 +743,10 @@ notification_dispatch_stop(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver)
 static notif_receiver_t *
 receiver_find_by_cb_data(notifd_ctx_t *notifd_ctx, const notif_cb_data_t *data)
 {
-    LY_ARRAY_COUNT_TYPE i, j;
+    LYA_COUNT_T i, j;
 
-    LY_ARRAY_FOR(notifd_ctx->subs, i) {
-        LY_ARRAY_FOR(notifd_ctx->subs[i]->receivers, j) {
+    LYA_FOR(notifd_ctx->subs, i) {
+        LYA_FOR(notifd_ctx->subs[i]->receivers, j) {
             if (notifd_ctx->subs[i]->receivers[j].cb_data == data) {
                 return &notifd_ctx->subs[i]->receivers[j];
             }

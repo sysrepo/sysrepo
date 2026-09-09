@@ -522,9 +522,9 @@ cleanup:
 notif_sub_t *
 subscription_find_by_id(notifd_ctx_t *ctx, uint32_t sub_id)
 {
-    LY_ARRAY_COUNT_TYPE i;
+    LYA_COUNT_T i;
 
-    LY_ARRAY_FOR(ctx->subs, i) {
+    LYA_FOR(ctx->subs, i) {
         if (ctx->subs[i]->id == sub_id) {
             return ctx->subs[i];
         }
@@ -536,9 +536,9 @@ subscription_find_by_id(notifd_ctx_t *ctx, uint32_t sub_id)
 notif_receiver_t *
 receiver_find_by_name(notif_sub_t *sub, const char *name)
 {
-    LY_ARRAY_COUNT_TYPE i;
+    LYA_COUNT_T i;
 
-    LY_ARRAY_FOR(sub->receivers, i) {
+    LYA_FOR(sub->receivers, i) {
         if (!strcmp(sub->receivers[i].name, name)) {
             return &sub->receivers[i];
         }
@@ -549,9 +549,9 @@ receiver_find_by_name(notif_sub_t *sub, const char *name)
 notif_receiver_inst_t *
 receiver_inst_find_by_name(notifd_ctx_t *ctx, const char *name)
 {
-    LY_ARRAY_COUNT_TYPE i;
+    LYA_COUNT_T i;
 
-    LY_ARRAY_FOR(ctx->recv_insts, i) {
+    LYA_FOR(ctx->recv_insts, i) {
         if (!strcmp(ctx->recv_insts[i]->name, name)) {
             return ctx->recv_insts[i];
         }
@@ -965,7 +965,7 @@ handle_source_address(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const struct l
 {
     int rc = SR_ERR_OK;
     notif_receiver_t *receiver;
-    LY_ARRAY_COUNT_TYPE i, j, count;
+    LYA_COUNT_T i, j, count;
 
     /* optional leaf, need to handle all but move */
     if ((op == SR_OP_CREATED) || (op == SR_OP_MODIFIED)) {
@@ -985,7 +985,7 @@ handle_source_address(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const struct l
 
     if ((op == SR_OP_CREATED) || (op == SR_OP_MODIFIED) || (op == SR_OP_DELETED)) {
         /* reconnect all the receivers, since we will need to create new sockets with the new local address */
-        count = LY_ARRAY_COUNT(sub->receivers);
+        count = LYA_COUNT(sub->receivers);
         for (i = 0; i < count; i++) {
             receiver = &sub->receivers[i];
             if (!receiver->inst) {
@@ -1222,7 +1222,7 @@ subscription_receivers_disconnect(notifd_ctx_t *notifd_ctx, notif_sub_t *sub)
 {
     notif_receiver_t *receiver;
 
-    LY_ARRAY_FOR(sub->receivers, notif_receiver_t, receiver) {
+    LYA_FOR_EACH(sub->receivers, receiver) {
         /* disconnect the receiver */
         notification_dispatch_stop(notifd_ctx, receiver);
         notif_receiver_disconnect(receiver);
@@ -1245,7 +1245,7 @@ subscription_create_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *n
     /* create a new sub and add it to the context array */
     sub = calloc(1, sizeof *sub);
     CHECK_ERRMEM_RET(sub);
-    LY_ARRAY_NEW_GOTO(LYD_CTX(node), notifd_ctx->subs, sub_ptr, rc, cleanup);
+    LYA_ADD_ITEM(notifd_ctx->subs, sub_ptr, ERRMEM; rc = SR_ERR_NO_MEMORY; goto cleanup);
     *sub_ptr = sub;
     sub->state = NOTIF_SUB_STATE_VALID;
 
@@ -1277,7 +1277,7 @@ cleanup:
 static void
 subscription_destroy(notifd_ctx_t *notifd_ctx, notif_sub_t *sub)
 {
-    LY_ARRAY_COUNT_TYPE i;
+    LYA_COUNT_T i;
 
     if (!sub) {
         return;
@@ -1289,19 +1289,19 @@ subscription_destroy(notifd_ctx_t *notifd_ctx, notif_sub_t *sub)
     free(sub->filter_ref);
     free(sub->purpose);
     free(sub->local_address);
-    for (i = LY_ARRAY_COUNT(sub->receivers); i > 0; i--) {
+    for (i = LYA_COUNT(sub->receivers); i > 0; i--) {
         receiver_destroy(notifd_ctx, sub, &sub->receivers[i - 1]);
     }
-    LY_ARRAY_FREE(sub->receivers);
+    LYA_FREE(sub->receivers);
 
     /* replace with the last and decrement array */
-    LY_ARRAY_FOR(notifd_ctx->subs, i) {
+    LYA_FOR(notifd_ctx->subs, i) {
         if (notifd_ctx->subs[i] == sub) {
-            notifd_ctx->subs[i] = notifd_ctx->subs[LY_ARRAY_COUNT(notifd_ctx->subs) - 1];
+            notifd_ctx->subs[i] = notifd_ctx->subs[LYA_COUNT(notifd_ctx->subs) - 1];
             break;
         }
     }
-    LY_ARRAY_DECREMENT_FREE(notifd_ctx->subs);
+    LYA_DECREMENT_FREE(notifd_ctx->subs);
     free(sub);
 }
 
@@ -1383,7 +1383,7 @@ receiver_create_from_node(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const stru
     notif_receiver_t *receiver;
 
     /* create a new receiver */
-    LY_ARRAY_NEW_GOTO(LYD_CTX(node), sub->receivers, receiver, rc, cleanup);
+    LYA_ADD_ITEM(sub->receivers, receiver, ERRMEM; rc = SR_ERR_NO_MEMORY; goto cleanup);
     receiver->srsn_data.fd = -1;
     receiver->sub = sub;
 
@@ -1439,8 +1439,8 @@ receiver_destroy(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_receiver_t *r
     receiver->inst = NULL;
 
     /* replace with the last and decrement array */
-    *receiver = sub->receivers[LY_ARRAY_COUNT(sub->receivers) - 1];
-    LY_ARRAY_DECREMENT_FREE(sub->receivers);
+    *receiver = sub->receivers[LYA_COUNT(sub->receivers) - 1];
+    LYA_DECREMENT_FREE(sub->receivers);
 }
 
 int
@@ -1516,7 +1516,7 @@ receiver_instance_create_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_no
     /* create a new receiver instance and add it to the context array */
     recv_inst = calloc(1, sizeof *recv_inst);
     CHECK_ERRMEM_RET(recv_inst);
-    LY_ARRAY_NEW_GOTO(LYD_CTX(node), notifd_ctx->recv_insts, recv_inst_ptr, rc, cleanup);
+    LYA_ADD_ITEM(notifd_ctx->recv_insts, recv_inst_ptr, ERRMEM; rc = SR_ERR_NO_MEMORY; goto cleanup);
     *recv_inst_ptr = recv_inst;
 
     /* parse the receiver instance */
@@ -1540,7 +1540,7 @@ cleanup:
 static void
 receiver_instance_destroy(notifd_ctx_t *notifd_ctx, notif_receiver_inst_t *recv_inst)
 {
-    LY_ARRAY_COUNT_TYPE i;
+    LYA_COUNT_T i;
 
     if (!recv_inst) {
         return;
@@ -1555,13 +1555,13 @@ receiver_instance_destroy(notifd_ctx_t *notifd_ctx, notif_receiver_inst_t *recv_
     recv_inst->ops = NULL;
 
     /* replace with the last and decrement array */
-    LY_ARRAY_FOR(notifd_ctx->recv_insts, i) {
+    LYA_FOR(notifd_ctx->recv_insts, i) {
         if (notifd_ctx->recv_insts[i] == recv_inst) {
-            notifd_ctx->recv_insts[i] = notifd_ctx->recv_insts[LY_ARRAY_COUNT(notifd_ctx->recv_insts) - 1];
+            notifd_ctx->recv_insts[i] = notifd_ctx->recv_insts[LYA_COUNT(notifd_ctx->recv_insts) - 1];
             break;
         }
     }
-    LY_ARRAY_DECREMENT_FREE(notifd_ctx->recv_insts);
+    LYA_DECREMENT_FREE(notifd_ctx->recv_insts);
     free(recv_inst);
 }
 
@@ -1595,7 +1595,7 @@ subscription_resubscribe(notifd_ctx_t *notifd_ctx, notif_sub_t *sub)
     int rc = SR_ERR_OK;
     notif_receiver_t *receiver;
 
-    LY_ARRAY_FOR(sub->receivers, notif_receiver_t, receiver) {
+    LYA_FOR_EACH(sub->receivers, receiver) {
         /* stop the dispatch, which will unsubscribe from sysrepo and stop all timers */
         notification_dispatch_stop(notifd_ctx, receiver);
 
@@ -1616,7 +1616,7 @@ process_modified_subscriptions(notifd_ctx_t *notifd_ctx)
     notif_sub_t **sub;
 
     /* go through all subs and send subscription-modified for those that are modified */
-    LY_ARRAY_FOR(notifd_ctx->subs, notif_sub_t *, sub) {
+    LYA_FOR_EACH(notifd_ctx->subs, sub) {
         if ((*sub)->resubscribe) {
             r = subscription_resubscribe(notifd_ctx, *sub);
             if (!r) {
@@ -1652,15 +1652,15 @@ process_modified_receiver_instances(notifd_ctx_t *notifd_ctx)
     notif_receiver_t *receiver;
 
     /* go through all receiver instances and reconnect those that are modified */
-    LY_ARRAY_FOR(notifd_ctx->recv_insts, notif_receiver_inst_t *, recv_inst) {
+    LYA_FOR_EACH(notifd_ctx->recv_insts, recv_inst) {
         if (!(*recv_inst)->modified) {
             /* if not modified, skip */
             continue;
         }
 
         /* reconnect all referencing receivers */
-        LY_ARRAY_FOR(notifd_ctx->subs, notif_sub_t *, sub) {
-            LY_ARRAY_FOR((*sub)->receivers, notif_receiver_t, receiver) {
+        LYA_FOR_EACH(notifd_ctx->subs, sub) {
+            LYA_FOR_EACH((*sub)->receivers, receiver) {
                 if (receiver->inst == *recv_inst) {
                     notif_receiver_reconnect(notifd_ctx, *sub, receiver, NULL);
                 }
@@ -1694,7 +1694,7 @@ handle_stream_filter(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, int 
     filter_inst_name = lyd_get_value(filter_inst_name_node);
 
     /* find the sub(s) that reference this filter and update their xpath_filter */
-    LY_ARRAY_FOR(notifd_ctx->subs, notif_sub_t *, sub) {
+    LYA_FOR_EACH(notifd_ctx->subs, sub) {
         r = 0;
         if ((*sub)->filter_ref && !strcmp((*sub)->filter_ref, filter_inst_name)) {
             /* match */
@@ -2194,20 +2194,20 @@ cleanup:
 void
 notifd_ctx_destroy(notifd_ctx_t *notifd_ctx)
 {
-    LY_ARRAY_COUNT_TYPE i;
+    LYA_COUNT_T i;
 
     if (!notifd_ctx) {
         return;
     }
 
     /* destroy all subscriptions (includes stopping dispatch, disconnecting receivers, freeing memory) */
-    for (i = LY_ARRAY_COUNT(notifd_ctx->subs); i > 0; i--) {
+    for (i = LYA_COUNT(notifd_ctx->subs); i > 0; i--) {
         subscription_destroy(notifd_ctx, notifd_ctx->subs[i - 1]);
     }
     notifd_ctx->subs = NULL;
 
     /* destroy all receiver instances */
-    for (i = LY_ARRAY_COUNT(notifd_ctx->recv_insts); i > 0; i--) {
+    for (i = LYA_COUNT(notifd_ctx->recv_insts); i > 0; i--) {
         receiver_instance_destroy(notifd_ctx, notifd_ctx->recv_insts[i - 1]);
     }
     notifd_ctx->recv_insts = NULL;
