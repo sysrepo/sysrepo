@@ -513,9 +513,8 @@ srsn_yp_on_change_target_path(const struct lyd_node *node, const char *prev_valu
 
     *node_path = NULL;
 
-    if (lysc_is_dup_inst_list(node->schema)) {
+    if (lysc_is_dup_inst_list(node->schema) && prev_value) {
         /* generate path for the node without the predicate */
-        assert(prev_value);
         tmp = lyd_path(node, LYD_PATH_STD_NO_LAST_PRED, NULL, 0);
         SR_CHECK_MEM_GOTO(!tmp, err_info, cleanup);
 
@@ -533,7 +532,7 @@ srsn_yp_on_change_target_path(const struct lyd_node *node, const char *prev_valu
             goto cleanup;
         }
     } else {
-        /* standard path */
+        /* standard path (even for dup-inst lists on DELETE, we have no prev_value to use) */
         *node_path = lyd_path(node, LYD_PATH_STD, NULL, 0);
         SR_CHECK_MEM_GOTO(!*node_path, err_info, cleanup);
     }
