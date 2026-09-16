@@ -149,7 +149,7 @@ sr_cond_wait_(sr_cond_t *cond, pthread_mutex_t *mutex, clockid_t clockid, struct
 int
 sr_cond_wait(sr_cond_t *cond, pthread_mutex_t *mutex)
 {
-    return sr_cond_wait_(cond, mutex, 0, NULL);
+    return sr_cond_wait_(cond, mutex, CLOCK_MONOTONIC, NULL);
 }
 
 int
