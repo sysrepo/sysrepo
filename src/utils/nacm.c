@@ -2251,11 +2251,17 @@ sr_nacm_check_diff_r(const struct lyd_node *diff, const char *user, const char *
                 return err_info;
             }
 
+            if (access == SR_NACM_ACCESS_PARTIAL_DENY) {
+                /* we are analyzing every node separately, default or explicit rule make no difference for deny */
+                access = SR_NACM_ACCESS_DENY;
+            }
+            /* partial permit does not allow access to the descendants, continue recursion */
+
             if (access == SR_NACM_ACCESS_PERMIT) {
                 /* whole subtree permitted, continue with sibling subtrees */
                 continue;
             } else if (access == SR_NACM_ACCESS_DENY) {
-                /* node denied explicitly, access denied */
+                /* node with operation denied */
                 denied->denied = 1;
                 denied->node = diff;
                 denied->rule_name = rule ? strdup(rule->name) : NULL;

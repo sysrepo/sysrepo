@@ -42,6 +42,7 @@ setup_f(void **state)
     struct state *st;
     const char *schema_paths[] = {
         TESTS_SRC_DIR "/files/test.yang",
+        TESTS_SRC_DIR "/files/plugin.yang",
         NULL
     };
 
@@ -73,6 +74,7 @@ teardown_f(void **state)
     struct state *st = (struct state *)*state;
     const char *module_names[] = {
         "test",
+        "plugin",
         NULL
     };
 
@@ -815,6 +817,163 @@ test_read_var(void **state)
     free(str);
 }
 
+/* TEST */
+static int
+setup_write_partial_deny_nacm(void **state)
+{
+    struct state *st = (struct state *)*state;
+    const struct ly_ctx *ctx;
+    const char *data;
+    struct lyd_node *edit;
+
+    /* write-default deny and exactly one permit rule, on the DESCENDANT leaf
+     * /plugin:simple-cont/simple-cont4/prefix/l */
+    data = "<nacm xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-acm\">\n"
+            "  <write-default>deny</write-default>\n"
+            "  <enable-external-groups>false</enable-external-groups>\n"
+            "  <groups>\n"
+            "    <group>\n"
+            "      <name>test-group</name>\n"
+            "      <user-name>test-user</user-name>\n"
+            "    </group>\n"
+            "  </groups>\n"
+            "  <rule-list>\n"
+            "    <name>rule1</name>\n"
+            "    <group>test-group</group>\n"
+            "    <rule>\n"
+            "      <name>allow-prefix-l</name>\n"
+            "      <path xmlns:s=\"s\">/s:simple-cont/s:simple-cont4/s:prefix/s:l</path>\n"
+            "      <access-operations>create read update delete</access-operations>\n"
+            "      <action>permit</action>\n"
+            "    </rule>\n"
+            "  </rule-list>\n"
+            "</nacm>\n";
+    ctx = sr_acquire_context(st->conn);
+    if (lyd_parse_data_mem(ctx, data, LYD_XML, LYD_PARSE_STRICT | LYD_PARSE_ONLY, 0, &edit)) {
+        sr_release_context(st->conn);
+        return 1;
+    }
+    if (sr_edit_batch(st->sess, edit, "merge")) {
+        lyd_free_siblings(edit);
+        sr_release_context(st->conn);
+        return 1;
+    }
+    lyd_free_siblings(edit);
+    sr_release_context(st->conn);
+    if (sr_apply_changes(st->sess, 0)) {
+        return 1;
+    }
+
+    /* set user */
+    if (sr_nacm_set_user(st->sess, "test-user")) {
+        return 1;
+    }
+
+    return 0;
+}
+
+static int
+teardown_write_partial_deny_nacm(void **state)
+{
+    struct state *st = (struct state *)*state;
+
+    /* clear user */
+    if (sr_nacm_set_user(st->sess, NULL)) {
+        return 1;
+    }
+
+    /* clear data */
+    if (sr_delete_item(st->sess, "/plugin:simple-cont", 0)) {
+        return 1;
+    }
+    if (sr_delete_item(st->sess, "/ietf-netconf-acm:nacm", 0)) {
+        return 1;
+    }
+    if (sr_apply_changes(st->sess, 0)) {
+        return 1;
+    }
+
+    return 0;
+}
+
+static void
+test_write_partial_deny(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_session_ctx_t *admin = NULL;
+    sr_data_t *data;
+    int ret;
+
+    /* second session without any NACM user, it performs the unrestricted writes */
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &admin);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* CONTROL 1: a presence container no rule mentions must not be creatable,
+     * otherwise write-default deny is not being enforced at all */
+    ret = sr_set_item_str(st->sess, "/plugin:simple-cont/simple-cont4/prefix2", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_UNAUTHORIZED);
+    sr_discard_changes(st->sess);
+
+    /* CONTROL 2: the rule does target a descendant of "prefix", so "prefix" is a partial
+     * match and its verdict is PARTIAL_DENY (and not a plain DENY) */
+    ret = sr_set_item_str(admin, "/plugin:simple-cont/simple-cont4/prefix/l", "admin", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(admin, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(st->sess, "/plugin:simple-cont/simple-cont4/prefix/l", "user", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* remove the whole subtree again */
+    ret = sr_delete_item(admin, "/plugin:simple-cont/simple-cont4", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(admin, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* TEST A -- create: the empty presence container the rule points BELOW. No rule permits
+     * the container itself and there is not even a permitted descendant in the edit, so
+     * write-default deny must deny it */
+    ret = sr_set_item_str(st->sess, "/plugin:simple-cont/simple-cont4/prefix", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_UNAUTHORIZED);
+    sr_discard_changes(st->sess);
+
+    /* the return code is not the whole verdict -- it must really not be there */
+    ret = sr_get_data(admin, "/plugin:simple-cont/simple-cont4/prefix", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_null(data);
+
+    /* TEST B -- delete: the same node, in the other direction, with the permitted child
+     * present. The diff of "delete the container" therefore DOES contain a node the rule
+     * permits, so a resolution that asks only "is some descendant permitted?" -- which is how
+     * the read walk resolves PARTIAL_DENY (nacm.c:1887-1894) -- answers yes here and grants
+     * the delete. Asserting only TEST A would accept such a resolution while the protected
+     * container remains deletable, hence both directions are asserted. */
+    ret = sr_set_item_str(admin, "/plugin:simple-cont/simple-cont4/prefix/l", "admin", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(admin, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_delete_item(st->sess, "/plugin:simple-cont/simple-cont4/prefix", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_UNAUTHORIZED);
+    sr_discard_changes(st->sess);
+
+    /* and it must still be there */
+    ret = sr_get_data(admin, "/plugin:simple-cont/simple-cont4/prefix", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_non_null(data);
+    sr_release_data(data);
+
+    sr_session_stop(admin);
+}
+
 int
 main(void)
 {
@@ -825,6 +984,8 @@ main(void)
         cmocka_unit_test_setup_teardown(test_write, setup_write_nacm, teardown_nacm),
         cmocka_unit_test_setup_teardown(test_exec, setup_exec_nacm, teardown_nacm),
         cmocka_unit_test_setup_teardown(test_read_var, setup_read_var_nacm, teardown_nacm),
+        cmocka_unit_test_setup_teardown(test_write_partial_deny, setup_write_partial_deny_nacm,
+                teardown_write_partial_deny_nacm),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
