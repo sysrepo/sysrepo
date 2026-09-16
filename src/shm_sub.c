@@ -45,7 +45,6 @@
 #include "shm_mod.h"
 #include "subscr.h"
 #include "sysrepo.h"
-#include "utils/nacm.h"
 
 /**
  * @brief Generic structure for parallel notifications.
@@ -4710,42 +4709,13 @@ cleanup:
     return err_info;
 }
 
-/**
- * @brief Whether a notification is valid (not filtered out) for a notif subscription.
- *
- * @param[in] input Operation input data tree.
- * @param[in] xpath Full subscription XPath.
- * @return 0 if not, non-zero is it is.
- */
-static int
-sr_shmsub_notif_listen_filter_is_valid(const struct lyd_node *notif, const char *xpath)
-{
-    sr_error_info_t *err_info = NULL;
-    ly_bool result;
-
-    if (!xpath) {
-        return 1;
-    }
-
-    if (lyd_eval_xpath(notif, xpath, &result)) {
-        SR_ERRINFO_INT(&err_info);
-        sr_errinfo_free(&err_info);
-        return 0;
-    } else if (result) {
-        /* valid subscription */
-        return 1;
-    }
-
-    return 0;
-}
-
 sr_error_info_t *
 sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, request_id, operation_id, valid_subscr_count;
-    struct lyd_node *notif = NULL, *notif_op;
-    struct sr_denied denied = {0};
+    struct lyd_node *notif = NULL;
+    int filtered_out;
     struct timespec notif_ts_mono, notif_ts_real;
     char *shm_data_ptr;
     sr_sub_shm_t *sub_shm;
@@ -4823,29 +4793,20 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
             continue;
         }
 
-        /* check NACM */
-        free(denied.rule_name);
-        memset(&denied, 0, sizeof denied);
-        if (sub->sess->nacm_user && (err_info = sr_nacm_check_op(sub->sess->nacm_user, notif, &denied))) {
+        /* check filter and NACM */
+        if ((err_info = sr_notif_check_filter(sub->sess, notif, sub->xpath, &filtered_out))) {
             goto cleanup;
         }
 
-        /* find the notification */
-        notif_op = notif;
-        if ((err_info = sr_ly_find_last_parent(&notif_op, LYS_NOTIF))) {
-            goto cleanup;
-        }
-
-        /* NACM and xpath filter */
-        if (!denied.denied && sr_shmsub_notif_listen_filter_is_valid(notif_op, sub->xpath)) {
+        if (!filtered_out) {
             /* call callback */
             if ((err_info = sr_notif_call_callback(ev_sess, sub->cb, sub->tree_cb, sub->private_data,
-                    SR_EV_NOTIF_REALTIME, sub->sub_id, notif_op, &notif_ts_real))) {
+                    SR_EV_NOTIF_REALTIME, sub->sub_id, notif, &notif_ts_real))) {
                 goto cleanup;
             }
         } else {
             /* filtered out */
-            ATOMIC_INC_RELAXED(notif_subs->subs[i].filtered_out);
+            ATOMIC_INC_RELAXED(sub->filtered_out);
         }
 
         /* processed */
@@ -4885,7 +4846,6 @@ cleanup_rdunlock:
     sr_rwunlock(&sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
 cleanup:
-    free(denied.rule_name);
     sr_session_stop(ev_sess);
     lyd_free_all(notif);
     sr_shm_clear(&shm_data_sub);
@@ -4978,7 +4938,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_shmsub_notif_listen_module_replay(struct modsub_notif_s *notif_subs, sr_subscription_ctx_t *subscr)
+sr_shmsub_notif_listen_module_replay(struct modsub_notif_s *notif_subs)
 {
     sr_error_info_t *err_info = NULL;
     struct modsub_notifsub_s *notif_sub;
@@ -4988,9 +4948,7 @@ sr_shmsub_notif_listen_module_replay(struct modsub_notif_s *notif_subs, sr_subsc
         notif_sub = &notif_subs->subs[i];
         if (!SR_TS_IS_ZERO(notif_sub->start_time) && !notif_sub->replayed) {
             /* we need to perform the requested replay */
-            if ((err_info = sr_replay_notify(subscr->conn, notif_subs->module_name, notif_sub->sub_id, notif_sub->xpath,
-                    &notif_sub->start_time, &notif_sub->stop_time, &notif_sub->listen_since_real, notif_sub->cb,
-                    notif_sub->tree_cb, notif_sub->private_data))) {
+            if ((err_info = sr_replay_notify(notif_sub, notif_subs->module_name))) {
                 return err_info;
             }
 

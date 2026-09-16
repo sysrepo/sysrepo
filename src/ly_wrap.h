@@ -496,6 +496,16 @@ sr_error_info_t *sr_lyd_merge_module(struct lyd_node **target, const struct lyd_
 sr_error_info_t *sr_lyd_find_xpath(const struct lyd_node *tree, const char *xpath, struct ly_set **set);
 
 /**
+ * @brief Evaluate XPath on a set of nodes.
+ *
+ * @param[in] tree Data tree to search.
+ * @param[in] xpath XPath expression in JSON format.
+ * @param[out] result Result of the evaluation.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lyd_eval_xpath(const struct lyd_node *tree, const char *xpath, ly_bool *result);
+
+/**
  * @brief Find the nodes selected by a path.
  *
  * @param[in] tree Data tree to search.

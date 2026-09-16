@@ -5929,7 +5929,7 @@ sr_subscription_process_events(sr_subscription_ctx_t *subscription, sr_session_c
     i = 0;
     while (i < subscription->notif_sub_count) {
         /* perform any replays requested */
-        if ((err_info = sr_shmsub_notif_listen_module_replay(&subscription->notif_subs[i], subscription))) {
+        if ((err_info = sr_shmsub_notif_listen_module_replay(&subscription->notif_subs[i]))) {
             goto cleanup_unlock;
         }
 

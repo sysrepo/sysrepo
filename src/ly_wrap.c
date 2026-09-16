@@ -1148,6 +1148,23 @@ cleanup:
 }
 
 sr_error_info_t *
+sr_lyd_eval_xpath(const struct lyd_node *tree, const char *xpath, ly_bool *result)
+{
+    sr_error_info_t *err_info = NULL;
+
+    sr_ly_log_setup();
+
+    if (lyd_eval_xpath(tree, xpath, result)) {
+        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        goto cleanup;
+    }
+
+cleanup:
+    sr_ly_log_revert();
+    return err_info;
+}
+
+sr_error_info_t *
 sr_lyd_find_path(const struct lyd_node *tree, const char *path, int with_incomplete, struct lyd_node **match)
 {
     sr_error_info_t *err_info = NULL;

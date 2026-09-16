@@ -4,8 +4,8 @@
  * @brief subscription common routines header
  *
  * @copyright
- * Copyright (c) 2023 Deutsche Telekom AG.
- * Copyright (c) 2023 CESNET, z.s.p.o.
+ * Copyright (c) 2023 - 2026 Deutsche Telekom AG.
+ * Copyright (c) 2023 - 2026 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -264,7 +264,7 @@ sr_error_info_t *sr_subscr_notif_del_stop_time(sr_subscription_ctx_t *subscr, ui
         sr_lock_mode_t has_subs_lock);
 
 /**
- * @brief Find notifications subscribers for a module.
+ * @brief Find notification subscribers for a module.
  *
  * @param[in] conn Connection to use.
  * @param[in] mod_name Module name.
@@ -277,6 +277,20 @@ sr_error_info_t *sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_n
         uint32_t *notif_sub_count, sr_cid_t *sub_cid);
 
 /**
+ * @brief Check that a notification is not filtered out.
+ *
+ * Considers an XPath filter and NACM, if relevant.
+ *
+ * @param[in] sess Session to use with an optional NACM username.
+ * @param[in,out] notif_tree Notification data tree, may be removed from.
+ * @param[in] xpath_filter Optional XPath filter to check.
+ * @param[out] filtered_out Set if the notification has been filtered out.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_notif_check_filter(sr_session_ctx_t *sess, struct lyd_node *notif_tree, const char *xpath_filter,
+        int *filtered_out);
+
+/**
  * @brief Call notification callback for a notification.
  *
  * @param[in] ev_sess Event session to provide for the callback.
@@ -285,12 +299,12 @@ sr_error_info_t *sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_n
  * @param[in] private_data Callback private data.
  * @param[in] notif_type Notification type.
  * @param[in] sub_id Subscription ID.
- * @param[in] notif_op Notification node of the notification (relevant for nested notifications).
+ * @param[in] notif_tree Notification data tree, the operation is found if needed (relevant for nested notifications).
  * @param[in] notif_ts Timestamp of when the notification was generated.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_notif_call_callback(sr_session_ctx_t *ev_sess, sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb,
-        void *private_data, const sr_ev_notif_type_t notif_type, uint32_t sub_id, const struct lyd_node *notif_op,
+        void *private_data, const sr_ev_notif_type_t notif_type, uint32_t sub_id, const struct lyd_node *notif_tree,
         const struct timespec *notif_ts);
 
 /**

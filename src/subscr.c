@@ -35,6 +35,7 @@
 #include "shm_mod.h"
 #include "shm_sub.h"
 #include "sysrepo.h"
+#include "utils/nacm.h"
 
 sr_error_info_t *
 sr_subscr_change_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session_ctx_t *sess, const char *mod_name,
@@ -1829,8 +1830,87 @@ sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, sr_mod_notif
 }
 
 sr_error_info_t *
+sr_notif_check_filter(sr_session_ctx_t *sess, struct lyd_node *notif_tree, const char *xpath_filter, int *filtered_out)
+{
+    sr_error_info_t *err_info = NULL;
+    struct sr_denied denied = {0};
+    ly_bool result = 1;
+    int d;
+    struct ly_set *set = NULL;
+    uint32_t i, den_c, group_count = 0;
+    char **groups = NULL;
+    const char *target;
+    const struct lysc_node *schema;
+
+    *filtered_out = 0;
+
+    /* check XPath filter */
+    if (xpath_filter && (err_info = sr_lyd_eval_xpath(notif_tree, xpath_filter, &result))) {
+        goto cleanup;
+    }
+    if (!result) {
+        /* filter has not matched */
+        *filtered_out = 1;
+        goto cleanup;
+    }
+
+    /* check NACM */
+    if (sess->nacm_user && (err_info = sr_nacm_check_op(sess->nacm_user, notif_tree, &denied))) {
+        goto cleanup;
+    }
+    if (denied.denied) {
+        /* NACM denied the whole notification */
+        *filtered_out = 1;
+        goto cleanup;
+    }
+
+    /* 'netconf-config-change' content filtering */
+    if (sess->nacm_user && !strcmp(LYD_NAME(notif_tree), "netconf-config-change") &&
+            !strcmp(notif_tree->schema->module->name, "ietf-netconf-notifications")) {
+        /* collect all the edits */
+        if ((err_info = sr_lyd_find_xpath(notif_tree, "edit/target", &set))) {
+            goto cleanup;
+        }
+        SR_CHECK_INT_GOTO(!set->count, err_info, cleanup);
+
+        /* NACM start */
+        if ((err_info = sr_nacm_check_yp_change_begin(sess->nacm_user, &groups, &group_count))) {
+            goto cleanup;
+        }
+
+        den_c = 0;
+        for (i = 0; i < set->count; ++i) {
+            target = lyd_get_value(set->dnodes[i]);
+            schema = lys_find_path(LYD_CTX(notif_tree), NULL, target, 0);
+
+            /* check NACM for the target */
+            if ((err_info = sr_nacm_check_yp_change_target(sess->nacm_user, groups, group_count, target, schema, &d))) {
+                goto cleanup;
+            }
+            if (d) {
+                /* access to the path is denied, remove the edit */
+                lyd_free_tree(set->dnodes[i]->parent);
+                ++den_c;
+            }
+        }
+
+        if (den_c == set->count) {
+            /* NACM denied read access to all the edits, drop the notification */
+            *filtered_out = 1;
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    free(denied.rule_name);
+    ly_set_free(set, NULL);
+    sr_nacm_check_yp_change_end(groups, group_count);
+    return err_info;
+}
+
+sr_error_info_t *
 sr_notif_call_callback(sr_session_ctx_t *ev_sess, sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb, void *private_data,
-        const sr_ev_notif_type_t notif_type, uint32_t sub_id, const struct lyd_node *notif_op, const struct timespec *notif_ts)
+        const sr_ev_notif_type_t notif_type, uint32_t sub_id, const struct lyd_node *notif_tree, const struct timespec *notif_ts)
 {
     sr_error_info_t *err_info = NULL;
     const struct lyd_node *elem;
@@ -1839,22 +1919,26 @@ sr_notif_call_callback(sr_session_ctx_t *ev_sess, sr_event_notif_cb cb, sr_event
     sr_val_t *vals = NULL;
     size_t val_count = 0;
 
-    assert(!notif_op || (notif_op->schema->nodetype == LYS_NOTIF));
     assert((tree_cb && !cb) || (!tree_cb && cb));
+
+    /* find the notification */
+    if ((err_info = sr_ly_find_last_parent((struct lyd_node **)&notif_tree, LYS_NOTIF))) {
+        goto cleanup;
+    }
 
     if (tree_cb) {
         /* callback */
-        tree_cb(ev_sess, sub_id, notif_type, notif_op, (struct timespec *)notif_ts, private_data);
+        tree_cb(ev_sess, sub_id, notif_type, notif_tree, (struct timespec *)notif_ts, private_data);
     } else {
-        if (notif_op) {
+        if (notif_tree) {
             /* prepare XPath */
-            notif_xpath = lyd_path(notif_op, LYD_PATH_STD, NULL, 0);
+            notif_xpath = lyd_path(notif_tree, LYD_PATH_STD, NULL, 0);
             SR_CHECK_INT_GOTO(!notif_xpath, err_info, cleanup);
 
             /* prepare input for sr_val CB */
-            LYD_TREE_DFS_BEGIN(notif_op, elem) {
+            LYD_TREE_DFS_BEGIN(notif_tree, elem) {
                 /* skip op node */
-                if (elem != notif_op) {
+                if (elem != notif_tree) {
                     mem = realloc(vals, (val_count + 1) * sizeof *vals);
                     if (!mem) {
                         SR_ERRINFO_MEM(&err_info);
@@ -1869,7 +1953,7 @@ sr_notif_call_callback(sr_session_ctx_t *ev_sess, sr_event_notif_cb cb, sr_event
                     ++val_count;
                 }
 
-                LYD_TREE_DFS_END(notif_op, elem);
+                LYD_TREE_DFS_END(notif_tree, elem);
             }
         }
 

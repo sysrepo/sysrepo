@@ -375,10 +375,9 @@ sr_error_info_t *sr_shmsub_notif_listen_module_stop_time(uint32_t notif_subs_idx
  * @brief Check notification subscription replay state and perform it if requested.
  *
  * @param[in] notif_subs Module notification subscriptions.
- * @param[in] subscr Subscriptions structure.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmsub_notif_listen_module_replay(struct modsub_notif_s *notif_subs, sr_subscription_ctx_t *subscr);
+sr_error_info_t *sr_shmsub_notif_listen_module_replay(struct modsub_notif_s *notif_subs);
 
 /**
  * @brief Listener handler thread of all subscriptions.

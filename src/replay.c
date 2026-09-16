@@ -300,25 +300,24 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, const char *xpath,
-        const struct timespec *start_time, const struct timespec *stop_time, struct timespec *listen_since,
-        sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb, void *private_data)
+sr_replay_notify(struct modsub_notifsub_s *notif_sub, const char *mod_name)
 {
     sr_error_info_t *err_info = NULL;
     const struct sr_ntf_handle_s *ntf_handle;
     const struct lys_module *ly_mod;
     sr_mod_t *shm_mod;
-    struct timespec notif_ts, stop_ts;
+    struct timespec notif_ts_real, stop_ts;
     struct ly_set *set = NULL;
-    struct lyd_node *notif = NULL, *notif_op;
+    struct lyd_node *notif = NULL;
     sr_session_ctx_t *ev_sess = NULL;
+    int filtered_out;
     void *state = NULL;
 
     /* get the stop timestamp - only notifications with smaller timestamp can be replayed */
-    if (!SR_TS_IS_ZERO(*stop_time) && (sr_time_cmp(stop_time, listen_since) < 1)) {
-        stop_ts = *stop_time;
+    if (!SR_TS_IS_ZERO(notif_sub->stop_time) && (sr_time_cmp(&notif_sub->stop_time, &notif_sub->listen_since_real) < 1)) {
+        stop_ts = notif_sub->stop_time;
     } else {
-        stop_ts = *listen_since;
+        stop_ts = notif_sub->listen_since_real;
     }
 
     /* find SHM mod for replay lock and check if replay is even supported */
@@ -326,7 +325,7 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     /* create event session */
-    if ((err_info = _sr_session_start(conn, SR_DS_OPERATIONAL, SR_SUB_EV_NOTIF, NULL, &ev_sess))) {
+    if ((err_info = _sr_session_start(notif_sub->sess->conn, SR_DS_OPERATIONAL, SR_SUB_EV_NOTIF, NULL, &ev_sess))) {
         goto cleanup;
     }
 
@@ -340,31 +339,28 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
     assert(ly_mod);
 
     /* find handle */
-    if ((err_info = sr_ntf_handle_find(sr_yang_ctx.mod_shm.addr + shm_mod->plugins[SR_MOD_DS_NOTIF], conn, &ntf_handle))) {
+    if ((err_info = sr_ntf_handle_find(sr_yang_ctx.mod_shm.addr + shm_mod->plugins[SR_MOD_DS_NOTIF],
+            notif_sub->sess->conn, &ntf_handle))) {
         goto cleanup;
     }
 
     /* replay all notifications */
-    while (!(err_info = ntf_handle->plugin->replay_next_cb(ly_mod, start_time, &stop_ts, &notif, &notif_ts, &state)) && state) {
-        /* make sure the XPath filter matches something */
-        if (xpath) {
-            ly_set_free(set, NULL);
-            SR_CHECK_INT_GOTO(lyd_find_xpath(notif, xpath, &set), err_info, cleanup);
+    while (!(err_info = ntf_handle->plugin->replay_next_cb(ly_mod, &notif_sub->start_time, &stop_ts, &notif,
+            &notif_ts_real, &state)) && state) {
+        /* check filter and NACM */
+        if ((err_info = sr_notif_check_filter(notif_sub->sess, notif, notif_sub->xpath, &filtered_out))) {
+            goto cleanup;
         }
 
-        if (!xpath || set->count) {
-            /* find notification node */
-            notif_op = notif;
-            if ((err_info = sr_ly_find_last_parent(&notif_op, LYS_NOTIF))) {
-                goto cleanup;
-            }
-            SR_CHECK_INT_GOTO(notif_op->schema->nodetype != LYS_NOTIF, err_info, cleanup);
-
+        if (!filtered_out) {
             /* call callback */
-            if ((err_info = sr_notif_call_callback(ev_sess, cb, tree_cb, private_data, SR_EV_NOTIF_REPLAY, sub_id,
-                    notif_op, &notif_ts))) {
+            if ((err_info = sr_notif_call_callback(ev_sess, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data,
+                    SR_EV_NOTIF_REPLAY, notif_sub->sub_id, notif, &notif_ts_real))) {
                 goto cleanup;
             }
+        } else {
+            /* filtered out */
+            ATOMIC_INC_RELAXED(notif_sub->filtered_out);
         }
 
         /* next */
@@ -377,8 +373,8 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
 
 replay_complete:
     /* replay is completed */
-    if ((err_info = sr_notif_call_callback(ev_sess, cb, tree_cb, private_data, SR_EV_NOTIF_REPLAY_COMPLETE, sub_id,
-            NULL, &stop_ts))) {
+    if ((err_info = sr_notif_call_callback(ev_sess, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data,
+            SR_EV_NOTIF_REPLAY_COMPLETE, notif_sub->sub_id, NULL, &stop_ts))) {
         goto cleanup;
     }
 
