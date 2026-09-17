@@ -111,10 +111,6 @@ sr_subscr_change_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_sess
 
     /* notify event pipe again, if there is an ongoing event to be processed, the originator expects it */
     if (ATOMIC_LOAD_RELAXED(sub_shm->subscriber_count)) {
-        if ((sub_opts & SR_SUBSCR_ENABLED) && (ATOMIC_LOAD_RELAXED(sub_shm->event) == SR_SUB_EV_DONE)) {
-            /* ENABLED event already contains the data of this DONE event, remember to skip callback. */
-            change_sub->subs[change_sub->sub_count].request_id = ATOMIC_LOAD_RELAXED(sub_shm->request_id);
-        }
         sr_shmsub_notify_evpipe(subscr->evpipe_num, 0, NULL);
     }
 
