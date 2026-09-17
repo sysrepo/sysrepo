@@ -262,7 +262,7 @@ sr_nacm_group_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char 
     sr_change_oper_t op;
     const struct lyd_node *node;
     const char *group_name, *user_name;
-    struct sr_nacm_group *group = NULL;
+    struct sr_nacm_group *group;
     uint32_t i, j;
     char *xpath2;
     int rc;
@@ -290,6 +290,8 @@ sr_nacm_group_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char 
 
             switch (op) {
             case SR_OP_CREATED:
+                assert(!sr_nacm_group_find(group_name, NULL));
+
                 /* add new group */
                 mem = realloc(nacm.groups, (nacm.group_count + 1) * sizeof *nacm.groups);
                 if (!mem) {
@@ -310,7 +312,7 @@ sr_nacm_group_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char 
             case SR_OP_DELETED:
                 /* find it */
                 group = sr_nacm_group_find(group_name, &j);
-                assert(group && nacm.group_count);
+                assert(group);
 
                 /* delete all group users */
                 free(group->name);
@@ -328,7 +330,6 @@ sr_nacm_group_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char 
                     free(nacm.groups);
                     nacm.groups = NULL;
                 }
-                group = NULL;
                 break;
             default:
                 /* NACM UNLOCK */
