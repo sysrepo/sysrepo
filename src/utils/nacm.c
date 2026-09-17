@@ -979,14 +979,6 @@ sr_nacm_get_user(sr_session_ctx_t *session)
     return session ? session->nacm_user : NULL;
 }
 
-#define SR_CONFIG_SUBSCR(session, sub, mod_name, xpath, opts, cb) \
-    rc = sr_module_change_subscribe(session, mod_name, xpath, cb, NULL, 0, \
-            SR_SUBSCR_DONE_ONLY | SR_SUBSCR_ENABLED | opts, sub); \
-    if (rc) { \
-        sr_errinfo_new(&err_info, rc, "Subscribing for \"%s\" data changes failed.", mod_name); \
-        goto cleanup; \
-    }
-
 #define SR_OPER_SUBSCR(session, sub, mod_name, xpath, opts, cb) \
     rc = sr_oper_get_subscribe(session, mod_name, xpath, cb, NULL, opts, sub); \
     if (rc) { \
@@ -1010,6 +1002,38 @@ sr_nacm_get_user(sr_session_ctx_t *session)
         goto cleanup; \
     }
 
+/**
+ * @brief Callback handling all NACM configuration changes.
+ */
+static int
+sr_nacm_config_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name,
+        const char *UNUSED(xpath), sr_event_t event, uint32_t request_id, void *private_data)
+{
+    int rc;
+
+    if ((rc = sr_nacm_nacm_params_cb(session, sub_id, module_name, "/ietf-netconf-acm:nacm", event, request_id,
+            private_data))) {
+        return rc;
+    }
+
+    if ((rc = sr_nacm_group_cb(session, sub_id, module_name, "/ietf-netconf-acm:nacm/groups/group", event, request_id,
+            private_data))) {
+        return rc;
+    }
+
+    if ((rc = sr_nacm_rule_list_cb(session, sub_id, module_name, "/ietf-netconf-acm:nacm/rule-list", event, request_id,
+            private_data))) {
+        return rc;
+    }
+
+    if ((rc = sr_nacm_rule_cb(session, sub_id, module_name, "/ietf-netconf-acm:nacm/rule-list/rule", event, request_id,
+            private_data))) {
+        return rc;
+    }
+
+    return SR_ERR_OK;
+}
+
 API int
 sr_nacm_init(sr_session_ctx_t *session, uint32_t opts, sr_subscription_ctx_t **sub)
 {
@@ -1026,18 +1050,14 @@ sr_nacm_init(sr_session_ctx_t *session, uint32_t opts, sr_subscription_ctx_t **s
     /* subscribe to all the relevant config data */
     sr_session_switch_ds(session, SR_DS_RUNNING);
 
+    /* NACM configuration data, single callback to avoid data races with SR_SUBSCR_ENABLED option */
     mod_name = "ietf-netconf-acm";
     xpath = "/ietf-netconf-acm:nacm";
-    SR_CONFIG_SUBSCR(session, sub, mod_name, xpath, opts, sr_nacm_nacm_params_cb);
-
-    xpath = "/ietf-netconf-acm:nacm/groups/group";
-    SR_CONFIG_SUBSCR(session, sub, mod_name, xpath, opts, sr_nacm_group_cb);
-
-    xpath = "/ietf-netconf-acm:nacm/rule-list";
-    SR_CONFIG_SUBSCR(session, sub, mod_name, xpath, opts, sr_nacm_rule_list_cb);
-
-    xpath = "/ietf-netconf-acm:nacm/rule-list/rule";
-    SR_CONFIG_SUBSCR(session, sub, mod_name, xpath, opts, sr_nacm_rule_cb);
+    if ((rc = sr_module_change_subscribe(session, mod_name, xpath, sr_nacm_config_cb, NULL, 0,
+            SR_SUBSCR_DONE_ONLY | SR_SUBSCR_ENABLED | opts, sub))) {
+        sr_errinfo_new(&err_info, rc, "Subscribing for \"%s\" data changes failed.", mod_name);
+        goto cleanup;
+    }
 
     /* sr monitoring state data */
     mod_name = "sysrepo-monitoring";
