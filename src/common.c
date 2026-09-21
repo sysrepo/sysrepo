@@ -6766,10 +6766,15 @@ sr_filter_xpath_buf_add_top_content(const struct lyd_node *node, const struct ly
 {
     sr_error_info_t *err_info = NULL;
     int size;
-    char *buf, quot;
+    char *buf = NULL, quot;
 
     if (!top_mod) {
-        top_mod = node->schema->module;
+        top_mod = lyd_node_module(node);
+    }
+    if (!top_mod) {
+        /* may be an opaque node with invalid module name/prefix */
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Unknown module of node \"%s\".", LYD_NAME(node));
+        goto cleanup;
     }
 
     size = 1 + strlen(top_mod->name) + 1 + strlen(LYD_NAME(node)) + 9 + strlen(lyd_get_value(node)) + 3;

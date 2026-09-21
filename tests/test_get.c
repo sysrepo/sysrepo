@@ -865,6 +865,70 @@ test_subtree2xpath(void **state)
 
 /* TEST */
 static void
+test_subtree2xpath_prefix(void **state)
+{
+    struct state *st = (struct state *)*state;
+    const struct ly_ctx *ly_ctx;
+    struct lyd_node *filter_tree;
+    char *filter_str;
+    const char *str;
+    int ret;
+
+    ly_ctx = sr_acquire_context(st->conn);
+    sr_release_context(st->conn);
+
+    /* CONTROL 1: top-level content match node in a default namespace, resolves to a schema node */
+    str = "<dflt2 xmlns=\"urn:defaults\">value</dflt2>";
+    ret = lyd_parse_data_mem(ly_ctx, str, LYD_XML, LYD_PARSE_ONLY | LYD_PARSE_OPAQ, 0, &filter_tree);
+    assert_int_equal(ret, LY_SUCCESS);
+    assert_non_null(filter_tree);
+    assert_non_null(filter_tree->schema);
+    ret = sr_filter_subtree2xpath(NULL, filter_tree, 0, &filter_str);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_string_equal("/defaults:dflt2[text()='value']", filter_str);
+    free(filter_str);
+    lyd_free_all(filter_tree);
+
+    /* CONTROL 2: prefixed opaque top-level node in an unknown namespace, but a selection node */
+    str = "<x:foo xmlns:x=\"urn:nope\"><x:bar/></x:foo>";
+    ret = lyd_parse_data_mem(ly_ctx, str, LYD_XML, LYD_PARSE_ONLY | LYD_PARSE_OPAQ, 0, &filter_tree);
+    assert_int_equal(ret, LY_SUCCESS);
+    assert_non_null(filter_tree);
+    assert_null(filter_tree->schema);
+    assert_non_null(((struct lyd_node_opaq *)filter_tree)->name.prefix);
+    ret = sr_filter_subtree2xpath(NULL, filter_tree, 0, &filter_str);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_string_equal("/foo/bar", filter_str);
+    free(filter_str);
+    lyd_free_all(filter_tree);
+
+    /* the same prefixed opaque node WITH content, unknown namespace */
+    str = "<x:foo xmlns:x=\"urn:nope\">text</x:foo>";
+    ret = lyd_parse_data_mem(ly_ctx, str, LYD_XML, LYD_PARSE_ONLY | LYD_PARSE_OPAQ, 0, &filter_tree);
+    assert_int_equal(ret, LY_SUCCESS);
+    assert_non_null(filter_tree);
+    assert_null(filter_tree->schema);
+    filter_str = NULL;
+    ret = sr_filter_subtree2xpath(NULL, filter_tree, 0, &filter_str);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+    lyd_free_all(filter_tree);
+
+    /* prefixed opaque node with content in an IMPLEMENTED namespace, name is not top-level
+     * (an ordinary client typo), must convert to "/mod:bogus[text()='text']" or be refused */
+    str = "<m:bogus xmlns:m=\"urn:mod\">text</m:bogus>";
+    ret = lyd_parse_data_mem(ly_ctx, str, LYD_XML, LYD_PARSE_ONLY | LYD_PARSE_OPAQ, 0, &filter_tree);
+    assert_int_equal(ret, LY_SUCCESS);
+    assert_non_null(filter_tree);
+    assert_null(filter_tree->schema);
+    filter_str = NULL;
+    ret = sr_filter_subtree2xpath(NULL, filter_tree, 0, &filter_str);
+    assert_int_equal(ret, SR_ERR_OK);
+    free(filter_str);
+    lyd_free_all(filter_tree);
+}
+
+/* TEST */
+static void
 test_max_depth(void **state)
 {
     struct state *st = (struct state *)*state;
@@ -988,6 +1052,7 @@ main(void)
         cmocka_unit_test(test_key_quotes),
         cmocka_unit_test(test_factory_default),
         cmocka_unit_test(test_subtree2xpath),
+        cmocka_unit_test(test_subtree2xpath_prefix),
         cmocka_unit_test(test_max_depth),
     };
 
