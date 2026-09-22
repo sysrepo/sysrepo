@@ -18,6 +18,7 @@
 
 #include <pthread.h>
 #include <stdint.h>
+#include <sys/socket.h>
 #include <time.h>
 
 #include "compat.h"
@@ -176,6 +177,20 @@ typedef struct notif_encoding_info_s {
 typedef int (*notif_transport_connect_cb)(notif_receiver_t *recv, void *cfg);
 
 /**
+ * @brief Resolve the remote address of a notification receiver.
+ *
+ * Called whenever the configuration of a receiver is applied, so that connecting it never has to
+ * resolve a name. Name resolution may block for an unbounded time and connecting happens on the
+ * notification dispatch loop, which must never block. Fills @p recv->addr and @p recv->addr_len,
+ * zeroed by the caller and restored by it on failure.
+ *
+ * @param[in] recv Receiver to resolve.
+ * @param[in] cfg Transport-specific configuration (from @p recv->inst->transport_config).
+ * @return SR_ERR_OK on success, error code on failure.
+ */
+typedef int (*notif_transport_resolve_cb)(notif_receiver_t *recv, void *cfg);
+
+/**
  * @brief Tear down a transport connection for a notification receiver.
  *
  * Called when a receiver must be disconnected. Must close any transport resources
@@ -205,7 +220,9 @@ typedef int (*notif_transport_is_connected_cb)(const notif_receiver_t *recv);
  * @param[in] notif Notification data tree to send.
  * @param[in] ts Notification event timestamp.
  * @param[in] encoding Encoding format for the notification payload.
- * @return SR_ERR_OK on success, error code on failure.
+ * @return SR_ERR_OK on success,
+ * @return SR_ERR_TIME_OUT if the transport would have blocked and the notification was dropped,
+ * @return another error code on failure.
  */
 typedef int (*notif_transport_send_cb)(notif_receiver_t *recv, void *cfg, const struct lyd_node *notif,
         const struct timespec *ts, notif_encoding_t encoding);
@@ -295,6 +312,7 @@ typedef struct notif_transport_ops_s {
     const char *config_container_name;                  /**< NP container name under receiver-instance (e.g. "udp-notif-receiver") */
     notif_transport_type_t type;                        /**< transport type enum value */
 
+    notif_transport_resolve_cb resolve;                 /**< resolve the remote address */
     notif_transport_connect_cb connect;                 /**< establish transport connection */
     notif_transport_disconnect_cb disconnect;           /**< tear down transport connection */
     notif_transport_is_connected_cb is_connected;       /**< check if transport is connected */
@@ -359,6 +377,9 @@ struct notif_receiver_s {
     struct timespec last_reconnect_attempt;     /**< time of the last reconnect attempt */
     uint32_t reconnect_attempts;                /**< number of consecutive failed reconnect attempts */
 
+    struct sockaddr_storage addr;               /**< resolved remote address */
+    socklen_t addr_len;                         /**< length of addr, 0 means the receiver cannot be
+                                                     connected until its configuration is applied again */
 };
 
 /**

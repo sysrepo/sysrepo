@@ -1239,7 +1239,7 @@ register_oper_data_providers(notifd_ctx_t *notifd_ctx, sr_subscription_ctx_t **s
  */
 
 int
-receiver_reset_rpc_cb(sr_session_ctx_t *UNUSED(session), uint32_t UNUSED(sub_id), const char *UNUSED(op_path),
+receiver_reset_rpc_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *UNUSED(op_path),
         const struct lyd_node *input, sr_event_t UNUSED(event), uint32_t UNUSED(operation_id),
         struct lyd_node *output, void *private_data)
 {
@@ -1280,6 +1280,12 @@ receiver_reset_rpc_cb(sr_session_ctx_t *UNUSED(session), uint32_t UNUSED(sub_id)
         /* the subscription is ours but the receiver was not created, there is nothing to reset */
         SRNTF_LOG_DBG("Ignoring the reset action of receiver \"%s\", it is not serviced.",
                 lyd_get_value(name_node));
+        goto cleanup;
+    }
+
+    /* resolve the address again, it may have been unresolvable or may have changed */
+    if ((rc = notif_receiver_resolve(recv))) {
+        sr_session_set_error_message(session, "Failed to resolve the address of receiver \"%s\".", recv->name);
         goto cleanup;
     }
 

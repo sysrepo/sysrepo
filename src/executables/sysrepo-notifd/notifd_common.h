@@ -675,6 +675,17 @@ int notif_receiver_is_connected(notif_receiver_t *receiver);
 int notif_receiver_connect(notif_receiver_t *receiver);
 
 /**
+ * @brief Resolve the remote address of a receiver.
+ *
+ * Must be called whenever the configuration affecting a receiver's address is applied, connecting
+ * never resolves a name. On failure the receiver cannot be connected until it is resolved again.
+ *
+ * @param[in] receiver Receiver to resolve.
+ * @return ::SR_ERR_OK on success (or no-op), error code from the transport's resolve on failure.
+ */
+int notif_receiver_resolve(notif_receiver_t *receiver);
+
+/**
  * @brief Tear down a receiver's transport connection.
  *
  * Calls the transport's disconnect callback which must close resources,
