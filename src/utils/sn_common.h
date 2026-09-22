@@ -60,6 +60,32 @@ struct srsn_dispatch_arg {
     srsn_notif_cb cb;
 };
 
+/** @brief Maximum accepted notification frame LYB size, a larger one means a desynchronised stream. */
+#define SRSN_READER_MAX_FRAME_SIZE (256 * 1024 * 1024)
+
+/**
+ * @brief State of an incremental notification frame reader.
+ */
+enum srsn_reader_state {
+    SRSN_READER_HDR_TS,     /**< reading the frame timestamp */
+    SRSN_READER_HDR_SIZE,   /**< reading the frame LYB size */
+    SRSN_READER_PAYLOAD     /**< reading the frame LYB data */
+};
+
+/**
+ * @brief Incremental notification frame reader.
+ */
+struct srsn_reader {
+    int fd;                         /**< subscription FD to read from, not owned */
+    enum srsn_reader_state state;   /**< which frame field is being read */
+    uint32_t offset;                /**< bytes of the current field already read */
+
+    char ts_buf[sizeof(struct timespec)];   /**< partially read timestamp */
+    char size_buf[sizeof(uint32_t)];        /**< partially read LYB size */
+    char *lyb;                              /**< partially read LYB data, allocated lyb_size + 1 */
+    uint32_t lyb_size;                      /**< expected size of lyb */
+};
+
 /**
  * @brief Complete operational information about the subscriptions.
  */

@@ -17,6 +17,7 @@
 #define _GNU_SOURCE
 
 #include <errno.h>
+#include <fcntl.h>
 #include <pthread.h>
 #include <setjmp.h>
 #include <stdarg.h>
@@ -950,6 +951,143 @@ test_nacm_yp_onchange(void **state)
     sr_session_stop(sess);
 }
 
+/**
+ * @brief Build a notification frame as written by the SN subscriptions.
+ *
+ * @param[in] ly_ctx Context to use.
+ * @param[out] frame Created frame, freed by the caller.
+ * @param[out] frame_size Size of @p frame.
+ */
+static void
+reader_build_frame(const struct ly_ctx *ly_ctx, char **frame, uint32_t *frame_size)
+{
+    struct lyd_node *notif = NULL;
+    struct ly_out *out = NULL;
+    struct timespec ts;
+    char *lyb = NULL;
+    uint32_t lyb_size;
+
+    assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, ly_ctx, "/ops:notif4/l", "item", 0, &notif));
+    assert_int_equal(LY_SUCCESS, ly_out_new_memory(&lyb, 0, &out));
+    assert_int_equal(LY_SUCCESS, lyd_print_all(out, notif, LYD_LYB, 0));
+    lyb_size = (uint32_t)ly_out_printed(out);
+    ly_out_free(out, NULL, 0);
+    lyd_free_tree(notif);
+    *frame_size = sizeof ts + sizeof lyb_size + lyb_size;
+    *frame = malloc(*frame_size);
+    assert_non_null(*frame);
+
+    clock_gettime(CLOCK_REALTIME, &ts);
+    memcpy(*frame, &ts, sizeof ts);
+    memcpy(*frame + sizeof ts, &lyb_size, sizeof lyb_size);
+    memcpy(*frame + sizeof ts + sizeof lyb_size, lyb, lyb_size);
+    free(lyb);
+}
+
+/* TEST */
+static void
+test_reader_split_frame(void **state)
+{
+    struct state *st = (struct state *)*state;
+    srsn_reader_t *reader;
+    struct timespec ts;
+    struct lyd_node *notif;
+    struct ly_in *in;
+    char *frame, *lyb, *str;
+    uint32_t frame_size, lyb_size, ts_half, size_half, payload_half;
+    int fds[2];
+
+    reader_build_frame(st->ly_ctx, &frame, &frame_size);
+
+    assert_int_equal(0, pipe2(fds, O_NONBLOCK));
+    assert_int_equal(SR_ERR_OK, srsn_reader_new(fds[0], &reader));
+
+    /* the frame arrives in four pieces, cut inside the timestamp, the size and the payload */
+    ts_half = sizeof ts / 2;
+    size_half = sizeof ts + sizeof lyb_size / 2;
+    payload_half = (sizeof ts + sizeof lyb_size + frame_size) / 2;
+
+    /* half of the timestamp */
+    assert_int_equal(ts_half, write(fds[1], frame, ts_half));
+    assert_int_equal(SR_ERR_TIME_OUT, srsn_reader_read(reader, &ts, &lyb, &lyb_size));
+
+    /* the rest of the timestamp and half of the size */
+    assert_int_equal(size_half - ts_half, write(fds[1], frame + ts_half, size_half - ts_half));
+    assert_int_equal(SR_ERR_TIME_OUT, srsn_reader_read(reader, &ts, &lyb, &lyb_size));
+
+    /* the rest of the size and half of the payload */
+    assert_int_equal(payload_half - size_half, write(fds[1], frame + size_half, payload_half - size_half));
+    assert_int_equal(SR_ERR_TIME_OUT, srsn_reader_read(reader, &ts, &lyb, &lyb_size));
+
+    /* the rest of the payload completes the frame */
+    assert_int_equal(frame_size - payload_half, write(fds[1], frame + payload_half, frame_size - payload_half));
+    assert_int_equal(SR_ERR_OK, srsn_reader_read(reader, &ts, &lyb, &lyb_size));
+
+    /* the frame parses and there is nothing left */
+    assert_int_equal(LY_SUCCESS, ly_in_new_memory(lyb, &in));
+    assert_int_equal(LY_SUCCESS, lyd_parse_op(st->ly_ctx, NULL, in, LYD_LYB, LYD_TYPE_NOTIF_YANG, 0, &notif, NULL));
+    ly_in_free(in, 0);
+    lyd_print_mem(&str, notif, LYD_XML, 0);
+    assert_string_equal(str,
+            "<notif4 xmlns=\"urn:ops\">\n"
+            "  <l>item</l>\n"
+            "</notif4>\n");
+    free(str);
+    lyd_free_tree(notif);
+    free(lyb);
+
+    /* nothing left to read -> timeout */
+    assert_int_equal(SR_ERR_TIME_OUT, srsn_reader_read(reader, &ts, &lyb, &lyb_size));
+
+    srsn_reader_free(reader);
+    close(fds[0]);
+    close(fds[1]);
+    free(frame);
+}
+
+/* TEST */
+static void
+test_reader_eof(void **state)
+{
+    struct state *st = (struct state *)*state;
+    srsn_reader_t *reader;
+    struct timespec ts;
+    struct lyd_node *notif = NULL;
+    char *frame, *lyb;
+    uint32_t frame_size, lyb_size;
+    int fds[2];
+
+    reader_build_frame(st->ly_ctx, &frame, &frame_size);
+
+    /* the writer dies in the middle of the payload */
+    assert_int_equal(0, pipe2(fds, O_NONBLOCK));
+    assert_int_equal(SR_ERR_OK, srsn_reader_new(fds[0], &reader));
+    assert_int_equal(frame_size - 1, write(fds[1], frame, frame_size - 1));
+    assert_int_equal(SR_ERR_TIME_OUT, srsn_reader_read(reader, &ts, &lyb, &lyb_size));
+    close(fds[1]);
+    assert_int_equal(SR_ERR_UNSUPPORTED, srsn_reader_read(reader, &ts, &lyb, &lyb_size));
+    assert_null(lyb);
+    srsn_reader_free(reader);
+
+    /* the same through srsn_read_notif(), which must not report success with notif unwritten */
+    assert_int_equal(0, pipe(fds));
+    assert_int_equal(frame_size - 1, write(fds[1], frame, frame_size - 1));
+    close(fds[1]);
+    assert_int_equal(SR_ERR_UNSUPPORTED, srsn_read_notif(fds[0], st->ly_ctx, &ts, &notif));
+    assert_null(notif);
+    close(fds[0]);
+
+    /* end-of-file with no frame started at all */
+    assert_int_equal(0, pipe(fds));
+    close(fds[1]);
+    assert_int_equal(SR_ERR_OK, srsn_reader_new(fds[0], &reader));
+    assert_int_equal(SR_ERR_UNSUPPORTED, srsn_reader_read(reader, &ts, &lyb, &lyb_size));
+    srsn_reader_free(reader);
+    close(fds[0]);
+
+    free(frame);
+}
+
 /* MAIN */
 int
 main(void)
@@ -962,6 +1100,8 @@ main(void)
         cmocka_unit_test(test_suspend),
         cmocka_unit_test(test_yp_periodic),
         cmocka_unit_test(test_yp_on_change),
+        cmocka_unit_test(test_reader_split_frame),
+        cmocka_unit_test(test_reader_eof),
         cmocka_unit_test_setup_teardown(test_nacm_sub, setup_nacm, teardown_nacm),
         cmocka_unit_test_setup_teardown(test_nacm_yp_periodic, setup_nacm, teardown_nacm),
         cmocka_unit_test_setup_teardown(test_nacm_yp_onchange, setup_nacm, teardown_nacm),

@@ -282,6 +282,9 @@ void srsn_oper_data_subscriptions_free(srsn_state_sub_t *subs, uint32_t count);
 /**
  * @brief Read a notification.
  *
+ * Fails if the notification header arrived only partially, use ::srsn_reader_read() if every
+ * notification must be read.
+ *
  * @param[in] fd Opened file descriptor to read from, may be non-blocking.
  * @param[in] ly_ctx Libyang context to use for parsing the notification.
  * @param[out] timestamp Notification timestamp.
@@ -292,6 +295,45 @@ void srsn_oper_data_subscriptions_free(srsn_state_sub_t *subs, uint32_t count);
  * @return ::SR_ERR_SYS on another error (logged).
  */
 int srsn_read_notif(int fd, const struct ly_ctx *ly_ctx, struct timespec *timestamp, struct lyd_node **notif);
+
+/**
+ * @brief Opaque incremental reader of notification frames from a subscription FD.
+ */
+typedef struct srsn_reader srsn_reader_t;
+
+/**
+ * @brief Create an incremental notification frame reader.
+ *
+ * @param[in] fd Subscription file descriptor from ::srsn_subscribe(), stays owned by the caller, make it
+ * non-blocking for a reader that never blocks.
+ * @param[out] reader Created reader.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int srsn_reader_new(int fd, srsn_reader_t **reader);
+
+/**
+ * @brief Read the next notification frame without parsing it.
+ *
+ * Unlike ::srsn_read_notif(), a partially arrived frame is kept for the next call, so no notification is lost.
+ *
+ * @param[in] reader Reader to use.
+ * @param[out] timestamp Frame timestamp.
+ * @param[out] lyb Frame LYB data, allocated, freed by the caller.
+ * @param[out] lyb_size Size of @p lyb.
+ * @return ::SR_ERR_OK on a complete frame,
+ * @return ::SR_ERR_TIME_OUT if no complete frame is available yet (no data or partial frame),
+ * @return ::SR_ERR_UNSUPPORTED on end-of-file (the write end was closed),
+ * @return ::SR_ERR_NO_MEMORY if the frame could not be allocated, it is kept for a later call,
+ * @return ::SR_ERR_SYS on another error (logged).
+ */
+int srsn_reader_read(srsn_reader_t *reader, struct timespec *timestamp, char **lyb, uint32_t *lyb_size);
+
+/**
+ * @brief Free an incremental reader, does not close its FD.
+ *
+ * @param[in] reader Reader to free.
+ */
+void srsn_reader_free(srsn_reader_t *reader);
 
 /**
  * @brief Poll a file descriptor for data to read.
