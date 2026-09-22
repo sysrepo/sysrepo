@@ -23,6 +23,9 @@
 
 #include <libyang/libyang.h>
 
+/** @brief Count argument for ::srsn_oper_data_subscriptions_free() when freeing a single subscription. */
+#define SRSN_FREE_SINGLE 1
+
 /**
  * @brief UDP transport operations (defined in notifd_udp.c).
  */
@@ -531,7 +534,7 @@ void process_modified_receiver_instances(notifd_ctx_t *notifd_ctx);
  *
  * @param[in] notifd_ctx Daemon context.
  * @param[in,out] sub Subscription to resubscribe.
- * @return ::SR_ERR_OK on success, error code from notification_dispatch_start on failure.
+ * @return ::SR_ERR_OK on success, error code from notif_receiver_srsn_start on failure.
  */
 int subscription_resubscribe(notifd_ctx_t *notifd_ctx, notif_sub_t *sub);
 
@@ -704,6 +707,9 @@ void notif_receiver_disconnect(notif_receiver_t *receiver);
  * Delay = NOTIFD_RECV_RECONNECT_BASE_SEC << reconnect_attempts, capped
  * at NOTIFD_RECV_RECONNECT_MAX_SEC (60s).
  *
+ * A receiver with no notification pipe is never reconnected, it could not be sent the notifications
+ * the ACTIVE state promises.
+ *
  * @param[in] notifd_ctx Daemon context.
  * @param[in] receiver Disconnected receiver to reconnect.
  * @return ::SR_ERR_OK on success, ::SR_ERR_OPERATION_FAILED if backoff has not
@@ -770,77 +776,64 @@ int notif_receiver_send(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver, co
         const struct timespec *timestamp, notif_encoding_t encoding);
 
 /**
- * @brief Start notification dispatch for a receiver via srsn.
+ * @brief Run the reconnect backoff of every receiver whose deadline has passed.
  *
- * Subscribes to the configured notification stream and adds a file-descriptor-based
- * dispatch entry. This begins the flow of notifications from sysrepo to the receiver.
- * Temporarily drops the state write lock, the dispatch add waits for the dispatch thread,
- * which may be executing the notification callback (that acquires the state read lock).
+ * @warning The caller MUST hold the state write lock.
  *
- * @warning The caller MUST hold both state_rwlock (write) AND config_apply_mutex.
- * The config_apply_mutex prevents another thread from stealing the write-lock
- * in the unlock/relock window.
+ * @param[in] notifd_ctx Daemon context.
+ * @return Milliseconds until the earliest pending deadline, -1 if none is pending.
+ */
+int notifd_reconnect_due_receivers(notifd_ctx_t *notifd_ctx);
+
+/**
+ * @brief Subscribe a receiver to its notification stream and hand the pipe over to the dispatch loop.
  *
- * @param[in] notifd_ctx Daemon context (its sr_sess is used as the srsn subscription session,
- * its state_rwlock is temporarily unlocked/relocked).
+ * @warning The caller MUST hold the state write lock.
+ *
+ * @param[in] notifd_ctx Daemon context (its sr_sess is used as the srsn subscription session).
  * @param[in] sub Subscription defining the stream, filter, and stop/start times.
- * @param[in] receiver Receiver whose srsn_data and cb_data will be populated.
+ * @param[in] receiver Receiver whose srsn_data will be populated.
  * @return ::SR_ERR_OK on success, error code on failure.
  */
-int notification_dispatch_start(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_receiver_t *receiver);
+int notif_receiver_srsn_start(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_receiver_t *receiver);
 
 /**
- * @brief Stop notification dispatch for a receiver.
+ * @brief Terminate the srsn subscription of a receiver and stop dispatching its pipe.
  *
- * Terminates the srsn subscription and cleans up resources. Temporarily drops
- * the state write lock to allow srsn_terminate() to invoke the notification
- * callback (which acquires the state read lock).
+ * @warning The caller MUST hold the state write lock.
  *
- * @warning The caller MUST hold both state_rwlock (write) AND config_apply_mutex.
- * The config_apply_mutex prevents another thread from stealing the write-lock
- * in the unlock/relock window.
- *
- * @param[in] notifd_ctx Daemon context (its state_rwlock is temporarily unlocked/relocked).
+ * @param[in] notifd_ctx Daemon context.
  * @param[in] receiver Receiver whose dispatch is being stopped.
  */
-void notification_dispatch_stop(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver);
+void notif_receiver_srsn_stop(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver);
 
 /**
- * @brief Main notification callback invoked by the srsn dispatch thread.
+ * @brief Find the receiver of an SRSN subscription.
  *
- * Checks subscription validity, handles stop-time expiration (converting
- * srsn's `subscription-terminated` into `subscription-completed` per RFC 8692),
- * attempts automatic reconnection of disconnected receivers with backoff,
- * and delivers the notification. May upgrade from a read lock to a write lock
- * for stop-time handling or receiver reconnection.
+ * @warning The caller MUST hold the state lock.
  *
+ * @param[in] notifd_ctx Daemon context.
+ * @param[in] srsn_sub_id SRSN subscription ID to look up.
+ * @return Receiver of the subscription, NULL if it no longer exists.
+ */
+notif_receiver_t *receiver_find_by_srsn_sub_id(notifd_ctx_t *notifd_ctx, uint32_t srsn_sub_id);
+
+/**
+ * @brief Deliver one notification to a receiver, reconnecting it and handling its stop-time.
+ *
+ * @warning The caller MUST hold the state write lock.
+ *
+ * @param[in] notifd_ctx Daemon context.
+ * @param[in] receiver Receiver to deliver to.
  * @param[in] notif The incoming notification data tree.
  * @param[in] timestamp Event timestamp of the notification.
- * @param[in] cb_data User data pointer, must be a pointer to ::notif_cb_data_t.
  */
-void notifd_notification_cb(const struct lyd_node *notif, const struct timespec *timestamp, void *cb_data);
+void notifd_deliver_notif(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver, const struct lyd_node *notif,
+        const struct timespec *timestamp);
 
 /*
  * General utility functions
 */
-
-/**
- * @brief Acquire a mutex lock with optional timeout and error reporting.
- *
- * @param[in] mutex Mutex to lock.
- * @param[in] timeout_ms Timeout in milliseconds, 0 for blocking.
- * @param[in] func Calling function name for error reporting.
- * @return SR_ERR_OK on success, SR_ERR_TIME_OUT on timeout, SR_ERR_INTERNAL on other errors.
- */
-int notifd_mutex_lock(pthread_mutex_t *mutex, uint32_t timeout_ms, const char *func);
-
-/**
- * @brief Unlock a mutex lock.
- *
- * @param[in] mutex Mutex to unlock.
- * @param[in] func Calling function name for error reporting.
- */
-void notifd_mutex_unlock(pthread_mutex_t *mutex, const char *func);
 
 /**
  * @brief Acquire a read or write lock on a rwlock with optional timeout and error reporting.
@@ -860,5 +853,57 @@ int notifd_rwlock_lock(pthread_rwlock_t *lock, int is_write, uint32_t timeout_ms
  * @param[in] func Calling function name for error reporting.
  */
 void notifd_rwlock_unlock(pthread_rwlock_t *lock, const char *func);
+
+/*
+ * ---------------------------------------------------------------------------
+ * Notification dispatch loop (notifd_dispatch.c)
+ * ---------------------------------------------------------------------------
+ */
+
+/**
+ * @brief Initialize the notification dispatch loop and start its thread.
+ *
+ * @param[in] notifd_ctx Daemon context.
+ * @return ::SR_ERR_OK on success, error code on failure.
+ */
+int notifd_dispatch_start(notifd_ctx_t *notifd_ctx);
+
+/**
+ * @brief Stop the notification dispatch loop, if running, and free everything it holds.
+ *
+ * @warning The caller MUST NOT hold any notifd lock and MUST have unsubscribed first, no
+ * configuration apply may run concurrently.
+ *
+ * @param[in] disp Dispatch state.
+ */
+void notifd_dispatch_stop(notifd_dispatch_t *disp);
+
+/**
+ * @brief Hand a subscription pipe over to the dispatch loop.
+ *
+ * On success @p fd is owned by the loop and must never be closed by the caller, on error it stays
+ * owned by the caller.
+ *
+ * @param[in] disp Dispatch state.
+ * @param[in] fd Subscription pipe read end from ::srsn_subscribe().
+ * @param[in] srsn_sub_id SRSN subscription ID of @p fd.
+ * @return ::SR_ERR_OK on success, error code on failure.
+ */
+int notifd_dispatch_add(notifd_dispatch_t *disp, int fd, uint32_t srsn_sub_id);
+
+/**
+ * @brief Stop dispatching a subscription pipe, the loop closes its FD.
+ *
+ * @param[in] disp Dispatch state.
+ * @param[in] srsn_sub_id SRSN subscription ID to stop dispatching.
+ */
+void notifd_dispatch_detach(notifd_dispatch_t *disp, uint32_t srsn_sub_id);
+
+/**
+ * @brief Wake the dispatch loop up so that it looks at its state again.
+ *
+ * @param[in] disp Dispatch state.
+ */
+void notifd_dispatch_wakeup(notifd_dispatch_t *disp);
 
 #endif /* COMMON_H_ */
