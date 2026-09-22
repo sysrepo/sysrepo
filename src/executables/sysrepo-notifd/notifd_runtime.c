@@ -389,12 +389,35 @@ notif_receiver_disconnect(notif_receiver_t *receiver)
     receiver->ops->disconnect(receiver);
 }
 
+/**
+ * @brief Get the exponential reconnect backoff delay of a receiver.
+ *
+ * @param[in] receiver Receiver to use.
+ * @return Backoff delay in seconds.
+ */
+static uint32_t
+notif_receiver_backoff_sec(const notif_receiver_t *receiver)
+{
+    uint32_t backoff_sec, shift;
+
+    shift = receiver->reconnect_attempts;
+    if (shift > 30) {
+        shift = 30;
+    }
+    backoff_sec = NOTIFD_RECV_RECONNECT_BASE_SEC << shift;
+    if ((backoff_sec > NOTIFD_RECV_RECONNECT_MAX_SEC) || (backoff_sec < NOTIFD_RECV_RECONNECT_BASE_SEC)) {
+        backoff_sec = NOTIFD_RECV_RECONNECT_MAX_SEC;
+    }
+
+    return backoff_sec;
+}
+
 int
 notif_receiver_backoff_reconnect(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver)
 {
     int rc = SR_ERR_OK;
     struct timespec now, event_ts;
-    uint32_t backoff_sec, shift;
+    uint32_t backoff_sec;
     time_t elapsed;
     const struct ly_ctx *ly_ctx;
     struct lyd_node *start_notif = NULL;
@@ -407,22 +430,20 @@ notif_receiver_backoff_reconnect(notifd_ctx_t *notifd_ctx, notif_receiver_t *rec
         return SR_ERR_OK;
     }
 
-    /* calculate exponential backoff delay */
-    shift = receiver->reconnect_attempts;
-    if (shift > 30) {
-        shift = 30;
+    if (!receiver->srsn_data.sub_id) {
+        /* "active" means the receiver is being sent every applicable notification, which is false
+         * without a notification pipe, so do not reconnect it at all */
+        return SR_ERR_OPERATION_FAILED;
     }
-    backoff_sec = NOTIFD_RECV_RECONNECT_BASE_SEC << shift;
-    if ((backoff_sec > NOTIFD_RECV_RECONNECT_MAX_SEC) || (backoff_sec < NOTIFD_RECV_RECONNECT_BASE_SEC)) {
-        backoff_sec = NOTIFD_RECV_RECONNECT_MAX_SEC;
-    }
+
+    backoff_sec = notif_receiver_backoff_sec(receiver);
 
     /* check if enough time has passed since last reconnect attempt */
     clock_gettime(COMPAT_CLOCK_ID, &now);
     if (receiver->last_reconnect_attempt.tv_sec || receiver->last_reconnect_attempt.tv_nsec) {
         elapsed = now.tv_sec - receiver->last_reconnect_attempt.tv_sec;
         if (elapsed < (time_t)backoff_sec) {
-            SRNTF_LOG_WRN("Receiver \"%s\" reconnect backoff not elapsed (%lds < %ds).",
+            SRNTF_LOG_DBG("Receiver \"%s\" reconnect backoff not elapsed (%lds < %ds).",
                     receiver->name, (long)elapsed, (int)backoff_sec);
             return SR_ERR_OPERATION_FAILED;
         }
@@ -430,6 +451,7 @@ notif_receiver_backoff_reconnect(notifd_ctx_t *notifd_ctx, notif_receiver_t *rec
 
     /* try to reconnect */
     receiver->last_reconnect_attempt = now;
+
     rc = notif_receiver_connect(receiver);
     if (rc) {
         receiver->reconnect_attempts++;
@@ -470,6 +492,79 @@ disconnect:
     notif_receiver_disconnect(receiver);
     receiver->state = NOTIF_RECV_STATE_DISCONNECTED;
     return rc;
+}
+
+int
+notifd_reconnect_due_receivers(notifd_ctx_t *notifd_ctx)
+{
+    notif_receiver_t *receiver;
+    struct timespec now;
+    LYA_COUNT_T i, j;
+    int64_t remaining_ms, next_ms = -1;
+    time_t deadline;
+
+    clock_gettime(COMPAT_CLOCK_ID, &now);
+
+    LYA_FOR(notifd_ctx->subs, i) {
+        if (notifd_ctx->subs[i]->state != NOTIF_SUB_STATE_VALID) {
+            continue;
+        }
+
+        LYA_FOR(notifd_ctx->subs[i]->receivers, j) {
+            receiver = &notifd_ctx->subs[i]->receivers[j];
+
+            /* skip the receivers that are connected or cannot be reconnected */
+            if (!receiver->inst || !receiver->srsn_data.sub_id || notif_receiver_is_connected(receiver)) {
+                continue;
+            }
+            assert((receiver->state == NOTIF_RECV_STATE_DISCONNECTED) ||
+                    (receiver->state == NOTIF_RECV_STATE_CONNECTING));
+
+            if (!receiver->last_reconnect_attempt.tv_sec && !receiver->last_reconnect_attempt.tv_nsec) {
+                /* never attempted, retry immediately */
+                deadline = now.tv_sec;
+            } else {
+                deadline = receiver->last_reconnect_attempt.tv_sec + (time_t)notif_receiver_backoff_sec(receiver);
+            }
+
+            if (deadline <= now.tv_sec) {
+                notif_receiver_backoff_reconnect(notifd_ctx, receiver);
+
+                /* the deadline must advance on every firing whether or not the attempt happened */
+                receiver->last_reconnect_attempt = now;
+                if (notif_receiver_is_connected(receiver)) {
+                    continue;
+                }
+                deadline = now.tv_sec + (time_t)notif_receiver_backoff_sec(receiver);
+            }
+
+            remaining_ms = ((int64_t)(deadline - now.tv_sec)) * 1000;
+            if (remaining_ms < 0) {
+                remaining_ms = 0;
+            }
+            if ((next_ms == -1) || (remaining_ms < next_ms)) {
+                next_ms = remaining_ms;
+            }
+        }
+    }
+
+    return (next_ms > INT32_MAX) ? INT32_MAX : (int)next_ms;
+}
+
+/**
+ * @brief Learn whether a notification is a subscription state change and not an event record.
+ *
+ * @param[in] notif Notification to check.
+ * @return Whether it is a subscription state change.
+ */
+static int
+notif_is_subscription_state_change(const struct lyd_node *notif)
+{
+    const struct lys_module *mod;
+
+    mod = notif->schema ? notif->schema->module : NULL;
+
+    return mod && !strcmp(mod->name, "ietf-subscribed-notifications");
 }
 
 int
@@ -545,6 +640,9 @@ notif_receiver_send(notifd_ctx_t *UNUSED(notifd_ctx), notif_receiver_t *receiver
         SRNTF_LOG_WRN("Dropped notification \"%s\" for receiver \"%s\", its transport buffer is full.",
                 notif_path, receiver->name);
         rc = SR_ERR_OK;
+    } else if (!rc && !notif_is_subscription_state_change(notif)) {
+        /* count the event records the transport accepted, not those written into the srsn pipe */
+        ++receiver->sent_count;
     }
 
 cleanup:
@@ -625,14 +723,12 @@ cleanup:
  */
 
 /**
- * @brief Free the srsn subscription and dispatch data of a receiver that failed to start.
- *
- * Must not be called for an FD that the dispatch has taken over, use ::srsn_read_dispatch_del() instead.
+ * @brief Free the srsn subscription data of a receiver that failed to start.
  *
  * @param[in,out] receiver Receiver to clean up.
  */
 static void
-notification_dispatch_data_free(notif_receiver_t *receiver)
+notif_receiver_srsn_free(notif_receiver_t *receiver)
 {
     if (receiver->srsn_data.sub_id) {
         /* terminate the srsn subscription, which removes its subscriptions from the sysrepo context */
@@ -643,21 +739,12 @@ notification_dispatch_data_free(notif_receiver_t *receiver)
     /* unsubscribe only after srsn_terminate(), which still uses the subscription context */
     sr_unsubscribe(receiver->srsn_data.sr_subscr);
     receiver->srsn_data.sr_subscr = NULL;
-
-    if (receiver->srsn_data.fd != -1) {
-        /* the dispatch never took over the FD, it is still ours to close */
-        close(receiver->srsn_data.fd);
-        receiver->srsn_data.fd = -1;
-    }
-
-    free(receiver->cb_data);
-    receiver->cb_data = NULL;
 }
 
 int
-notification_dispatch_start(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_receiver_t *receiver)
+notif_receiver_srsn_start(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_receiver_t *receiver)
 {
-    int rc = SR_ERR_OK, unlocked = 0;
+    int rc = SR_ERR_OK, fd = -1;
     struct timespec *stop_time, *start_time;
 
     stop_time = (sub->stop_time.tv_sec || sub->stop_time.tv_nsec) ? &sub->stop_time : NULL;
@@ -665,83 +752,46 @@ notification_dispatch_start(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_re
 
     /* subscribe for notifications */
     if ((rc = srsn_subscribe(notifd_ctx->sr_sess, sub->stream, sub->xpath_filter, stop_time, start_time, 0,
-            &receiver->srsn_data.sr_subscr, &sub->replay_start_time, &receiver->srsn_data.fd, &receiver->srsn_data.sub_id))) {
+            &receiver->srsn_data.sr_subscr, &sub->replay_start_time, &fd, &receiver->srsn_data.sub_id))) {
         SRNTF_LOG_ERR("Failed to subscribe for notifications for subscription ID %" PRIu32 " and receiver \"%s\".",
                 sub->id, receiver->name);
         goto cleanup;
     }
 
-    /* set up notif cb data, allocated separately from the receiver whose address may change */
-    if (!(receiver->cb_data = calloc(1, sizeof *receiver->cb_data))) {
-        SRNTF_LOG_ERR("Memory allocation failed.");
-        rc = SR_ERR_NO_MEMORY;
-        goto cleanup;
-    }
-    receiver->cb_data->ctx = notifd_ctx;
-
-    /* UNLOCK state lock, the dispatch add waits for the dispatch lock, which the dispatch thread holds while
-     * calling the notif cb, which needs the state lock. Nobody can steal our WR lock here, because the caller
-     * MUST hold config_apply_mutex, which prevents another thread from acquiring the state WR lock in this
-     * window. The receiver is not active yet, so no notifications are sent to it meanwhile. */
-    notifd_rwlock_unlock(&notifd_ctx->state_rwlock, __func__);
-    unlocked = 1;
-
-    /* add notification dispatch, which takes over the FD on success */
-    if ((rc = srsn_read_dispatch_add(receiver->srsn_data.fd, receiver->cb_data))) {
+    /* hand the pipe over to the dispatch loop, which owns the FD from now on */
+    if ((rc = notifd_dispatch_add(&notifd_ctx->dispatch, fd, receiver->srsn_data.sub_id))) {
         SRNTF_LOG_ERR("Failed to add notification dispatch for subscription ID %" PRIu32 " and receiver \"%s\".",
                 sub->id, receiver->name);
+        close(fd);
+        goto cleanup;
     }
 
 cleanup:
     if (rc) {
-        /* clean up before the state lock is reacquired, srsn_terminate() may wait for the dispatch thread */
-        notification_dispatch_data_free(receiver);
-    }
-
-    if (unlocked) {
-        /* WR LOCK, reacquire to finish updating the config */
-        if (notifd_rwlock_lock(&notifd_ctx->state_rwlock, 1, NOTIFD_CONTEXT_LOCK_TIMEOUT_MS, __func__)) {
-            SRNTF_LOG_ERR("Internal error: failed to acquire state lock to start notification dispatch for "
-                    "receiver \"%s\".", receiver->name);
-            return rc ? rc : SR_ERR_INTERNAL;
-        }
-    }
-
-    if (rc) {
+        notif_receiver_srsn_free(receiver);
         sub->modif_err_reason = "ietf-subscribed-notifications:no-such-subscription";
     }
     return rc;
 }
 
 void
-notification_dispatch_stop(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver)
+notif_receiver_srsn_stop(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver)
 {
-    /* UNLOCK state lock, srsn_terminate will call notif cb, which will try to acquire the state lock to send
-     * any remaining notifs. Nobody can steal our WR lock here, because the caller MUST hold config_apply_mutex,
-     * which prevents another thread from acquiring the state WR lock in this window */
-    notifd_rwlock_unlock(&notifd_ctx->state_rwlock, __func__);
+    srsn_state_sub_t *state_sub = NULL;
 
     if (receiver->srsn_data.sub_id) {
+        /* carry the excluded count over, the next srsn subscription starts counting from zero */
+        if (!srsn_oper_data_sub(receiver->srsn_data.sub_id, &state_sub)) {
+            receiver->excluded_base += state_sub->excluded_count;
+            srsn_oper_data_subscriptions_free(state_sub, SRSN_FREE_SINGLE);
+        }
+
+        /* terminate the srsn subscription first, it flushes whatever it still wants to write */
         srsn_terminate(receiver->srsn_data.sub_id, NULL);
+
+        /* stop dispatching, the loop closes the FD and drops the entry at its own pace */
+        notifd_dispatch_detach(&notifd_ctx->dispatch, receiver->srsn_data.sub_id);
         receiver->srsn_data.sub_id = 0;
-    }
-
-    /* Remove the dispatch, which also closes the FD. Must be done without the state lock, the call waits
-     * for any running callback, which needs the lock. Afterwards no callback can reference our cb_data. */
-    if (receiver->srsn_data.fd != -1) {
-        srsn_read_dispatch_del(receiver->srsn_data.fd);
-        receiver->srsn_data.fd = -1;
-    }
-
-    /* free before the lock is reacquired, which may fail */
-    free(receiver->cb_data);
-    receiver->cb_data = NULL;
-
-    /* WR LOCK, reacquire to finish updating the config before checking retval of srsn_terminate */
-    if (notifd_rwlock_lock(&notifd_ctx->state_rwlock, 1, NOTIFD_CONTEXT_LOCK_TIMEOUT_MS, __func__)) {
-        SRNTF_LOG_ERR("Internal error: failed to acquire state lock to stop notification dispatch for receiver \"%s\".",
-                receiver->name);
-        return;
     }
 
     if (receiver->srsn_data.sr_subscr) {
@@ -752,25 +802,18 @@ notification_dispatch_stop(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver)
 
 /*
  * ---------------------------------------------------------------------------
- * Main notification callback (called by srsn dispatch thread)
+ * Notification delivery (called by the dispatch loop)
  * ---------------------------------------------------------------------------
  */
 
-/**
- * @brief Find the receiver dispatch callback data belong to.
- *
- * @param[in] notifd_ctx Daemon context.
- * @param[in] data Callback data to look up.
- * @return Receiver owning @p data, NULL if it no longer exists.
- */
-static notif_receiver_t *
-receiver_find_by_cb_data(notifd_ctx_t *notifd_ctx, const notif_cb_data_t *data)
+notif_receiver_t *
+receiver_find_by_srsn_sub_id(notifd_ctx_t *notifd_ctx, uint32_t srsn_sub_id)
 {
     LYA_COUNT_T i, j;
 
     LYA_FOR(notifd_ctx->subs, i) {
         LYA_FOR(notifd_ctx->subs[i]->receivers, j) {
-            if (notifd_ctx->subs[i]->receivers[j].cb_data == data) {
+            if (notifd_ctx->subs[i]->receivers[j].srsn_data.sub_id == srsn_sub_id) {
                 return &notifd_ctx->subs[i]->receivers[j];
             }
         }
@@ -780,118 +823,41 @@ receiver_find_by_cb_data(notifd_ctx_t *notifd_ctx, const notif_cb_data_t *data)
 }
 
 void
-notifd_notification_cb(const struct lyd_node *notif, const struct timespec *timestamp, void *cb_data)
+notifd_deliver_notif(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver, const struct lyd_node *notif,
+        const struct timespec *timestamp)
 {
-    notif_cb_data_t *data = (notif_cb_data_t *)cb_data;
-    notifd_ctx_t *notifd_ctx;
-    notif_receiver_t *receiver;
-    notif_sub_t *sub;
+    notif_sub_t *sub = receiver->sub;
     struct timespec now;
-    uint32_t sub_id;
 
-    assert(data);
-    notifd_ctx = data->ctx;
-    assert(notifd_ctx);
-
-    /* STATE RD LOCK */
-    if (notifd_rwlock_lock(&notifd_ctx->state_rwlock, 0, NOTIFD_CONTEXT_LOCK_TIMEOUT_MS, __func__)) {
-        return;
-    }
-
-    /* look up our receiver */
-    if (!(receiver = receiver_find_by_cb_data(notifd_ctx, data))) {
-        goto unlock;
-    }
-
-    sub = receiver->sub;
     if (sub->state != NOTIF_SUB_STATE_VALID) {
         /* only send notifications for valid subscriptions */
-        goto unlock;
+        return;
     }
-
-    /* save ID before any lock upgrade, as sub may be freed by another thread */
-    sub_id = sub->id;
 
     /*
      * Stop time reached - srsn generates subscription-terminated internally,
      * but per RFC 8692/YANG model, subscription-completed should be sent instead.
-     * Need write lock for the state transition.
      */
     if (!strcmp(LYD_NAME(notif), "subscription-terminated")) {
         clock_gettime(CLOCK_REALTIME, &now);
-        if ((sub->stop_time.tv_sec || sub->stop_time.tv_nsec) &&
-                (timespec_cmp(&sub->stop_time, &now) <= 0)) {
-            /* STATE UNLOCK */
-            notifd_rwlock_unlock(&notifd_ctx->state_rwlock, __func__);
-
-            /* STATE WR LOCK */
-            if (notifd_rwlock_lock(&notifd_ctx->state_rwlock, 1, NOTIFD_CONTEXT_LOCK_TIMEOUT_MS, __func__)) {
-                SRNTF_LOG_ERR("Internal error: failed to acquire state lock to handle subscription stop time.");
-                return;
-            }
-
-            /* revalidate: subscription may have been deleted during lock upgrade */
-            sub = subscription_find_by_id(notifd_ctx, sub_id);
-            if (!sub) {
-                goto unlock;
-            }
-
+        if ((sub->stop_time.tv_sec || sub->stop_time.tv_nsec) && (timespec_cmp(&sub->stop_time, &now) <= 0)) {
             if (sub->state != NOTIF_SUB_STATE_CONCLUDED) {
                 sub->state = NOTIF_SUB_STATE_CONCLUDED;
                 subscription_completed_notif_send(notifd_ctx, sub, NULL);
             }
-
-            goto unlock;
+            return;
         }
     }
 
     /* if the receiver is not active, try to reconnect if possible, otherwise skip sending the notification */
     if (receiver->state != NOTIF_RECV_STATE_ACTIVE) {
-        if (!notif_receiver_is_connected(receiver) &&
-                ((receiver->state == NOTIF_RECV_STATE_DISCONNECTED) ||
-                (receiver->state == NOTIF_RECV_STATE_CONNECTING))) {
-            /* need write lock to reconnect and update state */
-            /* STATE UNLOCK */
-            notifd_rwlock_unlock(&notifd_ctx->state_rwlock, __func__);
-
-            /* STATE WR LOCK */
-            if (notifd_rwlock_lock(&notifd_ctx->state_rwlock, 1, NOTIFD_CONTEXT_LOCK_TIMEOUT_MS, __func__)) {
-                SRNTF_LOG_ERR("Internal error: failed to acquire state lock to handle receiver reconnection.");
-                return;
-            }
-
-            /* revalidate: subscription may have been deleted during lock upgrade */
-            sub = subscription_find_by_id(notifd_ctx, sub_id);
-            if (!sub || (sub->state != NOTIF_SUB_STATE_VALID)) {
-                goto unlock;
-            }
-
-            /* re-find the receiver as it may have been moved in the array */
-            if (!(receiver = receiver_find_by_cb_data(notifd_ctx, data))) {
-                goto unlock;
-            }
-
-            /* recheck after reacquiring write lock */
-            if ((receiver->state != NOTIF_RECV_STATE_ACTIVE) && !notif_receiver_is_connected(receiver) &&
-                    ((receiver->state == NOTIF_RECV_STATE_DISCONNECTED) ||
-                    (receiver->state == NOTIF_RECV_STATE_CONNECTING))) {
-                /* try to reconnect with exponential backoff */
-                notif_receiver_backoff_reconnect(notifd_ctx, receiver);
-            }
-
-            /* on success, state is now ACTIVE and subscription-started was sent */
-            if (receiver->state != NOTIF_RECV_STATE_ACTIVE) {
-                goto unlock;
-            }
-        } else {
-            goto unlock;
+        /* try to reconnect with exponential backoff, on success the state is ACTIVE and
+         * subscription-started was sent */
+        notif_receiver_backoff_reconnect(notifd_ctx, receiver);
+        if (receiver->state != NOTIF_RECV_STATE_ACTIVE) {
+            return;
         }
     }
 
-    /* send the notification */
-    notif_receiver_send(notifd_ctx, receiver, notif, timestamp, receiver->sub->encoding);
-
-unlock:
-    /* STATE UNLOCK */
-    notifd_rwlock_unlock(&notifd_ctx->state_rwlock, __func__);
+    notif_receiver_send(notifd_ctx, receiver, notif, timestamp, sub->encoding);
 }

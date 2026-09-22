@@ -16,6 +16,7 @@
 #ifndef NOTIFD_H_
 #define NOTIFD_H_
 
+#include <poll.h>
 #include <pthread.h>
 #include <stdint.h>
 #include <sys/socket.h>
@@ -24,6 +25,7 @@
 #include "compat.h"
 #include "sysrepo.h"
 #include "sysrepo_types.h"
+#include "utils/subscribed_notifications.h"
 
 /**
  * @brief Logging macros for sysrepo-notifd.
@@ -84,6 +86,16 @@
  * @brief Maximum delay in seconds for receiver reconnect exponential backoff.
  */
 #define NOTIFD_RECV_RECONNECT_MAX_SEC 60
+
+/**
+ * @brief Period in milliseconds the dispatch loop retries the state lock at while draining.
+ */
+#define NOTIFD_DISPATCH_LOCK_RETRY_MS 5
+
+/**
+ * @brief Delay in milliseconds after a failed poll() of the dispatch loop.
+ */
+#define NOTIFD_DISPATCH_POLL_ERR_DELAY_MS 1000
 
 /**
  * @brief RFC 5277 NETCONF notification envelope namespace.
@@ -179,10 +191,9 @@ typedef int (*notif_transport_connect_cb)(notif_receiver_t *recv, void *cfg);
 /**
  * @brief Resolve the remote address of a notification receiver.
  *
- * Called whenever the configuration of a receiver is applied, so that connecting it never has to
- * resolve a name. Name resolution may block for an unbounded time and connecting happens on the
- * notification dispatch loop, which must never block. Fills @p recv->addr and @p recv->addr_len,
- * zeroed by the caller and restored by it on failure.
+ * Called when the configuration of a receiver is applied, so that connecting it on the dispatch
+ * loop never blocks on a name lookup. Fills @p recv->addr and @p recv->addr_len, zeroed by the
+ * caller and restored by it on failure.
  *
  * @param[in] recv Receiver to resolve.
  * @param[in] cfg Transport-specific configuration (from @p recv->inst->transport_config).
@@ -342,13 +353,6 @@ struct notif_receiver_inst_s {
 };
 
 /**
- * @brief Callback data passed to ::srsn_notif_cb().
- */
-typedef struct notif_cb_data_s {
-    notifd_ctx_t *ctx;          /**< main daemon context */
-} notif_cb_data_t;
-
-/**
  * @brief Receiver within a subscription.
  * Corresponds to /ietf-subscribed-notifications:subscriptions/subscription/receivers/receiver
  *
@@ -365,13 +369,9 @@ struct notif_receiver_s {
 
     struct {
         sr_subscription_ctx_t *sr_subscr;       /**< sysrepo subscription context */
-        uint32_t sub_id;                        /**< srsn subscription ID */
-        int fd;                                 /**< notification pipe FD from srsn_subscribe */
-    } srsn_data;                                /**< srsn subscription and dispatch data */
-    notif_cb_data_t *cb_data;                   /**< callback data for srsn dispatch.
-                                                     Its address identifies the receiver it belongs to -
-                                                     the address is used for receiver lookup in
-                                                     ::notifd_notification_cb() notification dispatch callback. */
+        uint32_t sub_id;                        /**< srsn subscription ID, identifies the receiver's
+                                                     notification pipe, which the dispatch loop owns */
+    } srsn_data;                                /**< srsn subscription data */
 
     notif_sub_t *sub;                           /**< back-pointer to the parent subscription */
     struct timespec last_reconnect_attempt;     /**< time of the last reconnect attempt */
@@ -380,6 +380,10 @@ struct notif_receiver_s {
     struct sockaddr_storage addr;               /**< resolved remote address */
     socklen_t addr_len;                         /**< length of addr, 0 means the receiver cannot be
                                                      connected until its configuration is applied again */
+
+    uint64_t sent_count;                        /**< event records the transport accepted for this receiver */
+    uint64_t excluded_base;                     /**< event records filtered out by the srsn subscriptions this
+                                                     receiver has already finished with */
 };
 
 /**
@@ -416,15 +420,75 @@ struct notif_sub_s {
 };
 
 /**
+ * @brief State of a dispatch entry.
+ */
+typedef enum {
+    NOTIFD_DISP_ENTRY_ACTIVE = 0,   /**< dispatched normally */
+    NOTIFD_DISP_ENTRY_ENDED,        /**< the SRSN subscription is gone, its receiver not transitioned yet */
+    NOTIFD_DISP_ENTRY_REMOVE        /**< detached or transitioned, the loop closes the FD and drops the entry */
+} notifd_disp_entry_state_t;
+
+/**
+ * @brief Dispatch loop entry, the notification pipe of one SRSN subscription.
+ */
+typedef struct notifd_disp_entry_s {
+    int fd;                             /**< SRSN pipe read end, owned by the dispatch loop */
+    uint32_t srsn_sub_id;               /**< SRSN subscription ID, stable identity of the entry */
+    srsn_reader_t *reader;              /**< incremental frame reader for fd */
+    notifd_disp_entry_state_t state;    /**< entry state */
+} notifd_disp_entry_t;
+
+/**
+ * @brief One drained notification frame awaiting delivery.
+ */
+typedef struct notifd_disp_frame_s {
+    uint32_t srsn_sub_id;       /**< identity of the subscription it was read from */
+    struct timespec timestamp;  /**< frame timestamp */
+    char *lyb;                  /**< frame LYB data */
+    uint32_t lyb_size;          /**< size of lyb */
+} notifd_disp_frame_t;
+
+/**
+ * @brief Notification dispatch loop of the daemon.
+ */
+typedef struct notifd_dispatch_s {
+    pthread_t tid;                  /**< loop thread */
+    ATOMIC_T thread_running;        /**< the loop thread runs and accepts adds, cleared to stop it */
+    ATOMIC_T check_timers;          /**< something changed that may have armed a deadline, evaluate the
+                                         deadlines once even though no notification arrived */
+
+    int wakeup_rfd;                 /**< self-pipe read end, polled by the loop */
+    int wakeup_wfd;                 /**< self-pipe write end, non-blocking */
+
+    pthread_mutex_t disp_lock;      /**< guards entries and their state, leaf lock, nothing is
+                                         acquired under it */
+    notifd_disp_entry_t **entries;  /**< dispatched subscriptions (sized-array, see libyang docs),
+                                         individually allocated so that an add cannot move an entry
+                                         the loop is holding */
+
+    /* loop-private: built and used by the loop thread only */
+    struct pollfd *pfds;                    /**< poll set, entry FDs followed by wakeup_rfd */
+    notifd_disp_entry_t **pfd_entries;      /**< entry of each pfds item, parallel array */
+    uint32_t pfd_count;                     /**< valid items in pfds/pfd_entries, wakeup FD excluded */
+    uint32_t pfd_cap;                       /**< allocated capacity of pfds/pfd_entries, never shrunk */
+
+    notifd_disp_frame_t *frames;    /**< drained frames awaiting delivery (sized-array, see libyang docs) */
+
+    struct timespec reconnect_deadline; /**< when the next receiver reconnect is due, zero if none is pending */
+} notifd_dispatch_t;
+
+/**
  * @brief Main daemon context.
  */
 struct notifd_ctx_s {
     sr_session_ctx_t *sr_sess;              /**< sysrepo session used by the daemon */
-    pthread_rwlock_t state_rwlock;          /**< synchronize access to daemon shared state (subscriptions,
-                                                 receiver instances, and related runtime fields) */
-    pthread_mutex_t config_apply_mutex;     /**< serialize config-apply operations; keeps a single apply
-                                                 transaction active so state_rwlock write-lock ownership
-                                                 cannot be stolen across temporary unlock/relock windows */
+    pthread_rwlock_t state_rwlock;          /**< synchronize access to the daemon shared state; every reader
+                                                 runs on the single listener thread of the daemon's one
+                                                 subscription context, so a second subscription context or a
+                                                 read lock from another thread would break the assumption
+                                                 that readers never overlap */
+    notifd_dispatch_t dispatch;             /**< loop dispatching the notifications sysrepo generates for
+                                                 the receivers */
 
     notif_sub_t **subs;                     /**< configured subscriptions (sized-array, see libyang docs) */
     notif_receiver_inst_t **recv_insts;     /**< configured receiver instances (sized-array, see libyang docs) */
