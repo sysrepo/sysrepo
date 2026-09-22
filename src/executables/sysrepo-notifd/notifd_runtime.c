@@ -342,6 +342,20 @@ notif_receiver_is_connected(notif_receiver_t *receiver)
 }
 
 int
+notif_receiver_resolve(notif_receiver_t *receiver)
+{
+    /* the receiver cannot be connected until it is resolved again */
+    memset(&receiver->addr, 0, sizeof receiver->addr);
+    receiver->addr_len = 0;
+
+    if (!receiver->inst || !receiver->ops || !receiver->ops->resolve) {
+        return SR_ERR_OK;
+    }
+
+    return receiver->ops->resolve(receiver, receiver->inst->transport_config);
+}
+
+int
 notif_receiver_connect(notif_receiver_t *receiver)
 {
     int rc = SR_ERR_OK;
@@ -525,8 +539,12 @@ notif_receiver_send(notifd_ctx_t *UNUSED(notifd_ctx), notif_receiver_t *receiver
     }
 
     rc = receiver->ops->send(receiver, receiver->inst->transport_config, notif, &ts, encoding);
-    if (rc) {
-        goto cleanup;
+    if (rc == SR_ERR_TIME_OUT) {
+        /* the transport would have blocked, the notification was dropped, which is not an error of
+         * the receiver, so it stays connected */
+        SRNTF_LOG_WRN("Dropped notification \"%s\" for receiver \"%s\", its transport buffer is full.",
+                notif_path, receiver->name);
+        rc = SR_ERR_OK;
     }
 
 cleanup:
@@ -562,6 +580,11 @@ notif_receiver_reconnect(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_recei
         /* update to the new instance */
         receiver->inst = new_inst;
         receiver->ops = new_inst->ops;
+    }
+
+    /* resolve the address, the configuration affecting it may have changed */
+    if ((rc = notif_receiver_resolve(receiver))) {
+        goto cleanup;
     }
 
     /* connect the receiver */

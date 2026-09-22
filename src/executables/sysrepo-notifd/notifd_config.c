@@ -1397,9 +1397,14 @@ receiver_create_from_node(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const stru
         goto cleanup;
     }
 
+    /* resolve the address at configuration time, connecting must never resolve a name */
+    r = notif_receiver_resolve(receiver);
+
     /* connect the receiver and send subscription-started */
     receiver->state = NOTIF_RECV_STATE_CONNECTING;
-    r = notif_receiver_connect(receiver);
+    if (!r) {
+        r = notif_receiver_connect(receiver);
+    }
 
     if (!r && (sub->state == NOTIF_SUB_STATE_VALID)) {
         r = subscription_started_notif_send(notifd_ctx, sub, receiver);
