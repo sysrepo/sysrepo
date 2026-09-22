@@ -1159,12 +1159,6 @@ srsn_dispatch_add(int fd, void *cb_data)
         goto cleanup;
     }
 
-    /* set FD to non-blocking mode */
-    if (fcntl(fd, F_SETFL, O_NONBLOCK) == -1) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, "Setting non-blocking mode failed (%s).", strerror(errno));
-        goto cleanup;
-    }
-
     if (snstate.valid_pfds < snstate.pfd_count) {
         /* move the invalid PFDs and their cb_data, keep the order */
         i = 0;

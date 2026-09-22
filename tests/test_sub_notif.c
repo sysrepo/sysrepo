@@ -950,6 +950,80 @@ test_nacm_yp_onchange(void **state)
     sr_session_stop(sess);
 }
 
+/**
+ * @brief Build a notification frame as written by the SN subscriptions.
+ *
+ * @param[in] ly_ctx Context to use.
+ * @param[out] frame Created frame, freed by the caller.
+ * @param[out] frame_size Size of @p frame.
+ */
+static void
+build_frame(const struct ly_ctx *ly_ctx, char **frame, uint32_t *frame_size)
+{
+    struct lyd_node *notif = NULL;
+    struct ly_out *out = NULL;
+    struct timespec ts;
+    char *lyb = NULL;
+    uint32_t lyb_size;
+
+    assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, ly_ctx, "/ops:notif4/l", "item", 0, &notif));
+    assert_int_equal(LY_SUCCESS, ly_out_new_memory(&lyb, 0, &out));
+    assert_int_equal(LY_SUCCESS, lyd_print_all(out, notif, LYD_LYB, 0));
+    lyb_size = (uint32_t)ly_out_printed(out);
+    ly_out_free(out, NULL, 0);
+    lyd_free_tree(notif);
+    *frame_size = sizeof ts + sizeof lyb_size + lyb_size;
+    *frame = malloc(*frame_size);
+    assert_non_null(*frame);
+
+    clock_gettime(CLOCK_REALTIME, &ts);
+    memcpy(*frame, &ts, sizeof ts);
+    memcpy(*frame + sizeof ts, &lyb_size, sizeof lyb_size);
+    memcpy(*frame + sizeof ts + sizeof lyb_size, lyb, lyb_size);
+    free(lyb);
+}
+
+/* TEST */
+static void
+test_read_eof(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct timespec ts;
+    struct lyd_node *notif = NULL;
+    char *frame, *lyb;
+    uint32_t frame_size, lyb_size;
+    int fds[2];
+
+    build_frame(st->ly_ctx, &frame, &frame_size);
+
+    /* the writer dies in the middle of the payload */
+    assert_int_equal(0, pipe(fds));
+    assert_int_equal(frame_size - 1, write(fds[1], frame, frame_size - 1));
+    close(fds[1]);
+    assert_int_equal(SR_ERR_UNSUPPORTED, srsn_read_notif_lyb(fds[0], &ts, &lyb, &lyb_size));
+    assert_null(lyb);
+    close(fds[0]);
+
+    /* the same through srsn_read_notif(), which must not report success with notif unwritten */
+    assert_int_equal(0, pipe(fds));
+    assert_int_equal(frame_size - 1, write(fds[1], frame, frame_size - 1));
+    close(fds[1]);
+    assert_int_equal(SR_ERR_UNSUPPORTED, srsn_read_notif(fds[0], st->ly_ctx, &ts, &notif));
+    assert_null(notif);
+    close(fds[0]);
+
+    /* no data on a blocking pipe, does not wait */
+    assert_int_equal(0, pipe(fds));
+    assert_int_equal(SR_ERR_TIME_OUT, srsn_read_notif_lyb(fds[0], &ts, &lyb, &lyb_size));
+
+    /* end-of-file with no frame started at all */
+    close(fds[1]);
+    assert_int_equal(SR_ERR_UNSUPPORTED, srsn_read_notif_lyb(fds[0], &ts, &lyb, &lyb_size));
+    close(fds[0]);
+
+    free(frame);
+}
+
 /* MAIN */
 int
 main(void)
@@ -962,6 +1036,7 @@ main(void)
         cmocka_unit_test(test_suspend),
         cmocka_unit_test(test_yp_periodic),
         cmocka_unit_test(test_yp_on_change),
+        cmocka_unit_test(test_read_eof),
         cmocka_unit_test_setup_teardown(test_nacm_sub, setup_nacm, teardown_nacm),
         cmocka_unit_test_setup_teardown(test_nacm_yp_periodic, setup_nacm, teardown_nacm),
         cmocka_unit_test_setup_teardown(test_nacm_yp_onchange, setup_nacm, teardown_nacm),

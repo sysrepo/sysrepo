@@ -19,9 +19,10 @@
 
 #include <assert.h>
 #include <errno.h>
-#include <fcntl.h>
+#include <inttypes.h>
 #include <poll.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -944,63 +945,108 @@ srsn_oper_data_subscriptions_free(srsn_state_sub_t *subs, uint32_t count)
     srsn_state_free(subs, count);
 }
 
-API int
-srsn_read_notif(int fd, const struct ly_ctx *ly_ctx, struct timespec *timestamp, struct lyd_node **notif)
+/**
+ * @brief Read exactly the requested number of bytes.
+ *
+ * @param[in] fd File descriptor to read from.
+ * @param[in] size Number of bytes to read.
+ * @param[out] buf Buffer to read into.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+srsn_read(int fd, uint32_t size, void *buf)
 {
     sr_error_info_t *err_info = NULL;
-    int rc = SR_ERR_OK;
+    uint32_t rd = 0;
+    ssize_t r;
+
+    while (rd < size) {
+        r = read(fd, (char *)buf + rd, size - rd);
+        if (r == -1) {
+            if (errno == EINTR) {
+                continue;
+            }
+            sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to read a notification (%s).", strerror(errno));
+            goto cleanup;
+        } else if (!r) {
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Failed to read a notification (unexpected end-of-file).");
+            goto cleanup;
+        }
+
+        rd += r;
+    }
+
+cleanup:
+    return err_info;
+}
+
+API int
+srsn_read_notif_lyb(int fd, struct timespec *timestamp, char **lyb, uint32_t *lyb_size)
+{
+    sr_error_info_t *err_info = NULL;
     uint32_t size;
     char *buf = NULL;
-    ssize_t r, rr;
+    int rc;
 
-    SR_CHECK_ARG_APIRET(!ly_ctx || !timestamp || !notif, NULL, err_info);
+    SR_CHECK_ARG_APIRET(!timestamp || !lyb || !lyb_size, NULL, err_info);
 
-    /* 1) read the timestamp */
-    if ((r = read(fd, timestamp, sizeof *timestamp)) != sizeof *timestamp) {
-        if ((r == -1) && ((errno == EAGAIN) || (errno == EWOULDBLOCK))) {
-            /* timed out */
-            rc = SR_ERR_TIME_OUT;
-        } else if (!r) {
-            /* end-of-file */
-            rc = SR_ERR_UNSUPPORTED;
-        } else {
-            /* error */
-            sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to read notification timestamp (%s).", strerror(errno));
-        }
+    *lyb = NULL;
+    *lyb_size = 0;
+
+    /* check for a notification without waiting */
+    rc = srsn_poll(fd, 0);
+    if ((rc == SR_ERR_TIME_OUT) || (rc == SR_ERR_UNSUPPORTED)) {
+        return rc;
+    } else if (rc) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to poll for a notification.");
+        goto cleanup;
+    }
+
+    /* 1) read the timestamp, the writer writes a notification whole so the rest follows */
+    if ((err_info = srsn_read(fd, sizeof *timestamp, timestamp))) {
         goto cleanup;
     }
 
     /* 2) read the notification size */
-    if (read(fd, &size, sizeof size) != sizeof size) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to read notification size (%s).", strerror(errno));
+    if ((err_info = srsn_read(fd, sizeof size, &size))) {
         goto cleanup;
     }
-    assert(size < UINT32_MAX);
+    if (size > SRSN_MAX_FRAME_SIZE) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Invalid notification size (%" PRIu32 " B).", size);
+        goto cleanup;
+    }
 
-    buf = malloc(size + 1);
+    buf = malloc(size);
     SR_CHECK_MEM_GOTO(!buf, err_info, cleanup);
 
-    /* 3) read the notification LYB, handle large notifications */
-    rr = 0;
-    do {
-        r = read(fd, buf + rr, size - rr);
-        if ((r == -1) && ((errno == EAGAIN) || (errno == EWOULDBLOCK))) {
-            /* busy */
-            usleep(100);
-            continue;
-        } else if (r == -1) {
-            /* error */
-            sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to read a notification (%s).", strerror(errno));
-            goto cleanup;
-        } else if (!r) {
-            /* end-of-file */
-            rc = SR_ERR_UNSUPPORTED;
-            goto cleanup;
-        }
+    /* 3) read the notification LYB */
+    if ((err_info = srsn_read(fd, size, buf))) {
+        goto cleanup;
+    }
 
-        rr += r;
-    } while ((uint32_t)rr < size);
-    buf[size] = '\0';
+    *lyb = buf;
+    *lyb_size = size;
+    buf = NULL;
+
+cleanup:
+    free(buf);
+    return sr_api_ret(NULL, err_info);
+}
+
+API int
+srsn_read_notif(int fd, const struct ly_ctx *ly_ctx, struct timespec *timestamp, struct lyd_node **notif)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t size;
+    char *buf = NULL;
+    int rc = SR_ERR_OK;
+
+    SR_CHECK_ARG_APIRET(!ly_ctx || !timestamp || !notif, NULL, err_info);
+
+    /* read the notification */
+    if ((rc = srsn_read_notif_lyb(fd, timestamp, &buf, &size))) {
+        goto cleanup;
+    }
 
     /* parse the notification */
     if ((err_info = sr_lyd_parse_op(ly_ctx, buf, LYD_LYB, LYD_TYPE_NOTIF_YANG, notif))) {

@@ -60,6 +60,9 @@ struct srsn_dispatch_arg {
     srsn_notif_cb cb;
 };
 
+/** @brief Maximum accepted notification LYB size, a larger one means a desynchronized stream. */
+#define SRSN_MAX_FRAME_SIZE (256 * 1024 * 1024)
+
 /**
  * @brief Complete operational information about the subscriptions.
  */
