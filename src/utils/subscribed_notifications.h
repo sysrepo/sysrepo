@@ -282,16 +282,34 @@ void srsn_oper_data_subscriptions_free(srsn_state_sub_t *subs, uint32_t count);
 /**
  * @brief Read a notification.
  *
- * @param[in] fd Opened file descriptor to read from, may be non-blocking.
+ * Never waits for a notification to arrive, call ::srsn_poll() first for that.
+ *
+ * @param[in] fd Pipe end opened by a subscription.
  * @param[in] ly_ctx Libyang context to use for parsing the notification.
  * @param[out] timestamp Notification timestamp.
  * @param[out] notif Parsed notification.
  * @return ::SR_ERR_OK on success,
- * @return ::SR_ERR_TIME_OUT if reading would block,
+ * @return ::SR_ERR_TIME_OUT if no notification is available,
  * @return ::SR_ERR_UNSUPPORTED on end-of-file (subscription terminated, the write end was closed),
- * @return ::SR_ERR_SYS on another error (logged).
+ * @return another error code on failure (logged).
  */
 int srsn_read_notif(int fd, const struct ly_ctx *ly_ctx, struct timespec *timestamp, struct lyd_node **notif);
+
+/**
+ * @brief Read a notification without parsing it.
+ *
+ * Never waits for a notification to arrive, call ::srsn_poll() first for that.
+ *
+ * @param[in] fd Pipe end opened by a subscription.
+ * @param[out] timestamp Notification timestamp.
+ * @param[out] lyb Notification in LYB format, free by the caller.
+ * @param[out] lyb_size Size of @p lyb.
+ * @return ::SR_ERR_OK on success,
+ * @return ::SR_ERR_TIME_OUT if no notification is available,
+ * @return ::SR_ERR_UNSUPPORTED on end-of-file (subscription terminated, the write end was closed),
+ * @return another error code on failure (logged).
+ */
+int srsn_read_notif_lyb(int fd, struct timespec *timestamp, char **lyb, uint32_t *lyb_size);
 
 /**
  * @brief Poll a file descriptor for data to read.
