@@ -438,7 +438,7 @@ add_segment(pending_message_t *pending, uint16_t segment_num, int is_last,
 static int
 create_udp_receiver_socket(uint16_t *port)
 {
-    int sockfd;
+    int sockfd, rcvbuf = 4 * 1024 * 1024;
     struct sockaddr_in addr;
     socklen_t addr_len;
 
@@ -446,6 +446,10 @@ create_udp_receiver_socket(uint16_t *port)
     if (sockfd < 0) {
         return -1;
     }
+
+    /* a segmented notification arrives as a burst of datagrams, the default buffer drops some of
+     * them before the test gets to read; the kernel silently clamps this to its own maximum */
+    setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof rcvbuf);
 
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
@@ -2057,9 +2061,10 @@ test_reset(void **state)
  *   11-13    multiple             40       message_id           50-52    xpath filters
  *   60,62    subtree filters      70-76    filter refs          90,91    oper data
  *   92       source_address       93       configured_replay    94       receiver_reset
- *   100-102  started fields       110-114  encodings            200      stop_time
+ *   100-102  started fields       110-114  encodings            200,201  stop_time
  *   210,211  receiver churn       220      receiver delete      221      restart
- *   230      receiver inst ref
+ *   230      receiver inst ref    300      resolve failure      305      large notification
+ *   307      sent records         309      sigterm shutdown     310      excluded records
  */
 
 /**
@@ -2706,7 +2711,11 @@ test_oper_data_sent_event_records_change(void **state)
 }
 
 /**
- * @brief Test: Receiver reset action moves the receiver to connecting and it reconnects on backoff.
+ * @brief Test: Receiver reset action reconnects the receiver and delivery continues.
+ *
+ * The reset drops the transport connection and clears the backoff, so the dispatch loop retries
+ * straight away; the state is not asserted in between because the reconnect may well have
+ * completed before the operational read gets there.
  */
 static void
 test_receiver_reset_action(void **state)
@@ -2729,14 +2738,13 @@ test_receiver_reset_action(void **state)
     assert_int_equal(output_count, 1);
     sr_free_values(output, output_count);
 
-    assert_oper(st, "connecting", RECV_XP "/state", 94, TEST_RECV);
+    /* the daemon reconnects and announces itself with subscription-started */
+    skip_notif(st, SUB_STARTED);
+    assert_oper(st, "active", RECV_XP "/state", 94, TEST_RECV);
 
-    /* make a config change, the daemon must auto-reconnect and deliver the notification */
+    /* and delivery continues */
     set_node(st, "104", "/test:test-leaf");
     apply(st);
-
-    /* the daemon reconnects and sends subscription-started first */
-    skip_notif(st, SUB_STARTED);
     skip_notif(st, NCC);
 
     assert_oper(st, "active", RECV_XP "/state", 94, TEST_RECV);
@@ -2862,7 +2870,8 @@ test_receiver_instance_ref_change(void **state)
 }
 
 /**
- * @brief Test: Stop-time reached triggers subscription-completed and concluded state.
+ * @brief Test: Stop-time reached triggers subscription-completed and concluded state, the
+ * concluded subscription can then be deleted.
  */
 static void
 test_stop_time_concluded(void **state)
@@ -2881,15 +2890,24 @@ test_stop_time_concluded(void **state)
     skip_notif(st, SUB_COMPLETED);
 
     assert_oper(st, "concluded", SUB_XP "/configured-subscription-state", 200);
+
+    /* its srsn subscription ended on its own, deleting the configuration must still work */
+    del_node(st, SUB_XP, 200);
+    apply(st);
+    wait_no_subs(st);
+
+    /* and the daemon keeps serving new subscriptions */
+    setup_sub(st, 201, NULL);
+    skip_notif(st, SUB_STARTED);
 }
 
 /**
  * @brief Test: Verify that adding and removing receivers of a live subscription keeps the
  * notification dispatch coherent.
  *
- * Adding and removing receivers moves the remaining ones in the receivers array, so the callback
- * data pointer held by the srsn read dispatch must stay valid. Otherwise the dispatch thread
- * accesses freed memory and notifd crashes or wedges, blocking any further configuration change.
+ * Adding and removing receivers moves the remaining ones in the receivers array, the dispatch loop
+ * must keep finding each of them by its srsn subscription ID and notifd must keep processing
+ * configuration changes.
  */
 static void
 test_receiver_add_delete_dispatch(void **state)
@@ -3176,7 +3194,11 @@ test_other_publisher(void **state)
             NULL, 1, 0, &st->test_subscr), SR_ERR_OK);
 
     send_reset(st, 240, TEST_RECV);
-    assert_oper(st, "connecting", RECV_XP "/state", 240, TEST_RECV);
+
+    /* this daemon handled the reset for its own receiver: it dropped the connection and
+     * re-established it, which it announces with subscription-started */
+    skip_notif(st, SUB_STARTED);
+    assert_oper(st, "active", RECV_XP "/state", 240, TEST_RECV);
 }
 
 /**
@@ -3478,6 +3500,218 @@ test_encoding_feature_disabled(void **state)
     st->ly_ctx = sr_acquire_context(st->conn);
 }
 
+/*
+ * ---------------------------------------------------------------------------
+ * Notification dispatch loop
+ * ---------------------------------------------------------------------------
+ */
+
+/** Receiver instance name of a second, healthy receiver */
+#define OTHER_RECV_INST "test-recv-2"
+
+/** Name of the second subscription receiver */
+#define OTHER_RECV "recv2"
+
+/**
+ * @brief Test: a receiver whose address cannot be resolved.
+ *
+ * It stays connecting without affecting the other receivers, a reset fails to resolve it as well and
+ * only applying its configuration again recovers it.
+ */
+static void
+test_resolve_failure(void **state)
+{
+    struct state *st = *state;
+    const sr_error_info_t *err_info = NULL;
+    sr_val_t *output = NULL;
+    size_t output_count = 0;
+    char xpath[1024];
+
+    /* a receiver instance that cannot be resolved and the healthy one the test listens on; the
+     * name is reserved by RFC 6761 so a resolver answers it without leaving the host */
+    set_node(st, "no-such-host.invalid", UDP_INST_XP "/remote-address", TEST_RECV_INST);
+    set_node(st, "1", UDP_INST_XP "/remote-port", TEST_RECV_INST);
+    add_recv_inst(st, OTHER_RECV_INST, st->udp_port, NULL);
+
+    add_sub(st, 300, "stream", "NETCONF", "transport", UDP_TRANSPORT, NULL);
+    bind_sub_recv(st, 300, TEST_RECV, TEST_RECV_INST);
+    bind_sub_recv(st, 300, OTHER_RECV, OTHER_RECV_INST);
+    apply(st);
+
+    /* the healthy receiver is active, the unresolvable one is not */
+    skip_notif(st, SUB_STARTED);
+    assert_oper(st, "active", RECV_XP "/state", 300, OTHER_RECV);
+    assert_oper(st, "connecting", RECV_XP "/state", 300, TEST_RECV);
+
+    /* event records keep flowing to the healthy receiver */
+    set_node(st, "1", "/test:test-leaf");
+    apply(st);
+    skip_notif(st, NCC);
+
+    /* the reset cannot resolve the name either, it fails and leaves the receiver as it was */
+    snprintf(xpath, sizeof xpath, RECV_XP "/reset", 300, TEST_RECV);
+    assert_int_not_equal(sr_rpc_send(st->sess, xpath, NULL, 0, 0, &output, &output_count), SR_ERR_OK);
+    assert_int_equal(sr_session_get_error(st->sess, &err_info), SR_ERR_OK);
+    assert_non_null(strstr(err_info->err[0].message, "Failed to resolve the address of receiver"));
+    assert_oper(st, "connecting", RECV_XP "/state", 300, TEST_RECV);
+
+    /* applying its configuration again is what recovers it, as the data model describes */
+    set_node(st, "127.0.0.1", UDP_INST_XP "/remote-address", TEST_RECV_INST);
+    apply(st);
+    assert_oper(st, "active", RECV_XP "/state", 300, TEST_RECV);
+}
+
+/**
+ * @brief Test: a notification larger than the notification pipe buffer.
+ *
+ * The publisher blocks in writev() past 64 KiB, so the frame arrives in pieces and the incremental
+ * reader has to resume it across several reads.
+ */
+static void
+test_dispatch_large_notification(void **state)
+{
+    struct state *st = *state;
+    struct lyd_node *notif;
+    struct ly_set *set = NULL;
+    char key[160];
+    uint32_t i;
+
+    /* large segments so that the whole message fits into the socket receive buffer of the test */
+    add_recv_inst(st, TEST_RECV_INST, st->udp_port, "enable-segmentation", "true",
+            "max-segment-size", "8192", NULL);
+    add_sub(st, 305, "stream", "NETCONF", "transport", UDP_TRANSPORT, "encoding", ENC_XML, NULL);
+    bind_sub_recv(st, 305, TEST_RECV, TEST_RECV_INST);
+    apply(st);
+    skip_notif(st, SUB_STARTED);
+
+    /* one commit touching enough nodes with long keys that its netconf-config-change is more than
+     * twice the pipe buffer */
+    for (i = 0; i < 300; ++i) {
+        snprintf(key, sizeof key, "%0128" PRIu32, i);
+        set_node(st, "1", "/test:l1[k='%s']/v", key);
+    }
+    apply(st);
+
+    notif = expect_notif(st, NCC);
+    assert_int_equal(lyd_find_xpath(notif, "edit", &set), LY_SUCCESS);
+    assert_true(set->count >= 300);
+    ly_set_free(set, NULL);
+    lyd_free_all(notif);
+
+    /* clean up the data the test created */
+    del_node(st, "/test:l1");
+    apply(st);
+}
+
+/**
+ * @brief Test: sent-event-records counts what the transport accepted, not what was queued.
+ *
+ * srsn counts an event record as sent when it writes it into the notification pipe, which happens
+ * whether or not the receiver is reachable, so a receiver that never connected used to report the
+ * records it never got.
+ */
+static void
+test_dispatch_sent_records_not_delivered(void **state)
+{
+    struct state *st = *state;
+    uint64_t sent, excluded;
+
+    /* one receiver that can never connect and one healthy one on the test socket */
+    set_node(st, "no-such-host.invalid", UDP_INST_XP "/remote-address", OTHER_RECV_INST);
+    set_node(st, "1", UDP_INST_XP "/remote-port", OTHER_RECV_INST);
+    add_recv_inst(st, TEST_RECV_INST, st->udp_port, NULL);
+    add_sub(st, 307, "stream", "NETCONF", "transport", UDP_TRANSPORT, NULL);
+    bind_sub_recv(st, 307, TEST_RECV, TEST_RECV_INST);
+    bind_sub_recv(st, 307, OTHER_RECV, OTHER_RECV_INST);
+    apply(st);
+    skip_notif(st, SUB_STARTED);
+
+    set_node(st, "1", "/test:test-leaf");
+    apply(st);
+    skip_notif(st, NCC);
+
+    /* the healthy receiver got the event record */
+    wait_oper_above(st, 0, RECV_XP "/sent-event-records", 307, TEST_RECV);
+
+    /* the unreachable one did not, even though it was written into its notification pipe */
+    assert_int_equal(try_oper_u64(st, &sent, RECV_XP "/sent-event-records", 307, OTHER_RECV), 0);
+    assert_int_equal(sent, 0);
+
+    /* an event record nobody could deliver is not an excluded one, only a filter excludes records */
+    assert_int_equal(try_oper_u64(st, &excluded, RECV_XP "/excluded-event-records", 307, OTHER_RECV), 0);
+    assert_int_equal(excluded, 0);
+}
+
+/**
+ * @brief Test: excluded-event-records must not go backwards when a subscription is resubscribed.
+ *
+ * The count comes from the srsn subscription, which starts over whenever a configuration change
+ * recreates it, while the leaf is a zero-based-counter64 that is initialized only when the receiver
+ * starts being serviced.
+ */
+static void
+test_dispatch_excluded_records_survive_reapply(void **state)
+{
+    struct state *st = *state;
+    uint64_t excluded, excluded_after;
+
+    /* a filter that matches nothing the test produces, so every event record is excluded */
+    setup_sub(st, 310, "stream-xpath-filter",
+            "/ietf-netconf-notifications:netconf-config-change[datastore='startup']", NULL);
+    skip_notif(st, SUB_STARTED);
+
+    set_node(st, "1", "/test:test-leaf");
+    apply(st);
+    wait_oper_above(st, 0, RECV_XP "/excluded-event-records", 310, TEST_RECV);
+    assert_int_equal(try_oper_u64(st, &excluded, RECV_XP "/excluded-event-records", 310, TEST_RECV), 0);
+
+    /* a changed filter resubscribes, which gives the receiver a srsn subscription counting from zero */
+    set_node(st, "/ietf-netconf-notifications:netconf-config-change[datastore='candidate']",
+            SUB_XP "/stream-xpath-filter", 310);
+    apply(st);
+
+    assert_int_equal(try_oper_u64(st, &excluded_after, RECV_XP "/excluded-event-records", 310, TEST_RECV), 0);
+    assert_true(excluded_after >= excluded);
+}
+
+/**
+ * @brief Test: SIGTERM while the dispatch loop still has notifications to deliver.
+ *
+ * The signal handler cannot do the shutdown itself, so it must leave the daemon a way out that
+ * does not depend on the dispatch loop getting anywhere.
+ */
+static void
+test_sigterm_shutdown(void **state)
+{
+    struct state *st = *state;
+    char value[16];
+    uint32_t i;
+    int status = 0;
+
+    setup_sub(st, 309, NULL);
+    skip_notif(st, SUB_STARTED);
+
+    /* a burst of event records, the daemon is still delivering them when the signal arrives */
+    for (i = 0; i < 20; ++i) {
+        snprintf(value, sizeof value, "%" PRIu32, i);
+        set_node(st, value, "/test:test-leaf");
+        apply(st);
+    }
+
+    kill(st->notifd_pid, SIGTERM);
+    assert_int_equal(waitpid(st->notifd_pid, &status, 0), st->notifd_pid);
+    st->notifd_pid = 0;
+
+    /* a clean exit, not the second-signal bail-out and not a crash */
+    assert_true(WIFEXITED(status));
+    assert_int_equal(WEXITSTATUS(status), EXIT_SUCCESS);
+
+    /* the graceful shutdown ran, every valid subscription was terminated */
+    skip_notif(st, SUB_TERMINATED);
+
+    assert_int_equal(start_notifd(&st->notifd_pid), 0);
+}
+
 /* MAIN */
 int
 main(void)
@@ -3519,6 +3753,11 @@ main(void)
         cmocka_unit_test_setup(test_encoding_modify, test_reset),
         cmocka_unit_test_setup(test_segmentation_reassembly, test_reset),
         cmocka_unit_test_setup(test_segmentation_disabled, test_reset),
+        cmocka_unit_test_setup(test_resolve_failure, test_reset),
+        cmocka_unit_test_setup(test_dispatch_large_notification, test_reset),
+        cmocka_unit_test_setup(test_dispatch_sent_records_not_delivered, test_reset),
+        cmocka_unit_test_setup(test_dispatch_excluded_records_survive_reapply, test_reset),
+        cmocka_unit_test_setup(test_sigterm_shutdown, test_reset),
         /* test_encoding_feature_disabled must be last: it disables the encoding features */
         cmocka_unit_test_setup_teardown(test_encoding_feature_disabled, test_reset, re_enable_encoding_features),
     };

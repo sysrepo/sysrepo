@@ -314,6 +314,7 @@ set(SYSREPOPLUGIND_SRC
 set(SYSREPONOTIFD_SRC
     src/executables/sysrepo-notifd/main.c
     src/executables/sysrepo-notifd/notifd_config.c
+    src/executables/sysrepo-notifd/notifd_dispatch.c
     src/executables/sysrepo-notifd/notifd_runtime.c
     src/executables/sysrepo-notifd/notifd_udp.c)
 
