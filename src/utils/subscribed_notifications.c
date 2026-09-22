@@ -994,7 +994,7 @@ srsn_read_notif(int fd, const struct ly_ctx *ly_ctx, struct timespec *timestamp,
             goto cleanup;
         } else if (!r) {
             /* end-of-file */
-            r = SR_ERR_UNSUPPORTED;
+            rc = SR_ERR_UNSUPPORTED;
             goto cleanup;
         }
 

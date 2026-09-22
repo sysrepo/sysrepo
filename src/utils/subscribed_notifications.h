@@ -322,7 +322,7 @@ typedef void (*srsn_notif_cb)(const struct lyd_node *notif, const struct timespe
  * not free its callback data while the FD is registered: use ::srsn_read_dispatch_del() to remove an FD,
  * which closes it and blocks until the callback is no longer running for it, only then is it safe to free
  * the callback data. The callback data must also stay valid and at a stable address for the whole time the
- * FD is dispatched. Removing all FDs (or ::srsn_read_dispatch_destroy()) stops the thread.
+ * FD is dispatched. Only ::srsn_read_dispatch_destroy() stops the thread.
  *
  * @param[in] conn Connection that must not be terminated while the notifications are being processed.
  * @param[in] cb Callback to be called for each notification.
@@ -338,8 +338,7 @@ int srsn_read_dispatch_start(int fd, sr_conn_ctx_t *conn, srsn_notif_cb cb, void
 /**
  * @brief Add another subscription to be handled by the dispatched thread.
  *
- * The thread is automatically started on the first @p fd and terminated when the last
- * one is closed by the peer.
+ * The thread is automatically started on the first @p fd and runs until ::srsn_read_dispatch_destroy().
  *
  * On success @p fd is owned by the dispatch, which closes it once the subscription terminates or when
  * removed by ::srsn_read_dispatch_del(), so it must never be closed by the caller. On error @p fd is
@@ -372,7 +371,7 @@ int srsn_read_dispatch_del(int fd);
 /**
  * @brief Get the number of subscriptions currently handled by the dispatched thread.
  *
- * @return Number of handled subscriptions, 0 means the dispatch thread is not running.
+ * @return Number of handled subscriptions, may be 0 while the dispatch thread is still running.
  */
 uint32_t srsn_read_dispatch_count(void);
 

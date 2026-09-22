@@ -242,27 +242,25 @@ srsn_sub_free(struct srsn_sub *sub)
             }
         }
     }
-    free(sub);
-
     /* find it in the array */
     for (i = 0; i < snstate.count; ++i) {
         if (snstate.subs[i] == sub) {
             break;
         }
     }
-    if (i == snstate.count) {
-        /* was not yet in the array, fine */
-        return;
+
+    /* remove from the array, it may not be there yet */
+    if (i < snstate.count) {
+        if (i < snstate.count - 1) {
+            snstate.subs[i] = snstate.subs[snstate.count - 1];
+        }
+        if (!--snstate.count) {
+            free(snstate.subs);
+            snstate.subs = NULL;
+        }
     }
 
-    /* remove from the array */
-    if (i < snstate.count - 1) {
-        snstate.subs[i] = snstate.subs[snstate.count - 1];
-    }
-    if (!--snstate.count) {
-        free(snstate.subs);
-        snstate.subs = NULL;
-    }
+    free(sub);
 }
 
 /**
@@ -514,6 +512,45 @@ srsn_find(uint32_t sub_id)
     return sub;
 }
 
+/**
+ * @brief Write a whole vector into an FD, completing any short writes.
+ *
+ * @param[in] fd File descriptor to write into.
+ * @param[in,out] bufs Buffers to write, modified while completing short writes.
+ * @param[in] buf_count Number of @p bufs.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+srsn_writev_all(int fd, struct iovec *bufs, int buf_count)
+{
+    sr_error_info_t *err_info = NULL;
+    ssize_t w;
+    int i = 0;
+
+    while (i < buf_count) {
+        w = writev(fd, &bufs[i], buf_count - i);
+        if (w == -1) {
+            if (errno == EINTR) {
+                continue;
+            }
+            sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to write a notification (%s).", strerror(errno));
+            return err_info;
+        }
+
+        /* skip the fully written buffers, adjust the partially written one */
+        while ((i < buf_count) && ((size_t)w >= bufs[i].iov_len)) {
+            w -= bufs[i].iov_len;
+            ++i;
+        }
+        if (i < buf_count) {
+            bufs[i].iov_base = ((char *)bufs[i].iov_base) + w;
+            bufs[i].iov_len -= w;
+        }
+    }
+
+    return NULL;
+}
+
 sr_error_info_t *
 srsn_ntf_send(struct srsn_sub *sub, const struct timespec *timestamp, const struct lyd_node *ly_ntf)
 {
@@ -539,9 +576,8 @@ srsn_ntf_send(struct srsn_sub *sub, const struct timespec *timestamp, const stru
     bufs[2].iov_base = ntf_lyb;
     bufs[2].iov_len = size;
 
-    /* atomic vector write */
-    if (writev(sub->wfd, bufs, 3) == -1) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to write a notification (%s).", strerror(errno));
+    /* vector write, atomic only up to PIPE_BUF so a short write must be completed manually */
+    if ((err_info = srsn_writev_all(sub->wfd, bufs, 3))) {
         goto cleanup;
     }
 
@@ -1012,7 +1048,7 @@ srsn_read_dispatch_thread(void *UNUSED(arg))
     sr_error_info_t *err_info = NULL;
     const struct ly_ctx *ly_ctx;
     struct timespec ts;
-    struct lyd_node *notif;
+    struct lyd_node *notif = NULL;
     uint32_t i;
     int r, locked = 0;
 
@@ -1031,11 +1067,17 @@ srsn_read_dispatch_thread(void *UNUSED(arg))
             r = 0;
         }
         if (r == -1) {
-            sr_errinfo_new(&err_info, SR_ERR_SYS, "Poll failed (%s).", strerror(errno));
-            goto cleanup;
+            if (errno != EINTR) {
+                sr_errinfo_new(&err_info, SR_ERR_SYS, "Poll failed (%s).", strerror(errno));
+                sr_errinfo_free(&err_info);
+                err_info = NULL;
+            }
+
+            /* never fatal, the thread is never restarted, retry after the sleep below */
+            r = 0;
         }
 
-        for (i = 0; r; ++i) {
+        for (i = 0; (i < snstate.pfd_count) && r; ++i) {
             if (!snstate.pfds[i].revents) {
                 /* no event */
                 continue;
@@ -1055,8 +1097,8 @@ srsn_read_dispatch_thread(void *UNUSED(arg))
                 sr_release_context(snstate.conn);
             }
 
-            if (snstate.pfds[i].revents & POLLHUP) {
-                /* subscription terminated */
+            if (snstate.pfds[i].revents & (POLLHUP | POLLERR)) {
+                /* terminated or in an error state, either way it is done */
                 close(snstate.pfds[i].fd);
                 snstate.pfds[i].fd = -1;
                 snstate.cb_data[i] = NULL;
