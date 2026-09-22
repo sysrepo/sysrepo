@@ -21,6 +21,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
+#include <poll.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
@@ -41,10 +42,12 @@
 /* count argument for srsn_oper_data_subscriptions_free when freeing a single subscription */
 #define SRSN_FREE_SINGLE 1
 
-/* protected flag for terminating sysrepo-notifd */
+/* flag for terminating sysrepo-notifd, set by the signal handler */
 static volatile sig_atomic_t loop_finish;
-static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+
+/* self-pipe the handler pokes to wake main() up, created in main() */
+static volatile sig_atomic_t shutdown_wfd = -1;
+static int shutdown_rfd = -1;
 
 /*
  * ---------------------------------------------------------------------------
@@ -83,33 +86,25 @@ help_print(void)
             "\n");
 }
 
+/**
+ * @brief Signal handler, uses only async-signal-safe functions.
+ *
+ * @param[in] sig Received signal.
+ */
 static void
-signal_handler(int sig)
+signal_handler(int UNUSED(sig))
 {
-    switch (sig) {
-    case SIGINT:
-    case SIGQUIT:
-    case SIGABRT:
-    case SIGTERM:
-    case SIGHUP:
-        pthread_mutex_lock(&lock);
+    const char byte = 0;
 
-        /* stop the process */
-        if (!loop_finish) {
-            /* first attempt */
-            loop_finish = 1;
-            pthread_cond_signal(&cond);
-        } else {
-            /* second attempt */
-            SRNTF_LOG_ERR("Exiting without a proper cleanup");
-            exit(EXIT_FAILURE);
-        }
-        pthread_mutex_unlock(&lock);
-        break;
-    default:
-        /* unhandled signal */
-        SRNTF_LOG_ERR("Exiting on receiving an unhandled signal");
-        exit(EXIT_FAILURE);
+    if (loop_finish) {
+        /* second attempt, the graceful shutdown is not making progress */
+        _exit(EXIT_FAILURE);
+    }
+    loop_finish = 1;
+
+    /* wake main() up, a full pipe means it is about to wake up anyway */
+    if (write(shutdown_wfd, &byte, 1) == -1) {
+        /* nothing can be done from a signal handler */
     }
 }
 
@@ -119,14 +114,14 @@ handle_signals(void)
     struct sigaction action;
     sigset_t block_mask;
 
-    /* set the signal handler */
+    /* set the signal handler, SIGABRT keeps its default behavior, a process that called abort()
+     * is in no state to shut down gracefully */
     sigfillset(&block_mask);
     action.sa_handler = signal_handler;
     action.sa_mask = block_mask;
     action.sa_flags = 0;
     sigaction(SIGINT, &action, NULL);
     sigaction(SIGQUIT, &action, NULL);
-    sigaction(SIGABRT, &action, NULL);
     sigaction(SIGTERM, &action, NULL);
     sigaction(SIGHUP, &action, NULL);
 
@@ -1336,6 +1331,8 @@ main(int argc, char **argv)
     sr_log_level_t log_level = SR_LL_ERR;
     int rc = EXIT_SUCCESS, opt, debug = 0, pidfd = -1;
     const char *pidfile = NULL;
+    struct pollfd pfd;
+    int fds[2];
     notifd_ctx_t notifd_ctx = {
         .state_rwlock = PTHREAD_RWLOCK_INITIALIZER,
         .config_apply_mutex = PTHREAD_MUTEX_INITIALIZER
@@ -1410,6 +1407,16 @@ main(int argc, char **argv)
         rc = EXIT_FAILURE;
         goto cleanup;
     }
+
+    /* create a pipe that the signal handler uses to wake the loop below up with, it must exist
+     * before handle_signals() installs the handler that writes into it */
+    if (pipe2(fds, O_CLOEXEC | O_NONBLOCK) == -1) {
+        SRNTF_LOG_ERR("pipe2() failed (%s).", strerror(errno));
+        rc = EXIT_FAILURE;
+        goto cleanup;
+    }
+    shutdown_rfd = fds[0];
+    shutdown_wfd = fds[1];
 
     /* daemonize */
     daemon_init(debug, log_level);
@@ -1486,11 +1493,15 @@ main(int argc, char **argv)
 #endif
 
     /* wait for a terminating signal */
-    pthread_mutex_lock(&lock);
+    pfd.fd = shutdown_rfd;
+    pfd.events = POLLIN;
     while (!loop_finish) {
-        pthread_cond_wait(&cond, &lock);
+        if ((poll(&pfd, 1, -1) == -1) && (errno != EINTR)) {
+            SRNTF_LOG_ERR("poll() failed (%s).", strerror(errno));
+            rc = EXIT_FAILURE;
+            break;
+        }
     }
-    pthread_mutex_unlock(&lock);
 
     /* gracefully terminate all active subscriptions */
     notifd_graceful_shutdown(&notifd_ctx);
@@ -1509,5 +1520,14 @@ cleanup:
     srsn_read_dispatch_destroy();
     sr_unsubscribe(sr_subscr);
     sr_disconnect(conn);
+
+    if (shutdown_rfd > -1) {
+        close(shutdown_rfd);
+        shutdown_rfd = -1;
+    }
+    if (shutdown_wfd > -1) {
+        close(shutdown_wfd);
+        shutdown_wfd = -1;
+    }
     return rc;
 }
