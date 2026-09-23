@@ -19,7 +19,7 @@
 
 #include <pthread.h>
 
-#if !defined(PTHREAD_BARRIER_SERIAL_THREAD)
+#if !defined (PTHREAD_BARRIER_SERIAL_THREAD)
 # define PTHREAD_BARRIER_SERIAL_THREAD  (1)
 #endif
 
@@ -31,9 +31,9 @@ typedef struct {
     unsigned int phase;
 } pthread_barrier_t;
 
-int pthread_barrier_init(pthread_barrier_t *restrict barrier,
-             const void *restrict attr,
-             unsigned int count);
+int pthread_barrier_init(pthread_barrier_t * restrict barrier,
+        const void * restrict attr,
+        unsigned int count);
 int pthread_barrier_destroy(pthread_barrier_t *barrier);
 
 int pthread_barrier_wait(pthread_barrier_t *barrier);
