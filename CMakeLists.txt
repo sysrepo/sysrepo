@@ -359,9 +359,10 @@ set(FORMAT_SOURCES
     src/executables/sysrepo-notifd/*.h*
     src/plugins/*.c
     src/plugins/*.h*
-    src/utils/*
+    src/utils/*.c
+    src/utils/*.h*
     tests/*.c
-    tests/*.c)
+    tests/*.h*)
 
 #
 # checks
