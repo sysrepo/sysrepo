@@ -1224,7 +1224,7 @@ subscription_receivers_disconnect(notifd_ctx_t *notifd_ctx, notif_sub_t *sub)
 
     LYA_FOR_EACH(sub->receivers, receiver) {
         /* disconnect the receiver */
-        notification_dispatch_stop(notifd_ctx, receiver);
+        notif_receiver_srsn_stop(notifd_ctx, receiver);
         notif_receiver_disconnect(receiver);
     }
 }
@@ -1283,16 +1283,18 @@ subscription_destroy(notifd_ctx_t *notifd_ctx, notif_sub_t *sub)
         return;
     }
 
+    /* destroy the receivers first, tearing one down still reads the members of its subscription */
+    for (i = LYA_COUNT(sub->receivers); i > 0; i--) {
+        receiver_destroy(notifd_ctx, sub, &sub->receivers[i - 1]);
+    }
+    LYA_FREE(sub->receivers);
+
     /* free members */
     free(sub->stream);
     free(sub->xpath_filter);
     free(sub->filter_ref);
     free(sub->purpose);
     free(sub->local_address);
-    for (i = LYA_COUNT(sub->receivers); i > 0; i--) {
-        receiver_destroy(notifd_ctx, sub, &sub->receivers[i - 1]);
-    }
-    LYA_FREE(sub->receivers);
 
     /* replace with the last and decrement array */
     LYA_FOR(notifd_ctx->subs, i) {
@@ -1384,7 +1386,6 @@ receiver_create_from_node(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const stru
 
     /* create a new receiver */
     LYA_ADD_ITEM(sub->receivers, receiver, ERRMEM; rc = SR_ERR_NO_MEMORY; goto cleanup);
-    receiver->srsn_data.fd = -1;
     receiver->sub = sub;
 
     /* parse it */
@@ -1393,13 +1394,18 @@ receiver_create_from_node(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const stru
     }
 
     /* start dispatch so this receiver can receive notifications */
-    if ((rc = notification_dispatch_start(notifd_ctx, sub, receiver))) {
+    if ((rc = notif_receiver_srsn_start(notifd_ctx, sub, receiver))) {
         goto cleanup;
     }
 
+    /* resolve the address at configuration time, connecting must never resolve a name */
+    r = notif_receiver_resolve(receiver);
+
     /* connect the receiver and send subscription-started */
     receiver->state = NOTIF_RECV_STATE_CONNECTING;
-    r = notif_receiver_connect(receiver);
+    if (!r) {
+        r = notif_receiver_connect(receiver);
+    }
 
     if (!r && (sub->state == NOTIF_SUB_STATE_VALID)) {
         r = subscription_started_notif_send(notifd_ctx, sub, receiver);
@@ -1429,7 +1435,7 @@ receiver_destroy(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_receiver_t *r
     }
 
     /* stop dispatch for this receiver */
-    notification_dispatch_stop(notifd_ctx, receiver);
+    notif_receiver_srsn_stop(notifd_ctx, receiver);
 
     /* disconnect the receiver */
     notif_receiver_disconnect(receiver);
@@ -1597,10 +1603,10 @@ subscription_resubscribe(notifd_ctx_t *notifd_ctx, notif_sub_t *sub)
 
     LYA_FOR_EACH(sub->receivers, receiver) {
         /* stop the dispatch, which will unsubscribe from sysrepo and stop all timers */
-        notification_dispatch_stop(notifd_ctx, receiver);
+        notif_receiver_srsn_stop(notifd_ctx, receiver);
 
         /* start the dispatch again with the new params, which will resubscribe to sysrepo and restart timers */
-        if ((rc = notification_dispatch_start(notifd_ctx, sub, receiver))) {
+        if ((rc = notif_receiver_srsn_start(notifd_ctx, sub, receiver))) {
             goto cleanup;
         }
     }

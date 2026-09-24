@@ -19,9 +19,10 @@
 
 #include <assert.h>
 #include <errno.h>
-#include <fcntl.h>
+#include <inttypes.h>
 #include <poll.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -945,6 +946,146 @@ srsn_oper_data_subscriptions_free(srsn_state_sub_t *subs, uint32_t count)
 }
 
 API int
+srsn_reader_new(int fd, srsn_reader_t **reader)
+{
+    sr_error_info_t *err_info = NULL;
+    srsn_reader_t *r = NULL;
+
+    SR_CHECK_ARG_APIRET((fd < 0) || !reader, NULL, err_info);
+
+    *reader = NULL;
+
+    r = calloc(1, sizeof *r);
+    SR_CHECK_MEM_GOTO(!r, err_info, cleanup);
+    r->fd = fd;
+    r->state = SRSN_READER_HDR_TS;
+
+    *reader = r;
+
+cleanup:
+    return sr_api_ret(NULL, err_info);
+}
+
+API int
+srsn_reader_read(srsn_reader_t *reader, struct timespec *timestamp, char **lyb, uint32_t *lyb_size)
+{
+    sr_error_info_t *err_info = NULL;
+    char *buf;
+    uint32_t field_size;
+    ssize_t r;
+    int rc = SR_ERR_OK;
+
+    SR_CHECK_ARG_APIRET(!reader || !timestamp || !lyb || !lyb_size, NULL, err_info);
+
+    *lyb = NULL;
+    *lyb_size = 0;
+
+    /* read until a whole frame is returned */
+    while (!*lyb) {
+        /* pick the field being read */
+        switch (reader->state) {
+        case SRSN_READER_HDR_TS:
+            buf = reader->ts_buf;
+            field_size = sizeof reader->ts_buf;
+            break;
+        case SRSN_READER_HDR_SIZE:
+            buf = reader->size_buf;
+            field_size = sizeof reader->size_buf;
+            break;
+        case SRSN_READER_PAYLOAD:
+            buf = reader->lyb;
+            field_size = reader->lyb_size;
+            break;
+        default:
+            SR_ERRINFO_INT(&err_info);
+            goto cleanup;
+        }
+
+        if (reader->offset < field_size) {
+            r = read(reader->fd, buf + reader->offset, field_size - reader->offset);
+            if (r == -1) {
+                if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
+                    /* no more data, the partial frame is kept for the next call */
+                    rc = SR_ERR_TIME_OUT;
+                    goto cleanup;
+                } else if (errno == EINTR) {
+                    continue;
+                }
+                sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to read a notification frame (%s).", strerror(errno));
+                goto cleanup;
+            } else if (!r) {
+                if (reader->offset || (reader->state != SRSN_READER_HDR_TS)) {
+                    /* partial read */
+                    SR_LOG_WRN("Notification frame incomplete on end-of-file, the data are lost.");
+                }
+                rc = SR_ERR_UNSUPPORTED;
+                goto cleanup;
+            }
+
+            reader->offset += (uint32_t)r;
+            if (reader->offset < field_size) {
+                /* the field is still incomplete */
+                continue;
+            }
+        }
+
+        /* the field is complete, advance */
+        switch (reader->state) {
+        case SRSN_READER_HDR_TS:
+            reader->state = SRSN_READER_HDR_SIZE;
+            break;
+        case SRSN_READER_HDR_SIZE:
+            memcpy(&reader->lyb_size, reader->size_buf, sizeof reader->lyb_size);
+            if (reader->lyb_size > SRSN_READER_MAX_FRAME_SIZE) {
+                /* the stream is desynchronised, do not allocate whatever the garbage says */
+                sr_errinfo_new(&err_info, SR_ERR_SYS, "Invalid notification frame size (%" PRIu32 " B).",
+                        reader->lyb_size);
+                goto cleanup;
+            }
+            reader->lyb = malloc(reader->lyb_size + 1);
+            if (!reader->lyb) {
+                SR_ERRINFO_MEM(&err_info);
+                goto cleanup;
+            }
+            reader->state = SRSN_READER_PAYLOAD;
+            break;
+        case SRSN_READER_PAYLOAD:
+            /* the frame is complete, hand it over */
+            reader->lyb[reader->lyb_size] = '\0';
+            memcpy(timestamp, reader->ts_buf, sizeof *timestamp);
+            *lyb = reader->lyb;
+            *lyb_size = reader->lyb_size;
+
+            reader->lyb = NULL;
+            reader->lyb_size = 0;
+            reader->state = SRSN_READER_HDR_TS;
+            break;
+        default:
+            SR_ERRINFO_INT(&err_info);
+            goto cleanup;
+        }
+        reader->offset = 0;
+    }
+
+cleanup:
+    if (err_info) {
+        return sr_api_ret(NULL, err_info);
+    }
+    return rc;
+}
+
+API void
+srsn_reader_free(srsn_reader_t *reader)
+{
+    if (!reader) {
+        return;
+    }
+
+    free(reader->lyb);
+    free(reader);
+}
+
+API int
 srsn_read_notif(int fd, const struct ly_ctx *ly_ctx, struct timespec *timestamp, struct lyd_node **notif)
 {
     sr_error_info_t *err_info = NULL;
@@ -994,7 +1135,7 @@ srsn_read_notif(int fd, const struct ly_ctx *ly_ctx, struct timespec *timestamp,
             goto cleanup;
         } else if (!r) {
             /* end-of-file */
-            r = SR_ERR_UNSUPPORTED;
+            rc = SR_ERR_UNSUPPORTED;
             goto cleanup;
         }
 

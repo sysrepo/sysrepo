@@ -21,12 +21,14 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
+#include <poll.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "../bin_common.h"
@@ -38,13 +40,12 @@
 # include <systemd/sd-daemon.h>
 #endif
 
-/* count argument for srsn_oper_data_subscriptions_free when freeing a single subscription */
-#define SRSN_FREE_SINGLE 1
-
-/* protected flag for terminating sysrepo-notifd */
+/* flag for terminating sysrepo-notifd, set by the signal handler */
 static volatile sig_atomic_t loop_finish;
-static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+
+/* self-pipe the handler pokes to wake main() up, created in main() */
+static volatile sig_atomic_t shutdown_wfd = -1;
+static int shutdown_rfd = -1;
 
 /*
  * ---------------------------------------------------------------------------
@@ -83,33 +84,25 @@ help_print(void)
             "\n");
 }
 
+/**
+ * @brief Signal handler, uses only async-signal-safe functions.
+ *
+ * @param[in] sig Received signal.
+ */
 static void
-signal_handler(int sig)
+signal_handler(int UNUSED(sig))
 {
-    switch (sig) {
-    case SIGINT:
-    case SIGQUIT:
-    case SIGABRT:
-    case SIGTERM:
-    case SIGHUP:
-        pthread_mutex_lock(&lock);
+    const char byte = 0;
 
-        /* stop the process */
-        if (!loop_finish) {
-            /* first attempt */
-            loop_finish = 1;
-            pthread_cond_signal(&cond);
-        } else {
-            /* second attempt */
-            SRNTF_LOG_ERR("Exiting without a proper cleanup");
-            exit(EXIT_FAILURE);
-        }
-        pthread_mutex_unlock(&lock);
-        break;
-    default:
-        /* unhandled signal */
-        SRNTF_LOG_ERR("Exiting on receiving an unhandled signal");
-        exit(EXIT_FAILURE);
+    if (loop_finish) {
+        /* second attempt, the graceful shutdown is not making progress */
+        _exit(EXIT_FAILURE);
+    }
+    loop_finish = 1;
+
+    /* wake main() up, a full pipe means it is about to wake up anyway */
+    if (write(shutdown_wfd, &byte, 1) == -1) {
+        /* nothing can be done from a signal handler */
     }
 }
 
@@ -119,14 +112,14 @@ handle_signals(void)
     struct sigaction action;
     sigset_t block_mask;
 
-    /* set the signal handler */
+    /* set the signal handler, SIGABRT keeps its default behavior, a process that called abort()
+     * is in no state to shut down gracefully */
     sigfillset(&block_mask);
     action.sa_handler = signal_handler;
     action.sa_mask = block_mask;
     action.sa_flags = 0;
     sigaction(SIGINT, &action, NULL);
     sigaction(SIGQUIT, &action, NULL);
-    sigaction(SIGABRT, &action, NULL);
     sigaction(SIGTERM, &action, NULL);
     sigaction(SIGHUP, &action, NULL);
 
@@ -232,53 +225,6 @@ create_pidfile(const char *pidfile)
 }
 
 int
-notifd_mutex_lock(pthread_mutex_t *mutex, uint32_t timeout_ms, const char *func)
-{
-    struct timespec ts;
-    int r;
-
-    SRNTF_LOG_DBG("%s: attempting to acquire mutex lock with timeout %" PRIu32 " ms.", func, timeout_ms);
-
-    if (timeout_ms > 0) {
-        clock_gettime(CLOCK_REALTIME, &ts);
-        ts.tv_sec += timeout_ms / 1000;
-        ts.tv_nsec += (timeout_ms % 1000) * 1000000;
-        if (ts.tv_nsec >= 1000000000) {
-            ts.tv_sec++;
-            ts.tv_nsec -= 1000000000;
-        }
-    }
-
-    if (timeout_ms > 0) {
-        r = pthread_mutex_timedlock(mutex, &ts);
-    } else {
-        r = pthread_mutex_lock(mutex);
-    }
-
-    if (r == ETIMEDOUT) {
-        SRNTF_LOG_ERR("%s: timed out acquiring mutex lock after %" PRIu32 " ms.", func, timeout_ms);
-        return SR_ERR_TIME_OUT;
-    } else if (r) {
-        SRNTF_LOG_ERR("%s: failed to acquire mutex lock (%s).", func, strerror(r));
-        return SR_ERR_LOCKED;
-    }
-
-    return SR_ERR_OK;
-}
-
-void
-notifd_mutex_unlock(pthread_mutex_t *mutex, const char *func)
-{
-    int r;
-
-    SRNTF_LOG_DBG("%s: releasing lock.", func);
-
-    if ((r = pthread_mutex_unlock(mutex))) {
-        SRNTF_LOG_ERR("%s: failed to unlock mutex (%s).", func, strerror(r));
-    }
-}
-
-int
 notifd_rwlock_lock(pthread_rwlock_t *lock, int is_write, uint32_t timeout_ms, const char *func)
 {
     struct timespec ts;
@@ -345,20 +291,10 @@ notifd_graceful_shutdown(notifd_ctx_t *notifd_ctx)
 {
     LYA_COUNT_T i;
     notif_sub_t *sub;
-    int r;
-
-    /* CONFIG APPLY LOCK - needed because notification_dispatch_stop temporarily drops
-     * state_rwlock while calling srsn_terminate(), and config_apply_mutex prevents
-     * another thread from stealing the write-lock in that window */
-    if ((r = notifd_mutex_lock(&notifd_ctx->config_apply_mutex, NOTIFD_CONTEXT_LOCK_TIMEOUT_MS, __func__))) {
-        SRNTF_LOG_ERR("Failed to acquire config apply lock for graceful shutdown.");
-        return;
-    }
 
     /* STATE WR LOCK */
     if (notifd_rwlock_lock(&notifd_ctx->state_rwlock, 1, NOTIFD_CONTEXT_LOCK_TIMEOUT_MS, __func__)) {
         SRNTF_LOG_ERR("Failed to acquire state lock for graceful shutdown.");
-        notifd_mutex_unlock(&notifd_ctx->config_apply_mutex, __func__);
         return;
     }
 
@@ -378,9 +314,6 @@ notifd_graceful_shutdown(notifd_ctx_t *notifd_ctx)
 
     /* STATE UNLOCK */
     notifd_rwlock_unlock(&notifd_ctx->state_rwlock, __func__);
-
-    /* CONFIG APPLY UNLOCK */
-    notifd_mutex_unlock(&notifd_ctx->config_apply_mutex, __func__);
 }
 
 /**
@@ -754,7 +687,7 @@ static int
 subscribed_notifications_sub_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
         sr_event_t event, uint32_t operation_id, void *private_data)
 {
-    int rc = SR_ERR_OK, r, appl_locked = 0, state_locked = 0;
+    int rc = SR_ERR_OK, r, state_locked = 0;
     notifd_ctx_t *notifd_ctx = (notifd_ctx_t *)private_data;
 
     (void)sub_id;
@@ -765,12 +698,6 @@ subscribed_notifications_sub_change_cb(sr_session_ctx_t *session, uint32_t sub_i
 
     SRNTF_LOG_INF("Subscribed notifications subscription change callback with ID %" PRIu32 " invoked for event \"%s\".",
             operation_id, sr_event2str(event));
-
-    /* CONFIG APPLY LOCK */
-    if ((rc = notifd_mutex_lock(&notifd_ctx->config_apply_mutex, NOTIFD_CONTEXT_LOCK_TIMEOUT_MS, __func__))) {
-        return rc;
-    }
-    appl_locked = 1;
 
     if ((event == SR_EV_CHANGE) || (event == SR_EV_ENABLED)) {
         /* STATE RD LOCK - validation only reads existing subscriptions */
@@ -834,10 +761,6 @@ cleanup:
         /* STATE UNLOCK */
         notifd_rwlock_unlock(&notifd_ctx->state_rwlock, __func__);
     }
-    if (appl_locked) {
-        /* CONFIG APPLY UNLOCK */
-        notifd_mutex_unlock(&notifd_ctx->config_apply_mutex, __func__);
-    }
     return rc;
 }
 
@@ -845,7 +768,7 @@ static int
 subscribed_notifications_filter_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
         sr_event_t event, uint32_t operation_id, void *private_data)
 {
-    int rc = SR_ERR_OK, r, prev_dflt, appl_locked = 0, state_locked = 0;
+    int rc = SR_ERR_OK, r, prev_dflt, state_locked = 0;
     notifd_ctx_t *notifd_ctx = (notifd_ctx_t *)private_data;
     sr_change_iter_t *iter = NULL;
     sr_change_oper_t op;
@@ -860,12 +783,6 @@ subscribed_notifications_filter_change_cb(sr_session_ctx_t *session, uint32_t su
 
     SRNTF_LOG_INF("Subscribed notifications filter change callback with ID %" PRIu32 " invoked for event \"%s\".",
             operation_id, sr_event2str(event));
-
-    /* CONFIG APPLY LOCK */
-    if ((rc = notifd_mutex_lock(&notifd_ctx->config_apply_mutex, NOTIFD_CONTEXT_LOCK_TIMEOUT_MS, __func__))) {
-        return rc;
-    }
-    appl_locked = 1;
 
     if ((event == SR_EV_CHANGE) || (event == SR_EV_ENABLED)) {
         rc = filter_change_validate(notifd_ctx, session, event);
@@ -914,10 +831,6 @@ cleanup:
     if (state_locked) {
         /* STATE UNLOCK */
         notifd_rwlock_unlock(&notifd_ctx->state_rwlock, __func__);
-    }
-    if (appl_locked) {
-        /* CONFIG APPLY UNLOCK */
-        notifd_mutex_unlock(&notifd_ctx->config_apply_mutex, __func__);
     }
     sr_free_change_iter(iter);
     return rc;
@@ -1014,8 +927,7 @@ sent_event_records_oper_get(sr_session_ctx_t *UNUSED(session), uint32_t UNUSED(s
     notifd_ctx_t *notifd_ctx = (notifd_ctx_t *)private_data;
     notif_sub_t *sub;
     notif_receiver_t *recv;
-    srsn_state_sub_t *state_sub = NULL;
-    char num_str[11];   /* uint32 max is 4 294 967 295, so 10 chars + null terminator */
+    char num_str[21];   /* uint64 max is 20 digits + null terminator */
 
     /* RD LOCK */
     if ((rc = notifd_rwlock_lock(&notifd_ctx->state_rwlock, 0, NOTIFD_CONTEXT_LOCK_TIMEOUT_MS, __func__))) {
@@ -1038,21 +950,8 @@ sent_event_records_oper_get(sr_session_ctx_t *UNUSED(session), uint32_t UNUSED(s
         goto cleanup;
     }
 
-    if (!recv->srsn_data.sub_id) {
-        /* dispatch is not running for this receiver, there are no counters to provide */
-        SRNTF_LOG_DBG("Providing no \"%s\" data of receiver \"%s\", its dispatch is not running.", path,
-                recv->name);
-        goto cleanup;
-    }
-
-    /* get the oper data from srsn sub */
-    if ((rc = srsn_oper_data_sub(recv->srsn_data.sub_id, &state_sub))) {
-        SRNTF_LOG_ERR("Failed to get subscription state for \"%s\" operational data request.", path);
-        goto cleanup;
-    }
-
     /* create the sent-event-records node */
-    snprintf(num_str, sizeof(num_str), "%" PRIu32, (uint32_t)state_sub->sent_count);
+    snprintf(num_str, sizeof(num_str), "%" PRIu64, recv->sent_count);
     if (lyd_new_term(*parent, NULL, "sent-event-records", num_str, 0, NULL)) {
         rc = SR_ERR_LY;
         goto cleanup;
@@ -1061,7 +960,6 @@ sent_event_records_oper_get(sr_session_ctx_t *UNUSED(session), uint32_t UNUSED(s
 cleanup:
     /* UNLOCK */
     notifd_rwlock_unlock(&notifd_ctx->state_rwlock, __func__);
-    srsn_oper_data_subscriptions_free(state_sub, SRSN_FREE_SINGLE);
     return rc;
 }
 
@@ -1076,7 +974,8 @@ excluded_event_records_oper_get(sr_session_ctx_t *UNUSED(session), uint32_t UNUS
     notif_sub_t *sub;
     notif_receiver_t *recv;
     srsn_state_sub_t *state_sub = NULL;
-    char num_str[11];   /* uint32 max is 4 294 967 295, so 10 chars + null terminator */
+    uint64_t excluded;
+    char num_str[21];   /* uint64 max is 20 digits + null terminator */
 
     /* RD LOCK */
     if ((rc = notifd_rwlock_lock(&notifd_ctx->state_rwlock, 0, NOTIFD_CONTEXT_LOCK_TIMEOUT_MS, __func__))) {
@@ -1099,21 +998,20 @@ excluded_event_records_oper_get(sr_session_ctx_t *UNUSED(session), uint32_t UNUS
         goto cleanup;
     }
 
-    if (!recv->srsn_data.sub_id) {
-        /* dispatch is not running for this receiver, there are no counters to provide */
-        SRNTF_LOG_DBG("Providing no \"%s\" data of receiver \"%s\", its dispatch is not running.", path,
-                recv->name);
-        goto cleanup;
+    /* the srsn subscriptions this receiver is done with kept their count in the base */
+    excluded = recv->excluded_base;
+
+    if (recv->srsn_data.sub_id) {
+        /* get the oper data from srsn sub */
+        if ((rc = srsn_oper_data_sub(recv->srsn_data.sub_id, &state_sub))) {
+            SRNTF_LOG_ERR("Failed to get subscription state for \"%s\" operational data request.", path);
+            goto cleanup;
+        }
+        excluded += state_sub->excluded_count;
     }
 
-    /* get the oper data from srsn sub */
-    if ((rc = srsn_oper_data_sub(recv->srsn_data.sub_id, &state_sub))) {
-        SRNTF_LOG_ERR("Failed to get subscription state for \"%s\" operational data request.", path);
-        goto cleanup;
-    }
-
-    /* create the excluded-event-records node */
-    snprintf(num_str, sizeof(num_str), "%" PRIu32, (uint32_t)state_sub->excluded_count);
+    /* create the excluded-event-records node, the event records a filter removed */
+    snprintf(num_str, sizeof(num_str), "%" PRIu64, excluded);
     if (lyd_new_term(*parent, NULL, "excluded-event-records", num_str, 0, NULL)) {
         rc = SR_ERR_LY;
         goto cleanup;
@@ -1239,23 +1137,17 @@ register_oper_data_providers(notifd_ctx_t *notifd_ctx, sr_subscription_ctx_t **s
  */
 
 int
-receiver_reset_rpc_cb(sr_session_ctx_t *UNUSED(session), uint32_t UNUSED(sub_id), const char *UNUSED(op_path),
+receiver_reset_rpc_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *UNUSED(op_path),
         const struct lyd_node *input, sr_event_t UNUSED(event), uint32_t UNUSED(operation_id),
         struct lyd_node *output, void *private_data)
 {
-    int rc = SR_ERR_OK, appl_locked = 0, state_locked = 0;
+    int rc = SR_ERR_OK, state_locked = 0;
     notifd_ctx_t *notifd_ctx = (notifd_ctx_t *)private_data;
     notif_sub_t *sub;
     notif_receiver_t *recv;
     struct lyd_node *name_node = NULL;
     struct timespec ts_now;
     char *time_str = NULL;
-
-    /* CONFIG APPLY LOCK */
-    if ((rc = notifd_mutex_lock(&notifd_ctx->config_apply_mutex, NOTIFD_CONTEXT_LOCK_TIMEOUT_MS, __func__))) {
-        return rc;
-    }
-    appl_locked = 1;
 
     /* STATE WR LOCK */
     if ((rc = notifd_rwlock_lock(&notifd_ctx->state_rwlock, 1, NOTIFD_CONTEXT_LOCK_TIMEOUT_MS, __func__))) {
@@ -1283,15 +1175,22 @@ receiver_reset_rpc_cb(sr_session_ctx_t *UNUSED(session), uint32_t UNUSED(sub_id)
         goto cleanup;
     }
 
+    /* resolve the address again, it may have been unresolvable or may have changed */
+    if ((rc = notif_receiver_resolve(recv))) {
+        sr_session_set_error_message(session, "Failed to resolve the address of receiver \"%s\".", recv->name);
+        goto cleanup;
+    }
+
     /* disconnect the receiver instance */
     notif_receiver_disconnect(recv);
 
-    /* reset the receiver state to connecting, it will attempt to reconnect once there is a notif to send */
+    /* reset the receiver state to connecting */
     recv->state = NOTIF_RECV_STATE_CONNECTING;
 
-    /* reset reconnect backoff */
+    /* reset reconnect backoff, the dispatch loop then retries immediately */
     recv->reconnect_attempts = 0;
     memset(&recv->last_reconnect_attempt, 0, sizeof(recv->last_reconnect_attempt));
+    notifd_dispatch_wakeup(&notifd_ctx->dispatch);
 
     /* create the output - current time as the reset time */
     clock_gettime(CLOCK_REALTIME, &ts_now);
@@ -1308,10 +1207,6 @@ cleanup:
     if (state_locked) {
         /* STATE UNLOCK */
         notifd_rwlock_unlock(&notifd_ctx->state_rwlock, __func__);
-    }
-    if (appl_locked) {
-        /* CONFIG APPLY UNLOCK */
-        notifd_mutex_unlock(&notifd_ctx->config_apply_mutex, __func__);
     }
     free(time_str);
     return rc;
@@ -1330,9 +1225,10 @@ main(int argc, char **argv)
     sr_log_level_t log_level = SR_LL_ERR;
     int rc = EXIT_SUCCESS, opt, debug = 0, pidfd = -1;
     const char *pidfile = NULL;
+    struct pollfd pfd;
+    int fds[2];
     notifd_ctx_t notifd_ctx = {
-        .state_rwlock = PTHREAD_RWLOCK_INITIALIZER,
-        .config_apply_mutex = PTHREAD_MUTEX_INITIALIZER
+        .state_rwlock = PTHREAD_RWLOCK_INITIALIZER
     };
     sr_subscription_ctx_t *sr_subscr = NULL;
 
@@ -1405,6 +1301,16 @@ main(int argc, char **argv)
         goto cleanup;
     }
 
+    /* create a pipe that the signal handler uses to wake the loop below up with, it must exist
+     * before handle_signals() installs the handler that writes into it */
+    if (pipe2(fds, O_CLOEXEC | O_NONBLOCK) == -1) {
+        SRNTF_LOG_ERR("pipe2() failed (%s).", strerror(errno));
+        rc = EXIT_FAILURE;
+        goto cleanup;
+    }
+    shutdown_rfd = fds[0];
+    shutdown_wfd = fds[1];
+
     /* daemonize */
     daemon_init(debug, log_level);
 
@@ -1428,9 +1334,8 @@ main(int argc, char **argv)
         goto cleanup;
     }
 
-    /* init read notification dispatch */
-    if (srsn_read_dispatch_init(conn, notifd_notification_cb)) {
-        SRNTF_LOG_ERR("Failed to initialize notification dispatch");
+    /* start the notification dispatch loop, it must run before the first SR_SUBSCR_ENABLED sub */
+    if (notifd_dispatch_start(&notifd_ctx)) {
         rc = EXIT_FAILURE;
         goto cleanup;
     }
@@ -1480,13 +1385,24 @@ main(int argc, char **argv)
 #endif
 
     /* wait for a terminating signal */
-    pthread_mutex_lock(&lock);
+    pfd.fd = shutdown_rfd;
+    pfd.events = POLLIN;
     while (!loop_finish) {
-        pthread_cond_wait(&cond, &lock);
+        if ((poll(&pfd, 1, -1) == -1) && (errno != EINTR)) {
+            SRNTF_LOG_ERR("poll() failed (%s).", strerror(errno));
+            rc = EXIT_FAILURE;
+            break;
+        }
     }
-    pthread_mutex_unlock(&lock);
 
-    /* gracefully terminate all active subscriptions */
+    /* unsubscribe first, no config apply, oper get or RPC can run from now on */
+    sr_unsubscribe(sr_subscr);
+    sr_subscr = NULL;
+
+    /* stop the dispatch loop, it joins a thread that may be waiting for the state lock */
+    notifd_dispatch_stop(&notifd_ctx.dispatch);
+
+    /* daemon is now single-threaded, gracefully terminate all active subscriptions */
     notifd_graceful_shutdown(&notifd_ctx);
 
 #ifdef SR_HAVE_SYSTEMD
@@ -1500,8 +1416,17 @@ cleanup:
         unlink(pidfile);
     }
 
-    srsn_read_dispatch_destroy();
     sr_unsubscribe(sr_subscr);
+    notifd_dispatch_stop(&notifd_ctx.dispatch);
     sr_disconnect(conn);
+
+    if (shutdown_rfd > -1) {
+        close(shutdown_rfd);
+        shutdown_rfd = -1;
+    }
+    if (shutdown_wfd > -1) {
+        close(shutdown_wfd);
+        shutdown_wfd = -1;
+    }
     return rc;
 }

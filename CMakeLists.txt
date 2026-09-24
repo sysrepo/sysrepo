@@ -55,15 +55,15 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 # micro version is changed with a set of small changes or bugfixes anywhere in the project.
 set(SYSREPO_MAJOR_VERSION 5)
 set(SYSREPO_MINOR_VERSION 2)
-set(SYSREPO_MICRO_VERSION 22)
+set(SYSREPO_MICRO_VERSION 23)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
 
 # Version of the library
 # Major version is changed with every backward non-compatible API/ABI change, minor version changes
 # with backward compatible change and micro version is connected with any internal change of the library.
 set(SYSREPO_MAJOR_SOVERSION 8)
-set(SYSREPO_MINOR_SOVERSION 10)
-set(SYSREPO_MICRO_SOVERSION 7)
+set(SYSREPO_MINOR_SOVERSION 11)
+set(SYSREPO_MICRO_SOVERSION 0)
 set(SYSREPO_SOVERSION_FULL ${SYSREPO_MAJOR_SOVERSION}.${SYSREPO_MINOR_SOVERSION}.${SYSREPO_MICRO_SOVERSION})
 set(SYSREPO_SOVERSION ${SYSREPO_MAJOR_SOVERSION})
 
@@ -314,6 +314,7 @@ set(SYSREPOPLUGIND_SRC
 set(SYSREPONOTIFD_SRC
     src/executables/sysrepo-notifd/main.c
     src/executables/sysrepo-notifd/notifd_config.c
+    src/executables/sysrepo-notifd/notifd_dispatch.c
     src/executables/sysrepo-notifd/notifd_runtime.c
     src/executables/sysrepo-notifd/notifd_udp.c)
 

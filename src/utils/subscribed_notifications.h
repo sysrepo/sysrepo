@@ -282,6 +282,9 @@ void srsn_oper_data_subscriptions_free(srsn_state_sub_t *subs, uint32_t count);
 /**
  * @brief Read a notification.
  *
+ * Fails if the notification header arrived only partially, use ::srsn_reader_read() if every
+ * notification must be read.
+ *
  * @param[in] fd Opened file descriptor to read from, may be non-blocking.
  * @param[in] ly_ctx Libyang context to use for parsing the notification.
  * @param[out] timestamp Notification timestamp.
@@ -292,6 +295,45 @@ void srsn_oper_data_subscriptions_free(srsn_state_sub_t *subs, uint32_t count);
  * @return ::SR_ERR_SYS on another error (logged).
  */
 int srsn_read_notif(int fd, const struct ly_ctx *ly_ctx, struct timespec *timestamp, struct lyd_node **notif);
+
+/**
+ * @brief Opaque incremental reader of notification frames from a subscription FD.
+ */
+typedef struct srsn_reader srsn_reader_t;
+
+/**
+ * @brief Create an incremental notification frame reader.
+ *
+ * @param[in] fd Subscription file descriptor from ::srsn_subscribe(), stays owned by the caller, make it
+ * non-blocking for a reader that never blocks.
+ * @param[out] reader Created reader.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int srsn_reader_new(int fd, srsn_reader_t **reader);
+
+/**
+ * @brief Read the next notification frame without parsing it.
+ *
+ * Unlike ::srsn_read_notif(), a partially arrived frame is kept for the next call, so no notification is lost.
+ *
+ * @param[in] reader Reader to use.
+ * @param[out] timestamp Frame timestamp.
+ * @param[out] lyb Frame LYB data, allocated, freed by the caller.
+ * @param[out] lyb_size Size of @p lyb.
+ * @return ::SR_ERR_OK on a complete frame,
+ * @return ::SR_ERR_TIME_OUT if no complete frame is available yet (no data or partial frame),
+ * @return ::SR_ERR_UNSUPPORTED on end-of-file (the write end was closed),
+ * @return ::SR_ERR_NO_MEMORY if the frame could not be allocated, it is kept for a later call,
+ * @return ::SR_ERR_SYS on another error (logged).
+ */
+int srsn_reader_read(srsn_reader_t *reader, struct timespec *timestamp, char **lyb, uint32_t *lyb_size);
+
+/**
+ * @brief Free an incremental reader, does not close its FD.
+ *
+ * @param[in] reader Reader to free.
+ */
+void srsn_reader_free(srsn_reader_t *reader);
 
 /**
  * @brief Poll a file descriptor for data to read.
@@ -322,7 +364,7 @@ typedef void (*srsn_notif_cb)(const struct lyd_node *notif, const struct timespe
  * not free its callback data while the FD is registered: use ::srsn_read_dispatch_del() to remove an FD,
  * which closes it and blocks until the callback is no longer running for it, only then is it safe to free
  * the callback data. The callback data must also stay valid and at a stable address for the whole time the
- * FD is dispatched. Removing all FDs (or ::srsn_read_dispatch_destroy()) stops the thread.
+ * FD is dispatched. Only ::srsn_read_dispatch_destroy() stops the thread.
  *
  * @param[in] conn Connection that must not be terminated while the notifications are being processed.
  * @param[in] cb Callback to be called for each notification.
@@ -338,8 +380,7 @@ int srsn_read_dispatch_start(int fd, sr_conn_ctx_t *conn, srsn_notif_cb cb, void
 /**
  * @brief Add another subscription to be handled by the dispatched thread.
  *
- * The thread is automatically started on the first @p fd and terminated when the last
- * one is closed by the peer.
+ * The thread is automatically started on the first @p fd and runs until ::srsn_read_dispatch_destroy().
  *
  * On success @p fd is owned by the dispatch, which closes it once the subscription terminates or when
  * removed by ::srsn_read_dispatch_del(), so it must never be closed by the caller. On error @p fd is
@@ -372,7 +413,7 @@ int srsn_read_dispatch_del(int fd);
 /**
  * @brief Get the number of subscriptions currently handled by the dispatched thread.
  *
- * @return Number of handled subscriptions, 0 means the dispatch thread is not running.
+ * @return Number of handled subscriptions, may be 0 while the dispatch thread is still running.
  */
 uint32_t srsn_read_dispatch_count(void);
 

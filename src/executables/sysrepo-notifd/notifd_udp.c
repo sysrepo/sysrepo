@@ -293,7 +293,9 @@ cleanup:
  * @param[in] recv Notification receiver.
  * @param[in] buf Buffer containing the complete segment (header + options + payload).
  * @param[in] len Length of buffer.
- * @return SR_ERR_OK on success, error code on failure.
+ * @return SR_ERR_OK on success,
+ * @return SR_ERR_TIME_OUT if the send buffer is full and the segment was dropped,
+ * @return another error code on failure.
  */
 static int
 udp_notif_segment_send(notif_receiver_t *recv, const uint8_t *buf, uint32_t len)
@@ -308,6 +310,10 @@ udp_notif_segment_send(notif_receiver_t *recv, const uint8_t *buf, uint32_t len)
 
     sent = send(conn->sockfd, buf, len, 0);
     if (sent < 0) {
+        if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
+            /* the socket buffer is full, drop the datagram */
+            return SR_ERR_TIME_OUT;
+        }
         SRNTF_LOG_ERR("Failed to send UDP-Notif message to receiver \"%s\": %s.", recv->name, strerror(errno));
         return SR_ERR_SYS;
     }
@@ -419,6 +425,7 @@ udp_notif_send_segmented(notif_receiver_t *recv, udp_notif_receiver_t *udp_recv,
         /* send segment */
         rc = udp_notif_segment_send(recv, buf, header_len + chunk_len);
         if (rc != SR_ERR_OK) {
+            /* abandon the remaining segments, the receiver discards a partial message */
             goto cleanup;
         }
 
@@ -478,25 +485,23 @@ udp_notif_local_addr_prepare(const char *local_address, struct sockaddr_storage 
 }
 
 /**
- * @brief Try to create and connect one UDP socket for a resolved destination.
+ * @brief Create and connect one non-blocking UDP socket for a destination address.
  *
- * @param[in] rp Resolved destination address candidate.
+ * @param[in] addr Destination address.
+ * @param[in] addr_len Length of @p addr.
  * @param[in] local_address Local source address string, if configured.
  * @param[in] local_addr Parsed local source address, if configured.
  * @param[in] local_addr_len Parsed local source address length.
  * @return Connected socket fd on success, -1 on failure.
  */
 static int
-udp_notif_connect_try_one(const struct addrinfo *rp, const char *local_address,
+udp_notif_socket_connect(const struct sockaddr *addr, socklen_t addr_len, const char *local_address,
         const struct sockaddr_storage *local_addr, socklen_t local_addr_len)
 {
     int sockfd;
 
-    if (!rp) {
-        return -1;
-    }
-
-    sockfd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+    /* non-blocking, sending must never block the dispatch loop */
+    sockfd = socket(addr->sa_family, SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC, IPPROTO_UDP);
     if (sockfd < 0) {
         return -1;
     }
@@ -513,7 +518,7 @@ udp_notif_connect_try_one(const struct addrinfo *rp, const char *local_address,
 
     /* connect() on a UDP socket allows using send() instead of sendto() (simplicity),
      * enables receiving ICMP errors (error-handling) and is faster (route caching) */
-    if (connect(sockfd, rp->ai_addr, rp->ai_addrlen) < 0) {
+    if (connect(sockfd, addr, addr_len) < 0) {
         close(sockfd);
         return -1;
     }
@@ -528,11 +533,10 @@ udp_notif_connect_try_one(const struct addrinfo *rp, const char *local_address,
  */
 
 static int
-udp_transport_connect_cb(notif_receiver_t *recv, void *cfg)
+udp_transport_resolve_cb(notif_receiver_t *recv, void *cfg)
 {
-    int rc = SR_ERR_OK, sockfd = -1, r;
+    int rc = SR_ERR_OK, r;
     udp_notif_receiver_t *udp_recv = (udp_notif_receiver_t *)cfg;
-    udp_conn_ctx_t *conn;
     struct addrinfo hints, *res = NULL, *rp;
     char port_str[6];
     struct sockaddr_storage local_addr;
@@ -542,9 +546,8 @@ udp_transport_connect_cb(notif_receiver_t *recv, void *cfg)
         return SR_ERR_INVAL_ARG;
     }
 
-    assert(!recv->ops || ((recv->ops->type == NOTIF_TRANSPORT_TYPE_UDP) && !recv->conn_ctx));
-
     if (recv->sub && recv->sub->local_address) {
+        /* only to learn the family the destination must match, the socket is created when connecting */
         rc = udp_notif_local_addr_prepare(recv->sub->local_address, &local_addr, &local_addr_len);
         if (rc != SR_ERR_OK) {
             return rc;
@@ -562,41 +565,80 @@ udp_transport_connect_cb(notif_receiver_t *recv, void *cfg)
 
     r = getaddrinfo(udp_recv->remote_address, port_str, &hints, &res);
     if (r) {
-        SRNTF_LOG_ERR("Failed to resolve address \"%s\": %s.", udp_recv->remote_address, gai_strerror(r));
-        rc = SR_ERR_SYS;
-        goto cleanup;
+        SRNTF_LOG_ERR("Failed to resolve address \"%s\" of receiver \"%s\": %s.", udp_recv->remote_address,
+                recv->name, gai_strerror(r));
+        return SR_ERR_SYS;
     }
 
-    /* try each resolved address until one succeeds */
+    /* remember the first resolved address of the family the source address dictates */
     for (rp = res; rp; rp = rp->ai_next) {
         if (recv->sub && recv->sub->local_address && (rp->ai_family != local_addr.ss_family)) {
             continue;
         }
 
-        sockfd = udp_notif_connect_try_one(rp, recv->sub ? recv->sub->local_address : NULL,
-                &local_addr, local_addr_len);
-        if (sockfd >= 0) {
-            break;
+        memcpy(&recv->addr, rp->ai_addr, rp->ai_addrlen);
+        recv->addr_len = rp->ai_addrlen;
+        break;
+    }
+
+    if (!rp) {
+        SRNTF_LOG_ERR("No resolved address of \"%s:%s\" of receiver \"%s\" matches the family of the configured "
+                "source address.", udp_recv->remote_address, port_str, recv->name);
+        rc = SR_ERR_SYS;
+    }
+
+    freeaddrinfo(res);
+    return rc;
+}
+
+static int
+udp_transport_connect_cb(notif_receiver_t *recv, void *cfg)
+{
+    int rc = SR_ERR_OK, sockfd = -1;
+    udp_notif_receiver_t *udp_recv = (udp_notif_receiver_t *)cfg;
+    udp_conn_ctx_t *conn;
+    struct sockaddr_storage local_addr;
+    socklen_t local_addr_len = 0;
+
+    if (!udp_recv || !udp_recv->remote_address) {
+        return SR_ERR_INVAL_ARG;
+    }
+
+    assert((recv->ops->type == NOTIF_TRANSPORT_TYPE_UDP) && !recv->conn_ctx);
+
+    if (!recv->addr_len) {
+        /* the address is resolved only when the configuration is applied */
+        SRNTF_LOG_ERR("Receiver \"%s\" has no resolved address, apply its configuration again or reset it.",
+                recv->name);
+        return SR_ERR_OPERATION_FAILED;
+    }
+
+    if (recv->sub && recv->sub->local_address) {
+        rc = udp_notif_local_addr_prepare(recv->sub->local_address, &local_addr, &local_addr_len);
+        if (rc != SR_ERR_OK) {
+            return rc;
         }
     }
 
+    sockfd = udp_notif_socket_connect((const struct sockaddr *)&recv->addr, recv->addr_len,
+            recv->sub ? recv->sub->local_address : NULL, &local_addr, local_addr_len);
     if (sockfd < 0) {
-        SRNTF_LOG_ERR("Failed to connect to \"%s:%s\": %s.", udp_recv->remote_address, port_str, strerror(errno));
-        rc = SR_ERR_SYS;
-        goto cleanup;
+        SRNTF_LOG_ERR("Failed to connect to \"%s:%" PRIu16 "\": %s.", udp_recv->remote_address,
+                udp_recv->remote_port, strerror(errno));
+        return SR_ERR_SYS;
     }
 
     conn = calloc(1, sizeof *conn);
     if (!conn) {
         ERRMEM;
         close(sockfd);
-        rc = SR_ERR_NO_MEMORY;
-        goto cleanup;
+        return SR_ERR_NO_MEMORY;
     }
     conn->sockfd = sockfd;
     recv->conn_ctx = conn;
 
-    SRNTF_LOG_INF("Connected UDP-Notif receiver to %s:%s on socket %d.", udp_recv->remote_address, port_str, sockfd);
+    SRNTF_LOG_INF("Connected UDP-Notif receiver to %s:%" PRIu16 " on socket %d.", udp_recv->remote_address,
+            udp_recv->remote_port, sockfd);
 
     /* initialize message ID to 1 as per spec (starts at 1 with first message) */
     if (udp_recv->message_id == 0) {
@@ -608,8 +650,6 @@ udp_transport_connect_cb(notif_receiver_t *recv, void *cfg)
         udp_recv->publisher_id = (uint32_t)getpid();
     }
 
-cleanup:
-    freeaddrinfo(res);
     return rc;
 }
 
@@ -882,6 +922,7 @@ const notif_transport_ops_t udp_transport_ops = {
     .transport_identity = "ietf-udp-notif-transport:udp-notif",
     .config_container_name = "udp-notif-receiver",
     .type = NOTIF_TRANSPORT_TYPE_UDP,
+    .resolve = udp_transport_resolve_cb,
     .connect = udp_transport_connect_cb,
     .disconnect = udp_transport_disconnect_cb,
     .is_connected = udp_transport_is_connected_cb,
