@@ -304,6 +304,14 @@ jobs:
         run: ctest --output-on-failure
         if: ${{ matrix.config.name != 'DEB Package' }}
 
+      - name: Upload notifd logs
+        if: ${{ failure() && matrix.config.name != 'DEB Package' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: notifd-logs-${{ matrix.config.name }}
+          path: ${{ github.workspace }}/build/test_notifd_data/*/sysrepo-notifd.log
+          if-no-files-found: ignore
+
   build-linux-32bit:
     name: Release, Linux 32-bit, gcc
     runs-on: ubuntu-latest
