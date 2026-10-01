@@ -640,6 +640,10 @@ wait:
         goto wait;
     }
 
+    /* a fired one-shot timer has no thread anymore, nobody joins it */
+    pthread_detach(pthread_self());
+    sntimer->tid = 0;
+
 cleanup:
     /* TIMER UNLOCK */
     pthread_mutex_unlock(&sntimer->lock);
@@ -681,20 +685,20 @@ srsn_update_timer(const struct timespec *trigger, const struct timespec *interva
     /* TIMER LOCK */
     pthread_mutex_lock(&sntimer->lock);
 
-    /* timer must exist if it is not just a cleanup */
-    assert(!trigger || sntimer->tid);
+    if (!sntimer->tid) {
+        /* the thread has ended, a one-shot timer may have just fired */
+        goto cleanup_unlock;
+    }
 
     if (!trigger) {
-        if (sntimer->tid) {
-            /* stop the timer, thread will terminate on its own */
-            if (pthread_self() == sntimer->tid) {
-                /* use detach because this is the timer thread itself */
-                pthread_detach(sntimer->tid);
-            } else {
-                tid = sntimer->tid;
-            }
-            sntimer->tid = 0;
+        /* stop the timer, thread will terminate on its own */
+        if (pthread_self() == sntimer->tid) {
+            /* use detach because this is the timer thread itself */
+            pthread_detach(sntimer->tid);
+        } else {
+            tid = sntimer->tid;
         }
+        sntimer->tid = 0;
     } else {
         /* update trigger and/or interval */
         sntimer->trigger = *trigger;
@@ -709,6 +713,7 @@ srsn_update_timer(const struct timespec *trigger, const struct timespec *interva
     /* COND SIGNAL */
     pthread_cond_signal(&sntimer->cond);
 
+cleanup_unlock:
     /* TIMER UNLOCK */
     pthread_mutex_unlock(&sntimer->lock);
 
