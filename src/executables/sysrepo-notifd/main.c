@@ -813,9 +813,9 @@ subscribed_notifications_filter_change_cb(sr_session_ctx_t *session, uint32_t su
         }
 
         if (!strcmp(node_name, "stream-subtree-filter")) {
-            r = handle_stream_filter(notifd_ctx, node, 1);
+            r = handle_filter(notifd_ctx, node, 1);
         } else if (!strcmp(node_name, "stream-xpath-filter")) {
-            r = handle_stream_filter(notifd_ctx, node, 0);
+            r = handle_filter(notifd_ctx, node, 0);
         } else {
             r = 0;
         }
@@ -1228,7 +1228,9 @@ main(int argc, char **argv)
     struct pollfd pfd;
     int fds[2];
     notifd_ctx_t notifd_ctx = {
-        .state_rwlock = PTHREAD_RWLOCK_INITIALIZER
+        .state_rwlock = PTHREAD_RWLOCK_INITIALIZER,
+        .control.lock = PTHREAD_MUTEX_INITIALIZER,
+        .control.cond = PTHREAD_COND_INITIALIZER
     };
     sr_subscription_ctx_t *sr_subscr = NULL;
 
@@ -1340,6 +1342,12 @@ main(int argc, char **argv)
         goto cleanup;
     }
 
+    /* start the control thread, the first SR_SUBSCR_ENABLED sub already queues for it */
+    if (notifd_control_start(&notifd_ctx)) {
+        rc = EXIT_FAILURE;
+        goto cleanup;
+    }
+
     /* register the oper data providers and the action BEFORE subscribing */
     if (register_oper_data_providers(&notifd_ctx, &sr_subscr)) {
         rc = EXIT_FAILURE;
@@ -1399,11 +1407,14 @@ main(int argc, char **argv)
     sr_unsubscribe(sr_subscr);
     sr_subscr = NULL;
 
+    /* gracefully terminate all active subscriptions */
+    notifd_graceful_shutdown(&notifd_ctx);
+
+    /* stop the control thread before the dispatch loop, the starts it still executes need the loop to deliver */
+    notifd_control_stop(&notifd_ctx);
+
     /* stop the dispatch loop, it joins a thread that may be waiting for the state lock */
     notifd_dispatch_stop(&notifd_ctx.dispatch);
-
-    /* daemon is now single-threaded, gracefully terminate all active subscriptions */
-    notifd_graceful_shutdown(&notifd_ctx);
 
 #ifdef SR_HAVE_SYSTEMD
     /* notify systemd */
@@ -1417,6 +1428,7 @@ cleanup:
     }
 
     sr_unsubscribe(sr_subscr);
+    notifd_control_stop(&notifd_ctx);
     notifd_dispatch_stop(&notifd_ctx.dispatch);
     sr_disconnect(conn);
 

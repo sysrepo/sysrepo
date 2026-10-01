@@ -673,9 +673,9 @@ handle_stream(notif_sub_t *sub, const struct lyd_node *node, sr_change_oper_t op
     /* mandatory leaf, cr + del handled by 'subscription', so only handle mod */
     if (op == SR_OP_MODIFIED) {
         /* switch to the new value */
-        free(sub->stream);
-        sub->stream = strdup(lyd_get_value(node));
-        if (!sub->stream) {
+        free(sub->srsn_params.stream);
+        sub->srsn_params.stream = strdup(lyd_get_value(node));
+        if (!sub->srsn_params.stream) {
             rc = SR_ERR_NO_MEMORY;
             ERRMEM;
             goto cleanup;
@@ -701,8 +701,8 @@ handle_stream_filter_name(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const stru
     /* optional leaf, need to handle all but move */
     if ((op == SR_OP_CREATED) || (op == SR_OP_MODIFIED)) {
         /* free the old filter */
-        free(sub->xpath_filter);
-        sub->xpath_filter = NULL;
+        free(sub->srsn_params.xpath_filter);
+        sub->srsn_params.xpath_filter = NULL;
         free(sub->filter_ref);
         sub->filter_ref = NULL;
 
@@ -711,15 +711,15 @@ handle_stream_filter_name(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const stru
         CHECK_ERRMEM_GOTO(sub->filter_ref, rc, cleanup);
 
         /* get the xpath filter from the referenced stream filter */
-        if ((rc = stream_filter_xpath_get(notifd_ctx->sr_sess, sub->filter_ref, &sub->xpath_filter))) {
+        if ((rc = stream_filter_xpath_get(notifd_ctx->sr_sess, sub->filter_ref, &sub->srsn_params.xpath_filter))) {
             goto cleanup;
         }
     } else if (op == SR_OP_DELETED) {
         /* just reset all filter info */
         free(sub->filter_ref);
         sub->filter_ref = NULL;
-        free(sub->xpath_filter);
-        sub->xpath_filter = NULL;
+        free(sub->srsn_params.xpath_filter);
+        sub->srsn_params.xpath_filter = NULL;
     }
 
     if ((op == SR_OP_CREATED) || (op == SR_OP_MODIFIED) || (op == SR_OP_DELETED)) {
@@ -744,20 +744,20 @@ handle_stream_subtree_filter(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const s
     /* optional leaf, need to handle all but move */
     if ((op == SR_OP_CREATED) || (op == SR_OP_MODIFIED)) {
         /* free the old filter */
-        free(sub->xpath_filter);
-        sub->xpath_filter = NULL;
+        free(sub->srsn_params.xpath_filter);
+        sub->srsn_params.xpath_filter = NULL;
 
         /* get the first child of the anydata stream-subtree-filter node, which is the first actual filter sibling */
         filter = lyd_child_any(node);
         if (filter) {
             /* filter exists, convert it to an xpath filter and switch to the new value */
-            if ((rc = sr_filter_subtree2xpath(notifd_ctx->sr_sess, filter, 1, &sub->xpath_filter))) {
+            if ((rc = sr_filter_subtree2xpath(notifd_ctx->sr_sess, filter, 1, &sub->srsn_params.xpath_filter))) {
                 goto cleanup;
             }
         }
     } else if (op == SR_OP_DELETED) {
-        free(sub->xpath_filter);
-        sub->xpath_filter = NULL;
+        free(sub->srsn_params.xpath_filter);
+        sub->srsn_params.xpath_filter = NULL;
     }
 
     if ((op == SR_OP_CREATED) || (op == SR_OP_MODIFIED) || (op == SR_OP_DELETED)) {
@@ -781,16 +781,16 @@ handle_stream_xpath_filter(notif_sub_t *sub, const struct lyd_node *node, sr_cha
     /* optional leaf, need to handle all but move */
     if ((op == SR_OP_CREATED) || (op == SR_OP_MODIFIED)) {
         /* switch to the new value */
-        free(sub->xpath_filter);
-        sub->xpath_filter = strdup(lyd_get_value(node));
-        if (!sub->xpath_filter) {
+        free(sub->srsn_params.xpath_filter);
+        sub->srsn_params.xpath_filter = strdup(lyd_get_value(node));
+        if (!sub->srsn_params.xpath_filter) {
             rc = SR_ERR_NO_MEMORY;
             ERRMEM;
             goto cleanup;
         }
     } else if (op == SR_OP_DELETED) {
-        free(sub->xpath_filter);
-        sub->xpath_filter = NULL;
+        free(sub->srsn_params.xpath_filter);
+        sub->srsn_params.xpath_filter = NULL;
     }
 
     if ((op == SR_OP_CREATED) || (op == SR_OP_MODIFIED) || (op == SR_OP_DELETED)) {
@@ -842,14 +842,14 @@ handle_stop_time(notif_sub_t *sub, const struct lyd_node *node, sr_change_oper_t
     /* optional leaf, need to handle all but move */
     if ((op == SR_OP_CREATED) || (op == SR_OP_MODIFIED)) {
         /* switch to the new value */
-        if (ly_time_str2ts(lyd_get_value(node), &sub->stop_time)) {
+        if (ly_time_str2ts(lyd_get_value(node), &sub->srsn_params.stop_time)) {
             rc = SR_ERR_LY;
             goto cleanup;
         }
     } else if (op == SR_OP_DELETED) {
         /* clear stop time */
-        sub->stop_time.tv_sec = 0;
-        sub->stop_time.tv_nsec = 0;
+        sub->srsn_params.stop_time.tv_sec = 0;
+        sub->srsn_params.stop_time.tv_nsec = 0;
     }
 
     if ((op == SR_OP_CREATED) || (op == SR_OP_MODIFIED) || (op == SR_OP_DELETED)) {
@@ -878,20 +878,20 @@ handle_configured_replay(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const struc
     } else if (op == SR_OP_DELETED) {
         /* clear replay */
         sub->replay = 0;
-        sub->start_time.tv_sec = 0;
-        sub->start_time.tv_nsec = 0;
+        sub->srsn_params.start_time.tv_sec = 0;
+        sub->srsn_params.start_time.tv_nsec = 0;
     }
 
     if (op == SR_OP_CREATED) {
         /* we need to check that at least 1 mod in the stream supports replay, otherwise this is an invalid subscription config */
-        if ((rc = stream_supports_replay(notifd_ctx, sub->stream, sub->xpath_filter, &replay_start_time))) {
+        if ((rc = stream_supports_replay(notifd_ctx, sub->srsn_params.stream, sub->srsn_params.xpath_filter, &replay_start_time))) {
             SRNTF_LOG_ERR("Stream \"%s\" does not support replay, cannot enable replay for subscription ID %" PRIu32 ".",
-                    sub->stream, sub->id);
+                    sub->srsn_params.stream, sub->id);
             sub->modif_err_reason = "ietf-subscribed-notifications:stream-unavailable";
             goto cleanup;
         }
 
-        sub->start_time = replay_start_time;
+        sub->srsn_params.start_time = replay_start_time;
 
         /* mark sub as modified so we know to send subscription-modified notification + resubscribe to apply replay */
         sub->modified = 1;
@@ -1124,8 +1124,8 @@ subscription_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, no
     if ((rc = get_descendant_mandatory(node, "stream", &n))) {
         goto cleanup;
     }
-    sub->stream = strdup(lyd_get_value(n));
-    CHECK_ERRMEM_GOTO(sub->stream, rc, cleanup);
+    sub->srsn_params.stream = strdup(lyd_get_value(n));
+    CHECK_ERRMEM_GOTO(sub->srsn_params.stream, rc, cleanup);
 
     /* stream-filter-name */
     get_descendant_optional(node, "stream-filter-name", &n);
@@ -1135,7 +1135,7 @@ subscription_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, no
         CHECK_ERRMEM_GOTO(sub->filter_ref, rc, cleanup);
 
         /* get the xpath filter from the referenced stream filter (if any, it's a leafref, not instanceref) */
-        if ((rc = stream_filter_xpath_get(notifd_ctx->sr_sess, sub->filter_ref, &sub->xpath_filter))) {
+        if ((rc = stream_filter_xpath_get(notifd_ctx->sr_sess, sub->filter_ref, &sub->srsn_params.xpath_filter))) {
             goto cleanup;
         }
     }
@@ -1144,14 +1144,14 @@ subscription_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, no
     get_descendant_optional(node, "stream-subtree-filter", &n);
     if (n) {
         /* free the old filter */
-        free(sub->xpath_filter);
-        sub->xpath_filter = NULL;
+        free(sub->srsn_params.xpath_filter);
+        sub->srsn_params.xpath_filter = NULL;
 
         /* get the first child of the anydata stream-subtree-filter node, which is the first actual filter sibling */
         filter = lyd_child_any(n);
         if (filter) {
             /* filter exists, convert it to an xpath filter and switch to the new value */
-            if ((rc = sr_filter_subtree2xpath(notifd_ctx->sr_sess, filter, 1, &sub->xpath_filter))) {
+            if ((rc = sr_filter_subtree2xpath(notifd_ctx->sr_sess, filter, 1, &sub->srsn_params.xpath_filter))) {
                 goto cleanup;
             }
         }
@@ -1160,8 +1160,8 @@ subscription_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, no
     /* xpath filter */
     get_descendant_optional(node, "stream-xpath-filter", &n);
     if (n) {
-        sub->xpath_filter = strdup(lyd_get_value(n));
-        CHECK_ERRMEM_GOTO(sub->xpath_filter, rc, cleanup);
+        sub->srsn_params.xpath_filter = strdup(lyd_get_value(n));
+        CHECK_ERRMEM_GOTO(sub->srsn_params.xpath_filter, rc, cleanup);
     }
 
     /* encoding */
@@ -1175,7 +1175,7 @@ subscription_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, no
     /* stop time */
     get_descendant_optional(node, "stop-time", &n);
     if (n) {
-        if (ly_time_str2ts(lyd_get_value(n), &sub->stop_time)) {
+        if (ly_time_str2ts(lyd_get_value(n), &sub->srsn_params.stop_time)) {
             rc = SR_ERR_LY;
             goto cleanup;
         }
@@ -1290,8 +1290,8 @@ subscription_destroy(notifd_ctx_t *notifd_ctx, notif_sub_t *sub)
     LYA_FREE(sub->receivers);
 
     /* free members */
-    free(sub->stream);
-    free(sub->xpath_filter);
+    free(sub->srsn_params.stream);
+    free(sub->srsn_params.xpath_filter);
     free(sub->filter_ref);
     free(sub->purpose);
     free(sub->local_address);
@@ -1381,7 +1381,7 @@ cleanup:
 int
 receiver_create_from_node(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const struct lyd_node *node)
 {
-    int rc = SR_ERR_OK, r;
+    int rc = SR_ERR_OK;
     notif_receiver_t *receiver;
 
     /* create a new receiver */
@@ -1393,31 +1393,12 @@ receiver_create_from_node(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const stru
         goto cleanup;
     }
 
-    /* start dispatch so this receiver can receive notifications */
-    if ((rc = notif_receiver_srsn_start(notifd_ctx, sub, receiver))) {
-        goto cleanup;
-    }
-
     /* resolve the address at configuration time, connecting must never resolve a name */
-    r = notif_receiver_resolve(receiver);
-
-    /* connect the receiver and send subscription-started */
     receiver->state = NOTIF_RECV_STATE_CONNECTING;
-    if (!r) {
-        r = notif_receiver_connect(receiver);
-    }
+    notif_receiver_resolve(receiver);
 
-    if (!r && (sub->state == NOTIF_SUB_STATE_VALID)) {
-        r = subscription_started_notif_send(notifd_ctx, sub, receiver);
-        if (!r) {
-            /* successfully sent, receiver is now active */
-            receiver->state = NOTIF_RECV_STATE_ACTIVE;
-        } else {
-            /* on failure, receiver is now disconnected */
-            notif_receiver_disconnect(receiver);
-            receiver->state = NOTIF_RECV_STATE_DISCONNECTED;
-        }
-    }
+    /* the receiver is connected and sent subscription-started once its srsn subscription exists */
+    notif_receiver_srsn_start(notifd_ctx, receiver);
 
 cleanup:
     if (rc) {
@@ -1595,47 +1576,31 @@ receiver_instance_destroy_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_n
  * ---------------------------------------------------------------------------
  */
 
-int
-subscription_resubscribe(notifd_ctx_t *notifd_ctx, notif_sub_t *sub)
-{
-    int rc = SR_ERR_OK;
-    notif_receiver_t *receiver;
-
-    LYA_FOR_EACH(sub->receivers, receiver) {
-        /* stop the dispatch, which will unsubscribe from sysrepo and stop all timers */
-        notif_receiver_srsn_stop(notifd_ctx, receiver);
-
-        /* start the dispatch again with the new params, which will resubscribe to sysrepo and restart timers */
-        if ((rc = notif_receiver_srsn_start(notifd_ctx, sub, receiver))) {
-            goto cleanup;
-        }
-    }
-
- cleanup:
-    return rc;
-}
-
 void
 process_modified_subscriptions(notifd_ctx_t *notifd_ctx)
 {
-    int r;
     notif_sub_t **sub;
+    notif_receiver_t *receiver;
+    int resubscribed;
 
     /* go through all subs and send subscription-modified for those that are modified */
     LYA_FOR_EACH(notifd_ctx->subs, sub) {
+        resubscribed = 0;
         if ((*sub)->resubscribe) {
-            r = subscription_resubscribe(notifd_ctx, *sub);
-            if (!r) {
-                (*sub)->state = NOTIF_SUB_STATE_VALID;
-            } else {
-                sub_invalidate(*sub, NULL);
+            /* stop the srsn subscriptions and start new ones with the new params */
+            (*sub)->state = NOTIF_SUB_STATE_VALID;
+            LYA_FOR_EACH((*sub)->receivers, receiver) {
+                notif_receiver_srsn_stop(notifd_ctx, receiver);
+                notif_receiver_srsn_start(notifd_ctx, receiver);
             }
-
+            resubscribed = 1;
             (*sub)->resubscribe = 0;
         }
 
         if ((*sub)->modified || (*sub)->modif_err_reason) {
-            if ((*sub)->state == NOTIF_SUB_STATE_VALID) {
+            if (resubscribed) {
+                /* subscription-modified is sent once each srsn subscription is started again */
+            } else if ((*sub)->state == NOTIF_SUB_STATE_VALID) {
                 /* valid modification => subscription-modified */
                 subscription_modified_notif_send(notifd_ctx, *sub, NULL);
             } else if ((*sub)->state == NOTIF_SUB_STATE_INVALID) {
@@ -1685,7 +1650,7 @@ process_modified_receiver_instances(notifd_ctx_t *notifd_ctx)
  */
 
 int
-handle_stream_filter(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, int is_subtree)
+handle_filter(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, int is_subtree)
 {
     int rc = SR_ERR_OK, r;
     const char *filter_inst_name = NULL;
@@ -1724,11 +1689,11 @@ handle_stream_filter(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, int 
                 continue;
             }
 
-            if ((!new_filter && (*sub)->xpath_filter) || (new_filter && !(*sub)->xpath_filter) ||
-                    (new_filter && (*sub)->xpath_filter && strcmp(new_filter, (*sub)->xpath_filter))) {
+            if ((!new_filter && (*sub)->srsn_params.xpath_filter) || (new_filter && !(*sub)->srsn_params.xpath_filter) ||
+                    (new_filter && (*sub)->srsn_params.xpath_filter && strcmp(new_filter, (*sub)->srsn_params.xpath_filter))) {
                 /* the filter was actually modified, update it and mark the sub for resubscription */
-                free((*sub)->xpath_filter);
-                (*sub)->xpath_filter = new_filter;
+                free((*sub)->srsn_params.xpath_filter);
+                (*sub)->srsn_params.xpath_filter = new_filter;
                 (*sub)->modified = 1;
                 (*sub)->resubscribe = 1;
             } else {
@@ -2046,7 +2011,7 @@ sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session, sr_even
 
             /* if configured-replay is set on the existing sub, also check replay support for new stream */
             if (sub->replay) {
-                if ((r = stream_supports_replay(notifd_ctx, lyd_get_value(node), sub->xpath_filter,
+                if ((r = stream_supports_replay(notifd_ctx, lyd_get_value(node), sub->srsn_params.xpath_filter,
                         &start_time))) {
                     SRNTF_VALIDATE_ERR(session, event, r, "Stream \"%s\" does not support replay.", lyd_get_value(node));
                     rc = r;
@@ -2087,8 +2052,8 @@ sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session, sr_even
             /* check stop-time is not in the past */
             start_time.tv_sec = 0;
             start_time.tv_nsec = 0;
-            if (sub->start_time.tv_sec || sub->start_time.tv_nsec) {
-                start_time = sub->start_time;
+            if (sub->srsn_params.start_time.tv_sec || sub->srsn_params.start_time.tv_nsec) {
+                start_time = sub->srsn_params.start_time;
             }
 
             if ((r = sub_change_validate_temporal(session, event, &stop_time,
@@ -2098,10 +2063,11 @@ sub_change_validate(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session, sr_even
             }
         } else if (!strcmp(node_name, "configured-replay")) {
             /* replay being enabled on existing sub, check stream supports it */
-            if (sub->stream) {
-                if ((r = stream_supports_replay(notifd_ctx, sub->stream, sub->xpath_filter,
+            if (sub->srsn_params.stream) {
+                if ((r = stream_supports_replay(notifd_ctx, sub->srsn_params.stream, sub->srsn_params.xpath_filter,
                         &start_time))) {
-                    SRNTF_VALIDATE_ERR(session, event, r, "Stream \"%s\" does not support replay.", sub->stream);
+                    SRNTF_VALIDATE_ERR(session, event, r, "Stream \"%s\" does not support replay.",
+                            sub->srsn_params.stream);
                     rc = r;
                     goto cleanup;
                 }

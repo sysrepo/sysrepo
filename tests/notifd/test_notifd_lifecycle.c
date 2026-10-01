@@ -320,7 +320,8 @@ test_configured_replay(void **state)
     /* the daemon does not order these three relative to each other */
     expect_notifs(st, (const char *[]) {SUB_MODIFIED, NCC, REPLAY_COMPLETED, NULL}, notifs);
 
-    /* the replay-completed record names the configured subscription */
+    /* subscription-modified reports the start of the replay, the replay-completed record names the subscription */
+    assert_int_equal(lyd_find_path(notifs[0], "replay-start-time", 0, NULL), LY_SUCCESS);
     assert_notif_leaf(notifs[2], "id", "93");
     for (i = 0; i < 3; ++i) {
         lyd_free_all(notifs[i]);
