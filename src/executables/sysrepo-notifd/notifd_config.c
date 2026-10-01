@@ -1126,6 +1126,8 @@ subscription_target_from_node(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const 
     sub->filter_ref = NULL;
     free(sub->srsn_params.xpath_filter);
     sub->srsn_params.xpath_filter = NULL;
+    sub->replay = 0;
+    memset(&sub->srsn_params.start_time, 0, sizeof sub->srsn_params.start_time);
 
     /* stream */
     if ((rc = get_descendant_mandatory(sub_node, "stream", &n))) {
@@ -1165,6 +1167,17 @@ subscription_target_from_node(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const 
     if (n) {
         sub->srsn_params.xpath_filter = strdup(lyd_get_value(n));
         CHECK_ERRMEM_GOTO(sub->srsn_params.xpath_filter, rc, cleanup);
+    }
+
+    /* configured-replay, from the earliest notification the stream can replay */
+    get_descendant_optional(sub_node, "configured-replay", &n);
+    if (n) {
+        if ((rc = stream_supports_replay(notifd_ctx, sub->srsn_params.stream, sub->srsn_params.xpath_filter, &sub->srsn_params.start_time))) {
+            SRNTF_LOG_ERR("Stream \"%s\" does not support replay, cannot enable replay for subscription ID %" PRIu32 ".",
+                    sub->srsn_params.stream, sub->id);
+            goto cleanup;
+        }
+        sub->replay = 1;
     }
 
 cleanup:

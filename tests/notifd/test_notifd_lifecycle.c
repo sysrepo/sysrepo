@@ -329,7 +329,35 @@ test_configured_replay(void **state)
 }
 
 /**
- * @brief Teardown: disable the replay support enabled by test_configured_replay.
+ * @brief Test: configured-replay set together with the subscription replays the stored notifications.
+ */
+static void
+test_configured_replay_on_create(void **state)
+{
+    struct tnotifd_state *st = *state;
+    struct lyd_node *notif;
+
+    assert_int_equal(sr_set_module_replay_support(st->conn, "ietf-netconf-notifications", 1), SR_ERR_OK);
+
+    /* a config change stored for replay before the subscription exists */
+    set_node(st, "95", "/test:test-leaf");
+    apply_changes(st);
+
+    setup_sub(st, 95, "stream-xpath-filter", NCC, "configured-replay", NULL, NULL);
+
+    notif = expect_notif(st, SUB_STARTED);
+    assert_int_equal(lyd_find_path(notif, "replay-start-time", 0, NULL), LY_SUCCESS);
+    lyd_free_all(notif);
+
+    /* the stored change is replayed, followed by the end of the replay */
+    skip_notif(st, NCC);
+    notif = expect_notif(st, REPLAY_COMPLETED);
+    assert_notif_leaf(notif, "id", "95");
+    lyd_free_all(notif);
+}
+
+/**
+ * @brief Teardown: disable the replay support enabled by the replay tests.
  */
 static int
 disable_replay_support(void **state)
@@ -581,6 +609,7 @@ main(void)
         cmocka_unit_test_setup(test_message_id_increment, tnotifd_reset),
         cmocka_unit_test_setup(test_no_config_change_on_start, tnotifd_reset),
         cmocka_unit_test_setup_teardown(test_configured_replay, tnotifd_reset, disable_replay_support),
+        cmocka_unit_test_setup_teardown(test_configured_replay_on_create, tnotifd_reset, disable_replay_support),
         cmocka_unit_test_setup(test_restart_existing_config, tnotifd_reset),
         cmocka_unit_test_setup_teardown(test_other_publisher, tnotifd_reset, unsubscribe_test_subscr),
         cmocka_unit_test_setup(test_stop_time_concluded, tnotifd_reset),
