@@ -96,6 +96,7 @@ srsn_sub_new(const char *xpath_filter, const struct timespec *stop_time, sr_subs
     s->id = srsn_new_id();
     s->rfd = fds[0];
     s->wfd = fds[1];
+    pthread_mutex_init(&s->write_lock, NULL);
     if (sr_sub) {
         /* subscription will be returned to the caller */
         s->sr_sub = *sr_sub;
@@ -174,6 +175,7 @@ srsn_sub_free(struct srsn_sub *sub)
         sr_errinfo_free(&err_info);
     }
     pthread_cond_destroy(&sub->stop_sntimer.cond);
+    pthread_mutex_destroy(&sub->write_lock);
     free(sub->nacm_user);
 
     switch (sub->type) {
@@ -576,8 +578,15 @@ srsn_ntf_send(struct srsn_sub *sub, const struct timespec *timestamp, const stru
     bufs[2].iov_base = ntf_lyb;
     bufs[2].iov_len = size;
 
-    /* vector write, atomic only up to PIPE_BUF so a short write must be completed manually */
-    if ((err_info = srsn_writev_all(sub->wfd, bufs, 3))) {
+    /* WRITE LOCK, the whole notification is written before another writer may start */
+    pthread_mutex_lock(&sub->write_lock);
+
+    err_info = srsn_writev_all(sub->wfd, bufs, 3);
+
+    /* WRITE UNLOCK */
+    pthread_mutex_unlock(&sub->write_lock);
+
+    if (err_info) {
         goto cleanup;
     }
 

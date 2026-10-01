@@ -73,6 +73,7 @@ struct srsn_state {
         uint32_t id;
         int rfd;
         int wfd;
+        pthread_mutex_t write_lock;     /**< serializes the writes into wfd, a leaf lock */
         sr_subscription_ctx_t *sr_sub;
         int unsub;
         uint32_t *sr_sub_ids;
