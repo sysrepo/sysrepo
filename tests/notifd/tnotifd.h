@@ -161,6 +161,7 @@ typedef struct {
  *   11-13    multiple             40       message_id           50-52    xpath filters
  *   60,62    subtree filters      70-76    filter refs          90,91    oper data
  *   92       source_address       93       configured_replay    94       receiver_reset
+ *   95       replay on create
  *   100-102  started fields       110-114  encodings            130,131  segmentation
  *   200,201  stop_time            210,211  receiver churn       220      receiver delete
  *   221      restart              230      receiver inst ref    300      resolve failure
