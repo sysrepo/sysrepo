@@ -120,18 +120,21 @@ srsn_yp_schedule_periodic_update(uint32_t period_ms, const struct timespec *anch
 {
     sr_error_info_t *err_info = NULL;
     struct timespec trigger, interval;
-    int anchor_ms;
+    int64_t diff_ms, periods;
 
     /* set the trigger timestamp */
     sr_realtime_get(&trigger);
     if (anchor_time) {
-        /* first update at nearest anchor time on period */
-        anchor_ms = sr_time_sub_ms(&trigger, anchor_time);
-        if (anchor_ms < 0) {
-            anchor_ms *= -1;
+        /* time since the anchor */
+        diff_ms = srsn_time_diff_ms(&trigger, anchor_time);
+        if (diff_ms > 0) {
+            /* the anchor is in the past, round up to the next period */
+            periods = (diff_ms + period_ms - 1) / period_ms;
+        } else {
+            /* the anchor is in the future, the earliest period from now */
+            periods = diff_ms / period_ms;
         }
-        anchor_ms %= period_ms;
-        trigger = sr_time_ts_add(&trigger, anchor_ms);
+        trigger = srsn_time_add_ms(anchor_time, periods * period_ms);
     }
 
     /* set the interval */

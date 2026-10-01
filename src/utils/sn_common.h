@@ -242,6 +242,24 @@ struct srsn_sub *srsn_find(uint32_t sub_id);
 sr_error_info_t *srsn_ntf_send(struct srsn_sub *sub, const struct timespec *timestamp, const struct lyd_node *ly_ntf);
 
 /**
+ * @brief Get the difference of two timestamps.
+ *
+ * @param[in] ts1 Timestamp to subtract from.
+ * @param[in] ts2 Timestamp to subtract.
+ * @return @p ts1 - @p ts2 in milliseconds, negative if @p ts2 is later.
+ */
+int64_t srsn_time_diff_ms(const struct timespec *ts1, const struct timespec *ts2);
+
+/**
+ * @brief Add milliseconds to a timestamp.
+ *
+ * @param[in] ts Timestamp to add to.
+ * @param[in] ms Milliseconds to add, may be negative.
+ * @return Resulting timestamp.
+ */
+struct timespec srsn_time_add_ms(const struct timespec *ts, int64_t ms);
+
+/**
  * @brief Create a new SRSN timer.
  *
  * @param[in] cb Callback to call on a trigger.

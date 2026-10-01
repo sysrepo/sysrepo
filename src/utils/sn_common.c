@@ -589,6 +589,32 @@ cleanup:
     return err_info;
 }
 
+int64_t
+srsn_time_diff_ms(const struct timespec *ts1, const struct timespec *ts2)
+{
+    return ((int64_t)ts1->tv_sec - ts2->tv_sec) * 1000 + (ts1->tv_nsec - ts2->tv_nsec) / 1000000;
+}
+
+struct timespec
+srsn_time_add_ms(const struct timespec *ts, int64_t ms)
+{
+    struct timespec ret;
+    int64_t nsec;
+
+    ret.tv_sec = ts->tv_sec + ms / 1000;
+    nsec = ts->tv_nsec + (ms % 1000) * 1000000;
+    if (nsec < 0) {
+        nsec += 1000000000;
+        --ret.tv_sec;
+    } else if (nsec >= 1000000000) {
+        nsec -= 1000000000;
+        ++ret.tv_sec;
+    }
+    ret.tv_nsec = nsec;
+
+    return ret;
+}
+
 /**
  * @brief Timer thread function.
  */
@@ -596,9 +622,9 @@ static void *
 srsn_timer_thread(void *arg)
 {
     struct srsn_timer *sntimer = arg;
-    struct timespec trigger;
+    struct timespec trigger, now;
     int r, freed = 0;
-    uint32_t interval_ms;
+    int64_t interval_ms, diff_ms, periods;
 
     /* TIMER LOCK */
     pthread_mutex_lock(&sntimer->lock);
@@ -627,14 +653,20 @@ wait:
 
     /* prepare the next trigger after the callback */
     if (sntimer->interval.tv_sec || sntimer->interval.tv_nsec) {
-        /* update the trigger to the current time */
-        sr_realtime_get(&sntimer->trigger);
+        interval_ms = (int64_t)sntimer->interval.tv_sec * 1000 + sntimer->interval.tv_nsec / 1000000;
+        assert(interval_ms > 0);
 
-        interval_ms = sntimer->interval.tv_sec * 1000;
-        interval_ms += sntimer->interval.tv_nsec / 1000000;
-
-        /* add the interval */
-        sntimer->trigger = sr_time_ts_add(&sntimer->trigger, interval_ms);
+        /* time since the previous trigger */
+        sr_realtime_get(&now);
+        diff_ms = srsn_time_diff_ms(&now, &sntimer->trigger);
+        if (diff_ms > 0) {
+            /* skip the periods that are already over */
+            periods = diff_ms / interval_ms + 1;
+        } else {
+            /* the clock went back, keep the next period */
+            periods = 1;
+        }
+        sntimer->trigger = srsn_time_add_ms(&sntimer->trigger, periods * interval_ms);
 
         /* wait until the next trigger */
         goto wait;
