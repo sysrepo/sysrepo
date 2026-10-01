@@ -99,8 +99,8 @@ notifd_disp_frames_clear(notifd_dispatch_t *disp)
  * @brief Remove the finished entries and rebuild the poll set.
  *
  * The only place an entry is removed and a subscription FD closed. Closing the read end may give a
- * still blocked SRSN writer EPIPE, which is one of the two ways the loop unblocks a writer that a
- * config apply is waiting for.
+ * still blocked SRSN writer EPIPE, which is one of the two ways the loop unblocks a writer that
+ * srsn_terminate() in the control thread waits for.
  *
  * @param[in] disp Dispatch state.
  */
@@ -238,11 +238,10 @@ notifd_disp_drain(notifd_dispatch_t *disp)
 
             if (r && (r != SR_ERR_TIME_OUT)) {
                 if (r != SR_ERR_UNSUPPORTED) {
-                    /* the pipe is unusable but the SRSN subscription is not gone, tear it down here
-                     * where no lock is held instead of leaving it orphaned */
+                    /* the pipe is unusable but the SRSN subscription is not gone,
+                     * notifd_disp_disconnect_ended() queues its stop */
                     SRNTF_LOG_ERR("Terminating subscription %" PRIu32 ", its notification pipe cannot be read.",
                             entry->srsn_sub_id);
-                    srsn_terminate(entry->srsn_sub_id, NULL);
                 }
 
                 /* end of file or a terminated subscription */
@@ -294,8 +293,7 @@ notifd_disp_state_wrlock(notifd_ctx_t *notifd_ctx)
             return 0;
         }
 
-        /* a config apply holds the lock across srsn_terminate(), which waits for a sysrepo thread
-         * that may be blocked writing into a pipe only this loop drains, so keep draining */
+        /* an SRSN writer must not stall on a full pipe while the lock is held by someone else, keep draining */
 
         /* remove the finished entries, rebuild the poll set */
         notifd_disp_pollset_rebuild(disp);
@@ -451,9 +449,7 @@ notifd_disp_disconnect_ended(notifd_ctx_t *notifd_ctx)
         SRNTF_LOG_INF("Notification subscription of receiver \"%s\" was terminated by the publisher.",
                 receiver->name);
 
-        receiver->srsn_data.sub_id = 0;
-        sr_unsubscribe(receiver->srsn_data.sr_subscr);
-        receiver->srsn_data.sr_subscr = NULL;
+        notif_receiver_srsn_stop(notifd_ctx, receiver);
         receiver->state = NOTIF_RECV_STATE_DISCONNECTED;
     }
 }
@@ -552,7 +548,7 @@ notifd_disp_process(notifd_ctx_t *notifd_ctx)
         sr_session_release_context(notifd_ctx->sr_sess);
     }
 
-    /* sr_unsubscribe() in here waits for a sysrepo notification thread that wants the context itself */
+    /* transition the receivers of the ended subscriptions */
     notifd_disp_disconnect_ended(notifd_ctx);
 
     /* proactive reconnect backoff */

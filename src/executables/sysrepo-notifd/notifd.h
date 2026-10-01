@@ -138,6 +138,15 @@ typedef enum {
 } notif_recv_state_t;
 
 /**
+ * @brief State of the start of the srsn subscription of a receiver.
+ */
+typedef enum {
+    NOTIF_SRSN_START_NONE = 0,  /**< no start wanted */
+    NOTIF_SRSN_START_QUEUED,    /**< wanted, the control thread has not taken it yet */
+    NOTIF_SRSN_START_STARTING   /**< being started by the control thread */
+} notif_srsn_start_t;
+
+/**
  * @brief Notification transport type.
  */
 typedef enum {
@@ -368,9 +377,9 @@ struct notif_receiver_s {
     void *conn_ctx;                             /**< transport-specific connection context (owned by the transport ops) */
 
     struct {
-        sr_subscription_ctx_t *sr_subscr;       /**< sysrepo subscription context */
         uint32_t sub_id;                        /**< srsn subscription ID, identifies the receiver's
                                                      notification pipe, which the dispatch loop owns */
+        notif_srsn_start_t start;               /**< state of the start of a new srsn subscription */
     } srsn_data;                                /**< srsn subscription data */
 
     notif_sub_t *sub;                           /**< back-pointer to the parent subscription */
@@ -387,6 +396,16 @@ struct notif_receiver_s {
 };
 
 /**
+ * @brief Arguments of the srsn subscribe functions, the control thread starts a receiver with a copy.
+ */
+typedef struct notif_srsn_params_s {
+    char *xpath_filter;                 /**< optional XPath filter */
+    struct timespec stop_time;          /**< optional stop time */
+    char *stream;                       /**< stream name */
+    struct timespec start_time;         /**< requested replay start time for configured-replay */
+} notif_srsn_params_t;
+
+/**
  * @brief Configured subscription context.
  * Corresponds to /ietf-subscribed-notifications:subscriptions/subscription
  */
@@ -399,9 +418,6 @@ struct notif_sub_s {
     int modified;                       /**< whether the subscription was modified */
     const char *modif_err_reason;       /**< YANG identity-ref reason the subscription is invalid, used in subscription-terminated */
 
-    char *stream;                       /**< stream name */
-    char *filter_ref;                   /**< optional stream filter name (e.g., XPath or subtree filter) */
-    char *xpath_filter;                 /**< optional XPath filter */
     const notif_transport_ops_t *ops;   /**< transport servicing the subscription, only the
                                              subscriptions with a transport of this daemon are
                                              tracked at all; the receiver instances of all its
@@ -409,12 +425,13 @@ struct notif_sub_s {
                                              if the "transport" leaf was removed by a
                                              configuration change */
     notif_encoding_t encoding;          /**< notification encoding */
-    struct timespec stop_time;          /**< optional stop time */
-    int replay;                         /**< whether to replay notifications */
-    struct timespec start_time;         /**< requested replay start time for configured-replay */
-    struct timespec replay_start_time;  /**< actual replay start time returned by srsn_subscribe */
     char *purpose;                      /**< purpose of the subscription */
     char *local_address;                /**< local address to send notifications from (NULL means OS default) */
+
+    notif_srsn_params_t srsn_params;    /**< parameters of the srsn subscription of every receiver */
+    char *filter_ref;                   /**< optional stream filter name (e.g., XPath or subtree filter) */
+    int replay;                         /**< whether to replay notifications */
+    struct timespec replay_start_time;  /**< actual replay start time returned by srsn_subscribe */
 
     notif_receiver_t *receivers;        /**< receivers of this subscription (sized-array, see libyang docs) */
 };
@@ -477,17 +494,33 @@ typedef struct notifd_dispatch_s {
 } notifd_dispatch_t;
 
 /**
+ * @brief Control thread starting and stopping the srsn subscriptions.
+ */
+typedef struct notifd_control_s {
+    pthread_t tid;                  /**< control thread */
+    sr_session_ctx_t *sess;         /**< session of the srsn subscriptions, used by the control thread only */
+
+    pthread_mutex_t lock;           /**< guards thread_running, stop_ids and start_queued, leaf lock */
+    pthread_cond_t cond;            /**< signaled on a new request and on stop */
+    int thread_running;             /**< the thread runs, cleared to stop it once nothing is queued */
+    uint32_t *stop_ids;             /**< srsn subscriptions to terminate (sized-array, see libyang docs) */
+    int start_queued;               /**< a receiver was set to ::NOTIF_SRSN_START_QUEUED */
+} notifd_control_t;
+
+/**
  * @brief Main daemon context.
  */
 struct notifd_ctx_s {
     sr_session_ctx_t *sr_sess;              /**< sysrepo session used by the daemon */
     pthread_rwlock_t state_rwlock;          /**< synchronize access to the daemon shared state; every reader
                                                  runs on the single listener thread of the daemon's one
-                                                 subscription context, so a second subscription context or a
+                                                 subscription context, the dispatch and control threads only
+                                                 take the write lock, so a second subscription context or a
                                                  read lock from another thread would break the assumption
                                                  that readers never overlap */
     notifd_dispatch_t dispatch;             /**< loop dispatching the notifications sysrepo generates for
                                                  the receivers */
+    notifd_control_t control;               /**< thread starting and stopping the srsn subscriptions */
 
     notif_sub_t **subs;                     /**< configured subscriptions (sized-array, see libyang docs) */
     notif_receiver_inst_t **recv_insts;     /**< configured receiver instances (sized-array, see libyang docs) */

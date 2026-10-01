@@ -91,7 +91,7 @@ subscription_state_change_notif_new(const struct ly_ctx *ly_ctx, notif_sub_t *su
 
     /* stream */
     if (fields & NOTIF_FIELD_STREAM) {
-        if (lyd_new_path(tree, ly_ctx, "stream", sub->stream, 0, NULL)) {
+        if (lyd_new_path(tree, ly_ctx, "stream", sub->srsn_params.stream, 0, NULL)) {
             rc = SR_ERR_LY;
             goto cleanup;
         }
@@ -103,8 +103,8 @@ subscription_state_change_notif_new(const struct ly_ctx *ly_ctx, notif_sub_t *su
             rc = SR_ERR_LY;
             goto cleanup;
         }
-    } else if ((fields & NOTIF_FIELD_XPATH_FILTER) && sub->xpath_filter) {
-        if (lyd_new_path(tree, ly_ctx, "stream-xpath-filter", sub->xpath_filter, 0, NULL)) {
+    } else if ((fields & NOTIF_FIELD_XPATH_FILTER) && sub->srsn_params.xpath_filter) {
+        if (lyd_new_path(tree, ly_ctx, "stream-xpath-filter", sub->srsn_params.xpath_filter, 0, NULL)) {
             rc = SR_ERR_LY;
             goto cleanup;
         }
@@ -112,7 +112,7 @@ subscription_state_change_notif_new(const struct ly_ctx *ly_ctx, notif_sub_t *su
 
     /* stop time */
     if (fields & NOTIF_FIELD_STOP_TIME) {
-        stop_time = (sub->stop_time.tv_sec || sub->stop_time.tv_nsec) ? &sub->stop_time : NULL;
+        stop_time = (sub->srsn_params.stop_time.tv_sec || sub->srsn_params.stop_time.tv_nsec) ? &sub->srsn_params.stop_time : NULL;
         if (stop_time) {
             if (ly_time_ts2str(stop_time, &stop_time_str)) {
                 rc = SR_ERR_LY;
@@ -718,90 +718,6 @@ cleanup:
 
 /*
  * ---------------------------------------------------------------------------
- * Notification dispatch (srsn integration)
- * ---------------------------------------------------------------------------
- */
-
-/**
- * @brief Free the srsn subscription data of a receiver that failed to start.
- *
- * @param[in,out] receiver Receiver to clean up.
- */
-static void
-notif_receiver_srsn_free(notif_receiver_t *receiver)
-{
-    if (receiver->srsn_data.sub_id) {
-        /* terminate the srsn subscription, which removes its subscriptions from the sysrepo context */
-        srsn_terminate(receiver->srsn_data.sub_id, NULL);
-        receiver->srsn_data.sub_id = 0;
-    }
-
-    /* unsubscribe only after srsn_terminate(), which still uses the subscription context */
-    sr_unsubscribe(receiver->srsn_data.sr_subscr);
-    receiver->srsn_data.sr_subscr = NULL;
-}
-
-int
-notif_receiver_srsn_start(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_receiver_t *receiver)
-{
-    int rc = SR_ERR_OK, fd = -1;
-    struct timespec *stop_time, *start_time;
-
-    stop_time = (sub->stop_time.tv_sec || sub->stop_time.tv_nsec) ? &sub->stop_time : NULL;
-    start_time = (sub->start_time.tv_sec || sub->start_time.tv_nsec) ? &sub->start_time : NULL;
-
-    /* subscribe for notifications */
-    if ((rc = srsn_subscribe(notifd_ctx->sr_sess, sub->stream, sub->xpath_filter, stop_time, start_time, 0,
-            &receiver->srsn_data.sr_subscr, &sub->replay_start_time, &fd, &receiver->srsn_data.sub_id))) {
-        SRNTF_LOG_ERR("Failed to subscribe for notifications for subscription ID %" PRIu32 " and receiver \"%s\".",
-                sub->id, receiver->name);
-        goto cleanup;
-    }
-
-    /* hand the pipe over to the dispatch loop, which owns the FD from now on */
-    if ((rc = notifd_dispatch_add(&notifd_ctx->dispatch, fd, receiver->srsn_data.sub_id))) {
-        SRNTF_LOG_ERR("Failed to add notification dispatch for subscription ID %" PRIu32 " and receiver \"%s\".",
-                sub->id, receiver->name);
-        close(fd);
-        goto cleanup;
-    }
-
-cleanup:
-    if (rc) {
-        notif_receiver_srsn_free(receiver);
-        sub->modif_err_reason = "ietf-subscribed-notifications:no-such-subscription";
-    }
-    return rc;
-}
-
-void
-notif_receiver_srsn_stop(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver)
-{
-    srsn_state_sub_t *state_sub = NULL;
-
-    if (receiver->srsn_data.sub_id) {
-        /* carry the excluded count over, the next srsn subscription starts counting from zero */
-        if (!srsn_oper_data_sub(receiver->srsn_data.sub_id, &state_sub)) {
-            receiver->excluded_base += state_sub->excluded_count;
-            srsn_oper_data_subscriptions_free(state_sub, SRSN_FREE_SINGLE);
-        }
-
-        /* terminate the srsn subscription first, it flushes whatever it still wants to write */
-        srsn_terminate(receiver->srsn_data.sub_id, NULL);
-
-        /* stop dispatching, the loop closes the FD and drops the entry at its own pace */
-        notifd_dispatch_detach(&notifd_ctx->dispatch, receiver->srsn_data.sub_id);
-        receiver->srsn_data.sub_id = 0;
-    }
-
-    if (receiver->srsn_data.sr_subscr) {
-        sr_unsubscribe(receiver->srsn_data.sr_subscr);
-        receiver->srsn_data.sr_subscr = NULL;
-    }
-}
-
-/*
- * ---------------------------------------------------------------------------
  * Notification delivery (called by the dispatch loop)
  * ---------------------------------------------------------------------------
  */
@@ -840,7 +756,8 @@ notifd_deliver_notif(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver, const
      */
     if (!strcmp(LYD_NAME(notif), "subscription-terminated")) {
         clock_gettime(CLOCK_REALTIME, &now);
-        if ((sub->stop_time.tv_sec || sub->stop_time.tv_nsec) && (timespec_cmp(&sub->stop_time, &now) <= 0)) {
+        if ((sub->srsn_params.stop_time.tv_sec || sub->srsn_params.stop_time.tv_nsec) &&
+                (timespec_cmp(&sub->srsn_params.stop_time, &now) <= 0)) {
             if (sub->state != NOTIF_SUB_STATE_CONCLUDED) {
                 sub->state = NOTIF_SUB_STATE_CONCLUDED;
                 subscription_completed_notif_send(notifd_ctx, sub, NULL);

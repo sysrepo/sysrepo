@@ -500,13 +500,13 @@ int handle_receiver_instance_ref(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, con
  * @param[in] is_subtree Non-zero if the changed node is a subtree filter, zero if it is an xpath filter.
  * @return ::SR_ERR_OK on success, error code on failure.
  */
-int handle_stream_filter(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, int is_subtree);
+int handle_filter(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, int is_subtree);
 
 /**
  * @brief Post-processing pass after subscription configuration changes.
  *
- * For subscriptions flagged resubscribe: calls subscription_resubscribe; on
- * success marks VALID, on failure invalidates. For subscriptions flagged
+ * For subscriptions flagged resubscribe: restarts the srsn subscriptions of
+ * the receivers and marks VALID. For subscriptions flagged
  * modified or with a modif_err_reason: if VALID, sends `subscription-modified`;
  * if INVALID, sends `subscription-terminated` with the error reason.
  * Resets the modified, resubscribe, and modif_err_reason flags.
@@ -525,18 +525,6 @@ void process_modified_subscriptions(notifd_ctx_t *notifd_ctx);
  * @param[in,out] notifd_ctx Daemon context.
  */
 void process_modified_receiver_instances(notifd_ctx_t *notifd_ctx);
-
-/**
- * @brief Resubscribe all receivers of a subscription to apply parameter changes.
- *
- * For each receiver: stops the current notification dispatch, then starts it
- * again with the updated parameters.
- *
- * @param[in] notifd_ctx Daemon context.
- * @param[in,out] sub Subscription to resubscribe.
- * @return ::SR_ERR_OK on success, error code from notif_receiver_srsn_start on failure.
- */
-int subscription_resubscribe(notifd_ctx_t *notifd_ctx, notif_sub_t *sub);
 
 /**
  * @brief Validate subscription changes during SR_EV_CHANGE or SR_EV_ENABLED (read-only).
@@ -786,26 +774,51 @@ int notif_receiver_send(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver, co
 int notifd_reconnect_due_receivers(notifd_ctx_t *notifd_ctx);
 
 /**
- * @brief Subscribe a receiver to its notification stream and hand the pipe over to the dispatch loop.
+ * @brief Queue the start of the srsn subscription of a receiver.
  *
- * @warning The caller MUST hold the state write lock.
- *
- * @param[in] notifd_ctx Daemon context (its sr_sess is used as the srsn subscription session).
- * @param[in] sub Subscription defining the stream, filter, and stop/start times.
- * @param[in] receiver Receiver whose srsn_data will be populated.
- * @return ::SR_ERR_OK on success, error code on failure.
- */
-int notif_receiver_srsn_start(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_receiver_t *receiver);
-
-/**
- * @brief Terminate the srsn subscription of a receiver and stop dispatching its pipe.
+ * The control thread then connects an inactive receiver and sends it subscription-started, an active one is sent
+ * subscription-modified instead, a failure invalidates the subscription.
  *
  * @warning The caller MUST hold the state write lock.
  *
  * @param[in] notifd_ctx Daemon context.
- * @param[in] receiver Receiver whose dispatch is being stopped.
+ * @param[in] receiver Receiver to start, any start queued or being executed before is discarded.
+ */
+void notif_receiver_srsn_start(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver);
+
+/**
+ * @brief Stop dispatching the srsn subscription of a receiver and queue its stop, a start queued or in progress is
+ * discarded.
+ *
+ * @warning The caller MUST hold the state write lock.
+ *
+ * @param[in] notifd_ctx Daemon context.
+ * @param[in] receiver Receiver to stop.
  */
 void notif_receiver_srsn_stop(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver);
+
+/*
+ * ---------------------------------------------------------------------------
+ * Control thread (notifd_control.c)
+ * ---------------------------------------------------------------------------
+ */
+
+/**
+ * @brief Start the control thread and its session.
+ *
+ * @param[in] notifd_ctx Daemon context.
+ * @return ::SR_ERR_OK on success, error code on failure.
+ */
+int notifd_control_start(notifd_ctx_t *notifd_ctx);
+
+/**
+ * @brief Stop the control thread once it has executed every queued request, if running.
+ *
+ * @warning The caller MUST NOT hold the state lock, the dispatch loop must still run when the thread is stopped.
+ *
+ * @param[in] notifd_ctx Daemon context.
+ */
+void notifd_control_stop(notifd_ctx_t *notifd_ctx);
 
 /**
  * @brief Find the receiver of an SRSN subscription.
