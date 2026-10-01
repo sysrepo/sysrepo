@@ -519,6 +519,29 @@ cleanup:
     return rc;
 }
 
+/**
+ * @brief Check whether a node configures the event stream or the yang-push datastore subscription.
+ *
+ * Both are the descendants of the "target" choice of ietf-subscribed-notifications, extended with the
+ * "datastore" case by ietf-yang-push, and of the "update-trigger" choice of ietf-yang-push.
+ *
+ * @param[in] node Descendant node of a subscription.
+ * @return Whether it does.
+ */
+static int
+sub_node_is_stream_or_yang_push(const struct lyd_node *node)
+{
+    const struct lysc_node *snode;
+
+    for (snode = node->schema; snode; snode = snode->parent) {
+        if ((snode->nodetype == LYS_CHOICE) && (!strcmp(snode->name, "target") ||
+                !strcmp(snode->name, "update-trigger"))) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static int
 sub_change_modify_subscriptions(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *session)
 {
@@ -551,20 +574,15 @@ sub_change_modify_subscriptions(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *sess
             continue;
         }
 
-        if (!strcmp(node_name, "stream")) {
-            r = handle_stream(sub, node, op);
-        } else if (!strcmp(node_name, "stream-filter-name")) {
-            r = handle_stream_filter_name(notifd_ctx, sub, node, op);
-        } else if (!strcmp(node_name, "stream-subtree-filter")) {
-            r = handle_stream_subtree_filter(notifd_ctx, sub, node, op);
-        } else if (!strcmp(node_name, "stream-xpath-filter")) {
-            r = handle_stream_xpath_filter(sub, node, op);
+        if (sub_node_is_stream_or_yang_push(node)) {
+            /* parsed again once all the changes are known */
+            sub->modified = 1;
+            sub->resubscribe = 1;
+            r = 0;
         } else if (!strcmp(node_name, "encoding")) {
             r = handle_encoding(sub, node, op);
         } else if (!strcmp(node_name, "stop-time")) {
             r = handle_stop_time(sub, node, op);
-        } else if (!strcmp(node_name, "configured-replay")) {
-            r = handle_configured_replay(notifd_ctx, sub, node, op);
         } else if (!strcmp(node_name, "purpose")) {
             r = handle_purpose(sub, node, op);
         } else if (!strcmp(node_name, "source-address")) {
@@ -798,7 +816,8 @@ subscribed_notifications_filter_change_cb(sr_session_ctx_t *session, uint32_t su
     }
     state_locked = 1;
 
-    if ((rc = sr_get_changes_iter(session, "/ietf-subscribed-notifications:filters/stream-filter//.", &iter))) {
+    /* both the stream filters and the yang-push selection filters */
+    if ((rc = sr_get_changes_iter(session, "/ietf-subscribed-notifications:filters//.", &iter))) {
         goto cleanup;
     }
     while (!sr_get_change_tree_next(session, iter, &op, &node, &prev_value, &prev_list, &prev_dflt)) {
@@ -812,10 +831,10 @@ subscribed_notifications_filter_change_cb(sr_session_ctx_t *session, uint32_t su
             continue;
         }
 
-        if (!strcmp(node_name, "stream-subtree-filter")) {
-            r = handle_filter(notifd_ctx, node, 1);
-        } else if (!strcmp(node_name, "stream-xpath-filter")) {
-            r = handle_filter(notifd_ctx, node, 0);
+        if (!strcmp(node_name, "stream-subtree-filter") || !strcmp(node_name, "stream-xpath-filter")) {
+            r = handle_filter(notifd_ctx, node, NOTIF_FILTER_TYPE_STREAM);
+        } else if (!strcmp(node_name, "datastore-subtree-filter") || !strcmp(node_name, "datastore-xpath-filter")) {
+            r = handle_filter(notifd_ctx, node, NOTIF_FILTER_TYPE_DATASTORE);
         } else {
             r = 0;
         }

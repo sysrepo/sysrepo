@@ -130,6 +130,12 @@ typedef struct {
 /** Named stream filter xpath prefix, takes a filter name */
 #define FILTER_XP "/ietf-subscribed-notifications:filters/stream-filter[name='%s']"
 
+/** Named yang-push selection filter xpath prefix, takes a filter ID */
+#define SELECTION_FILTER_XP "/ietf-subscribed-notifications:filters/ietf-yang-push:selection-filter[filter-id='%s']"
+
+/** Datastore identity of the yang-push subscriptions of the tests */
+#define DS_RUNNING "ietf-datastores:running"
+
 /** Transport identity of every subscription created by the tests */
 #define UDP_TRANSPORT "ietf-udp-notif-transport:udp-notif"
 
@@ -147,6 +153,8 @@ typedef struct {
 #define NCC "/ietf-netconf-notifications:netconf-config-change"
 #define REPLAY_COMPLETED "/ietf-subscribed-notifications:replay-completed"
 #define SUB_COMPLETED "/ietf-subscribed-notifications:subscription-completed"
+#define PUSH_UPDATE "/ietf-yang-push:push-update"
+#define PUSH_CHANGE_UPDATE "/ietf-yang-push:push-change-update"
 
 /** Name of the receiver instance created by setup_sub() */
 #define TEST_RECV_INST "test-recv"
@@ -167,6 +175,7 @@ typedef struct {
  *   221      restart              230      receiver inst ref    300      resolve failure
  *   305      large notification   307      sent records         309      sigterm shutdown
  *   310      excluded records
+ *   500-509  yang-push periodic
  */
 
 /**
@@ -306,6 +315,14 @@ void add_subtree_filter(struct tnotifd_state *st, const char *name, const char *
 void apply_changes(struct tnotifd_state *st);
 
 /**
+ * @brief Apply the staged changes, asserting they are rejected, and discard them.
+ *
+ * @param[in] st Test state.
+ * @param[in] rc Expected error.
+ */
+void apply_rejected(struct tnotifd_state *st, int rc);
+
+/**
  * @brief Stage the common setup: a receiver instance on the test port and a subscription on the
  * NETCONF stream over udp-notif with a single receiver bound to it. Does not apply.
  *
@@ -323,6 +340,34 @@ void stage_sub(struct tnotifd_state *st, uint32_t sub_id, ...);
  * @param[in] ... NULL-terminated (relative leaf path, value) pairs of extra subscription leaves.
  */
 void setup_sub(struct tnotifd_state *st, uint32_t sub_id, ...);
+
+/**
+ * @brief Stage a named yang-push selection filter with an xpath filter.
+ *
+ * @param[in] st Test state.
+ * @param[in] filter_id Filter ID.
+ * @param[in] xpath XPath filter expression.
+ */
+void add_selection_filter(struct tnotifd_state *st, const char *filter_id, const char *xpath);
+
+/**
+ * @brief Stage the common setup of a yang-push subscription of the running datastore, like stage_sub(). Does not
+ * apply.
+ *
+ * @param[in] st Test state.
+ * @param[in] sub_id Subscription ID.
+ * @param[in] ... NULL-terminated (relative leaf path, value) pairs of extra subscription leaves, the update policy.
+ */
+void stage_ds_sub(struct tnotifd_state *st, uint32_t sub_id, ...);
+
+/**
+ * @brief Stage the common setup of a yang-push subscription with stage_ds_sub() and apply it.
+ *
+ * @param[in] st Test state.
+ * @param[in] sub_id Subscription ID.
+ * @param[in] ... NULL-terminated (relative leaf path, value) pairs of extra subscription leaves, the update policy.
+ */
+void setup_ds_sub(struct tnotifd_state *st, uint32_t sub_id, ...);
 
 /**
  * @brief Assert a descendant leaf of a notification exists and has a value.

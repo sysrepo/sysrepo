@@ -177,6 +177,45 @@ cleanup_unlock:
 }
 
 /**
+ * @brief Subscribe an srsn subscription.
+ *
+ * @param[in] sess Session of the srsn subscriptions.
+ * @param[in] p Parameters of the subscription.
+ * @param[out] replay_start_time Actual replay start time of an event stream subscription.
+ * @param[out] fd Notification pipe read end.
+ * @param[out] srsn_sub_id srsn subscription ID.
+ * @return ::SR_ERR_OK on success, error code on failure.
+ */
+static int
+notifd_ctl_srsn_subscribe(sr_session_ctx_t *sess, const notif_srsn_params_t *p, struct timespec *replay_start_time,
+        int *fd, uint32_t *srsn_sub_id)
+{
+    const struct timespec *stop_time, *start_time, *anchor_time;
+    int r = SR_ERR_INTERNAL;
+
+    stop_time = (p->stop_time.tv_sec || p->stop_time.tv_nsec) ? &p->stop_time : NULL;
+    start_time = (p->start_time.tv_sec || p->start_time.tv_nsec) ? &p->start_time : NULL;
+    anchor_time = (p->anchor_time.tv_sec || p->anchor_time.tv_nsec) ? &p->anchor_time : NULL;
+
+    switch (p->type) {
+    case SRSN_SUB_NOTIF:
+        r = srsn_subscribe(sess, p->stream, p->xpath_filter, stop_time, start_time, 0, NULL, replay_start_time, fd,
+                srsn_sub_id);
+        break;
+    case SRSN_YANG_PUSH_PERIODIC:
+        /* the period is in centiseconds */
+        r = srsn_yang_push_periodic(sess, p->ds, p->xpath_filter, p->period * 10, anchor_time, stop_time, fd,
+                srsn_sub_id);
+        break;
+    case SRSN_YANG_PUSH_ON_CHANGE:
+        r = SR_ERR_UNSUPPORTED;
+        break;
+    }
+
+    return r;
+}
+
+/**
  * @brief Find the receiver being started.
  *
  * @param[in] notifd_ctx Daemon context.
@@ -208,19 +247,14 @@ notifd_ctl_starting_find(notifd_ctx_t *notifd_ctx)
 static void
 notifd_ctl_start(notifd_ctx_t *notifd_ctx, const notif_srsn_params_t *params)
 {
-    const struct timespec *stop_time, *start_time;
     struct timespec replay_start_time = {0};
     uint32_t srsn_sub_id = 0;
     notif_sub_t *sub;
     notif_receiver_t *receiver;
     int r, fd = -1;
 
-    stop_time = (params->stop_time.tv_sec || params->stop_time.tv_nsec) ? &params->stop_time : NULL;
-    start_time = (params->start_time.tv_sec || params->start_time.tv_nsec) ? &params->start_time : NULL;
-
     /* started unlocked, it may wait for a change callback */
-    r = srsn_subscribe(notifd_ctx->control.sess, params->stream, params->xpath_filter, stop_time, start_time,
-            0, NULL, &replay_start_time, &fd, &srsn_sub_id);
+    r = notifd_ctl_srsn_subscribe(notifd_ctx->control.sess, params, &replay_start_time, &fd, &srsn_sub_id);
 
     /* STATE WR LOCK */
     notifd_rwlock_lock(&notifd_ctx->state_rwlock, 1, 0, __func__);

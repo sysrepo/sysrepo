@@ -73,7 +73,7 @@ if(ENABLE_TESTS)
 
     # sysrepo-notifd tests, sharing the harness in notifd/
     set(notifd_tests test_notifd_lifecycle test_notifd_filters test_notifd_receivers test_notifd_encoding
-        test_notifd_dispatch)
+        test_notifd_dispatch test_notifd_yang_push)
     set(notifd_test_sources notifd/tnotifd.c notifd/tnotifd_udp.c)
 
     foreach(test_name IN LISTS tests)
