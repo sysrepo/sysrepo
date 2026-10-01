@@ -363,7 +363,9 @@ set(FORMAT_SOURCES
     src/utils/*.c
     src/utils/*.h*
     tests/*.c
-    tests/*.h*)
+    tests/*.h*
+    tests/notifd/*.c
+    tests/notifd/*.h)
 
 #
 # checks

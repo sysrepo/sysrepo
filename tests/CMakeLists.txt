@@ -31,14 +31,14 @@ if(NOT SR_HAVE_PTHREAD_BARRIER)
     list(APPEND test_sources "pthread_barrier.c")
 endif()
 
-# directory with the sysrepo-notifd log and PID files of test_notifd, generated into
+# directory with the sysrepo-notifd log and PID files of the notifd tests, generated into
 # both the test config header and the cleanup script so that they cannot get out of sync
 set(TEST_NOTIFD_DATA_DIR ${PROJECT_BINARY_DIR}/test_notifd_data)
 
 # generate config
 configure_file("${PROJECT_SOURCE_DIR}/tests/tcommon.h.in" "${PROJECT_BINARY_DIR}/tests/tcommon.h" ESCAPE_QUOTES @ONLY)
 
-# generate the script killing the daemons left behind by an aborted test_notifd
+# generate the script killing the daemons left behind by an aborted notifd test
 configure_file("${PROJECT_SOURCE_DIR}/tests/scripts/kill_notifd.sh.in" "${PROJECT_BINARY_DIR}/tests/scripts/kill_notifd.sh" ESCAPE_QUOTES @ONLY)
 
 set(TEST_KILL_NOTIFD_CMD ${PROJECT_BINARY_DIR}/tests/scripts/kill_notifd.sh)
@@ -69,7 +69,12 @@ if(ENABLE_TESTS)
     # lists of all the tests
     set(tests test_modules test_context_change test_validation test_edit test_candidate test_oper_pull test_oper_push
         test_lock test_apply_changes test_copy_config test_rpc_action test_notif test_get test_privcand test_process
-        test_multi_connection test_nacm test_rotation test_sub_notif test_plugin test_rwlock test_notifd)
+        test_multi_connection test_nacm test_rotation test_sub_notif test_plugin test_rwlock)
+
+    # sysrepo-notifd tests, sharing the harness in notifd/
+    set(notifd_tests test_notifd_lifecycle test_notifd_filters test_notifd_receivers test_notifd_encoding
+        test_notifd_dispatch)
+    set(notifd_test_sources notifd/tnotifd.c notifd/tnotifd_udp.c)
 
     foreach(test_name IN LISTS tests)
         # link srobj to get the number of DS plugins available
@@ -80,6 +85,11 @@ if(ENABLE_TESTS)
             add_executable(${test_name} ${test_sources} ${test_name}.c)
         endif()
     endforeach()
+
+    foreach(test_name IN LISTS notifd_tests)
+        add_executable(${test_name} ${test_sources} ${notifd_test_sources} notifd/${test_name}.c)
+    endforeach()
+    list(APPEND tests ${notifd_tests})
 
     # set common attributes of all tests
     foreach(test_name IN LISTS tests)

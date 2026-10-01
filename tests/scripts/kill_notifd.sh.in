@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Kill any sysrepo-notifd daemon left behind by an aborted test_notifd run. The PID files are
+# Kill any sysrepo-notifd daemon left behind by an aborted notifd test run. The PID files are
 # created by the daemons themselves, one directory per test variant. With the "--remove-data"
 # argument the whole daemon data directory is removed as well, which is what "make test_clean" uses.
 # A daemon log with a sanitizer report is printed and fails the script.
@@ -42,8 +42,8 @@ if [ "$1" = "--remove-data" ]; then
 fi
 
 # The daemon logs are never part of the ctest output, and a daemon crashing on a sanitizer report
-# only shows up as a timeout in test_notifd. This fixture runs even after test_notifd aborts, and
-# failing it makes ctest print its output. It cannot learn whether test_notifd failed, so it only
+# only shows up as a timeout in a notifd test. This fixture runs even after a notifd test aborts, and
+# failing it makes ctest print its output. It cannot learn whether a notifd test failed, so it only
 # reacts to a sanitizer report, which never appears in the log of a healthy run.
 RC=0
 for LOG in "$NOTIFD_DATA_DIR"/*/sysrepo-notifd.log; do
