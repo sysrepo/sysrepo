@@ -208,7 +208,9 @@ notifd_ctl_srsn_subscribe(sr_session_ctx_t *sess, const notif_srsn_params_t *p, 
                 srsn_sub_id);
         break;
     case SRSN_YANG_PUSH_ON_CHANGE:
-        r = SR_ERR_UNSUPPORTED;
+        /* the dampening period is in centiseconds, the push-update of sync-on-start is requested once active */
+        r = srsn_yang_push_on_change(sess, p->ds, p->xpath_filter, p->dampening_period * 10, 0,
+                (int *)p->excluded_changes, stop_time, 0, NULL, fd, srsn_sub_id);
         break;
     }
 
@@ -303,6 +305,11 @@ notifd_ctl_start(notifd_ctx_t *notifd_ctx, const notif_srsn_params_t *params)
     }
     fd = -1;
     srsn_sub_id = 0;
+
+    if (receiver->state == NOTIF_RECV_STATE_ACTIVE) {
+        /* an on-change subscription with sync-on-start starts with a push-update */
+        notif_receiver_sync_on_start(receiver);
+    }
 
 cleanup_unlock:
     /* STATE UNLOCK */

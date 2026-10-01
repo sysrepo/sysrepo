@@ -421,6 +421,9 @@ typedef struct notif_srsn_params_s {
     sr_datastore_t ds;                  /**< datastore */
     uint32_t period;                    /**< period in centiseconds, periodic only */
     struct timespec anchor_time;        /**< optional anchor time, periodic only */
+    uint32_t dampening_period;          /**< dampening period in centiseconds, on-change only */
+    int excluded_changes[SRSN_COUNT_YP_CHANGE]; /**< changes that are not reported, indexed by
+                                                     ::srsn_yp_change_t, on-change only */
 } notif_srsn_params_t;
 
 /**
@@ -446,12 +449,14 @@ struct notif_sub_s {
     char *purpose;                      /**< purpose of the subscription */
     char *local_address;                /**< local address to send notifications from (NULL means OS default) */
 
-    notif_srsn_params_t srsn_params;    /**< parameters of the srsn subscription of every receiver */
-    char *filter_ref;                   /**< optional stream-filter-name or selection-filter-ref, by type */
+    notif_srsn_params_t srsn_params;    /**< arguments of the srsn subscriptions of the receivers */
 
-    /* event stream subscriptions only */
-    int replay;                         /**< whether to replay notifications */
-    struct timespec replay_start_time;  /**< actual replay start time returned by srsn_subscribe */
+    /* notifd only, not passed to srsn */
+    char *filter_ref;                   /**< optional stream-filter-name or selection-filter-ref, by type */
+    int replay;                         /**< whether to replay notifications, event stream only */
+    struct timespec replay_start_time;  /**< actual replay start time returned by srsn_subscribe, event stream
+                                             only */
+    int sync_on_start;                  /**< whether every receiver starts with a push-update, on-change only */
 
     notif_receiver_t *receivers;        /**< receivers of this subscription (sized-array, see libyang docs) */
 };

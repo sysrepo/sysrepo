@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 
 #include <cmocka.h>
 #include <libyang/libyang.h>
@@ -224,6 +225,15 @@ test_yp_validation(void **state)
             "ietf-yang-push:datastore-subtree-filter", NULL, NULL);
     apply_rejected(st, SR_ERR_UNSUPPORTED);
 
+    /* no changes of factory-default to subscribe to */
+    stage_ds_sub(st, 505, "ietf-yang-push:on-change/dampening-period", "0", NULL);
+    set_node(st, "ietf-factory-default:factory-default", SUB_XP "/ietf-yang-push:datastore", 505);
+    apply_rejected(st, SR_ERR_UNSUPPORTED);
+
+    /* a dampening period that does not fit in milliseconds */
+    stage_ds_sub(st, 505, "ietf-yang-push:on-change/dampening-period", "500000000", NULL);
+    apply_rejected(st, SR_ERR_UNSUPPORTED);
+
     /* the same for named selection filters */
     add_selection_filter(st, "bad", "/test:no-such-leaf");
     apply_rejected(st, SR_ERR_VALIDATION_FAILED);
@@ -252,6 +262,213 @@ test_yp_validation(void **state)
     skip_notif(st, PUSH_UPDATE);
 }
 
+/**
+ * @brief Wait for notifications until every one of the strings was included in one, skipping the others.
+ *
+ * @param[in] st Test state.
+ * @param[in] path Path of the notifications to look at.
+ * @param[in] strs NULL-terminated strings, each must be included in a notification.
+ */
+static void
+expect_notifs_having(struct tnotifd_state *st, const char *path, const char **strs)
+{
+    struct lyd_node *notif;
+    uint32_t i, count, found = 0;
+    uint8_t seen[8] = {0};
+
+    for (count = 0; strs[count]; ++count) {}
+    while (found < count) {
+        notif = expect_notif(st, path);
+        for (i = 0; i < count; ++i) {
+            if (!seen[i] && notif_has(notif, strs[i])) {
+                seen[i] = 1;
+                ++found;
+            }
+        }
+        lyd_free_all(notif);
+    }
+}
+
+/**
+ * @brief Test: an on-change subscription starts with a push-update and reports the changes.
+ */
+static void
+test_yp_on_change(void **state)
+{
+    struct tnotifd_state *st = *state;
+    struct lyd_node *notif;
+
+    set_node(st, "1", "/test:test-leaf");
+    apply_changes(st);
+
+    setup_ds_sub(st, 510, "ietf-yang-push:datastore-xpath-filter", "/test:test-leaf",
+            "ietf-yang-push:on-change/dampening-period", "0", NULL);
+
+    notif = expect_notif(st, SUB_STARTED);
+    assert_notif_leaf(notif, "ietf-yang-push:datastore", DS_RUNNING);
+    assert_notif_leaf(notif, "ietf-yang-push:on-change/dampening-period", "0");
+    assert_notif_leaf(notif, "ietf-yang-push:on-change/sync-on-start", "true");
+    lyd_free_all(notif);
+
+    /* sync-on-start */
+    notif = expect_notif(st, PUSH_UPDATE);
+    assert_notif_leaf(notif, "id", "510");
+    assert_true(notif_has(notif, "<test-leaf xmlns=\"urn:test\">1</test-leaf>"));
+    lyd_free_all(notif);
+
+    /* a change, with the configured subscription ID */
+    set_node(st, "2", "/test:test-leaf");
+    apply_changes(st);
+    notif = expect_notif(st, PUSH_CHANGE_UPDATE);
+    assert_notif_leaf(notif, "id", "510");
+    assert_true(notif_has(notif, "<operation>replace</operation><target>/test:test-leaf</target>"));
+    lyd_free_all(notif);
+}
+
+/**
+ * @brief Test: the excluded changes are not reported, but counted.
+ */
+static void
+test_yp_on_change_excluded(void **state)
+{
+    struct tnotifd_state *st = *state;
+    struct lyd_node *notif;
+
+    setup_ds_sub(st, 511, "ietf-yang-push:datastore-xpath-filter", "/test:test-leaf",
+            "ietf-yang-push:on-change/sync-on-start", "false",
+            "ietf-yang-push:on-change/excluded-change", "replace", NULL);
+
+    notif = expect_notif(st, SUB_STARTED);
+    assert_notif_leaf(notif, "ietf-yang-push:on-change/sync-on-start", "false");
+    assert_notif_leaf(notif, "ietf-yang-push:on-change/excluded-change[.='replace']", "replace");
+    lyd_free_all(notif);
+
+    set_node(st, "1", "/test:test-leaf");
+    apply_changes(st);
+    notif = expect_notif(st, PUSH_CHANGE_UPDATE);
+    assert_true(notif_has(notif, "<operation>create</operation>"));
+    lyd_free_all(notif);
+
+    /* the replace is excluded */
+    set_node(st, "2", "/test:test-leaf");
+    apply_changes(st);
+    wait_oper_above(st, 0, RECV_XP "/excluded-event-records", 511, TEST_RECV);
+
+    del_node(st, "/test:test-leaf");
+    apply_changes(st);
+    notif = expect_notif(st, PUSH_CHANGE_UPDATE);
+    assert_true(notif_has(notif, "<operation>delete</operation>"));
+    lyd_free_all(notif);
+
+    /* there was no push-update at all */
+    expect_no_notif(st, PUSH_UPDATE);
+}
+
+/**
+ * @brief Test: an unfiltered on-change subscription of running is created, resubscribed and deleted while the
+ * changes of every module are reported, ietf-subscribed-notifications included.
+ */
+static void
+test_yp_on_change_all(void **state)
+{
+    struct tnotifd_state *st = *state;
+
+    /* apply() asserts success, a stalled apply returns an error */
+    setup_ds_sub(st, 513, "ietf-yang-push:on-change/dampening-period", "0", NULL);
+    skip_notif(st, SUB_STARTED);
+    skip_notif(st, PUSH_UPDATE);
+
+    set_node(st, "1", "/test:test-leaf");
+    apply_changes(st);
+    expect_notifs_having(st, PUSH_CHANGE_UPDATE, (const char *[]) {"<target>/test:test-leaf</target>", NULL});
+
+    /* resubscribed, the new subscription starts with a push-update */
+    set_node(st, "1", SUB_XP "/ietf-yang-push:on-change/dampening-period", 513);
+    apply_changes(st);
+    skip_notif(st, SUB_MODIFIED);
+    skip_notif(st, PUSH_UPDATE);
+
+    /* one apply changing ietf-subscribed-notifications and a covered module */
+    set_node(st, "2", "/test:test-leaf");
+    set_node(st, "all", SUB_XP "/purpose", 513);
+    apply_changes(st);
+    expect_notifs_having(st, PUSH_CHANGE_UPDATE, (const char *[]) {"<target>/test:test-leaf</target>",
+                "/purpose</target>", NULL});
+
+    del_node(st, SUB_XP, 513);
+    apply_changes(st);
+    skip_notif(st, SUB_TERMINATED);
+}
+
+/**
+ * @brief Test: a modified subscription is sent subscription-modified followed by a push-update on every active
+ * receiver, also when switched from periodic to on-change.
+ */
+static void
+test_yp_on_change_modify(void **state)
+{
+    struct tnotifd_state *st = *state;
+    struct lyd_node *notif;
+    uint16_t recv2_port = 0;
+    int recv2_sockfd;
+
+    recv2_sockfd = create_udp_receiver_socket(&recv2_port);
+    assert_true(recv2_sockfd >= 0);
+
+    set_node(st, "3", "/test:test-leaf");
+    set_node(st, "4", "/test:cont/l2[k='a']/v");
+    add_recv_inst(st, "test-recv2", recv2_port, NULL);
+    stage_ds_sub(st, 514, "ietf-yang-push:datastore-xpath-filter", "/test:test-leaf",
+            "ietf-yang-push:periodic/period", "1000", NULL);
+    bind_sub_recv(st, 514, "recv2", "test-recv2");
+    apply_changes(st);
+    skip_notif(st, SUB_STARTED);
+    lyd_free_all(expect_notif_on(st, recv2_sockfd, SUB_STARTED));
+
+    /* switched to on-change with another filter */
+    del_node(st, SUB_XP "/ietf-yang-push:periodic", 514);
+    set_node(st, "0", SUB_XP "/ietf-yang-push:on-change/dampening-period", 514);
+    set_node(st, "/test:cont", SUB_XP "/ietf-yang-push:datastore-xpath-filter", 514);
+    apply_changes(st);
+
+    notif = expect_notif(st, SUB_MODIFIED);
+    assert_notif_leaf(notif, "ietf-yang-push:on-change/dampening-period", "0");
+    assert_notif_leaf(notif, "ietf-yang-push:datastore-xpath-filter", "/test:cont");
+    lyd_free_all(notif);
+    lyd_free_all(expect_push_update(st, "<l2><k>a</k><v>4</v></l2>"));
+
+    lyd_free_all(expect_notif_on(st, recv2_sockfd, SUB_MODIFIED));
+    notif = expect_notif_on(st, recv2_sockfd, PUSH_UPDATE);
+    assert_true(notif_has(notif, "<l2><k>a</k><v>4</v></l2>"));
+    lyd_free_all(notif);
+
+    /* and the changes follow on both */
+    set_node(st, "5", "/test:cont/l2[k='a']/v");
+    apply_changes(st);
+    lyd_free_all(expect_notif(st, PUSH_CHANGE_UPDATE));
+    lyd_free_all(expect_notif_on(st, recv2_sockfd, PUSH_CHANGE_UPDATE));
+
+    close(recv2_sockfd);
+}
+
+/**
+ * @brief Test: a receiver reset starts it over with subscription-started and a push-update.
+ */
+static void
+test_yp_on_change_reset(void **state)
+{
+    struct tnotifd_state *st = *state;
+
+    setup_ds_sub(st, 515, "ietf-yang-push:datastore-xpath-filter", "/test:test-leaf",
+            "ietf-yang-push:on-change/dampening-period", "0", NULL);
+    skip_notif(st, SUB_STARTED);
+    skip_notif(st, PUSH_UPDATE);
+
+    send_reset(st, 515, TEST_RECV);
+    skip_notif(st, SUB_STARTED);
+    skip_notif(st, PUSH_UPDATE);
+}
+
 /* MAIN */
 int
 main(void)
@@ -261,6 +478,11 @@ main(void)
         cmocka_unit_test_setup(test_yp_selection_filter, tnotifd_reset),
         cmocka_unit_test_setup(test_yp_stream_to_datastore, tnotifd_reset),
         cmocka_unit_test_setup(test_yp_validation, tnotifd_reset),
+        cmocka_unit_test_setup(test_yp_on_change, tnotifd_reset),
+        cmocka_unit_test_setup(test_yp_on_change_excluded, tnotifd_reset),
+        cmocka_unit_test_setup(test_yp_on_change_all, tnotifd_reset),
+        cmocka_unit_test_setup(test_yp_on_change_modify, tnotifd_reset),
+        cmocka_unit_test_setup(test_yp_on_change_reset, tnotifd_reset),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

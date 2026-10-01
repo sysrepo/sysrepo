@@ -175,7 +175,7 @@ typedef struct {
  *   221      restart              230      receiver inst ref    300      resolve failure
  *   305      large notification   307      sent records         309      sigterm shutdown
  *   310      excluded records
- *   500-509  yang-push periodic
+ *   500-509  yang-push periodic    510-519  yang-push on-change
  */
 
 /**

@@ -3,7 +3,7 @@
 .\" groff -man -Tascii sysrepo-notifd.8
 .\"
 
-.TH SYSREPO-NOTIFD 8 "2026-05-29" "sysrepo"
+.TH SYSREPO-NOTIFD 8 "2026-10-09" "sysrepo"
 .SH NAME
 sysrepo-notifd \- sysrepo notification daemon
 .
@@ -17,11 +17,15 @@ sysrepo-notifd \- sysrepo notification daemon
 It reads the \fIietf-subscribed-notifications\fP configuration and manages the
 lifecycle of subscriptions and their receivers, delivering notifications from
 filterable event streams over configurable transports (UDP out of the box).
-With \fIietf-yang-push\fP installed, it also implements RFC 8641 configured
-datastore subscriptions.
 On startup it requires these three modules to be installed:
 \fIietf-subscribed-notifications\fP, \fIietf-subscribed-notif-receivers\fP
 and \fIietf-udp-notif-transport\fP.
+With the optional \fIietf-yang-push\fP installed, it also implements RFC 8641
+configured datastore subscriptions, periodic and on-change, the latter only
+with its feature \fIon-change\fP enabled.
+The \fIrunning\fP, \fIstartup\fP, \fIcandidate\fP, \fIoperational\fP and
+\fIfactory-default\fP datastores can be subscribed to, \fIfactory-default\fP
+only periodically.
 .
 .SH OPTIONS
 .TP
