@@ -505,8 +505,9 @@ void skip_notif(struct tnotifd_state *st, const char *path);
  *
  * @param[in] st Test state.
  * @param[in] paths NULL-terminated array of paths that must all arrive.
+ * @param[out] notifs Optional array of the received notifications, one for each of @p paths, caller must free.
  */
-void expect_notifs(struct tnotifd_state *st, const char **paths);
+void expect_notifs(struct tnotifd_state *st, const char **paths, struct lyd_node **notifs);
 
 /**
  * @brief Assert no notification with @p path arrives while the socket stays quiet.

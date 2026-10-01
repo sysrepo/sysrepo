@@ -598,7 +598,7 @@ skip_notif(struct tnotifd_state *st, const char *path)
 }
 
 void
-expect_notifs(struct tnotifd_state *st, const char **paths)
+expect_notifs(struct tnotifd_state *st, const char **paths, struct lyd_node **notifs)
 {
     struct lyd_node *notif = NULL;
     char *notif_path;
@@ -619,6 +619,10 @@ expect_notifs(struct tnotifd_state *st, const char **paths)
             if (!seen[i] && notif_path && !strcmp(paths[i], notif_path)) {
                 seen[i] = 1;
                 ++found;
+                if (notifs) {
+                    notifs[i] = notif;
+                    notif = NULL;
+                }
                 break;
             }
         }
