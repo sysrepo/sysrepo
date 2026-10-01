@@ -155,6 +155,15 @@ typedef enum {
 } notif_transport_type_t;
 
 /**
+ * @brief Type of a named filter.
+ */
+typedef enum {
+    NOTIF_FILTER_TYPE_STREAM = 0,   /**< stream-filter of ietf-subscribed-notifications, filters event stream
+                                         notifications */
+    NOTIF_FILTER_TYPE_DATASTORE     /**< selection-filter of ietf-yang-push, selects datastore nodes */
+} notif_filter_type_t;
+
+/**
  * @brief Notification encoding type.
  */
 typedef enum {
@@ -399,10 +408,19 @@ struct notif_receiver_s {
  * @brief Arguments of the srsn subscribe functions, the control thread starts a receiver with a copy.
  */
 typedef struct notif_srsn_params_s {
-    char *xpath_filter;                 /**< optional XPath filter */
+    /* all subscriptions */
+    srsn_sub_type_t type;               /**< stream, yang-push periodic or yang-push on-change */
+    char *xpath_filter;                 /**< optional stream or datastore filter, subtree ones converted */
     struct timespec stop_time;          /**< optional stop time */
+
+    /* event stream subscriptions only */
     char *stream;                       /**< stream name */
     struct timespec start_time;         /**< requested replay start time for configured-replay */
+
+    /* yang-push subscriptions only */
+    sr_datastore_t ds;                  /**< datastore */
+    uint32_t period;                    /**< period in centiseconds, periodic only */
+    struct timespec anchor_time;        /**< optional anchor time, periodic only */
 } notif_srsn_params_t;
 
 /**
@@ -429,7 +447,9 @@ struct notif_sub_s {
     char *local_address;                /**< local address to send notifications from (NULL means OS default) */
 
     notif_srsn_params_t srsn_params;    /**< parameters of the srsn subscription of every receiver */
-    char *filter_ref;                   /**< optional stream filter name (e.g., XPath or subtree filter) */
+    char *filter_ref;                   /**< optional stream-filter-name or selection-filter-ref, by type */
+
+    /* event stream subscriptions only */
     int replay;                         /**< whether to replay notifications */
     struct timespec replay_start_time;  /**< actual replay start time returned by srsn_subscribe */
 

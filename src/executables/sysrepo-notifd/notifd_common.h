@@ -39,29 +39,40 @@ extern const notif_transport_ops_t udp_transport_ops;
  */
 const notif_transport_ops_t *notif_transport_find_by_identity(const char *identity);
 
-/** @brief Bitmask: include the `stream` field in a state-change notification. */
-#define NOTIF_FIELD_STREAM         0x01
+/**
+ * @brief Map a datastore identity of a yang-push subscription to a sysrepo datastore.
+ *
+ * @param[in] identity Datastore identityref value.
+ * @param[out] ds Sysrepo datastore.
+ * @return ::SR_ERR_OK on success, ::SR_ERR_UNSUPPORTED if the datastore cannot be subscribed to.
+ */
+int notif_ds_from_identity(const char *identity, sr_datastore_t *ds);
 
-/** @brief Bitmask: include the `xpath-filter` field in a state-change notification. */
-#define NOTIF_FIELD_XPATH_FILTER   0x02
+/**
+ * @brief Map a sysrepo datastore of a yang-push subscription to its identity.
+ *
+ * @param[in] ds Sysrepo datastore.
+ * @return Datastore identityref value, NULL if there is none.
+ */
+const char *notif_ds2identity(sr_datastore_t ds);
+
+/** @brief Bitmask: include the target (stream or datastore with its filter) in a state-change notification. */
+#define NOTIF_FIELD_TARGET          0x01
+
+/** @brief Bitmask: include the yang-push update policy in a state-change notification. */
+#define NOTIF_FIELD_UPDATE_POLICY   0x02
 
 /** @brief Bitmask: include the `stop-time` field in a state-change notification. */
-#define NOTIF_FIELD_STOP_TIME      0x04
-
-/** @brief Bitmask: include the `replay-start-time` field in a state-change notification. */
-#define NOTIF_FIELD_REPLAY_START   0x08
+#define NOTIF_FIELD_STOP_TIME       0x04
 
 /** @brief Bitmask: include the `transport` field in a state-change notification. */
-#define NOTIF_FIELD_TRANSPORT      0x10
+#define NOTIF_FIELD_TRANSPORT       0x10
 
 /** @brief Bitmask: include the `encoding` field in a state-change notification. */
-#define NOTIF_FIELD_ENCODING       0x20
+#define NOTIF_FIELD_ENCODING        0x20
 
 /** @brief Bitmask: include the `purpose` field in a state-change notification. */
 #define NOTIF_FIELD_PURPOSE         0x40
-
-/** @brief Bitmask: include the `stream-filter-name` field in a state-change notification. */
-#define NOTIF_FIELD_FILTER_REF     0x80
 
 /*
  * ---------------------------------------------------------------------------
@@ -320,62 +331,6 @@ int receiver_instance_create_from_node(notifd_ctx_t *notifd_ctx, const struct ly
 int receiver_instance_destroy_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *node);
 
 /**
- * @brief Handle a change to the `stream` leaf of a subscription.
- *
- * On modification, updates the subscription's stream name and marks the
- * subscription as modified and needing resubscription.
- *
- * @param[in,out] sub Subscription being modified.
- * @param[in] node The YANG `stream` leaf node with the new value.
- * @param[in] op Sysrepo change operation (only ::SR_OP_MODIFIED is handled).
- * @return ::SR_ERR_OK on success, ::SR_ERR_NO_MEMORY on allocation failure.
- */
-int handle_stream(notif_sub_t *sub, const struct lyd_node *node, sr_change_oper_t op);
-
-/**
- * @brief Handle a change to the `stream-filter-name` leaf of a subscription.
- *
- * On create/modify, resolves the filter name to an XPath filter string via
- * the datastore. On delete, clears the filter reference and XPath filter.
- * Marks the subscription as modified and needing resubscription.
- *
- * @param[in,out] notifd_ctx Daemon context (used to access the sysrepo session).
- * @param[in,out] sub Subscription being modified.
- * @param[in] node The YANG `stream-filter-name` leaf node.
- * @param[in] op Sysrepo change operation.
- * @return ::SR_ERR_OK on success, error code on failure.
- */
-int handle_stream_filter_name(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const struct lyd_node *node, sr_change_oper_t op);
-
-/**
- * @brief Handle a change to the `stream-subtree-filter` anydata node of a subscription.
- *
- * On create/modify, extracts the filter subtree and converts it to an XPath
- * filter. On delete, clears the XPath filter. Marks the subscription as
- * modified and needing resubscription.
- *
- * @param[in,out] notifd_ctx Daemon context (used for sysrepo session).
- * @param[in,out] sub Subscription being modified.
- * @param[in] node The YANG `stream-subtree-filter` anydata node.
- * @param[in] op Sysrepo change operation.
- * @return ::SR_ERR_OK on success, error code on failure.
- */
-int handle_stream_subtree_filter(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const struct lyd_node *node, sr_change_oper_t op);
-
-/**
- * @brief Handle a change to the `stream-xpath-filter` leaf of a subscription.
- *
- * On create/modify, duplicates the new XPath value. On delete, clears the
- * XPath filter. Marks the subscription as modified and needing resubscription.
- *
- * @param[in,out] sub Subscription being modified.
- * @param[in] node The YANG `stream-xpath-filter` leaf node.
- * @param[in] op Sysrepo change operation.
- * @return ::SR_ERR_OK on success, ::SR_ERR_NO_MEMORY on allocation failure.
- */
-int handle_stream_xpath_filter(notif_sub_t *sub, const struct lyd_node *node, sr_change_oper_t op);
-
-/**
  * @brief Handle a change to the `encoding` leaf of a subscription.
  *
  * On create/modify, parses the identity-ref into the internal encoding enum.
@@ -402,21 +357,6 @@ int handle_encoding(notif_sub_t *sub, const struct lyd_node *node, sr_change_ope
  * @return ::SR_ERR_OK on success, ::SR_ERR_LY if the date-time string cannot be parsed.
  */
 int handle_stop_time(notif_sub_t *sub, const struct lyd_node *node, sr_change_oper_t op);
-
-/**
- * @brief Handle a change to the `configured-replay` leaf of a subscription.
- *
- * On create, enables replay and validates that the stream supports it, then
- * sets the subscription start time to the earliest replay start time. On delete,
- * disables replay and clears the start time.
- *
- * @param[in,out] notifd_ctx Daemon context (used to check replay support).
- * @param[in,out] sub Subscription being modified.
- * @param[in] node The YANG `configured-replay` leaf node (type empty).
- * @param[in] op Sysrepo change operation.
- * @return ::SR_ERR_OK on success, ::SR_ERR_UNSUPPORTED if the stream does not support replay.
- */
-int handle_configured_replay(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const struct lyd_node *node, sr_change_oper_t op);
 
 /**
  * @brief Handle a change to the `purpose` leaf of a subscription.
@@ -489,24 +429,23 @@ int receiver_inst_config_change(notif_receiver_inst_t *recv_inst, const struct l
 int handle_receiver_instance_ref(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const struct lyd_node *node, sr_change_oper_t op);
 
 /**
- * @brief Handle a change to a `stream-filter` entry in the global filters list.
+ * @brief Handle a change to a `stream-filter` or `selection-filter` entry in the global filters list.
  *
- * When a named filter changes, finds all subscriptions that reference it by
- * name and updates their xpath_filter accordingly. Only marks a subscription
- * for resubscription if the effective XPath filter actually changed.
+ * Marks the subscriptions referencing the filter for resubscription if their effective XPath filter changed.
  *
  * @param[in,out] notifd_ctx Daemon context.
- * @param[in] node The changed filter node (either `stream-subtree-filter` or `stream-xpath-filter`).
- * @param[in] is_subtree Non-zero if the changed node is a subtree filter, zero if it is an xpath filter.
+ * @param[in] node The changed filter node, a subtree or an xpath filter.
+ * @param[in] type Type of the filter, only the subscriptions of the matching type reference it.
  * @return ::SR_ERR_OK on success, error code on failure.
  */
-int handle_filter(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, int is_subtree);
+int handle_filter(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, notif_filter_type_t type);
 
 /**
  * @brief Post-processing pass after subscription configuration changes.
  *
- * For subscriptions flagged resubscribe: restarts the srsn subscriptions of
- * the receivers and marks VALID. For subscriptions flagged
+ * For subscriptions flagged resubscribe: parses the target again from the stored
+ * configuration and restarts the srsn subscriptions of the receivers; on
+ * success marks VALID, on failure invalidates. For subscriptions flagged
  * modified or with a modif_err_reason: if VALID, sends `subscription-modified`;
  * if INVALID, sends `subscription-terminated` with the error reason.
  * Resets the modified, resubscribe, and modif_err_reason flags.
@@ -594,8 +533,7 @@ int timespec_cmp(const struct timespec *ts1, const struct timespec *ts2);
 /**
  * @brief Send a `subscription-started` notification to one or all receivers.
  *
- * Includes stream, filter (stream-filter-name or stream-xpath-filter), stop-time,
- * replay-start-time, transport, encoding, and purpose fields.
+ * Includes the target with its filter, the update policy, stop-time, transport, encoding, and purpose fields.
  * Does not skip inactive receivers -- send failures are fatal.
  *
  * @param[in] notifd_ctx Daemon context.
@@ -621,8 +559,7 @@ int subscription_terminated_notif_send(notifd_ctx_t *notifd_ctx, notif_sub_t *su
 /**
  * @brief Send a `subscription-modified` notification to one or all receivers.
  *
- * Includes stream, filter (stream-filter-name or stream-xpath-filter), stop-time,
- * replay-start-time, transport, encoding, and purpose fields.
+ * Includes the target with its filter, the update policy, stop-time, transport, encoding, and purpose fields.
  * Skips inactive receivers silently.
  *
  * @param[in] notifd_ctx Daemon context.

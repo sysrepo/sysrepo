@@ -35,6 +35,8 @@ MODULES=(
 "ietf-interfaces@2018-02-20.yang"
 "ietf-network-instance@2019-01-21.yang"
 "ietf-subscribed-notifications@2019-09-09.yang -e configured -e replay -e subtree -e xpath -e encode-xml -e encode-json"
+"ietf-yang-patch@2017-02-22.yang"
+"ietf-yang-push@2019-09-09.yang -e on-change"
 "ietf-subscribed-notif-receivers@2024-02-01.yang"
 "ietf-udp-notif-transport@2025-06-04.yang"
 )

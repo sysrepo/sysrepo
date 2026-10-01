@@ -103,6 +103,11 @@ static const char *sub_ntf_feats[] = {
     "configured", "xpath", "replay", "subtree", "encode-xml", "encode-json", NULL
 };
 
+/** Features needed from ietf-yang-push */
+static const char *yp_feats[] = {
+    "on-change", NULL
+};
+
 /** Modules installed for the tests, in dependency order */
 static const struct test_module test_modules[] = {
     {SN_YANG_DIR "/ietf-interfaces@2018-02-20.yang", NULL},
@@ -111,6 +116,8 @@ static const struct test_module test_modules[] = {
     {SN_YANG_DIR "/ietf-network-instance@2019-01-21.yang", NULL},
     {SN_YANG_DIR "/ietf-restconf@2017-01-26.yang", NULL},
     {SN_YANG_DIR "/ietf-subscribed-notifications@2019-09-09.yang", sub_ntf_feats},
+    {SN_YANG_DIR "/ietf-yang-patch@2017-02-22.yang", NULL},
+    {SN_YANG_DIR "/ietf-yang-push@2019-09-09.yang", yp_feats},
     {SN_YANG_DIR "/ietf-subscribed-notif-receivers@2024-02-01.yang", NULL},
     {SN_YANG_DIR "/ietf-crypto-types@2024-10-10.yang", NULL},
     {SN_YANG_DIR "/iana-tls-cipher-suite-algs@2024-03-16.yang", NULL},
@@ -167,6 +174,8 @@ remove_test_modules(sr_conn_ctx_t *conn)
         "iana-tls-cipher-suite-algs",
         "ietf-crypto-types",
         "ietf-subscribed-notif-receivers",
+        "ietf-yang-push",
+        "ietf-yang-patch",
         "ietf-subscribed-notifications",
         "ietf-restconf",
         "ietf-network-instance",
@@ -441,6 +450,13 @@ apply_changes(struct tnotifd_state *st)
 }
 
 void
+apply_rejected(struct tnotifd_state *st, int rc)
+{
+    assert_int_equal(sr_apply_changes(st->sess, 0), rc);
+    assert_int_equal(sr_discard_changes(st->sess), SR_ERR_OK);
+}
+
+void
 stage_sub(struct tnotifd_state *st, uint32_t sub_id, ...)
 {
     char prefix[512];
@@ -476,6 +492,56 @@ setup_sub(struct tnotifd_state *st, uint32_t sub_id, ...)
     va_end(ap);
 
     bind_sub_recv(st, sub_id, TEST_RECV, TEST_RECV_INST);
+    apply_changes(st);
+}
+
+void
+add_selection_filter(struct tnotifd_state *st, const char *filter_id, const char *xpath)
+{
+    set_node(st, xpath, SELECTION_FILTER_XP "/datastore-xpath-filter", filter_id);
+}
+
+/**
+ * @brief Stage the common setup of a yang-push subscription.
+ *
+ * @param[in] st Test state.
+ * @param[in] sub_id Subscription ID.
+ * @param[in] ap NULL-terminated (relative leaf path, value) pairs of extra subscription leaves.
+ */
+static void
+stage_ds_sub_va(struct tnotifd_state *st, uint32_t sub_id, va_list ap)
+{
+    char prefix[512];
+
+    add_recv_inst(st, TEST_RECV_INST, st->udp_port, NULL);
+
+    snprintf(prefix, sizeof prefix, SUB_XP, sub_id);
+    set_node(st, DS_RUNNING, "%s/ietf-yang-push:datastore", prefix);
+    set_node(st, UDP_TRANSPORT, "%s/transport", prefix);
+    set_leaves(st->sess, prefix, ap);
+
+    bind_sub_recv(st, sub_id, TEST_RECV, TEST_RECV_INST);
+}
+
+void
+stage_ds_sub(struct tnotifd_state *st, uint32_t sub_id, ...)
+{
+    va_list ap;
+
+    va_start(ap, sub_id);
+    stage_ds_sub_va(st, sub_id, ap);
+    va_end(ap);
+}
+
+void
+setup_ds_sub(struct tnotifd_state *st, uint32_t sub_id, ...)
+{
+    va_list ap;
+
+    va_start(ap, sub_id);
+    stage_ds_sub_va(st, sub_id, ap);
+    va_end(ap);
+
     apply_changes(st);
 }
 

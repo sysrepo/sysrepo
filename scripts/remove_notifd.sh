@@ -17,6 +17,8 @@ fi
 # modules to uninstall (in reverse order of their dependencies)
 MODULES=(
 "ietf-subscribed-notif-receivers"
+"ietf-yang-push"
+"ietf-yang-patch"
 "ietf-subscribed-notifications"
 "ietf-udp-notif-transport"
 )

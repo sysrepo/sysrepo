@@ -60,14 +60,123 @@ timespec_cmp(const struct timespec *ts1, const struct timespec *ts2)
  * ---------------------------------------------------------------------------
  */
 
+/**
+ * @brief Add the event stream target of a subscription to a state change notification.
+ *
+ * @param[in] tree State change notification.
+ * @param[in] sub Subscription to use.
+ * @param[in] fields Fields to add, ::NOTIF_FIELD_TARGET is used.
+ * @return ::SR_ERR_OK on success, error code on failure.
+ */
+static int
+subscription_state_change_notif_stream_add(struct lyd_node *tree, const notif_sub_t *sub, uint32_t fields)
+{
+    int rc = SR_ERR_OK;
+    char *start_time_str = NULL;
+
+    if (fields & NOTIF_FIELD_TARGET) {
+        if (lyd_new_path(tree, NULL, "stream", sub->srsn_params.stream, 0, NULL)) {
+            rc = SR_ERR_LY;
+            goto cleanup;
+        }
+
+        /* stream-filter-name (by-reference) or stream-xpath-filter (within-subscription, converted) */
+        if (sub->filter_ref) {
+            if (lyd_new_path(tree, NULL, "stream-filter-name", sub->filter_ref, 0, NULL)) {
+                rc = SR_ERR_LY;
+                goto cleanup;
+            }
+        } else if (sub->srsn_params.xpath_filter) {
+            if (lyd_new_path(tree, NULL, "stream-xpath-filter", sub->srsn_params.xpath_filter, 0, NULL)) {
+                rc = SR_ERR_LY;
+                goto cleanup;
+            }
+        }
+
+        /* replay start time */
+        if (sub->replay_start_time.tv_sec || sub->replay_start_time.tv_nsec) {
+            if (ly_time_ts2str(&sub->replay_start_time, &start_time_str)) {
+                rc = SR_ERR_LY;
+                goto cleanup;
+            }
+            if (lyd_new_path(tree, NULL, "replay-start-time", start_time_str, 0, NULL)) {
+                rc = SR_ERR_LY;
+                goto cleanup;
+            }
+        }
+    }
+
+cleanup:
+    free(start_time_str);
+    return rc;
+}
+
+/**
+ * @brief Add the datastore target and the update policy of a yang-push subscription to a state change notification.
+ *
+ * @param[in] tree State change notification.
+ * @param[in] sub Subscription to use.
+ * @param[in] fields Fields to add, ::NOTIF_FIELD_TARGET and ::NOTIF_FIELD_UPDATE_POLICY are used.
+ * @return ::SR_ERR_OK on success, error code on failure.
+ */
+static int
+subscription_state_change_notif_yp_add(struct lyd_node *tree, const notif_sub_t *sub, uint32_t fields)
+{
+    int rc = SR_ERR_OK;
+    char buf[11], *anchor_str = NULL;
+
+    if (fields & NOTIF_FIELD_TARGET) {
+        if (lyd_new_path(tree, NULL, "ietf-yang-push:datastore", notif_ds2identity(sub->srsn_params.ds), 0, NULL)) {
+            rc = SR_ERR_LY;
+            goto cleanup;
+        }
+
+        /* selection-filter-ref (by-reference) or datastore-xpath-filter (within-subscription, converted) */
+        if (sub->filter_ref) {
+            if (lyd_new_path(tree, NULL, "ietf-yang-push:selection-filter-ref", sub->filter_ref, 0, NULL)) {
+                rc = SR_ERR_LY;
+                goto cleanup;
+            }
+        } else if (sub->srsn_params.xpath_filter) {
+            if (lyd_new_path(tree, NULL, "ietf-yang-push:datastore-xpath-filter", sub->srsn_params.xpath_filter, 0,
+                    NULL)) {
+                rc = SR_ERR_LY;
+                goto cleanup;
+            }
+        }
+    }
+
+    if ((fields & NOTIF_FIELD_UPDATE_POLICY) && (sub->srsn_params.type == SRSN_YANG_PUSH_PERIODIC)) {
+        sprintf(buf, "%" PRIu32, sub->srsn_params.period);
+        if (lyd_new_path(tree, NULL, "ietf-yang-push:periodic/period", buf, 0, NULL)) {
+            rc = SR_ERR_LY;
+            goto cleanup;
+        }
+        if (sub->srsn_params.anchor_time.tv_sec || sub->srsn_params.anchor_time.tv_nsec) {
+            if (ly_time_ts2str(&sub->srsn_params.anchor_time, &anchor_str)) {
+                rc = SR_ERR_LY;
+                goto cleanup;
+            }
+            if (lyd_new_path(tree, NULL, "ietf-yang-push:periodic/anchor-time", anchor_str, 0, NULL)) {
+                rc = SR_ERR_LY;
+                goto cleanup;
+            }
+        }
+    }
+
+cleanup:
+    free(anchor_str);
+    return rc;
+}
+
 static int
 subscription_state_change_notif_new(const struct ly_ctx *ly_ctx, notif_sub_t *sub,
         const char *notif_path, uint32_t fields, const char *reason, struct lyd_node **notif)
 {
     int rc = SR_ERR_OK;
     struct lyd_node *tree = NULL;
-    char *id_str = NULL, *stop_time_str = NULL, *start_time_str = NULL;
-    struct timespec *start_time, *stop_time;
+    char *id_str = NULL, *stop_time_str = NULL;
+    struct timespec *stop_time;
     notif_encoding_t encoding;
     const notif_encoding_info_t *enc_info = NULL;
 
@@ -89,30 +198,22 @@ subscription_state_change_notif_new(const struct ly_ctx *ly_ctx, notif_sub_t *su
         goto cleanup;
     }
 
-    /* stream */
-    if (fields & NOTIF_FIELD_STREAM) {
-        if (lyd_new_path(tree, ly_ctx, "stream", sub->srsn_params.stream, 0, NULL)) {
-            rc = SR_ERR_LY;
+    if (sub->srsn_params.type == SRSN_SUB_NOTIF) {
+        /* event stream target */
+        if ((rc = subscription_state_change_notif_stream_add(tree, sub, fields))) {
             goto cleanup;
         }
-    }
-
-    /* filter: stream-filter-name (by-reference) or stream-xpath-filter (choice) */
-    if ((fields & NOTIF_FIELD_FILTER_REF) && sub->filter_ref) {
-        if (lyd_new_path(tree, ly_ctx, "stream-filter-name", sub->filter_ref, 0, NULL)) {
-            rc = SR_ERR_LY;
-            goto cleanup;
-        }
-    } else if ((fields & NOTIF_FIELD_XPATH_FILTER) && sub->srsn_params.xpath_filter) {
-        if (lyd_new_path(tree, ly_ctx, "stream-xpath-filter", sub->srsn_params.xpath_filter, 0, NULL)) {
-            rc = SR_ERR_LY;
+    } else {
+        /* datastore target and update policy */
+        if ((rc = subscription_state_change_notif_yp_add(tree, sub, fields))) {
             goto cleanup;
         }
     }
 
     /* stop time */
     if (fields & NOTIF_FIELD_STOP_TIME) {
-        stop_time = (sub->srsn_params.stop_time.tv_sec || sub->srsn_params.stop_time.tv_nsec) ? &sub->srsn_params.stop_time : NULL;
+        stop_time = (sub->srsn_params.stop_time.tv_sec || sub->srsn_params.stop_time.tv_nsec) ?
+                &sub->srsn_params.stop_time : NULL;
         if (stop_time) {
             if (ly_time_ts2str(stop_time, &stop_time_str)) {
                 rc = SR_ERR_LY;
@@ -120,22 +221,6 @@ subscription_state_change_notif_new(const struct ly_ctx *ly_ctx, notif_sub_t *su
             }
 
             if (lyd_new_path(tree, ly_ctx, "stop-time", stop_time_str, 0, NULL)) {
-                rc = SR_ERR_LY;
-                goto cleanup;
-            }
-        }
-    }
-
-    /* replay start time */
-    if (fields & NOTIF_FIELD_REPLAY_START) {
-        start_time = (sub->replay_start_time.tv_sec || sub->replay_start_time.tv_nsec) ?
-                &sub->replay_start_time : NULL;
-        if (start_time) {
-            if (ly_time_ts2str(start_time, &start_time_str)) {
-                rc = SR_ERR_LY;
-                goto cleanup;
-            }
-            if (lyd_new_path(tree, ly_ctx, "replay-start-time", start_time_str, 0, NULL)) {
                 rc = SR_ERR_LY;
                 goto cleanup;
             }
@@ -189,7 +274,6 @@ cleanup:
     lyd_free_tree(tree);
     free(id_str);
     free(stop_time_str);
-    free(start_time_str);
     return rc;
 }
 
@@ -198,8 +282,8 @@ subscription_started_notif_new(const struct ly_ctx *ly_ctx, notif_sub_t *sub, st
 {
     return subscription_state_change_notif_new(ly_ctx, sub,
             "/ietf-subscribed-notifications:subscription-started",
-            NOTIF_FIELD_STREAM | NOTIF_FIELD_XPATH_FILTER | NOTIF_FIELD_STOP_TIME | NOTIF_FIELD_REPLAY_START |
-            NOTIF_FIELD_TRANSPORT | NOTIF_FIELD_ENCODING | NOTIF_FIELD_PURPOSE | NOTIF_FIELD_FILTER_REF,
+            NOTIF_FIELD_TARGET | NOTIF_FIELD_UPDATE_POLICY | NOTIF_FIELD_STOP_TIME | NOTIF_FIELD_TRANSPORT |
+            NOTIF_FIELD_ENCODING | NOTIF_FIELD_PURPOSE,
             NULL, notif);
 }
 
@@ -218,8 +302,8 @@ subscription_modified_notif_new(const struct ly_ctx *ly_ctx, notif_sub_t *sub, s
 {
     return subscription_state_change_notif_new(ly_ctx, sub,
             "/ietf-subscribed-notifications:subscription-modified",
-            NOTIF_FIELD_STREAM | NOTIF_FIELD_XPATH_FILTER | NOTIF_FIELD_STOP_TIME | NOTIF_FIELD_REPLAY_START |
-            NOTIF_FIELD_TRANSPORT | NOTIF_FIELD_ENCODING | NOTIF_FIELD_PURPOSE | NOTIF_FIELD_FILTER_REF,
+            NOTIF_FIELD_TARGET | NOTIF_FIELD_UPDATE_POLICY | NOTIF_FIELD_STOP_TIME | NOTIF_FIELD_TRANSPORT |
+            NOTIF_FIELD_ENCODING | NOTIF_FIELD_PURPOSE,
             NULL, notif);
 }
 
@@ -293,8 +377,8 @@ subscription_started_notif_send(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, noti
 {
     return subscription_state_change_notif_send(notifd_ctx, sub, receiver,
             "/ietf-subscribed-notifications:subscription-started",
-            NOTIF_FIELD_STREAM | NOTIF_FIELD_XPATH_FILTER | NOTIF_FIELD_STOP_TIME | NOTIF_FIELD_REPLAY_START |
-            NOTIF_FIELD_TRANSPORT | NOTIF_FIELD_ENCODING | NOTIF_FIELD_PURPOSE | NOTIF_FIELD_FILTER_REF,
+            NOTIF_FIELD_TARGET | NOTIF_FIELD_UPDATE_POLICY | NOTIF_FIELD_STOP_TIME | NOTIF_FIELD_TRANSPORT |
+            NOTIF_FIELD_ENCODING | NOTIF_FIELD_PURPOSE,
             NULL, "subscription-started", 0);
 }
 
@@ -312,8 +396,8 @@ subscription_modified_notif_send(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, not
 {
     return subscription_state_change_notif_send(notifd_ctx, sub, receiver,
             "/ietf-subscribed-notifications:subscription-modified",
-            NOTIF_FIELD_STREAM | NOTIF_FIELD_XPATH_FILTER | NOTIF_FIELD_STOP_TIME | NOTIF_FIELD_REPLAY_START |
-            NOTIF_FIELD_TRANSPORT | NOTIF_FIELD_ENCODING | NOTIF_FIELD_PURPOSE | NOTIF_FIELD_FILTER_REF,
+            NOTIF_FIELD_TARGET | NOTIF_FIELD_UPDATE_POLICY | NOTIF_FIELD_STOP_TIME | NOTIF_FIELD_TRANSPORT |
+            NOTIF_FIELD_ENCODING | NOTIF_FIELD_PURPOSE,
             NULL, "subscription-modified", 1);
 }
 
