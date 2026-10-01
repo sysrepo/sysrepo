@@ -567,9 +567,9 @@ srsn_yp_on_change_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const c
 
     assert(sub->type == SRSN_YANG_PUSH_ON_CHANGE);
 
-    /* get the changes iterator */
+    /* get the changes iterator, the filter may be a union whose every member needs the descendants */
     if (xpath) {
-        r = asprintf(&xp, "%s//.", xpath);
+        r = asprintf(&xp, "(%s)//.", xpath);
     } else {
         r = asprintf(&xp, "/%s:*//.", module_name);
     }
