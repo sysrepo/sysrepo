@@ -49,6 +49,14 @@ const notif_transport_ops_t *notif_transport_find_by_identity(const char *identi
 int notif_ds_from_identity(const char *identity, sr_datastore_t *ds);
 
 /**
+ * @brief Map a yang-push change to its excluded-change value.
+ *
+ * @param[in] change yang-push change, a valid one.
+ * @return excluded-change value.
+ */
+const char *notif_yp_change2str(srsn_yp_change_t change);
+
+/**
  * @brief Map a sysrepo datastore of a yang-push subscription to its identity.
  *
  * @param[in] ds Sysrepo datastore.
@@ -623,6 +631,13 @@ int notif_receiver_resolve(notif_receiver_t *receiver);
  * @param[in] receiver Receiver to disconnect.
  */
 void notif_receiver_disconnect(notif_receiver_t *receiver);
+
+/**
+ * @brief Request a push-update for an active receiver of an on-change subscription with sync-on-start.
+ *
+ * @param[in] receiver Active receiver.
+ */
+void notif_receiver_sync_on_start(notif_receiver_t *receiver);
 
 /**
  * @brief Attempt to reconnect a disconnected receiver using exponential backoff.

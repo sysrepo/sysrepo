@@ -33,6 +33,31 @@
 void receiver_destroy(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_receiver_t *receiver);
 static void receiver_instance_destroy(notifd_ctx_t *notifd_ctx, notif_receiver_inst_t *recv_inst);
 
+/**
+ * @brief Datastore identities of yang-push subscriptions, ietf-datastores:intended has no sysrepo datastore.
+ */
+static const struct {
+    const char *identity;
+    sr_datastore_t ds;
+} notif_ds_map[] = {
+    {"ietf-datastores:running", SR_DS_RUNNING},
+    {"ietf-datastores:startup", SR_DS_STARTUP},
+    {"ietf-datastores:candidate", SR_DS_CANDIDATE},
+    {"ietf-datastores:operational", SR_DS_OPERATIONAL},
+    {"ietf-factory-default:factory-default", SR_DS_FACTORY_DEFAULT},
+};
+
+/**
+ * @brief Values of the excluded-change leaf-list, indexed by ::srsn_yp_change_t.
+ */
+static const char *notif_yp_change_names[SRSN_COUNT_YP_CHANGE] = {
+    [SRSN_YP_CHANGE_CREATE] = "create",
+    [SRSN_YP_CHANGE_DELETE] = "delete",
+    [SRSN_YP_CHANGE_INSERT] = "insert",
+    [SRSN_YP_CHANGE_MOVE] = "move",
+    [SRSN_YP_CHANGE_REPLACE] = "replace",
+};
+
 /*
  * ---------------------------------------------------------------------------
  * Transport registry
@@ -385,20 +410,6 @@ notif_encoding_parse(const struct lyd_node *node, notif_encoding_t *encoding)
     return rc;
 }
 
-/**
- * @brief Datastore identities of yang-push subscriptions, ietf-datastores:intended has no sysrepo datastore.
- */
-static const struct {
-    const char *identity;
-    sr_datastore_t ds;
-} notif_ds_map[] = {
-    {"ietf-datastores:running", SR_DS_RUNNING},
-    {"ietf-datastores:startup", SR_DS_STARTUP},
-    {"ietf-datastores:candidate", SR_DS_CANDIDATE},
-    {"ietf-datastores:operational", SR_DS_OPERATIONAL},
-    {"ietf-factory-default:factory-default", SR_DS_FACTORY_DEFAULT},
-};
-
 int
 notif_ds_from_identity(const char *identity, sr_datastore_t *ds)
 {
@@ -426,6 +437,32 @@ notif_ds2identity(sr_datastore_t ds)
     }
 
     return NULL;
+}
+
+const char *
+notif_yp_change2str(srsn_yp_change_t change)
+{
+    return notif_yp_change_names[change];
+}
+
+/**
+ * @brief Map a value of the excluded-change leaf-list to a yang-push change.
+ *
+ * @param[in] str excluded-change value.
+ * @return yang-push change, ::SRSN_YP_CHANGE_INVALID if unknown.
+ */
+static srsn_yp_change_t
+notif_yp_change_from_str(const char *str)
+{
+    int i;
+
+    for (i = 0; i < SRSN_COUNT_YP_CHANGE; ++i) {
+        if (!strcmp(notif_yp_change_names[i], str)) {
+            return i;
+        }
+    }
+
+    return SRSN_YP_CHANGE_INVALID;
 }
 
 /**
@@ -1031,11 +1068,14 @@ subscription_target_free(notif_sub_t *sub)
     sub->srsn_params.ds = 0;
     sub->srsn_params.period = 0;
     memset(&sub->srsn_params.anchor_time, 0, sizeof sub->srsn_params.anchor_time);
+    sub->srsn_params.dampening_period = 0;
+    memset(sub->srsn_params.excluded_changes, 0, sizeof sub->srsn_params.excluded_changes);
 
     free(sub->filter_ref);
     sub->filter_ref = NULL;
     sub->replay = 0;
     memset(&sub->replay_start_time, 0, sizeof sub->replay_start_time);
+    sub->sync_on_start = 0;
 }
 
 /**
@@ -1108,10 +1148,14 @@ subscription_ds_target_from_node(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, con
         const struct lyd_node *ds_node)
 {
     int rc = SR_ERR_OK;
-    struct lyd_node *n, *periodic;
+    struct lyd_node *n, *periodic, *on_change;
+    struct ly_set *set = NULL;
+    srsn_yp_change_t change;
+    uint32_t i;
 
-    /* update trigger */
+    /* update trigger, the validation rejects a subscription without one */
     get_descendant_optional(sub_node, "ietf-yang-push:periodic", &periodic);
+    get_descendant_optional(sub_node, "ietf-yang-push:on-change", &on_change);
     if (periodic) {
         sub->srsn_params.type = SRSN_YANG_PUSH_PERIODIC;
         if ((rc = get_descendant_mandatory(periodic, "period", &n))) {
@@ -1126,9 +1170,24 @@ subscription_ds_target_from_node(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, con
             }
         }
     } else {
-        SRNTF_LOG_ERR("Subscription ID %" PRIu32 " has no supported update trigger.", sub->id);
-        rc = SR_ERR_UNSUPPORTED;
-        goto cleanup;
+        assert(on_change);
+        sub->srsn_params.type = SRSN_YANG_PUSH_ON_CHANGE;
+        get_descendant_optional(on_change, "dampening-period", &n);
+        if (n) {
+            sub->srsn_params.dampening_period = strtoul(lyd_get_value(n), NULL, 10);
+        }
+        get_descendant_optional(on_change, "sync-on-start", &n);
+        sub->sync_on_start = n ? ((struct lyd_node_term *)n)->value.boolean : 1;
+        if (lyd_find_xpath(on_change, "excluded-change", &set)) {
+            rc = SR_ERR_LY;
+            goto cleanup;
+        }
+        for (i = 0; i < set->count; ++i) {
+            /* an enum value, all of them are mapped */
+            change = notif_yp_change_from_str(lyd_get_value(set->dnodes[i]));
+            assert(change != SRSN_YP_CHANGE_INVALID);
+            sub->srsn_params.excluded_changes[change] = 1;
+        }
     }
 
     /* datastore */
@@ -1151,6 +1210,7 @@ subscription_ds_target_from_node(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, con
     }
 
 cleanup:
+    ly_set_free(set, NULL);
     return rc;
 }
 
@@ -1988,7 +2048,7 @@ sub_change_validate_datastore(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *sessio
         const struct lyd_node *sub_node)
 {
     int rc = SR_ERR_OK;
-    struct lyd_node *n, *policy;
+    struct lyd_node *n, *periodic, *on_change;
     sr_datastore_t ds;
     char *xpath_filter = NULL;
     uint64_t period;
@@ -2004,10 +2064,11 @@ sub_change_validate_datastore(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *sessio
         goto cleanup;
     }
 
-    /* update trigger, the choice is not mandatory; the period is in centiseconds, SRSN takes milliseconds */
-    get_descendant_optional(sub_node, "ietf-yang-push:periodic", &policy);
-    if (policy) {
-        get_descendant_optional(policy, "period", &n);
+    /* update trigger, the choice is not mandatory; the periods are in centiseconds, SRSN takes milliseconds */
+    get_descendant_optional(sub_node, "ietf-yang-push:periodic", &periodic);
+    get_descendant_optional(sub_node, "ietf-yang-push:on-change", &on_change);
+    if (periodic) {
+        get_descendant_optional(periodic, "period", &n);
         period = n ? strtoull(lyd_get_value(n), NULL, 10) : 0;
         if (!period || (period > UINT32_MAX / 10)) {
             SRNTF_VALIDATE_ERR(session, event, SR_ERR_UNSUPPORTED, "Period \"%s\" is not supported.",
@@ -2015,9 +2076,23 @@ sub_change_validate_datastore(notifd_ctx_t *notifd_ctx, sr_session_ctx_t *sessio
             rc = SR_ERR_UNSUPPORTED;
             goto cleanup;
         }
+    } else if (on_change) {
+        if (ds == SR_DS_FACTORY_DEFAULT) {
+            /* there are no changes to subscribe to */
+            SRNTF_VALIDATE_ERR(session, event, SR_ERR_UNSUPPORTED, "On-change subscription of the factory-default "
+                    "datastore is not supported.");
+            rc = SR_ERR_UNSUPPORTED;
+            goto cleanup;
+        }
+        get_descendant_optional(on_change, "dampening-period", &n);
+        if (n && (strtoull(lyd_get_value(n), NULL, 10) > UINT32_MAX / 10)) {
+            SRNTF_VALIDATE_ERR(session, event, SR_ERR_UNSUPPORTED, "Dampening period \"%s\" is not supported.",
+                    lyd_get_value(n));
+            rc = SR_ERR_UNSUPPORTED;
+            goto cleanup;
+        }
     } else {
-        SRNTF_VALIDATE_ERR(session, event, SR_ERR_UNSUPPORTED, "Datastore subscription without a supported update "
-                "trigger.");
+        SRNTF_VALIDATE_ERR(session, event, SR_ERR_UNSUPPORTED, "Datastore subscription without an update trigger.");
         rc = SR_ERR_UNSUPPORTED;
         goto cleanup;
     }

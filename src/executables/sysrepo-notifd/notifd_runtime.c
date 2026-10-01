@@ -124,6 +124,7 @@ subscription_state_change_notif_yp_add(struct lyd_node *tree, const notif_sub_t 
 {
     int rc = SR_ERR_OK;
     char buf[11], *anchor_str = NULL;
+    int i;
 
     if (fields & NOTIF_FIELD_TARGET) {
         if (lyd_new_path(tree, NULL, "ietf-yang-push:datastore", notif_ds2identity(sub->srsn_params.ds), 0, NULL)) {
@@ -140,6 +141,26 @@ subscription_state_change_notif_yp_add(struct lyd_node *tree, const notif_sub_t 
         } else if (sub->srsn_params.xpath_filter) {
             if (lyd_new_path(tree, NULL, "ietf-yang-push:datastore-xpath-filter", sub->srsn_params.xpath_filter, 0,
                     NULL)) {
+                rc = SR_ERR_LY;
+                goto cleanup;
+            }
+        }
+    }
+
+    if ((fields & NOTIF_FIELD_UPDATE_POLICY) && (sub->srsn_params.type == SRSN_YANG_PUSH_ON_CHANGE)) {
+        sprintf(buf, "%" PRIu32, sub->srsn_params.dampening_period);
+        if (lyd_new_path(tree, NULL, "ietf-yang-push:on-change/dampening-period", buf, 0, NULL)) {
+            rc = SR_ERR_LY;
+            goto cleanup;
+        }
+        if (lyd_new_path(tree, NULL, "ietf-yang-push:on-change/sync-on-start", sub->sync_on_start ? "true" : "false",
+                0, NULL)) {
+            rc = SR_ERR_LY;
+            goto cleanup;
+        }
+        for (i = 0; i < SRSN_COUNT_YP_CHANGE; ++i) {
+            if (sub->srsn_params.excluded_changes[i] && lyd_new_path(tree, NULL,
+                    "ietf-yang-push:on-change/excluded-change", notif_yp_change2str(i), 0, NULL)) {
                 rc = SR_ERR_LY;
                 goto cleanup;
             }
@@ -496,6 +517,21 @@ notif_receiver_backoff_sec(const notif_receiver_t *receiver)
     return backoff_sec;
 }
 
+void
+notif_receiver_sync_on_start(notif_receiver_t *receiver)
+{
+    notif_sub_t *sub = receiver->sub;
+
+    if ((sub->srsn_params.type != SRSN_YANG_PUSH_ON_CHANGE) || !sub->sync_on_start || !receiver->srsn_data.sub_id) {
+        return;
+    }
+
+    /* sent asynchronously by the srsn subscription */
+    if (srsn_yang_push_on_change_resync(receiver->srsn_data.sub_id)) {
+        SRNTF_LOG_WRN("Failed to resync receiver \"%s\" of subscription %" PRIu32 ".", receiver->name, sub->id);
+    }
+}
+
 int
 notif_receiver_backoff_reconnect(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver)
 {
@@ -569,6 +605,9 @@ notif_receiver_backoff_reconnect(notifd_ctx_t *notifd_ctx, notif_receiver_t *rec
     }
 
     receiver->state = NOTIF_RECV_STATE_ACTIVE;
+
+    /* an on-change subscription with sync-on-start starts with a push-update */
+    notif_receiver_sync_on_start(receiver);
 
     return SR_ERR_OK;
 
@@ -784,6 +823,9 @@ notif_receiver_reconnect(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_recei
     receiver->state = NOTIF_RECV_STATE_ACTIVE;
     receiver->reconnect_attempts = 0;
     memset(&receiver->last_reconnect_attempt, 0, sizeof receiver->last_reconnect_attempt);
+
+    /* an on-change subscription with sync-on-start starts with a push-update */
+    notif_receiver_sync_on_start(receiver);
 
 cleanup:
     if (rc) {
