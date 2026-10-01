@@ -1106,29 +1106,36 @@ cleanup:
  * ---------------------------------------------------------------------------
  */
 
+/**
+ * @brief Parse the target of a subscription, replacing the current one.
+ *
+ * @param[in] notifd_ctx Daemon context.
+ * @param[in,out] sub Subscription to update.
+ * @param[in] sub_node Subscription list node.
+ * @return ::SR_ERR_OK on success, error code on failure.
+ */
 static int
-subscription_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, notif_sub_t *sub)
+subscription_target_from_node(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const struct lyd_node *sub_node)
 {
     int rc = SR_ERR_OK;
     struct lyd_node *n, *filter;
-    struct ly_set *set = NULL;
-    uint32_t i;
 
-    /* subscription ID */
-    if ((rc = get_descendant_mandatory(node, "id", &n))) {
-        goto cleanup;
-    }
-    sub->id = strtoul(lyd_get_value(n), NULL, 10);
+    free(sub->srsn_params.stream);
+    sub->srsn_params.stream = NULL;
+    free(sub->filter_ref);
+    sub->filter_ref = NULL;
+    free(sub->srsn_params.xpath_filter);
+    sub->srsn_params.xpath_filter = NULL;
 
     /* stream */
-    if ((rc = get_descendant_mandatory(node, "stream", &n))) {
+    if ((rc = get_descendant_mandatory(sub_node, "stream", &n))) {
         goto cleanup;
     }
     sub->srsn_params.stream = strdup(lyd_get_value(n));
     CHECK_ERRMEM_GOTO(sub->srsn_params.stream, rc, cleanup);
 
     /* stream-filter-name */
-    get_descendant_optional(node, "stream-filter-name", &n);
+    get_descendant_optional(sub_node, "stream-filter-name", &n);
     if (n) {
         /* dup the referenced filter name */
         sub->filter_ref = strdup(lyd_get_value(n));
@@ -1141,16 +1148,12 @@ subscription_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, no
     }
 
     /* subtree filter */
-    get_descendant_optional(node, "stream-subtree-filter", &n);
+    get_descendant_optional(sub_node, "stream-subtree-filter", &n);
     if (n) {
-        /* free the old filter */
-        free(sub->srsn_params.xpath_filter);
-        sub->srsn_params.xpath_filter = NULL;
-
         /* get the first child of the anydata stream-subtree-filter node, which is the first actual filter sibling */
         filter = lyd_child_any(n);
         if (filter) {
-            /* filter exists, convert it to an xpath filter and switch to the new value */
+            /* filter exists, convert it to an xpath filter */
             if ((rc = sr_filter_subtree2xpath(notifd_ctx->sr_sess, filter, 1, &sub->srsn_params.xpath_filter))) {
                 goto cleanup;
             }
@@ -1158,10 +1161,41 @@ subscription_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, no
     }
 
     /* xpath filter */
-    get_descendant_optional(node, "stream-xpath-filter", &n);
+    get_descendant_optional(sub_node, "stream-xpath-filter", &n);
     if (n) {
         sub->srsn_params.xpath_filter = strdup(lyd_get_value(n));
         CHECK_ERRMEM_GOTO(sub->srsn_params.xpath_filter, rc, cleanup);
+    }
+
+cleanup:
+    return rc;
+}
+
+/**
+ * @brief Parse a subscription.
+ *
+ * @param[in] notifd_ctx Daemon context.
+ * @param[in] node Subscription list node.
+ * @param[in,out] sub Subscription to fill.
+ * @return ::SR_ERR_OK on success, error code on failure.
+ */
+static int
+subscription_from_node(notifd_ctx_t *notifd_ctx, const struct lyd_node *node, notif_sub_t *sub)
+{
+    int rc = SR_ERR_OK;
+    struct lyd_node *n;
+    struct ly_set *set = NULL;
+    uint32_t i;
+
+    /* subscription ID */
+    if ((rc = get_descendant_mandatory(node, "id", &n))) {
+        goto cleanup;
+    }
+    sub->id = strtoul(lyd_get_value(n), NULL, 10);
+
+    /* target */
+    if ((rc = subscription_target_from_node(notifd_ctx, sub, node))) {
+        goto cleanup;
     }
 
     /* encoding */
