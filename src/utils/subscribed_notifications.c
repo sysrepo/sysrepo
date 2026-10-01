@@ -726,7 +726,8 @@ srsn_resume(uint32_t sub_id)
         }
 
         /* create the update timer */
-        if ((err_info = srsn_yp_schedule_periodic_update(sub->period_ms, &sub->anchor_time, sub, &sub->update_sntimer))) {
+        if ((err_info = srsn_yp_schedule_periodic_update(sub->period_ms,
+                sub->anchor_time.tv_sec ? &sub->anchor_time : NULL, sub, &sub->update_sntimer))) {
             goto cleanup;
         }
         sub->suspended = 0;
