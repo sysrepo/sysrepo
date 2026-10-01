@@ -413,9 +413,10 @@ srsn_state_collect_sub(const struct srsn_sub *s, srsn_state_sub_t *sub)
     switch (s->type) {
     case SRSN_SUB_NOTIF:
     case SRSN_YANG_PUSH_ON_CHANGE:
-        assert(s->sr_sub_id_count);
-        if ((r = sr_subscription_get_suspended(s->sr_sub, s->sr_sub_ids[0],
-                &sub->suspended))) {
+        if (!ATOMIC_LOAD_RELAXED(s->sr_sub_id_count)) {
+            /* a filter selecting no data of the datastore, nothing can be suspended */
+            sub->suspended = 0;
+        } else if ((r = sr_subscription_get_suspended(s->sr_sub, s->sr_sub_ids[0], &sub->suspended))) {
             sr_errinfo_new(&err_info, r, "Failed to learn whether a SR subscription is suspended.");
             return err_info;
         }
