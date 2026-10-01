@@ -715,6 +715,80 @@ test_yp_on_change(void **state)
     close(fd);
 }
 
+/**
+ * @brief Read a notification, asserting its name and, for a push-change-update, its patch ID.
+ *
+ * @param[in] st Test state.
+ * @param[in] fd Subscription FD.
+ * @param[in] timeout_ms Poll timeout.
+ * @param[in] name Expected notification name.
+ * @param[in] patch_id Expected patch ID, NULL to not check it.
+ */
+static void
+yp_expect_notif(struct state *st, int fd, uint32_t timeout_ms, const char *name, const char *patch_id)
+{
+    struct lyd_node *notif, *node;
+    struct timespec ts;
+
+    assert_int_equal(SR_ERR_OK, srsn_poll(fd, timeout_ms));
+    assert_int_equal(SR_ERR_OK, srsn_read_notif(fd, st->ly_ctx, &ts, &notif));
+    assert_string_equal(LYD_NAME(notif), name);
+    if (patch_id) {
+        assert_int_equal(LY_SUCCESS, lyd_find_path(notif, "datastore-changes/yang-patch/patch-id", 0, &node));
+        assert_string_equal(lyd_get_value(node), patch_id);
+    }
+    lyd_free_tree(notif);
+}
+
+/**
+ * @brief Set test-leaf and apply the change.
+ *
+ * @param[in] st Test state.
+ * @param[in] value Value to set.
+ */
+static void
+yp_set_test_leaf(struct state *st, const char *value)
+{
+    assert_int_equal(SR_ERR_OK, sr_set_item_str(st->sess, "/test:test-leaf", value, NULL, 0));
+    assert_int_equal(SR_ERR_OK, sr_apply_changes(st->sess, 0));
+}
+
+/* TEST */
+static void
+test_yp_on_change_dampening(void **state)
+{
+    struct state *st = *state;
+    struct lyd_node *notif;
+    struct timespec ts1, ts2;
+    int fd;
+    uint32_t sub_id;
+
+    assert_int_equal(SR_ERR_OK, srsn_yang_push_on_change(st->sess, SR_DS_RUNNING, "/test:test-leaf", 500, 0, NULL,
+            NULL, 0, NULL, &fd, &sub_id));
+
+    /* the first change is sent at once, the second one when the dampening period ends */
+    yp_set_test_leaf(st, "1");
+    yp_set_test_leaf(st, "2");
+    assert_int_equal(SR_ERR_OK, srsn_poll(fd, 2000));
+    assert_int_equal(SR_ERR_OK, srsn_read_notif(fd, st->ly_ctx, &ts1, &notif));
+    lyd_free_tree(notif);
+    assert_int_equal(SR_ERR_OK, srsn_poll(fd, 2000));
+    assert_int_equal(SR_ERR_OK, srsn_read_notif(fd, st->ly_ctx, &ts2, &notif));
+    lyd_free_tree(notif);
+    assert_true(((int64_t)ts2.tv_sec - ts1.tv_sec) * 1000 + (ts2.tv_nsec - ts1.tv_nsec) / 1000000 >= 450);
+
+    /* a change after the next dampening period ended is sent at once again */
+    usleep(600000);
+    yp_set_test_leaf(st, "3");
+    yp_expect_notif(st, fd, 2000, "push-change-update", "patch-3");
+
+    /* cleanup */
+    assert_int_equal(SR_ERR_OK, srsn_terminate(sub_id, NULL));
+    close(fd);
+    assert_int_equal(SR_ERR_OK, sr_delete_item(st->sess, "/test:test-leaf", 0));
+    assert_int_equal(SR_ERR_OK, sr_apply_changes(st->sess, 0));
+}
+
 /* TEST */
 static int
 setup_nacm(void **state)
@@ -1036,6 +1110,7 @@ main(void)
         cmocka_unit_test(test_suspend),
         cmocka_unit_test(test_yp_periodic),
         cmocka_unit_test(test_yp_on_change),
+        cmocka_unit_test(test_yp_on_change_dampening),
         cmocka_unit_test(test_read_eof),
         cmocka_unit_test_setup_teardown(test_nacm_sub, setup_nacm, teardown_nacm),
         cmocka_unit_test_setup_teardown(test_nacm_yp_periodic, setup_nacm, teardown_nacm),

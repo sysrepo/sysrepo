@@ -257,6 +257,8 @@ sr_error_info_t *srsn_create_timer(void (*cb)(void *arg, int *freed), void *arg,
 /**
  * @brief Update or stop a timer.
  *
+ * Has no effect on a fired one-shot or a stopped timer, srsn_create_timer() starts it again.
+ *
  * @param[in] trigger New trigger of the timer, NULL to stop it instead.
  * @param[in] interval New interval of the timer.
  * @param[in] sntimer Timer to update.
