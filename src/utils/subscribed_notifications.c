@@ -617,6 +617,10 @@ srsn_suspend(uint32_t sub_id, const char *reason)
     switch (sub->type) {
     case SRSN_SUB_NOTIF:
     case SRSN_YANG_PUSH_ON_CHANGE:
+        if (!ATOMIC_LOAD_RELAXED(sub->sr_sub_id_count)) {
+            /* no SR subscriptions, nothing to suspend */
+            break;
+        }
         if (!sr_subscription_get_suspended(sub->sr_sub, sub->sr_sub_ids[0], &suspended) && suspended) {
             /* already suspended */
             goto cleanup;
@@ -701,6 +705,10 @@ srsn_resume(uint32_t sub_id)
     switch (sub->type) {
     case SRSN_SUB_NOTIF:
     case SRSN_YANG_PUSH_ON_CHANGE:
+        if (!ATOMIC_LOAD_RELAXED(sub->sr_sub_id_count)) {
+            /* no SR subscriptions, nothing to resume */
+            break;
+        }
         if (!sr_subscription_get_suspended(sub->sr_sub, sub->sr_sub_ids[0], &suspended) && !suspended) {
             /* already active */
             goto cleanup;

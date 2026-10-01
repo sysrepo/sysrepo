@@ -790,6 +790,34 @@ test_yp_on_change_dampening(void **state)
 }
 
 /* TEST */
+static void
+test_yp_on_change_no_module(void **state)
+{
+    struct state *st = *state;
+    srsn_state_sub_t *state_sub;
+    int fd;
+    uint32_t sub_id;
+
+    /* the filter selects only state data, there is nothing to subscribe to on running */
+    assert_int_equal(SR_ERR_OK, srsn_yang_push_on_change(st->sess, SR_DS_RUNNING, "/test:test-leafref", 0, 0, NULL,
+            NULL, 0, NULL, &fd, &sub_id));
+
+    assert_int_equal(SR_ERR_OK, srsn_oper_data_sub(sub_id, &state_sub));
+    assert_int_equal(state_sub->sub_id, sub_id);
+    assert_int_equal(state_sub->suspended, 0);
+    assert_int_equal(state_sub->excluded_count, 0);
+    srsn_oper_data_subscriptions_free(state_sub, 1);
+
+    assert_int_equal(SR_ERR_OK, srsn_suspend(sub_id, NULL));
+    assert_int_equal(SR_ERR_OK, srsn_resume(sub_id));
+    yp_expect_notif(st, fd, 1000, "subscription-resumed", NULL);
+
+    /* cleanup */
+    assert_int_equal(SR_ERR_OK, srsn_terminate(sub_id, NULL));
+    close(fd);
+}
+
+/* TEST */
 static int
 setup_nacm(void **state)
 {
@@ -1111,6 +1139,7 @@ main(void)
         cmocka_unit_test(test_yp_periodic),
         cmocka_unit_test(test_yp_on_change),
         cmocka_unit_test(test_yp_on_change_dampening),
+        cmocka_unit_test(test_yp_on_change_no_module),
         cmocka_unit_test(test_read_eof),
         cmocka_unit_test_setup_teardown(test_nacm_sub, setup_nacm, teardown_nacm),
         cmocka_unit_test_setup_teardown(test_nacm_yp_periodic, setup_nacm, teardown_nacm),
