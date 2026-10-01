@@ -242,7 +242,8 @@ int srsn_resume(uint32_t sub_id);
  * @param[in] sub_id Subscription ID of the subscription to terminate.
  * @param[in] reason Reason for the termination as an identityref value. If not set, no notification is generated.
  * @return ::SR_ERR_OK on success,
- * @return ::SR_ERR_NOT_FOUND if a subscription with @p sub_id was not found.
+ * @return ::SR_ERR_NOT_FOUND if a subscription with @p sub_id was not found,
+ * @return another error code on failure.
  */
 int srsn_terminate(uint32_t sub_id, const char *reason);
 

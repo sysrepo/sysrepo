@@ -244,38 +244,67 @@ srsn_sub_free(struct srsn_sub *sub)
             }
         }
     }
-    /* find it in the array */
+
+    free(sub);
+}
+
+int
+srsn_sub_unlink(struct srsn_sub *sub)
+{
+    uint32_t i;
+
     for (i = 0; i < snstate.count; ++i) {
         if (snstate.subs[i] == sub) {
             break;
         }
     }
-
-    /* remove from the array, it may not be there yet */
-    if (i < snstate.count) {
-        if (i < snstate.count - 1) {
-            snstate.subs[i] = snstate.subs[snstate.count - 1];
-        }
-        if (!--snstate.count) {
-            free(snstate.subs);
-            snstate.subs = NULL;
-        }
+    if (i == snstate.count) {
+        return 0;
     }
 
-    free(sub);
+    if (i < snstate.count - 1) {
+        snstate.subs[i] = snstate.subs[snstate.count - 1];
+    }
+    if (!--snstate.count) {
+        free(snstate.subs);
+        snstate.subs = NULL;
+    }
+    return 1;
 }
 
 /**
- * @brief Timer callback for stopping a subscriptions.
+ * @brief Timer callback for stopping a subscription.
  */
 static void
 srsn_stop_timer_cb(void *arg, int *freed)
 {
     struct srsn_sub *sub = arg;
     sr_error_info_t *err_info = NULL;
+    int linked;
+
+    /* the subscription is freed here or by the srsn_terminate() that unlinked it first, the timer must not be
+     * touched afterwards */
+    *freed = 1;
 
     /* TIMER UNLOCK */
     pthread_mutex_unlock(&sub->stop_sntimer.lock);
+
+    /* LOCK */
+    if ((err_info = srsn_lock())) {
+        sr_errinfo_free(&err_info);
+        return;
+    }
+
+    /* once unlinked, nothing else can find and terminate the subscription */
+    linked = srsn_sub_unlink(sub);
+
+    /* UNLOCK */
+    srsn_unlock();
+
+    if (!linked) {
+        /* srsn_terminate() unlinked the subscription first, it frees it and joins this thread */
+        return;
+    }
 
     if (sub->type == SRSN_SUB_NOTIF) {
         while (ATOMIC_LOAD_RELAXED(sub->replay_complete_count) < ATOMIC_LOAD_RELAXED(sub->sr_sub_id_count)) {
@@ -292,38 +321,8 @@ srsn_stop_timer_cb(void *arg, int *freed)
         sr_errinfo_free(&err_info);
     }
 
-    /* LOCK */
-    err_info = srsn_lock();
-
     /* terminate the subscription */
     srsn_sub_free(sub);
-
-    if (!err_info) {
-        /* UNLOCK */
-        srsn_unlock();
-    } else {
-        sr_errinfo_free(&err_info);
-    }
-
-    *freed = 1;
-}
-
-sr_error_info_t *
-srsn_sub_schedule_stop(struct srsn_sub *sub)
-{
-    sr_error_info_t *err_info = NULL;
-
-    if (!sub->stop_time.tv_sec) {
-        return NULL;
-    }
-
-    /* schedule the stop */
-    if ((err_info = srsn_create_timer(srsn_stop_timer_cb, sub, &sub->stop_time, NULL, &sub->stop_sntimer))) {
-        goto cleanup;
-    }
-
-cleanup:
-    return err_info;
 }
 
 sr_error_info_t *
@@ -344,11 +343,19 @@ srsn_sub_add(struct srsn_sub *sub)
     snstate.subs[snstate.count] = sub;
     ++snstate.count;
 
+    /* schedule the stop, its callback finds the subscription linked once it gets the lock */
+    if (sub->stop_time.tv_sec) {
+        if ((err_info = srsn_create_timer(srsn_stop_timer_cb, sub, &sub->stop_time, NULL, &sub->stop_sntimer))) {
+            srsn_sub_unlink(sub);
+            goto cleanup;
+        }
+    }
+
 cleanup:
     /* UNLOCK */
     srsn_unlock();
 
-    return NULL;
+    return err_info;
 }
 
 /**
