@@ -359,7 +359,8 @@ srsn_yang_push_on_change(sr_session_ctx_t *session, sr_datastore_t ds, const cha
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
     struct srsn_sub *s = NULL;
-    int valid;
+    int valid, rfd;
+    uint32_t id;
 
     SR_CHECK_ARG_APIRET(!session || !fd || !sub_id, NULL, err_info);
 
@@ -398,20 +399,16 @@ srsn_yang_push_on_change(sr_session_ctx_t *session, sr_datastore_t ds, const cha
     s->patch_id = 1;
     pthread_mutex_init(&s->damp_sntimer.lock, NULL);
     pthread_cond_init(&s->damp_sntimer.cond, NULL);
-
-    /* send the initial update notification */
-    if (sync_on_start && (err_info = srsn_yp_ntf_update_send(s))) {
-        goto cleanup;
-    }
+    pthread_mutex_init(&s->sync_lock, NULL);
 
     /* subscribe to sysrepo module changes */
     if ((err_info = srsn_yp_sr_subscribe(session, s, sub_no_thread))) {
         goto cleanup;
     }
 
-    /* add into subscriptions, is not accessible before */
-    if ((err_info = srsn_sub_add(s))) {
-        goto cleanup;
+    /* request the initial push-update */
+    if (sync_on_start && (err_info = srsn_yp_sync_request(s))) {
+        sr_errinfo_free(&err_info);
     }
 
     /* fill out params */
@@ -419,8 +416,15 @@ srsn_yang_push_on_change(sr_session_ctx_t *session, sr_datastore_t ds, const cha
         /* managed by the caller now */
         *sub = s->sr_sub;
     }
-    *fd = s->rfd;
-    *sub_id = s->id;
+    rfd = s->rfd;
+    id = s->id;
+
+    /* add into subscriptions, from now on another thread may terminate and free it */
+    if ((err_info = srsn_sub_add(s))) {
+        goto cleanup;
+    }
+    *fd = rfd;
+    *sub_id = id;
 
 cleanup:
     if (err_info) {
@@ -453,11 +457,8 @@ srsn_yang_push_on_change_resync(uint32_t sub_id)
         goto cleanup;
     }
 
-    /* reset patch ID */
-    srsn_yp_reset_patch_id(sub);
-
-    /* send the update notification */
-    if ((err_info = srsn_yp_ntf_update_send(sub))) {
+    /* the sync worker resets the patch ID and sends the update notification */
+    if ((err_info = srsn_yp_sync_request(sub))) {
         goto cleanup;
     }
 

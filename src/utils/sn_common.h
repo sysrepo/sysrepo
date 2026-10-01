@@ -119,6 +119,11 @@ struct srsn_state {
                 struct timespec last_notif;
                 struct srsn_timer damp_sntimer;
                 uint32_t excluded_change_count; /* explicitly excluded changes */
+
+                pthread_mutex_t sync_lock;      /**< guards the sync members below, a leaf lock */
+                pthread_t sync_tid;             /**< sync worker, 0 if not started or already joined */
+                int sync_running;               /**< whether the sync worker runs its rounds */
+                int sync_pending;               /**< whether another sync round was requested */
             };
         };
     } **subs;
