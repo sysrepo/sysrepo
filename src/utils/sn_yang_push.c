@@ -100,6 +100,104 @@ cleanup:
 }
 
 /**
+ * @brief Sync worker of an on-change subscription, sends a push-update for every requested round.
+ */
+static void *
+srsn_yp_sync_thread(void *arg)
+{
+    struct srsn_sub *sub = arg;
+    sr_error_info_t *err_info = NULL;
+
+    while (1) {
+        /* SYNC LOCK */
+        pthread_mutex_lock(&sub->sync_lock);
+
+        if (!sub->sync_pending) {
+            sub->sync_running = 0;
+
+            /* SYNC UNLOCK */
+            pthread_mutex_unlock(&sub->sync_lock);
+            break;
+        }
+        sub->sync_pending = 0;
+
+        /* SYNC UNLOCK */
+        pthread_mutex_unlock(&sub->sync_lock);
+
+        /* TIMER LOCK */
+        pthread_mutex_lock(&sub->damp_sntimer.lock);
+
+        /* the push-update supersedes a dampened change and restarts the patch IDs */
+        sr_release_data(sub->change_ntf);
+        sub->change_ntf = NULL;
+        srsn_yp_reset_patch_id(sub);
+
+        if ((err_info = srsn_yp_ntf_update_send(sub))) {
+            sr_errinfo_free(&err_info);
+        }
+
+        /* TIMER UNLOCK */
+        pthread_mutex_unlock(&sub->damp_sntimer.lock);
+    }
+
+    return NULL;
+}
+
+sr_error_info_t *
+srsn_yp_sync_request(struct srsn_sub *sub)
+{
+    sr_error_info_t *err_info = NULL;
+    int r;
+
+    /* SYNC LOCK */
+    pthread_mutex_lock(&sub->sync_lock);
+
+    sub->sync_pending = 1;
+    if (!sub->sync_running) {
+        if (sub->sync_tid) {
+            /* the previous worker finished its rounds, it is only returning */
+            pthread_join(sub->sync_tid, NULL);
+            sub->sync_tid = 0;
+        }
+
+        r = pthread_create(&sub->sync_tid, NULL, srsn_yp_sync_thread, sub);
+        if (r) {
+            sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to create a thread (%s).", strerror(r));
+            sub->sync_tid = 0;
+            sub->sync_pending = 0;
+        } else {
+            sub->sync_running = 1;
+        }
+    }
+
+    /* SYNC UNLOCK */
+    pthread_mutex_unlock(&sub->sync_lock);
+
+    return err_info;
+}
+
+void
+srsn_yp_sync_stop(struct srsn_sub *sub)
+{
+    pthread_t tid;
+
+    /* SYNC LOCK */
+    pthread_mutex_lock(&sub->sync_lock);
+
+    sub->sync_pending = 0;
+    tid = sub->sync_tid;
+    sub->sync_tid = 0;
+
+    /* SYNC UNLOCK */
+    pthread_mutex_unlock(&sub->sync_lock);
+
+    if (tid) {
+        /* the worker finishes the round in progress */
+        pthread_join(tid, NULL);
+    }
+}
+
+/**
  * @brief Timer callback for push-update notification of periodic yang-push subscriptions.
  */
 static void
@@ -189,8 +287,8 @@ srsn_yp_damp_timer_cb(void *arg, int *UNUSED(freed))
     struct srsn_sub *sub = arg;
     sr_error_info_t *err_info = NULL;
 
-    /* send the postponed on-change notification */
-    if ((err_info = srsn_yp_ntf_change_send(sub))) {
+    /* send the postponed on-change notification, unless a resync dropped it */
+    if (sub->change_ntf && (err_info = srsn_yp_ntf_change_send(sub))) {
         sr_errinfo_free(&err_info);
     }
 }

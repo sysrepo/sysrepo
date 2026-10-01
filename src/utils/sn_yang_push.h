@@ -43,6 +43,23 @@ void srsn_yp_reset_patch_id(struct srsn_sub *sub);
 sr_error_info_t *srsn_yp_ntf_update_send(struct srsn_sub *sub);
 
 /**
+ * @brief Request an asynchronous resync of a yang-push on-change subscription.
+ *
+ * @param[in] sub Subscription to resync.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *srsn_yp_sync_request(struct srsn_sub *sub);
+
+/**
+ * @brief Stop the sync worker of a yang-push on-change subscription, a resync in progress is finished.
+ *
+ * @warning @p sub MUST be unlinked first, so that no new resync can be requested.
+ *
+ * @param[in] sub Subscription to use.
+ */
+void srsn_yp_sync_stop(struct srsn_sub *sub);
+
+/**
  * @brief Create a timer and schedule periodic updates of a subscription.
  *
  * @param[in] period_ms Update period in msec.

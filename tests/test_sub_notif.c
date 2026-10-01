@@ -791,6 +791,69 @@ test_yp_on_change_dampening(void **state)
 
 /* TEST */
 static void
+test_yp_resync(void **state)
+{
+    struct state *st = *state;
+    int fd;
+    uint32_t sub_id;
+
+    /* the initial update of sync-on-start */
+    assert_int_equal(SR_ERR_OK, srsn_yang_push_on_change(st->sess, SR_DS_RUNNING, "/test:test-leaf", 0, 1, NULL,
+            NULL, 0, NULL, &fd, &sub_id));
+    yp_expect_notif(st, fd, 2000, "push-update", NULL);
+
+    yp_set_test_leaf(st, "1");
+    yp_expect_notif(st, fd, 2000, "push-change-update", "patch-1");
+    yp_set_test_leaf(st, "2");
+    yp_expect_notif(st, fd, 2000, "push-change-update", "patch-2");
+
+    /* the resync is sent asynchronously and restarts the patch IDs */
+    assert_int_equal(SR_ERR_OK, srsn_yang_push_on_change_resync(sub_id));
+    yp_expect_notif(st, fd, 2000, "push-update", NULL);
+    yp_set_test_leaf(st, "3");
+    yp_expect_notif(st, fd, 2000, "push-change-update", "patch-1");
+
+    /* cleanup */
+    assert_int_equal(SR_ERR_OK, srsn_terminate(sub_id, NULL));
+    close(fd);
+    assert_int_equal(SR_ERR_OK, sr_delete_item(st->sess, "/test:test-leaf", 0));
+    assert_int_equal(SR_ERR_OK, sr_apply_changes(st->sess, 0));
+}
+
+/* TEST */
+static void
+test_yp_resync_dampened(void **state)
+{
+    struct state *st = *state;
+    int fd;
+    uint32_t sub_id;
+
+    assert_int_equal(SR_ERR_OK, srsn_yang_push_on_change(st->sess, SR_DS_RUNNING, "/test:test-leaf", 1000, 0, NULL,
+            NULL, 0, NULL, &fd, &sub_id));
+
+    /* the second change is dampened */
+    yp_set_test_leaf(st, "1");
+    yp_expect_notif(st, fd, 2000, "push-change-update", "patch-1");
+    yp_set_test_leaf(st, "2");
+
+    /* the resync supersedes the dampened change, which is never sent */
+    assert_int_equal(SR_ERR_OK, srsn_yang_push_on_change_resync(sub_id));
+    yp_expect_notif(st, fd, 2000, "push-update", NULL);
+    assert_int_equal(SR_ERR_TIME_OUT, srsn_poll(fd, 1500));
+
+    /* a later change starts the patch IDs over */
+    yp_set_test_leaf(st, "3");
+    yp_expect_notif(st, fd, 2000, "push-change-update", "patch-1");
+
+    /* cleanup */
+    assert_int_equal(SR_ERR_OK, srsn_terminate(sub_id, NULL));
+    close(fd);
+    assert_int_equal(SR_ERR_OK, sr_delete_item(st->sess, "/test:test-leaf", 0));
+    assert_int_equal(SR_ERR_OK, sr_apply_changes(st->sess, 0));
+}
+
+/* TEST */
+static void
 test_yp_on_change_no_module(void **state)
 {
     struct state *st = *state;
@@ -1139,6 +1202,8 @@ main(void)
         cmocka_unit_test(test_yp_periodic),
         cmocka_unit_test(test_yp_on_change),
         cmocka_unit_test(test_yp_on_change_dampening),
+        cmocka_unit_test(test_yp_resync),
+        cmocka_unit_test(test_yp_resync_dampened),
         cmocka_unit_test(test_yp_on_change_no_module),
         cmocka_unit_test(test_read_eof),
         cmocka_unit_test_setup_teardown(test_nacm_sub, setup_nacm, teardown_nacm),

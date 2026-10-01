@@ -143,7 +143,8 @@ int srsn_yang_push_periodic(sr_session_ctx_t *session, sr_datastore_t ds, const 
  * @param[in] ds Datastore to subscribe to.
  * @param[in] xpath_filter Optional XPath filter to use.
  * @param[in] dampening_period_ms Optional notification dampening period in ms.
- * @param[in] sync_on_start Whether to start the subscription with a full datastore content notification.
+ * @param[in] sync_on_start Whether to start the subscription with a full datastore content notification. A failure
+ * to send it is only logged.
  * @param[in] excluded_changes Optional array of changes to be excluded. Set index of a ::srsn_yp_change_t to 1 for it
  * to be excluded, to 0 to be included.
  * @param[in] stop_time Optional stop-time of the subscription. Once reached, the `subscription-terminated' notification
@@ -160,6 +161,8 @@ int srsn_yang_push_on_change(sr_session_ctx_t *session, sr_datastore_t ds, const
 
 /**
  * @brief Resync a yang-push on-change subscription.
+ *
+ * The 'push-update' notification is sent in the background, a failure to send it is only logged.
  *
  * @param[in] sub_id Subscription ID of the subscription to resync.
  * @return Error code (::SR_ERR_OK on success).

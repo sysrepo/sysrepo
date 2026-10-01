@@ -36,6 +36,7 @@
 #include "compat.h"
 #include "log.h"
 #include "ly_wrap.h"
+#include "sn_yang_push.h"
 #include "sysrepo.h"
 
 static struct srsn_state snstate = {
@@ -148,6 +149,7 @@ srsn_sub_free_unsubscribe(struct srsn_sub *sub)
     }
     if (sub->type == SRSN_YANG_PUSH_ON_CHANGE) {
         srsn_update_timer(NULL, NULL, &sub->damp_sntimer);
+        srsn_yp_sync_stop(sub);
     }
 }
 
@@ -201,6 +203,7 @@ srsn_sub_free(struct srsn_sub *sub)
             sr_errinfo_free(&err_info);
         }
         pthread_cond_destroy(&sub->damp_sntimer.cond);
+        pthread_mutex_destroy(&sub->sync_lock);
         break;
     }
 
