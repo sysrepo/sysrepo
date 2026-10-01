@@ -296,6 +296,8 @@ static void
 test_configured_replay(void **state)
 {
     struct tnotifd_state *st = *state;
+    struct lyd_node *notifs[3];
+    int i;
 
     setup_sub(st, 93, "stream-xpath-filter", NCC, NULL);
     skip_notif(st, SUB_STARTED);
@@ -316,7 +318,13 @@ test_configured_replay(void **state)
     apply_changes(st);
 
     /* the daemon does not order these three relative to each other */
-    expect_notifs(st, (const char *[]) {SUB_MODIFIED, NCC, REPLAY_COMPLETED, NULL});
+    expect_notifs(st, (const char *[]) {SUB_MODIFIED, NCC, REPLAY_COMPLETED, NULL}, notifs);
+
+    /* the replay-completed record names the configured subscription */
+    assert_notif_leaf(notifs[2], "id", "93");
+    for (i = 0; i < 3; ++i) {
+        lyd_free_all(notifs[i]);
+    }
 }
 
 /**
