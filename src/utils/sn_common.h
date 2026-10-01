@@ -178,25 +178,29 @@ void srsn_sub_free_unsubscribe(struct srsn_sub *sub);
 /**
  * @brief Free a subscription.
  *
+ * @warning @p sub MUST NOT be in internal subscriptions, unlink it first if added.
+ *
  * @param[in] sub Subscription to free.
  */
 void srsn_sub_free(struct srsn_sub *sub);
 
 /**
- * @brief Schedule the stop-time of a subscription, if any.
- *
- * @param[in] sub Subscription to use.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *srsn_sub_schedule_stop(struct srsn_sub *sub);
-
-/**
- * @brief Add a prepared and valid subscription into internal subscriptions.
+ * @brief Add a prepared and valid subscription into internal subscriptions and schedule its stop-time.
  *
  * @param[in] sub Subscription to add.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *srsn_sub_add(struct srsn_sub *sub);
+
+/**
+ * @brief Remove a subscription from internal subscriptions.
+ *
+ * @warning The caller MUST hold the subscription lock.
+ *
+ * @param[in] sub Subscription to remove.
+ * @return Whether @p sub was found and removed.
+ */
+int srsn_sub_unlink(struct srsn_sub *sub);
 
 /**
  * @brief Collect information about a single subscription state.

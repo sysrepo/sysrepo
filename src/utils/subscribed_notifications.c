@@ -188,7 +188,8 @@ srsn_subscribe(sr_session_ctx_t *session, const char *stream, const char *xpath_
     const struct lys_module *ly_mod;
     struct srsn_sub *s = NULL;
     struct timespec cur_ts, replay_start;
-    int valid;
+    int valid, rfd;
+    uint32_t id;
 
     SR_CHECK_ARG_APIRET(!session || !fd || !sub_id, NULL, err_info);
 
@@ -245,11 +246,6 @@ srsn_subscribe(sr_session_ctx_t *session, const char *stream, const char *xpath_
         goto cleanup;
     }
 
-    /* add into subscriptions, is not accessible before */
-    if ((err_info = srsn_sub_add(s))) {
-        goto cleanup;
-    }
-
     /* fill out params */
     if (sub) {
         /* managed by the caller now */
@@ -258,13 +254,15 @@ srsn_subscribe(sr_session_ctx_t *session, const char *stream, const char *xpath_
     if (replay_start_time) {
         *replay_start_time = replay_start;
     }
-    *fd = s->rfd;
-    *sub_id = s->id;
+    rfd = s->rfd;
+    id = s->id;
 
-    /* schedule the stop */
-    if ((err_info = srsn_sub_schedule_stop(s))) {
+    /* add into subscriptions, from now on another thread may terminate and free it */
+    if ((err_info = srsn_sub_add(s))) {
         goto cleanup;
     }
+    *fd = rfd;
+    *sub_id = id;
 
 cleanup:
     if (err_info) {
@@ -287,6 +285,8 @@ srsn_yang_push_periodic(sr_session_ctx_t *session, sr_datastore_t ds, const char
     sr_error_info_t *err_info = NULL;
     struct srsn_sub *s = NULL;
     struct lys_module *ly_mod;
+    int rfd;
+    uint32_t id;
 
     SR_CHECK_ARG_APIRET(!session || !fd || !sub_id, NULL, err_info);
 
@@ -330,19 +330,15 @@ srsn_yang_push_periodic(sr_session_ctx_t *session, sr_datastore_t ds, const char
         goto cleanup;
     }
 
-    /* add into subscriptions, is not accessible before */
+    rfd = s->rfd;
+    id = s->id;
+
+    /* add into subscriptions, from now on another thread may terminate and free it */
     if ((err_info = srsn_sub_add(s))) {
         goto cleanup;
     }
-
-    /* fill out params */
-    *fd = s->rfd;
-    *sub_id = s->id;
-
-    /* schedule the stop */
-    if ((err_info = srsn_sub_schedule_stop(s))) {
-        goto cleanup;
-    }
+    *fd = rfd;
+    *sub_id = id;
 
 cleanup:
     if (err_info) {
@@ -425,11 +421,6 @@ srsn_yang_push_on_change(sr_session_ctx_t *session, sr_datastore_t ds, const cha
     }
     *fd = s->rfd;
     *sub_id = s->id;
-
-    /* schedule the stop */
-    if ((err_info = srsn_sub_schedule_stop(s))) {
-        goto cleanup;
-    }
 
 cleanup:
     if (err_info) {
@@ -770,7 +761,6 @@ API int
 srsn_terminate(uint32_t sub_id, const char *reason)
 {
     sr_error_info_t *err_info = NULL;
-    int rc = SR_ERR_OK;
     struct srsn_sub *sub;
 
     /* LOCK */
@@ -778,9 +768,16 @@ srsn_terminate(uint32_t sub_id, const char *reason)
         return sr_api_ret(NULL, err_info);
     }
 
-    if (!(sub = srsn_find(sub_id))) {
-        rc = SR_ERR_NOT_FOUND;
-        goto cleanup;
+    /* once unlinked, nothing else can find the subscription */
+    if ((sub = srsn_find(sub_id))) {
+        srsn_sub_unlink(sub);
+    }
+
+    /* UNLOCK, the teardown waits for callbacks and timers that may wait for the lock */
+    srsn_unlock();
+
+    if (!sub) {
+        return SR_ERR_NOT_FOUND;
     }
 
     /* unsubscribe to prevent any more notifications to be sent */
@@ -788,19 +785,13 @@ srsn_terminate(uint32_t sub_id, const char *reason)
 
     if (reason) {
         /* send the subscription-terminated notification */
-        if ((err_info = srsn_ntf_send_terminated(sub, reason))) {
-            goto cleanup;
-        }
+        err_info = srsn_ntf_send_terminated(sub, reason);
     }
 
     /* free subscription */
     srsn_sub_free(sub);
 
-cleanup:
-    /* UNLOCK */
-    srsn_unlock();
-
-    return err_info ? sr_api_ret(NULL, err_info) : rc;
+    return sr_api_ret(NULL, err_info);
 }
 
 API int
