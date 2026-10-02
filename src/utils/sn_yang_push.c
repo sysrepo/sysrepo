@@ -1005,25 +1005,39 @@ srsn_yp_on_change_modify(struct srsn_sub *sub, uint32_t dampening_period_ms)
     sr_error_info_t *err_info = NULL;
     struct timespec next_notif;
 
-    if (dampening_period_ms != sub->dampening_period_ms) {
-        if (!dampening_period_ms) {
-            /* stop the timer */
-            srsn_update_timer(NULL, NULL, &sub->damp_sntimer);
+    if (dampening_period_ms == sub->dampening_period_ms) {
+        goto cleanup;
+    }
 
-            /* send the prepared notification */
-            if (sub->change_ntf && (err_info = srsn_yp_ntf_change_send(sub))) {
-                goto cleanup;
-            }
-        } else if (sub->damp_sntimer.tid) {
-            /* learn when the next notification is due */
-            next_notif = sr_time_ts_add(&sub->last_notif, dampening_period_ms);
+    /* TIMER LOCK */
+    pthread_mutex_lock(&sub->damp_sntimer.lock);
 
-            /* update the timer */
-            srsn_update_timer(&next_notif, NULL, &sub->damp_sntimer);
+    /* set the new period before the timer is stopped */
+    sub->dampening_period_ms = dampening_period_ms;
+
+    /* learn when the next notification is due */
+    next_notif = sr_time_ts_add(&sub->last_notif, dampening_period_ms);
+
+    /* TIMER UNLOCK */
+    pthread_mutex_unlock(&sub->damp_sntimer.lock);
+
+    if (dampening_period_ms) {
+        /* move the timer of a dampened change, if there is one */
+        srsn_update_timer(&next_notif, NULL, &sub->damp_sntimer);
+    } else {
+        /* stop the timer */
+        srsn_update_timer(NULL, NULL, &sub->damp_sntimer);
+
+        /* TIMER LOCK */
+        pthread_mutex_lock(&sub->damp_sntimer.lock);
+
+        /* send the prepared notification */
+        if (sub->change_ntf) {
+            err_info = srsn_yp_ntf_change_send(sub);
         }
 
-        /* update stored params */
-        sub->dampening_period_ms = dampening_period_ms;
+        /* TIMER UNLOCK */
+        pthread_mutex_unlock(&sub->damp_sntimer.lock);
     }
 
 cleanup:
