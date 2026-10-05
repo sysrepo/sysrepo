@@ -1022,6 +1022,68 @@ test_union(void **state)
 }
 
 static void
+test_union_hints(void **state)
+{
+    struct state *st = (struct state *)*state;
+    const struct ly_ctx *ly_ctx;
+    struct lyd_node *edit;
+    sr_data_t *subtree;
+    const char *str2;
+    char *str;
+    int ret;
+
+    /* create un-leaf as a string */
+    str2 =
+            "{\n"
+            "  \"test:cont\": {\n"
+            "    \"un-leaf\": \"50\"\n"
+            "  }\n"
+            "}\n";
+    ly_ctx = sr_acquire_context(st->conn);
+    assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(ly_ctx, str2, LYD_JSON, LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, &edit));
+
+    ret = sr_edit_batch(st->sess, edit, "merge");
+    lyd_free_all(edit);
+    sr_release_context(st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check datastore contents */
+    ret = sr_get_subtree(st->sess, "/test:cont", 0, &subtree);
+    assert_int_equal(ret, SR_ERR_OK);
+    lyd_print_mem(&str, subtree->tree, LYD_JSON, LYD_PRINT_SIBLINGS);
+    sr_release_data(subtree);
+    assert_string_equal(str, str2);
+    free(str);
+
+    /* merge un-leaf again as a string but with a different value */
+    str2 =
+            "{\n"
+            "  \"test:cont\": {\n"
+            "    \"un-leaf\": \"25\"\n"
+            "  }\n"
+            "}\n";
+    ly_ctx = sr_acquire_context(st->conn);
+    assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(ly_ctx, str2, LYD_JSON, LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, &edit));
+
+    ret = sr_edit_batch(st->sess, edit, "merge");
+    lyd_free_all(edit);
+    sr_release_context(st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check datastore contents */
+    ret = sr_get_subtree(st->sess, "/test:cont", 0, &subtree);
+    assert_int_equal(ret, SR_ERR_OK);
+    lyd_print_mem(&str, subtree->tree, LYD_JSON, LYD_PRINT_SIBLINGS);
+    sr_release_data(subtree);
+    assert_string_equal(str, str2);
+    free(str);
+}
+
+static void
 test_decimal64(void **state)
 {
     struct state *st = (struct state *)*state;
@@ -1508,6 +1570,7 @@ main(void)
         cmocka_unit_test(test_purge),
         cmocka_unit_test(test_top_op),
         cmocka_unit_test_teardown(test_union, clear_test),
+        cmocka_unit_test_teardown(test_union_hints, clear_test),
         cmocka_unit_test(test_decimal64),
         cmocka_unit_test(test_mutiple_types),
         cmocka_unit_test(test_edit_forbid_node_types),

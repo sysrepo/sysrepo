@@ -1721,8 +1721,8 @@ sr_edit_apply_replace(struct lyd_node *data_match, int val_equal, const struct l
                 return err_info;
             }
 
-            /* modify the node */
-            if ((err_info = sr_lyd_change_term(data_match, lyd_get_value(edit_node), 1))) {
+            /* replace the value of the node */
+            if ((err_info = sr_lyd_replace_term(data_match, edit_node))) {
                 return err_info;
             }
 

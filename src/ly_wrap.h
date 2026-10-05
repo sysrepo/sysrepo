@@ -598,6 +598,17 @@ sr_error_info_t *sr_lyd_insert_after(struct lyd_node *sibling, struct lyd_node *
 sr_error_info_t *sr_lyd_change_term(struct lyd_node *node, const char *value, int ignore_fail);
 
 /**
+ * @brief Replace value of target with the one in the source.
+ *
+ * Correctly handle unions and value hints to avoid changing the resolved types.
+ *
+ * @param[in,out] trg Target node to modify.
+ * @param[in] src Source node to use.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lyd_replace_term(struct lyd_node *trg, const struct lyd_node *src);
+
+/**
  * @brief Get string value of an any node.
  *
  * @param[in] node Any node.

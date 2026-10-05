@@ -1337,6 +1337,82 @@ cleanup:
 }
 
 sr_error_info_t *
+sr_lyd_replace_term(struct lyd_node *trg, const struct lyd_node *src)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node_term *t;
+    const struct lyd_node_term *s;
+    struct lyd_node *parent;
+    const struct lyd_node *child;
+    struct lyplg_type *plg;
+
+    assert((trg->schema == src->schema) && (trg->schema->nodetype & LYD_NODE_TERM));
+
+    t = (struct lyd_node_term *)trg;
+    s = (const struct lyd_node_term *)src;
+
+    /* get the plugin */
+    plg = lysc_get_type_plugin(t->value.realtype->plugin_ref);
+
+    /* free the current value */
+    plg->free(LYD_CTX(trg), &t->value);
+
+    sr_ly_log_setup();
+
+    /* duplicate the source value */
+    if (plg->duplicate(LYD_CTX(trg), &s->value, &t->value)) {
+        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        goto cleanup;
+    }
+
+    if (trg->flags & LYD_DEFAULT) {
+        /* remove the default flag ... */
+        trg->flags &= ~LYD_DEFAULT;
+
+        /* ... from parents, too */
+        parent = trg->parent;
+        while (parent && (parent->flags & LYD_DEFAULT)) {
+            parent->flags &= ~LYD_DEFAULT;
+            parent = parent->parent;
+        }
+    }
+
+    if (src->flags & LYD_DEFAULT) {
+        /* set the default flag ... */
+        trg->flags |= LYD_DEFAULT;
+
+        /* ... for parents, too */
+        parent = trg->parent;
+        while (parent) {
+            if (!parent->schema || (parent->flags & LYD_DEFAULT) || !lysc_is_np_cont(parent->schema)) {
+                /* not a non-dflt NP container */
+                break;
+            }
+
+            LY_LIST_FOR(lyd_child(parent), child) {
+                if (!(child->flags & LYD_DEFAULT)) {
+                    break;
+                }
+            }
+            if (child) {
+                /* explicit child, no dflt change */
+                break;
+            }
+
+            parent->flags |= LYD_DEFAULT;
+            parent = parent->parent;
+        }
+    }
+
+    /* set the new flag */
+    trg->flags |= LYD_NEW;
+
+cleanup:
+    sr_ly_log_revert();
+    return err_info;
+}
+
+sr_error_info_t *
 sr_lyd_any_value_str(const struct lyd_node *node, char **str)
 {
     sr_error_info_t *err_info = NULL;

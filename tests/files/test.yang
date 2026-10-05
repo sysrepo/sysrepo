@@ -77,6 +77,13 @@ module test {
         anyxml anyx;
 
         anydata anyd;
+
+        leaf un-leaf {
+            type union {
+                type uint32;
+                type string;
+            }
+        }
     }
 
     list l3 {
