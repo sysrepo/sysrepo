@@ -1,0 +1,67 @@
+module un {
+    yang-version 1.1;
+    namespace "urn:un";
+    prefix un;
+
+    container cont {
+        leaf-list ll {
+            type union {
+                type uint32;
+                type string;
+            }
+        }
+
+        leaf-list ll2 {
+            ordered-by user;
+            type union {
+                type uint32;
+                type string;
+            }
+        }
+
+        list l {
+            key "k1 k2 k3";
+            leaf k1 {
+                type union {
+                    type uint32;
+                    type string;
+                }
+            }
+            leaf k2 {
+                type union {
+                    type uint32;
+                    type string;
+                }
+            }
+            leaf k3 {
+                type union {
+                    type uint32;
+                    type string;
+                }
+            }
+        }
+
+        list l2 {
+            ordered-by user;
+            key "k1 k2 k3";
+            leaf k1 {
+                type union {
+                    type uint32;
+                    type string;
+                }
+            }
+            leaf k2 {
+                type union {
+                    type uint32;
+                    type string;
+                }
+            }
+            leaf k3 {
+                type union {
+                    type uint32;
+                    type string;
+                }
+            }
+        }
+    }
+}
