@@ -18,7 +18,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
-#include <poll.h>
 #include <setjmp.h>
 #include <signal.h>
 #include <stdarg.h>
@@ -61,6 +60,9 @@
 
 /** Total deadline for operational data polling (milliseconds), consumed only until the value appears */
 #define OPER_WAIT_MS 25000
+
+/** Deadline for sysrepo-notifd to become ready after it is started (milliseconds) */
+#define NOTIFD_START_TIMEOUT_MS 15000
 
 /** Multiplier applied to the timeouts that are consumed in full when running under valgrind */
 #define VALGRIND_TIMEOUT_MUL 5
@@ -181,10 +183,8 @@ int
 start_notifd(pid_t *pid)
 {
     pid_t child_pid;
-    int pipefd[2];
-    struct pollfd pfd;
-    int i, status, ret, logfd;
-    char c;
+    int status, logfd;
+    uint32_t elapsed_ms;
     char run_dir[256], log_path[512], pid_path[512];
     const char *test_name;
 
@@ -208,82 +208,45 @@ start_notifd(pid_t *pid)
     }
     TLOG_INF("sysrepo-notifd log file \"%s\"", log_path);
 
-    /* create pipe with CLOEXEC so exec() automatically closes the write end */
-    if (pipe2(pipefd, O_CLOEXEC) < 0) {
+    /* a PID file left behind by a killed daemon would pass for readiness */
+    if (unlink(pid_path) && (errno != ENOENT)) {
+        TLOG_ERR("Failed to remove \"%s\" (%s)", pid_path, strerror(errno));
+        return -1;
+    }
+
+    /* redirect the daemon output into its own log file */
+    logfd = open(log_path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 00600);
+    if (logfd == -1) {
+        TLOG_ERR("Failed to open \"%s\" (%s)", log_path, strerror(errno));
         return -1;
     }
 
     child_pid = fork();
-    if (child_pid < 0) {
-        close(pipefd[0]);
-        close(pipefd[1]);
-        return -1;
-    }
-
-    if (child_pid == 0) {
-        /* child process - close read end, keep write end for failure signaling */
-        close(pipefd[0]);
-
-        /* redirect the daemon output into its own log file */
-        logfd = open(log_path, O_WRONLY | O_CREAT | O_TRUNC, 00600);
-        if (logfd == -1) {
-            goto child_error;
-        }
+    if (!child_pid) {
         dup2(logfd, STDOUT_FILENO);
         dup2(logfd, STDERR_FILENO);
-        close(logfd);
-
         execlp(NOTIFD_PATH, "sysrepo-notifd", "-d", "-v", "info", "-s", SCHEMA_DIR, "-p", pid_path, (char *)NULL);
-
-child_error:
-        /* setup or exec failed - signal parent by writing to pipe before exiting */
-        c = 1;
-        if (write(pipefd[1], &c, 1) == -1) {
-            /* nothing more can be done, the exit code signals the failure as well */
-        }
         _exit(1);
     }
-
-    /* parent - close write end so only the child holds it */
-    close(pipefd[1]);
-
-    /* POLLIN: exec failed, POLLHUP: exec succeeded and CLOEXEC closed the write end */
-    pfd.fd = pipefd[0];
-    pfd.events = POLLIN;
-    ret = poll(&pfd, 1, 3000);
-
-    close(pipefd[0]);
-
-    if (ret < 0) {
-        TLOG_ERR("poll() failed while waiting for daemon exec: %s", strerror(errno));
-        kill(child_pid, SIGKILL);
-        waitpid(child_pid, NULL, 0);
+    close(logfd);
+    if (child_pid < 0) {
+        TLOG_ERR("fork() failed (%s)", strerror(errno));
         return -1;
     }
 
-    if (ret == 0) {
-        TLOG_ERR("Timeout waiting for sysrepo-notifd exec");
-        kill(child_pid, SIGKILL);
-        waitpid(child_pid, NULL, 0);
-        return -1;
-    }
-
-    if (pfd.revents & POLLIN) {
-        /* setup or exec failed - child wrote error byte before _exit() */
-        waitpid(child_pid, &status, 0);
-        TLOG_ERR("sysrepo-notifd failed to start with status %d", status);
-        return -1;
-    }
-
-    /* POLLHUP - exec succeeded, daemon binary is now running */
-
-    /* brief crash detection: if it dies within 200ms, report error */
-    for (i = 0; i < 10; i++) {
-        usleep(20000);
+    /* wait for the PID file the daemon creates once it is subscribed, a failed exec exits the child */
+    for (elapsed_ms = 0; access(pid_path, F_OK); elapsed_ms += OPER_POLL_MS) {
         if (waitpid(child_pid, &status, WNOHANG) != 0) {
             TLOG_ERR("sysrepo-notifd exited prematurely with status %d", status);
             return -1;
         }
+        if (elapsed_ms >= NOTIFD_START_TIMEOUT_MS) {
+            TLOG_ERR("Timeout waiting for sysrepo-notifd to become ready");
+            kill(child_pid, SIGKILL);
+            waitpid(child_pid, NULL, 0);
+            return -1;
+        }
+        usleep(OPER_POLL_MS * 1000);
     }
 
     *pid = child_pid;
