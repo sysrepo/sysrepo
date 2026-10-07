@@ -31,7 +31,11 @@
 #define SRPDS_DB_LIST_KEY_LEN_BITS 7 /* databases use only 7 bits in a byte to store the length of a list key */
 #define SRPDS_DB_LIST_KEY_GET_LEN(first_byte, second_byte) \
         (((uint32_t)(first_byte) << SRPDS_DB_LIST_KEY_LEN_BITS) | second_byte) /* get length of a list key */
+#define SRPDS_DB_LIST_KEY_TYPE_INFO_BYTES 5 /* databases store the union member type index of a list key in one byte
+        and its value hints in four bytes */
 #define SRPDS_DB_UO_ELEMS_GAP_SIZE 1024 /* initial gap between elements in user-ordered lists and leaf-lists */
+
+#define SRPDS_DB_NO_TYPE_IDX UINT32_MAX /* the value is not a union member, no member type index stored */
 
 enum srpds_db_ly_types {
     SRPDS_DB_LY_NONE = 0,      /* none */
@@ -64,11 +68,22 @@ typedef struct srpds_db_userordered_lists_s {
 } srpds_db_userordered_lists_t;
 
 /**
+ * @brief Get the union member type index and value hints of a data node value, if any.
+ *
+ * @param[in] node Leaf, leaf-list or list key leaf node to examine.
+ * @param[out] type_idx Index of the resolved value member type in the union definition
+ *      (::SRPDS_DB_NO_TYPE_IDX if the schema type is not a union or the value is not resolved yet).
+ * @param[out] hints Value hints of the resolved union member type (0 if not a union).
+ */
+void srpds_get_union_info(const struct lyd_node *node, uint32_t *type_idx, uint32_t *hints);
+
+/**
  * @brief Concatenate the keys of a list instance into a single string.
  *
  * @param[in] plg_name Plugin name.
  * @param[in] node List instance.
- * @param[out] keys String containing all of the keys and their respective lengths.
+ * @param[out] keys String containing all of the keys, their respective lengths and
+ *      for union-typed keys also the union member type index and value hints.
  * @param[out] keys_length Length of the @p keys .
  * @return NULL on success;
  * @return Sysrepo error info on error.
@@ -80,14 +95,18 @@ sr_error_info_t *srpds_concat_key_values(const char *plg_name, const struct lyd_
  * @brief Goes through concatenated keys and separates them.
  *
  * @param[in] plg_name Plugin name.
- * @param[in] keys Concatenated keys and their respective lengths
- *      (length is the first two bytes and then the key).
+ * @param[in] keys Concatenated keys and their respective lengths and type information
+ *      (length is the first two bytes, then the key, then one byte of the union member type index
+ *      and four bytes of the value hints).
  * @param[out] parsed Array of keys.
  * @param[out] bit_lengths Array of key lengths in bits.
+ * @param[out] key_type_idxs Array of key union member type indexes (::SRPDS_DB_NO_TYPE_IDX if not a union).
+ * @param[out] key_hints Array of key value hints.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
-sr_error_info_t *srpds_parse_keys(const char *plg_name, const char *keys, char ***parsed, uint32_t **bit_lengths);
+sr_error_info_t *srpds_parse_keys(const char *plg_name, const char *keys, char ***parsed, uint32_t **bit_lengths,
+        uint32_t **key_type_idxs, uint32_t **key_hints);
 
 /**
  * @brief Iterates through @p path in the direction @p direction ,
@@ -254,9 +273,12 @@ void srpds_cleanup_uo_lists(srpds_db_userordered_lists_t *uo_lists);
  * @param[in] module_name Module name of the node.
  * @param[in] value Value of the node.
  * @param[in] hints Hints of the value.
+ * @param[in] type_idx Union member type index of the value (::SRPDS_DB_NO_TYPE_IDX if not stored).
  * @param[in,out] dflt_flag Whether the node has default value.
  * @param[in] keys Array of the keys of the node (list instance).
  * @param[in] bit_lengths Array of the lengths of the @p keys in bits.
+ * @param[in] key_type_idxs Array of the union member type indexes of the @p keys .
+ * @param[in] key_hints Array of the value hints of the @p keys .
  * @param[in] order Order of the node in the userordered list or leaflist.
  * @param[in] path_no_pred Path to the node without predicate.
  * @param[in] meta_count Number of metadata stored.
@@ -271,7 +293,8 @@ void srpds_cleanup_uo_lists(srpds_db_userordered_lists_t *uo_lists);
  */
 sr_error_info_t *srpds_add_mod_data(const char *plg_name, const struct ly_ctx *ly_ctx, sr_datastore_t ds,
         const char *path, const char *name, enum srpds_db_ly_types type, const char *module_name, const char *value,
-        uint32_t hints, int *dflt_flag, const char **keys, uint32_t *bit_lengths, int64_t order, const char *path_no_pred,
+        uint32_t hints, uint32_t type_idx, int *dflt_flag, const char **keys, uint32_t *bit_lengths,
+        const uint32_t *key_type_idxs, const uint32_t *key_hints, int64_t order, const char *path_no_pred,
         int32_t meta_count, const char *meta_name, const char *meta_value, srpds_db_userordered_lists_t *uo_lists,
         struct lyd_node ***parent_nodes, size_t *pnodes_size, struct lyd_node **mod_data);
 

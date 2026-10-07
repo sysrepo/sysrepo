@@ -777,7 +777,7 @@ srpds_load_all(redisContext *ctx, const struct lys_module *mod, sr_datastore_t d
     enum srpds_db_ly_types type;
     int dflt_flag = 0;
     char **keys = NULL;
-    uint32_t *bit_lengths = NULL;
+    uint32_t *bit_lengths = NULL, *key_type_idxs = NULL, *key_hints = NULL, type_idx = SRPDS_DB_NO_TYPE_IDX;
     int32_t meta_count = 0;
     const char *meta_name = NULL, *meta_value = NULL;
     srpds_db_userordered_lists_t uo_lists = {0};
@@ -800,8 +800,8 @@ srpds_load_all(redisContext *ctx, const struct lys_module *mod, sr_datastore_t d
     *   |    Dataset [ a_path | b_name | c_type | d_module_name | f_keys | m_path_modif | n_meta_count | {metadata} ]
     *   |
     *   | 3) leafs and leaf-lists (LYS_LEAF and LYS_LEAFLIST)
-    *   |    Dataset [ a_path | b_name | c_type | d_module_name | e_dflt_flag | g_value | m_path_modif | n_meta_count
-    *   |            | {metadata} ]
+    *   |    Dataset [ a_path | b_name | c_type | d_module_name | e_dflt_flag | g_value | {h_hints | o_type_idx}
+    *   |            | m_path_modif | n_meta_count | {metadata} ]
     *   |
     *   | 4) anydata and anyxml (LYS_ANYDATA and LYS_ANYXML)
     *   |    Dataset [ a_path | b_name | c_type | d_module_name | e_dflt_flag | g_value | h_hints | m_path_modif
@@ -812,8 +812,8 @@ srpds_load_all(redisContext *ctx, const struct lys_module *mod, sr_datastore_t d
     *   |            | l_is_prev_empty | m_path_modif | n_meta_count | {metadata} ]
     *   |
     *   | 6) user-ordered leaf-lists
-    *   |    Dataset [ a_path | b_name | c_type | d_module_name | e_dflt_flag | g_value | i_order | j_path_no_pred
-    *   |            | k_prev | l_is_prev_empty | m_path_modif | n_meta_count | {metadata} ]
+    *   |    Dataset [ a_path | b_name | c_type | d_module_name | e_dflt_flag | g_value | {h_hints | o_type_idx}
+    *   |            | i_order | j_path_no_pred | k_prev | l_is_prev_empty | m_path_modif | n_meta_count | {metadata} ]
     *   |
     *   | 7) opaque nodes
     *   |    Dataset [ a_path | b_name | c_type | d_module_name | g_value | m_path_modif | n_attr_count
@@ -825,6 +825,7 @@ srpds_load_all(redisContext *ctx, const struct lys_module *mod, sr_datastore_t d
     *   | field names are prefixed with a letter so that they can be quickly identified based on this letter
     *   | module_name = "" - use parent's module | name - use the module specified by this name
     *   | {metadata}  = meta_count number of fields containing metadata of the node
+    *   | h_hints and o_type_idx = value hints and union member type index, stored only for union values
     *
     *   Metadata and MaxOrder
     *   | 1) global metadata
@@ -899,7 +900,8 @@ srpds_load_all(redisContext *ctx, const struct lys_module *mod, sr_datastore_t d
                 case 'f':
                     /* get keys */
                     value = partial->element[j + 1]->str;
-                    if ((err_info = srpds_parse_keys(plugin_name, value, &keys, &bit_lengths))) {
+                    if ((err_info = srpds_parse_keys(plugin_name, value, &keys, &bit_lengths, &key_type_idxs,
+                            &key_hints))) {
                         goto cleanup;
                     }
                     break;
@@ -925,6 +927,10 @@ srpds_load_all(redisContext *ctx, const struct lys_module *mod, sr_datastore_t d
                 case 'n':
                     meta_count = (int32_t)strtoll(partial->element[j + 1]->str, NULL, 0);
                     break;
+                case 'o':
+                    /* get union member type index */
+                    type_idx = (uint64_t)strtoull(partial->element[j + 1]->str, NULL, 0);
+                    break;
                 case 'y':
                     /* get meta name */
                     meta_name = partial->element[j + 1]->str;
@@ -941,14 +947,24 @@ srpds_load_all(redisContext *ctx, const struct lys_module *mod, sr_datastore_t d
 
             /* add a new node to mod_data */
             if ((err_info = srpds_add_mod_data(plugin_name, mod->ctx, ds, path, name, type, module_name, value,
-                    hints, &dflt_flag, (const char **)keys, bit_lengths, order, path_no_pred, meta_count, meta_name,
+                    hints, type_idx, &dflt_flag, (const char **)keys, bit_lengths, key_type_idxs, key_hints, order,
+                    path_no_pred, meta_count, meta_name,
                     meta_value, &uo_lists, &parent_nodes, &pnodes_size, mod_data))) {
                 goto cleanup;
             }
+
+            /* reset union member type index and hints */
+            type_idx = SRPDS_DB_NO_TYPE_IDX;
+            hints = 0;
+
             free(keys);
             free(bit_lengths);
+            free(key_type_idxs);
+            free(key_hints);
             keys = NULL;
             bit_lengths = NULL;
+            key_type_idxs = NULL;
+            key_hints = NULL;
         }
 
         cursor = reply->element[1]->integer;
@@ -974,6 +990,8 @@ srpds_load_all(redisContext *ctx, const struct lys_module *mod, sr_datastore_t d
 cleanup:
     free(keys);
     free(bit_lengths);
+    free(key_type_idxs);
+    free(key_hints);
     free(parent_nodes);
     srpds_cleanup_uo_lists(&uo_lists);
     srpds_argv_destroy(&argv);
@@ -1128,6 +1146,8 @@ cleanup:
  * @param[in] module_name Name of the node module.
  * @param[in] dflt_flag Default flag of the node.
  * @param[in] value Value of the node.
+ * @param[in] type_idx Union member type index of the value (::SRPDS_DB_NO_TYPE_IDX if not a union).
+ * @param[in] hints Hints of the value.
  * @param[in] path_modif Modified path.
  * @param[in] meta Metadata of the node.
  * @param[out] argv Arguments for command.
@@ -1136,7 +1156,8 @@ cleanup:
  */
 static sr_error_info_t *
 srpds_term(const char *mod_ns, const char *path, const char *name, const char *module_name, int dflt_flag,
-        const char *value, const char *path_modif, const struct lyd_meta *meta, redis_argv_t *argv)
+        const char *value, uint32_t type_idx, uint32_t hints, const char *path_modif, const struct lyd_meta *meta,
+        redis_argv_t *argv)
 {
     sr_error_info_t *err_info = NULL;
 
@@ -1161,6 +1182,16 @@ srpds_term(const char *mod_ns, const char *path, const char *name, const char *m
     }
     srpds_argv_add(argv, "g_value", 7);
     srpds_argv_add(argv, value, value ? strlen(value) : 0);
+    if (type_idx != SRPDS_DB_NO_TYPE_IDX) {
+        srpds_argv_add(argv, "h_hints", 7);
+        if ((err_info = srpds_argv_add_format(argv, "%" PRIu32, hints))) {
+            goto cleanup;
+        }
+        srpds_argv_add(argv, "o_type_idx", 10);
+        if ((err_info = srpds_argv_add_format(argv, "%" PRIu32, type_idx))) {
+            goto cleanup;
+        }
+    }
     srpds_argv_add(argv, "m_path_modif", 12);
     srpds_argv_add(argv, path_modif, strlen(path_modif));
     if ((err_info = srpds_add_meta(meta, argv))) {
@@ -1297,6 +1328,8 @@ cleanup:
  * @param[in] module_name Name of the node module.
  * @param[in] dflt_flag Default flag of the node.
  * @param[in] value Value of the node.
+ * @param[in] type_idx Union member type index of the value (::SRPDS_DB_NO_TYPE_IDX if not a union).
+ * @param[in] hints Hints of the value.
  * @param[in] order Order of the node.
  * @param[in] path_no_pred Path to the node without predicate.
  * @param[in] prev_pred Predicate of the previous node.
@@ -1309,8 +1342,9 @@ cleanup:
  */
 static sr_error_info_t *
 srpds_leaflist_uo(const char *mod_ns, const char *path, const char *name, const char *module_name, int dflt_flag,
-        const char *value, uint64_t order, const char *path_no_pred, const char *prev_pred, int is_prev_empty,
-        const char *path_modif, const struct lyd_meta *meta, redis_argv_t *argv)
+        const char *value, uint32_t type_idx, uint32_t hints, uint64_t order, const char *path_no_pred,
+        const char *prev_pred, int is_prev_empty, const char *path_modif, const struct lyd_meta *meta,
+        redis_argv_t *argv)
 {
     sr_error_info_t *err_info = NULL;
 
@@ -1335,6 +1369,16 @@ srpds_leaflist_uo(const char *mod_ns, const char *path, const char *name, const 
     }
     srpds_argv_add(argv, "g_value", 7);
     srpds_argv_add(argv, value, value ? strlen(value) : 0);
+    if (type_idx != SRPDS_DB_NO_TYPE_IDX) {
+        srpds_argv_add(argv, "h_hints", 7);
+        if ((err_info = srpds_argv_add_format(argv, "%" PRIu32, hints))) {
+            goto cleanup;
+        }
+        srpds_argv_add(argv, "o_type_idx", 10);
+        if ((err_info = srpds_argv_add_format(argv, "%" PRIu32, type_idx))) {
+            goto cleanup;
+        }
+    }
     srpds_argv_add(argv, "i_order", 7);
     if ((err_info = srpds_argv_add_format(argv, "%" PRIu64, order))) {
         goto cleanup;
@@ -1906,7 +1950,7 @@ srpds_create_uo_op(redisContext *ctx, sr_datastore_t ds, const char *mod_ns, con
     redis_argv_t argv = {0};
     const char *module_name, *value;
     char *path_modif = NULL, *prev = NULL, *keys = NULL;
-    uint32_t keys_length = 0;
+    uint32_t keys_length = 0, type_idx, hints;
     struct lyd_node *match = NULL;
     uint64_t order = 0;
 
@@ -1955,9 +1999,10 @@ srpds_create_uo_op(redisContext *ctx, sr_datastore_t ds, const char *mod_ns, con
         break;
     case LYS_LEAFLIST:
         value = lyd_get_value(node);
+        srpds_get_union_info(node, &type_idx, &hints);
         if ((err_info = srpds_leaflist_uo(mod_ns, path, node->schema->name, module_name,
-                (node->flags & LYD_DEFAULT), value, order, path_no_pred, prev, (prev[0] == '\0') ? 1 : 0,
-                path_modif, match ? match->meta : NULL, &argv))) {
+                (node->flags & LYD_DEFAULT), value, type_idx, hints, order, path_no_pred, prev,
+                (prev[0] == '\0') ? 1 : 0, path_modif, match ? match->meta : NULL, &argv))) {
             goto cleanup;
         }
         break;
@@ -2215,7 +2260,7 @@ srpds_create_op(redisContext *ctx, sr_datastore_t ds, const char *mod_ns, const 
     redis_argv_t argv = {0};
     const char *module_name, *value;
     char *any_value = NULL, *keys = NULL, *path_modif = NULL;
-    uint32_t keys_length = 0;
+    uint32_t keys_length = 0, type_idx, hints;
     struct lyd_node *match = NULL;
 
     /* get modified version of path */
@@ -2257,8 +2302,9 @@ srpds_create_op(redisContext *ctx, sr_datastore_t ds, const char *mod_ns, const 
     case LYS_LEAF:
     case LYS_LEAFLIST:
         value = lyd_get_value(node);
+        srpds_get_union_info(node, &type_idx, &hints);
         if ((err_info = srpds_term(mod_ns, path, node->schema->name, module_name, (node->flags & LYD_DEFAULT),
-                value, path_modif, match ? match->meta : NULL, &argv))) {
+                value, type_idx, hints, path_modif, match ? match->meta : NULL, &argv))) {
             goto cleanup;
         }
         break;
@@ -2328,6 +2374,7 @@ srpds_replace_op(redisContext *ctx, sr_datastore_t ds, const char *mod_ns, const
     redis_argv_t argv = {0};
     const char *value;
     char *any_value = NULL;
+    uint32_t type_idx, hints;
     struct lyd_node *match = NULL;
 
     /* get value */
@@ -2349,6 +2396,19 @@ srpds_replace_op(redisContext *ctx, sr_datastore_t ds, const char *mod_ns, const
         srpds_argv_add(&argv, "e_dflt_flag", 11);
         if ((err_info = srpds_argv_add_format(&argv, "%d", node->flags & LYD_DEFAULT))) {
             goto cleanup;
+        }
+
+        /* store also the union member type index and hints for union values */
+        srpds_get_union_info(node, &type_idx, &hints);
+        if (type_idx != SRPDS_DB_NO_TYPE_IDX) {
+            srpds_argv_add(&argv, "h_hints", 7);
+            if ((err_info = srpds_argv_add_format(&argv, "%" PRIu32, hints))) {
+                goto cleanup;
+            }
+            srpds_argv_add(&argv, "o_type_idx", 10);
+            if ((err_info = srpds_argv_add_format(&argv, "%" PRIu32, type_idx))) {
+                goto cleanup;
+            }
         }
     }
 
@@ -2403,7 +2463,7 @@ srpds_store_state_recursively(redisContext *ctx, const struct ly_set *set, const
     const char *module_name = NULL, *value = NULL;
     char *any_value = NULL;
     char *keys = NULL;
-    uint32_t keys_length = 0;
+    uint32_t keys_length = 0, type_idx, hints;
     uint64_t order = 1;
     uint32_t set_idx = 1;
 
@@ -2470,13 +2530,15 @@ srpds_store_state_recursively(redisContext *ctx, const struct ly_set *set, const
             break;
         case LYS_LEAF:
             value = lyd_get_value(sibling);
+            srpds_get_union_info(sibling, &type_idx, &hints);
             if ((srpds_term(mod_ns, path, sibling->schema->name, module_name, sibling->flags & LYD_DEFAULT, value,
-                    path_modif, sibling->meta, &argv))) {
+                    type_idx, hints, path_modif, sibling->meta, &argv))) {
                 goto cleanup;
             }
             break;
         case LYS_LEAFLIST:  /* state leaf-lists are always userordered */
             value = lyd_get_value(sibling);
+            srpds_get_union_info(sibling, &type_idx, &hints);
             free(path);
             path = NULL;
 
@@ -2486,8 +2548,8 @@ srpds_store_state_recursively(redisContext *ctx, const struct ly_set *set, const
                 goto cleanup;
             }
             if ((err_info = srpds_leaflist_uo(mod_ns, path, sibling->schema->name, module_name,
-                    sibling->flags & LYD_DEFAULT, value, order, path_no_pred, NULL, 0, path_modif, sibling->meta,
-                    &argv))) {
+                    sibling->flags & LYD_DEFAULT, value, type_idx, hints, order, path_no_pred, NULL, 0, path_modif,
+                    sibling->meta, &argv))) {
                 goto cleanup;
             }
             order++;
@@ -3118,7 +3180,7 @@ srpds_store_data_recursively(redisContext *ctx, const struct lyd_node *mod_data,
     char *path = NULL, *path_no_pred = NULL, *path_modif = NULL, *prev = NULL, *any_value = NULL;
     const char *value, *module_name;
     char *keys = NULL;
-    uint32_t keys_length = 0;
+    uint32_t keys_length = 0, type_idx, hints;
     uint64_t state_order = 1, uo_order = 1024;
 
     while (sibling) {
@@ -3215,13 +3277,15 @@ srpds_store_data_recursively(redisContext *ctx, const struct lyd_node *mod_data,
             break;
         case LYS_LEAF:
             value = lyd_get_value(sibling);
+            srpds_get_union_info(sibling, &type_idx, &hints);
             if ((srpds_term(mod_ns, path, sibling->schema->name, module_name, sibling->flags & LYD_DEFAULT,
-                    value, path_modif, sibling->meta, &argv))) {
+                    value, type_idx, hints, path_modif, sibling->meta, &argv))) {
                 goto cleanup;
             }
             break;
         case LYS_LEAFLIST:
             value = lyd_get_value(sibling);
+            srpds_get_union_info(sibling, &type_idx, &hints);
             if (!(sibling->schema->flags & LYS_CONFIG_W)) {
                 /* state leaf-lists */
                 free(path);
@@ -3234,15 +3298,15 @@ srpds_store_data_recursively(redisContext *ctx, const struct lyd_node *mod_data,
                 }
 
                 if ((err_info = srpds_leaflist_uo(mod_ns, path, sibling->schema->name, module_name,
-                        sibling->flags & LYD_DEFAULT, value, state_order, path_no_pred, NULL, 0, path_modif,
-                        sibling->meta, &argv))) {
+                        sibling->flags & LYD_DEFAULT, value, type_idx, hints, state_order, path_no_pred, NULL, 0,
+                        path_modif, sibling->meta, &argv))) {
                     goto cleanup;
                 }
                 ++state_order;
             } else if (lysc_is_userordered(sibling->schema)) {
                 /* userordered leaf-lists */
                 if ((err_info = srpds_leaflist_uo(mod_ns, path, sibling->schema->name, module_name,
-                        sibling->flags & LYD_DEFAULT, value, uo_order, path_no_pred, prev,
+                        sibling->flags & LYD_DEFAULT, value, type_idx, hints, uo_order, path_no_pred, prev,
                         (prev[0] == '\0') ? 1 : 0, path_modif, sibling->meta, &argv))) {
                     goto cleanup;
                 }
@@ -3250,7 +3314,7 @@ srpds_store_data_recursively(redisContext *ctx, const struct lyd_node *mod_data,
             } else {
                 /* leaf-lists */
                 if ((err_info = srpds_term(mod_ns, path, sibling->schema->name, module_name,
-                        sibling->flags & LYD_DEFAULT, value, path_modif, sibling->meta, &argv))) {
+                        sibling->flags & LYD_DEFAULT, value, type_idx, hints, path_modif, sibling->meta, &argv))) {
                     goto cleanup;
                 }
             }
@@ -3613,7 +3677,8 @@ srpds_create_indices(redisContext *ctx, const char *mod_ns)
             "k_prev TAG SEPARATOR \x01 CASESENSITIVE "
             "l_is_prev_empty NUMERIC "
             "m_path_modif TAG SEPARATOR \x01 CASESENSITIVE "
-            "n_meta_count NUMERIC ", mod_ns, mod_ns))) {
+            "n_meta_count NUMERIC "
+            "o_type_idx NUMERIC ", mod_ns, mod_ns))) {
         goto cleanup;
     }
 

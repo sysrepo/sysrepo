@@ -551,7 +551,7 @@ srpds_load_all(mongoc_collection_t *module, const struct lys_module *mod, sr_dat
     bson_error_t error;
     const char *path, *name, *module_name = NULL, *value = NULL, *path_no_pred = NULL;
     char **keys = NULL;
-    uint32_t *bit_lengths = NULL, hints = 0;
+    uint32_t *bit_lengths = NULL, *key_type_idxs = NULL, *key_hints = NULL, hints = 0, type_idx = SRPDS_DB_NO_TYPE_IDX;
     enum srpds_db_ly_types type;
     int64_t order = 0;
     int dflt_flag = 0;
@@ -580,7 +580,7 @@ srpds_load_all(mongoc_collection_t *module, const struct lys_module *mod, sr_dat
     *   |
     *   | 3) leafs and leaf-lists (LYS_LEAF and LYS_LEAFLIST)
     *   |    Dataset [ path(_id) | name | type | module_name | dflt_flag | value | path_modif | meta_count
-    *   |            | {metadata} ]
+    *   |            | {metadata} | {type_idx | hints} ]
     *   |
     *   | 4) anydata and anyxml (LYS_ANYDATA and LYS_ANYXML)
     *   |    Dataset [ path(_id) | name | type | module_name | value | hints | path_modif | meta_count | {metadata} ]
@@ -591,7 +591,7 @@ srpds_load_all(mongoc_collection_t *module, const struct lys_module *mod, sr_dat
     *   |
     *   | 6) user-ordered leaf-lists
     *   |    Dataset [ path(_id) | name | type | module_name | dflt_flag | value | order | path_no_pred | prev
-    *   |            | path_modif | meta_count | {metadata} ]
+    *   |            | path_modif | meta_count | {metadata} | {type_idx | hints} ]
     *   |
     *   | 7) opaque nodes
     *   |    Dataset [ path_with_value(_id) | name | type | module_name | path | value | path_modif | attr_count
@@ -601,6 +601,7 @@ srpds_load_all(mongoc_collection_t *module, const struct lys_module *mod, sr_dat
     *   |
     *   | module_name = NULL - use parent's module | name - use the module specified by this name
     *   | {metadata}  = meta_count number of fields containing metadata of the node
+    *   | type_idx and hints = union member type index and value hints, stored only for union values
     *   | start number defines the type (1 - container, 2 - list...)
     *
     *   Metadata and MaxOrder
@@ -704,7 +705,8 @@ srpds_load_all(mongoc_collection_t *module, const struct lys_module *mod, sr_dat
                 goto cleanup;
             }
             value = bson_iter_utf8(&iter, NULL);
-            if ((err_info = srpds_parse_keys(plugin_name, value, &keys, &bit_lengths))) {
+            if ((err_info = srpds_parse_keys(plugin_name, value, &keys, &bit_lengths, &key_type_idxs,
+                    &key_hints))) {
                 goto cleanup;
             }
             break;
@@ -821,16 +823,44 @@ srpds_load_all(mongoc_collection_t *module, const struct lys_module *mod, sr_dat
             }
         }
 
+        /* get the trailing union member type index and hints based on type (may not be present at all) */
+        switch (type) {
+        case SRPDS_DB_LY_TERM:         /* leafs and leaf-lists */
+        case SRPDS_DB_LY_LEAFLIST_UO:  /* user-ordered leaf-lists */
+            if (bson_iter_next(&iter)) {
+                type_idx = bson_iter_int32(&iter);
+                if (!bson_iter_next(&iter)) {
+                    ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED,
+                            "Loading union member type index without the value hints", path);
+                    goto cleanup;
+                }
+                hints = bson_iter_int32(&iter);
+            }
+            break;
+        default:
+            break;
+        }
+
         /* add a new node to mod_data */
         if ((err_info = srpds_add_mod_data(plugin_name, mod->ctx, ds, path, name, type, module_name, value, hints,
-                &dflt_flag, (const char **)keys, bit_lengths, order, path_no_pred, meta_count, meta_name, meta_value,
+                type_idx, &dflt_flag, (const char **)keys, bit_lengths, key_type_idxs, key_hints, order, path_no_pred,
+                meta_count, meta_name, meta_value,
                 &uo_lists, &parent_nodes, &pnodes_size, mod_data))) {
             goto cleanup;
         }
+
+        /* reset union member type index and hints */
+        type_idx = SRPDS_DB_NO_TYPE_IDX;
+        hints = 0;
+
         free(keys);
         free(bit_lengths);
+        free(key_type_idxs);
+        free(key_hints);
         keys = NULL;
         bit_lengths = NULL;
+        key_type_idxs = NULL;
+        key_hints = NULL;
     }
 
     if (mongoc_cursor_error(cursor, &error)) {
@@ -848,6 +878,8 @@ srpds_load_all(mongoc_collection_t *module, const struct lys_module *mod, sr_dat
 cleanup:
     free(keys);
     free(bit_lengths);
+    free(key_type_idxs);
+    free(key_hints);
     free(parent_nodes);
     srpds_cleanup_uo_lists(&uo_lists);
     bson_destroy(query_opts);
@@ -984,6 +1016,8 @@ cleanup:
  * @param[in] module_name Name of the module.
  * @param[in] dflt_flag Default flag of the node.
  * @param[in] value Value of the node.
+ * @param[in] type_idx Union member type index of the value (::SRPDS_DB_NO_TYPE_IDX if not a union).
+ * @param[in] hints Hints of the value.
  * @param[in] path_modif Modified path.
  * @param[in] meta Metadata of the node.
  * @param[out] query Query to use.
@@ -992,7 +1026,7 @@ cleanup:
  */
 static sr_error_info_t *
 srpds_term(const char *path, const char *name, const char *module_name, int dflt_flag, const char *value,
-        const char *path_modif, const struct lyd_meta *meta, bson_t **query)
+        uint32_t type_idx, uint32_t hints, const char *path_modif, const struct lyd_meta *meta, bson_t **query)
 {
     sr_error_info_t *err_info = NULL;
 
@@ -1006,6 +1040,10 @@ srpds_term(const char *path, const char *name, const char *module_name, int dflt
     bson_append_utf8(*query, "path_modif", 10, path_modif, -1);
     if ((err_info = srpds_add_meta(meta, *query))) {
         goto cleanup;
+    }
+    if (type_idx != SRPDS_DB_NO_TYPE_IDX) {
+        bson_append_int32(*query, "type_idx", 8, type_idx);
+        bson_append_int32(*query, "hints", 5, hints);
     }
 
 cleanup:
@@ -1110,6 +1148,8 @@ cleanup:
  * @param[in] module_name Name of the module.
  * @param[in] dflt_flag Default flag of the node.
  * @param[in] value Value of the node.
+ * @param[in] type_idx Union member type index of the value (::SRPDS_DB_NO_TYPE_IDX if not a union).
+ * @param[in] hints Hints of the value.
  * @param[in] order Order of the node.
  * @param[in] path_no_pred Path to the node without predicate.
  * @param[in] prev_pred Predicate of the previous node.
@@ -1121,8 +1161,8 @@ cleanup:
  */
 static sr_error_info_t *
 srpds_leaflist_uo(const char *path, const char *name, const char *module_name, int dflt_flag, const char *value,
-        uint64_t order, const char *path_no_pred, const char *prev_pred, const char *path_modif,
-        const struct lyd_meta *meta, bson_t **query)
+        uint32_t type_idx, uint32_t hints, uint64_t order, const char *path_no_pred, const char *prev_pred,
+        const char *path_modif, const struct lyd_meta *meta, bson_t **query)
 {
     sr_error_info_t *err_info = NULL;
 
@@ -1139,6 +1179,10 @@ srpds_leaflist_uo(const char *path, const char *name, const char *module_name, i
     bson_append_utf8(*query, "path_modif", 10, path_modif, -1);
     if ((err_info = srpds_add_meta(meta, *query))) {
         goto cleanup;
+    }
+    if (type_idx != SRPDS_DB_NO_TYPE_IDX) {
+        bson_append_int32(*query, "type_idx", 8, type_idx);
+        bson_append_int32(*query, "hints", 5, hints);
     }
 
 cleanup:
@@ -1945,7 +1989,7 @@ srpds_create_uo_op(mongoc_collection_t *module, sr_datastore_t ds, const struct 
     bson_t *query = NULL;
     const char *module_name, *value;
     char *path_modif = NULL, *prev = NULL, *keys = NULL;
-    uint32_t keys_length = 0;
+    uint32_t keys_length = 0, type_idx, hints;
     struct lyd_node *match = NULL;
     uint64_t order = 0;
 
@@ -1994,8 +2038,9 @@ srpds_create_uo_op(mongoc_collection_t *module, sr_datastore_t ds, const struct 
         break;
     case LYS_LEAFLIST:
         value = lyd_get_value(node);
+        srpds_get_union_info(node, &type_idx, &hints);
         if ((err_info = srpds_leaflist_uo(path, node->schema->name, module_name, (node->flags & LYD_DEFAULT),
-                value, order, path_no_pred, prev, path_modif, match ? match->meta : NULL, &query))) {
+                value, type_idx, hints, order, path_no_pred, prev, path_modif, match ? match->meta : NULL, &query))) {
             goto cleanup;
         }
         break;
@@ -2235,7 +2280,7 @@ srpds_create_op(sr_datastore_t ds, const struct lyd_node *node, const char *path
     bson_t *query = NULL;
     const char *module_name, *value;
     char *any_value = NULL, *keys = NULL, *path_modif = NULL;
-    uint32_t keys_length = 0;
+    uint32_t keys_length = 0, type_idx, hints;
     struct lyd_node *match = NULL;
 
     /* get modified version of path */
@@ -2278,8 +2323,9 @@ srpds_create_op(sr_datastore_t ds, const struct lyd_node *node, const char *path
     case LYS_LEAF:
     case LYS_LEAFLIST:
         value = lyd_get_value(node);
+        srpds_get_union_info(node, &type_idx, &hints);
         if ((err_info = srpds_term(path, node->schema->name, module_name, (node->flags & LYD_DEFAULT), value,
-                path_modif, match ? match->meta : NULL, &query))) {
+                type_idx, hints, path_modif, match ? match->meta : NULL, &query))) {
             goto cleanup;
         }
         break;
@@ -2362,6 +2408,7 @@ srpds_replace_op(sr_datastore_t ds, const struct lyd_node *node, const char *pat
     bson_t subquery;
     const char *value;
     char *any_value = NULL;
+    uint32_t type_idx, hints;
     struct lyd_node *match = NULL;
 
     /* get value */
@@ -2376,6 +2423,13 @@ srpds_replace_op(sr_datastore_t ds, const struct lyd_node *node, const char *pat
     /* handle default flag update */
     if (node->schema->nodetype & LYD_NODE_TERM) {
         bson_append_bool(&subquery, "dflt_flag", 9, node->flags & LYD_DEFAULT);
+
+        /* store also the union member type index and hints for union values */
+        srpds_get_union_info(node, &type_idx, &hints);
+        if (type_idx != SRPDS_DB_NO_TYPE_IDX) {
+            bson_append_int32(&subquery, "type_idx", 8, type_idx);
+            bson_append_int32(&subquery, "hints", 5, hints);
+        }
     }
 
     /* metadata are only stored in oper ds */
@@ -2429,7 +2483,7 @@ srpds_store_state_recursively(const struct ly_set *set, const struct lyd_node *n
     const char *module_name = NULL, *value = NULL;
     char *any_value = NULL;
     char *keys = NULL;
-    uint32_t keys_length = 0;
+    uint32_t keys_length = 0, type_idx, hints;
     uint64_t order = 1;
     uint32_t set_idx = 1;
 
@@ -2498,13 +2552,15 @@ srpds_store_state_recursively(const struct ly_set *set, const struct lyd_node *n
             break;
         case LYS_LEAF:
             value = lyd_get_value(sibling);
+            srpds_get_union_info(sibling, &type_idx, &hints);
             if ((err_info = srpds_term(path, sibling->schema->name, module_name, sibling->flags & LYD_DEFAULT, value,
-                    path_modif, sibling->meta, &query))) {
+                    type_idx, hints, path_modif, sibling->meta, &query))) {
                 goto cleanup;
             }
             break;
         case LYS_LEAFLIST:  /* state leaf-lists are always userordered */
             value = lyd_get_value(sibling);
+            srpds_get_union_info(sibling, &type_idx, &hints);
             free(path);
             path = NULL;
 
@@ -2514,7 +2570,7 @@ srpds_store_state_recursively(const struct ly_set *set, const struct lyd_node *n
                 goto cleanup;
             }
             if ((err_info = srpds_leaflist_uo(path, sibling->schema->name, module_name, sibling->flags & LYD_DEFAULT,
-                    value, order, path_no_pred, "", path_modif, sibling->meta, &query))) {
+                    value, type_idx, hints, order, path_no_pred, "", path_modif, sibling->meta, &query))) {
                 goto cleanup;
             }
             order++;
@@ -3027,7 +3083,7 @@ srpds_store_data_recursively(const struct lyd_node *mod_data, mongo_bulk_data_t 
     char *path = NULL, *path_no_pred = NULL, *path_modif = NULL, *prev = NULL, *any_value = NULL;
     const char *value, *module_name;
     char *keys = NULL;
-    uint32_t keys_length = 0;
+    uint32_t keys_length = 0, type_idx, hints;
     uint64_t state_order = 1, uo_order = 1024;
 
     while (sibling) {
@@ -3125,13 +3181,15 @@ srpds_store_data_recursively(const struct lyd_node *mod_data, mongo_bulk_data_t 
             break;
         case LYS_LEAF:
             value = lyd_get_value(sibling);
+            srpds_get_union_info(sibling, &type_idx, &hints);
             if ((err_info = srpds_term(path, sibling->schema->name, module_name, sibling->flags & LYD_DEFAULT, value,
-                    path_modif, sibling->meta, &query))) {
+                    type_idx, hints, path_modif, sibling->meta, &query))) {
                 goto cleanup;
             }
             break;
         case LYS_LEAFLIST:
             value = lyd_get_value(sibling);
+            srpds_get_union_info(sibling, &type_idx, &hints);
             if (!(sibling->schema->flags & LYS_CONFIG_W)) {
                 /* state leaf-lists */
                 free(path);
@@ -3144,23 +3202,23 @@ srpds_store_data_recursively(const struct lyd_node *mod_data, mongo_bulk_data_t 
                 }
 
                 if ((err_info = srpds_leaflist_uo(path, sibling->schema->name, module_name,
-                        sibling->flags & LYD_DEFAULT, value, state_order, path_no_pred, "", path_modif, sibling->meta,
-                        &query))) {
+                        sibling->flags & LYD_DEFAULT, value, type_idx, hints, state_order, path_no_pred, "",
+                        path_modif, sibling->meta, &query))) {
                     goto cleanup;
                 }
                 ++state_order;
             } else if (lysc_is_userordered(sibling->schema)) {
                 /* userordered leaf-lists */
                 if ((err_info = srpds_leaflist_uo(path, sibling->schema->name, module_name,
-                        sibling->flags & LYD_DEFAULT, value, uo_order, path_no_pred, prev, path_modif,
-                        sibling->meta, &query))) {
+                        sibling->flags & LYD_DEFAULT, value, type_idx, hints, uo_order, path_no_pred, prev,
+                        path_modif, sibling->meta, &query))) {
                     goto cleanup;
                 }
                 uo_order += 1024;
             } else {
                 /* leaf-lists */
                 if ((err_info = srpds_term(path, sibling->schema->name, module_name, sibling->flags & LYD_DEFAULT,
-                        value, path_modif, sibling->meta, &query))) {
+                        value, type_idx, hints, path_modif, sibling->meta, &query))) {
                     goto cleanup;
                 }
             }
@@ -3446,6 +3504,11 @@ srpds_mongo_copy(const struct lys_module *mod, sr_datastore_t trg_ds, sr_datasto
             "options", "s",
             "}",
             "}",
+            "}",
+            "}",
+            /* the computed "returns" field must not be stored permanently in the target collection */
+            "{", "$project",
+            "{", "returns", BCON_BOOL(false),
             "}",
             "}",
             "{", "$out",

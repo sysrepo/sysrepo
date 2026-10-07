@@ -20,6 +20,7 @@
 #include "compat.h"
 
 #include <assert.h>
+#include <endian.h>
 #include <errno.h>
 #include <grp.h>
 #include <pwd.h>
@@ -30,8 +31,118 @@
 #include <unistd.h>
 
 #include <libyang/libyang.h>
+#include <libyang/plugins_types.h>
 
 #include "sysrepo.h"
+
+void
+srpds_get_union_info(const struct lyd_node *node, uint32_t *type_idx, uint32_t *hints)
+{
+    const struct lyd_node_term *term;
+    const struct lysc_type *type;
+    const struct lysc_type_union *type_u;
+    uint32_t u;
+
+    *type_idx = SRPDS_DB_NO_TYPE_IDX;
+    *hints = 0;
+
+    /* called only for term nodes with resolved values */
+    assert(node->schema && (node->schema->nodetype & LYD_NODE_TERM));
+
+    term = (const struct lyd_node_term *)node;
+    type = ((const struct lysc_node_leaf *)node->schema)->type;
+    if (type->basetype != LY_TYPE_UNION) {
+        return;
+    }
+
+    type_u = (const struct lysc_type_union *)type;
+
+    /* the value of a union-typed term going to be stored is always resolved, i.e. has a union subvalue */
+    assert(term->value.subvalue);
+
+    *hints = term->value.subvalue->hints;
+    LYA_FOR(type_u->types, u) {
+        /* leafref members store the value with their realtype */
+        if (((type_u->types[u]->basetype == LY_TYPE_LEAFREF) ?
+                ((const struct lysc_type_leafref *)type_u->types[u])->realtype : type_u->types[u]) ==
+                term->value.subvalue->value.realtype) {
+            *type_idx = u;
+            break;
+        }
+    }
+}
+
+/**
+ * @brief Restore the stored union member type of a union value in a data node.
+ *
+ * On load, union values created from bare strings are resolved naturally (first matching member).
+ * This function rebuilds the value for the member type given by the stored index, which
+ * libyang then keeps resolved instead of re-resolving it to the first matching member on
+ * later validation.
+ *
+ * @param[in] plg_name Plugin name.
+ * @param[in] node Leaf or leaf-list node (or list key leaf) with a union value to restore.
+ * @param[in] value Value stored in the database (canonical value of the member type to restore).
+ * @param[in] value_size_bits Size of @p value in bits.
+ * @param[in] type_idx Index of the member type to restore the value for.
+ * @param[in] hints Value hints stored with the value.
+ * @return NULL on success;
+ * @return Sysrepo error info on error (a union value that cannot be restored makes the load fail).
+ */
+static sr_error_info_t *
+srpds_restore_union_member_type(const char *plg_name, struct lyd_node *node, const char *value, uint64_t value_size_bits,
+        uint32_t type_idx, uint32_t hints)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node_term *term = (struct lyd_node_term *)node;
+    const struct lysc_type *type;
+    const struct lysc_type_union *type_u;
+    struct ly_err_item *eitem = NULL;
+    LY_ERR lyrc = LY_SUCCESS;
+    struct lyd_value newval = {0};
+    char *val_str = NULL;
+
+    type = ((const struct lysc_node_leaf *)node->schema)->type;
+    if (type->basetype != LY_TYPE_UNION) {
+        ERRINFO(&err_info, plg_name, SR_ERR_UNSUPPORTED, "srpds_restore_union_member_type()",
+                "Union type index stored for a node whose schema type is no longer a union.");
+        goto cleanup;
+    }
+    type_u = (const struct lysc_type_union *)type;
+    if (type_idx >= LYA_COUNT(type_u->types)) {
+        ERRINFO(&err_info, plg_name, SR_ERR_UNSUPPORTED, "srpds_restore_union_member_type()",
+                "Stored union member type index is out of range of the current schema.");
+        goto cleanup;
+    }
+
+    /* the value does not have to be zero-terminated (list keys), make a copy */
+    val_str = malloc((value_size_bits + 7) / 8 + 1);
+    if (!val_str) {
+        ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "malloc()", strerror(errno));
+        goto cleanup;
+    }
+    memcpy(val_str, value, (value_size_bits + 7) / 8);
+    val_str[(value_size_bits + 7) / 8] = '\0';
+
+    /* store the value for the stored member type, making the resolved member type persistent,
+     * validation of the value happens during the final validation */
+    if ((lyrc = lyplg_type_store_union_idx(LYD_CTX(node), type, type_idx, val_str, strlen(val_str) * 8,
+            LYPLG_TYPE_STORE_ONLY, LY_VALUE_CANON, NULL, hints, node->schema, &newval, NULL, &eitem)) &&
+            (lyrc != LY_EINCOMPLETE)) {
+        ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyplg_type_store_union_idx()",
+                eitem ? eitem->msg : "Failed to store the union value with the stored member type.");
+        goto cleanup;
+    }
+
+    /* replace the naturally (first-match) resolved value with the restored one */
+    lysc_get_type_plugin(term->value.realtype->plugin_ref)->free(LYD_CTX(node), &term->value);
+    term->value = newval;
+
+cleanup:
+    free(val_str);
+    ly_err_free(eitem);
+    return err_info;
+}
 
 sr_error_info_t *
 srpds_concat_key_values(const char *plg_name, const struct lyd_node *node, char **keys, uint32_t *keys_length)
@@ -40,7 +151,7 @@ srpds_concat_key_values(const char *plg_name, const struct lyd_node *node, char 
     struct lyd_node *child = lyd_child(node), *iter;
     char *tmp = NULL;
     const char *key;
-    uint32_t keylen, i, prev_keys_len = 0, num_of_keys = 0;
+    uint32_t keylen, i, prev_keys_len = 0, num_of_keys = 0, key_type_idx, key_hints, hints_le;
 
     *keys = NULL;
     *keys_length = 0;
@@ -79,12 +190,16 @@ srpds_concat_key_values(const char *plg_name, const struct lyd_node *node, char 
             goto cleanup;
         }
 
+        /* get the union member type index and hints so that the exact key type survives a roundtrip */
+        srpds_get_union_info(iter, &key_type_idx, &key_hints);
+
         /* store length from previous iteration */
         prev_keys_len = *keys_length;
 
-        /* length of a newly created string will increase by length of the next key and
-         * two bytes for storing length of the next key */
-        *keys_length += keylen + SRPDS_DB_LIST_KEY_LEN_BYTES;
+        /* length of a newly created string will increase by length of the next key,
+         * two bytes for storing length of the next key, one byte for the union member type index and
+         * four bytes for the value hints */
+        *keys_length += keylen + SRPDS_DB_LIST_KEY_LEN_BYTES + SRPDS_DB_LIST_KEY_TYPE_INFO_BYTES;
         tmp = malloc(*keys_length);
         if (!tmp) {
             ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "malloc()", strerror(errno));
@@ -104,6 +219,12 @@ srpds_concat_key_values(const char *plg_name, const struct lyd_node *node, char 
         for (i = 0; i < keylen; ++i) {
             tmp[prev_keys_len + 2 + i] = key[i];
         }
+        prev_keys_len += 2 + keylen;
+
+        /* store the union member type index (single byte) and the value hints (four bytes) */
+        tmp[prev_keys_len] = (key_type_idx == SRPDS_DB_NO_TYPE_IDX) ? (char)0xff : (char)key_type_idx;
+        hints_le = htole32(key_hints);
+        memcpy(tmp + prev_keys_len + 1, &hints_le, sizeof hints_le);
 
         free(*keys);
         *keys = tmp;
@@ -117,10 +238,11 @@ cleanup:
 }
 
 sr_error_info_t *
-srpds_parse_keys(const char *plg_name, const char *keys, char ***parsed, uint32_t **bit_lengths)
+srpds_parse_keys(const char *plg_name, const char *keys, char ***parsed, uint32_t **bit_lengths,
+        uint32_t **key_type_idxs, uint32_t **key_hints)
 {
     sr_error_info_t *err_info = NULL;
-    uint32_t i;
+    uint32_t i, hints_le;
     uint8_t num_of_keys = keys[0];
     const char *key = keys + 1;
 
@@ -136,6 +258,18 @@ srpds_parse_keys(const char *plg_name, const char *keys, char ***parsed, uint32_
         goto cleanup;
     }
 
+    *key_type_idxs = calloc(num_of_keys, sizeof **key_type_idxs);
+    if (!*key_type_idxs) {
+        ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "calloc()", "");
+        goto cleanup;
+    }
+
+    *key_hints = calloc(num_of_keys, sizeof **key_hints);
+    if (!*key_hints) {
+        ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "calloc()", "");
+        goto cleanup;
+    }
+
     /* collect all other remaining keys and put them into the array */
     for (i = 0; i < num_of_keys; ++i) {
         /* get key (do not forget to skip length) */
@@ -144,11 +278,19 @@ srpds_parse_keys(const char *plg_name, const char *keys, char ***parsed, uint32_
         /* get length of the key from the first two bytes */
         (*bit_lengths)[i] = SRPDS_DB_LIST_KEY_GET_LEN(key[0], key[1]);
 
-        /* move onto the next key */
+        /* move onto the union member type index of the key */
         key += SRPDS_DB_LIST_KEY_LEN_BYTES + (*bit_lengths)[i];
 
         /* transform to bits */
         (*bit_lengths)[i] *= 8;
+
+        /* get the union member type index (single byte) and the value hints of the key (four bytes) */
+        (*key_type_idxs)[i] = (((uint8_t)key[0]) == 0xff) ? SRPDS_DB_NO_TYPE_IDX : (uint8_t)key[0];
+        memcpy(&hints_le, key + 1, sizeof hints_le);
+        (*key_hints)[i] = le32toh(hints_le);
+
+        /* move onto the next key */
+        key += SRPDS_DB_LIST_KEY_TYPE_INFO_BYTES;
     }
 
 cleanup:
@@ -587,15 +729,16 @@ srpds_cleanup_uo_lists(srpds_db_userordered_lists_t *uo_lists)
 sr_error_info_t *
 srpds_add_mod_data(const char *plg_name, const struct ly_ctx *ly_ctx, sr_datastore_t ds, const char *path,
         const char *name, enum srpds_db_ly_types type, const char *module_name, const char *value, uint32_t hints,
-        int *dflt_flag, const char **keys, uint32_t *bit_lengths, int64_t order, const char *path_no_pred,
+        uint32_t type_idx, int *dflt_flag, const char **keys, uint32_t *bit_lengths, const uint32_t *key_type_idxs,
+        const uint32_t *key_hints, int64_t order, const char *path_no_pred,
         int32_t meta_count, const char *meta_name, const char *meta_value, srpds_db_userordered_lists_t *uo_lists,
         struct lyd_node ***parent_nodes, size_t *pnodes_size, struct lyd_node **mod_data)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *node_module;
     struct lyd_node **tmp_pnodes = NULL;
-    struct lyd_node *new_node = NULL, *parent_node = NULL;
-    uint32_t node_idx = 0;
+    struct lyd_node *new_node = NULL, *parent_node = NULL, *key_node = NULL;
+    uint32_t node_idx = 0, key_i;
     LY_ERR lerr = LY_SUCCESS;
 
     /* get index of the node in the parent_nodes array based on its height */
@@ -625,17 +768,57 @@ srpds_add_mod_data(const char *plg_name, const struct ly_ctx *ly_ctx, sr_datasto
     case SRPDS_DB_LY_LIST_UO:  /* user-ordered lists */
         lerr = lyd_new_list3(parent_node, node_module, name, (const void **)keys, bit_lengths, LYD_NEW_VAL_STORE_ONLY,
                 &new_node);
-        if ((lerr != LY_SUCCESS) && (lerr != LY_ENOTFOUND)) {
+
+        if (lerr == LY_ENOTFOUND) {
+            break;
+        }
+
+        if (lerr != LY_SUCCESS) {
             ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_list3()", ly_last_logmsg());
             goto cleanup;
+        }
+
+        /* restore the stored member type of all union-typed keys
+         * (key leafs are always the first children of a list, in the same order as the keys) */
+        key_i = 0;
+        for (key_node = lyd_child(new_node); key_node && lysc_is_key(key_node->schema);
+                key_node = key_node->next, ++key_i) {
+            if (key_type_idxs[key_i] != SRPDS_DB_NO_TYPE_IDX) {
+                if ((err_info = srpds_restore_union_member_type(plg_name, key_node, keys[key_i], bit_lengths[key_i],
+                        key_type_idxs[key_i], key_hints[key_i]))) {
+                    goto cleanup;
+                }
+            }
         }
         break;
     case SRPDS_DB_LY_TERM:         /* leafs and leaf-lists */
     case SRPDS_DB_LY_LEAFLIST_UO:  /* user-ordered leaf-lists */
         lerr = lyd_new_term(parent_node, node_module, name, value, LYD_NEW_VAL_STORE_ONLY,
                 &new_node);
-        if ((lerr != LY_SUCCESS) && (lerr != LY_ENOTFOUND)) {
+
+        if (lerr == LY_ENOTFOUND) {
+            break;
+        }
+
+        if (lerr != LY_SUCCESS) {
             ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyd_new_term()", ly_last_logmsg());
+            goto cleanup;
+        }
+
+        /* restore the stored union member type so that the value is not re-resolved to the first matching member */
+        if (((const struct lysc_node_leaf *)new_node->schema)->type->basetype == LY_TYPE_UNION) {
+            if (type_idx == SRPDS_DB_NO_TYPE_IDX) {
+                ERRINFO(&err_info, plg_name, SR_ERR_UNSUPPORTED, "srpds_add_mod_data()",
+                        "Union-typed node without the stored union member type index.");
+                goto cleanup;
+            }
+            if ((err_info = srpds_restore_union_member_type(plg_name, new_node, value, strlen(value) * 8, type_idx,
+                    hints))) {
+                goto cleanup;
+            }
+        } else if (type_idx != SRPDS_DB_NO_TYPE_IDX) {
+            ERRINFO(&err_info, plg_name, SR_ERR_UNSUPPORTED, "srpds_add_mod_data()",
+                    "Union member type index stored for a node whose schema type is no longer a union.");
             goto cleanup;
         }
         break;
