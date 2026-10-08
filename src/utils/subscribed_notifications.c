@@ -911,8 +911,11 @@ srsn_oper_data_sub(uint32_t sub_id, srsn_state_sub_t **sub)
 {
     sr_error_info_t *err_info = NULL;
     struct srsn_sub *s;
+    srsn_state_sub_t *state_sub = NULL;
 
     SR_CHECK_ARG_APIRET(!sub_id || !sub, NULL, err_info);
+
+    *sub = NULL;
 
     /* LOCK */
     if ((err_info = srsn_lock())) {
@@ -925,17 +928,21 @@ srsn_oper_data_sub(uint32_t sub_id, srsn_state_sub_t **sub)
         goto cleanup;
     }
 
-    *sub = calloc(1, sizeof **sub);
-    SR_CHECK_MEM_GOTO(!*sub, err_info, cleanup);
+    state_sub = calloc(1, sizeof *state_sub);
+    SR_CHECK_MEM_GOTO(!state_sub, err_info, cleanup);
 
-    if ((err_info = srsn_state_collect_sub(s, *sub))) {
+    if ((err_info = srsn_state_collect_sub(s, state_sub))) {
         goto cleanup;
     }
+
+    *sub = state_sub;
+    state_sub = NULL;
 
 cleanup:
     /* UNLOCK */
     srsn_unlock();
 
+    srsn_state_free(state_sub, 1);
     return sr_api_ret(NULL, err_info);
 }
 
