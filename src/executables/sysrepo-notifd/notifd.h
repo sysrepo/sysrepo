@@ -389,7 +389,7 @@ struct notif_receiver_s {
         uint32_t sub_id;                        /**< srsn subscription ID, identifies the receiver's
                                                      notification pipe, which the dispatch loop owns */
         notif_srsn_start_t start;               /**< state of the start of a new srsn subscription */
-    } srsn_data;                                /**< srsn subscription data */
+    } srsn;                                     /**< srsn subscription of the receiver */
 
     notif_sub_t *sub;                           /**< back-pointer to the parent subscription */
     struct timespec last_reconnect_attempt;     /**< time of the last reconnect attempt */

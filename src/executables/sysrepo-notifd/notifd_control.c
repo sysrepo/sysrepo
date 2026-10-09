@@ -30,12 +30,12 @@
 #include <libyang/libyang.h>
 
 void
-notif_receiver_srsn_start(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver)
+notifd_control_srsn_start(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver)
 {
     notifd_control_t *ctl = &notifd_ctx->control;
 
     /* queue the start */
-    receiver->srsn_data.start = NOTIF_SRSN_START_QUEUED;
+    receiver->srsn.start = NOTIF_SRSN_START_QUEUED;
 
     /* CTL LOCK */
     pthread_mutex_lock(&ctl->lock);
@@ -48,40 +48,40 @@ notif_receiver_srsn_start(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver)
 }
 
 void
-notif_receiver_srsn_stop(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver)
+notifd_control_srsn_stop(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver)
 {
     notifd_control_t *ctl = &notifd_ctx->control;
     srsn_state_sub_t *state_sub = NULL;
     uint32_t *stop_id;
 
     /* cancel a queued or running start */
-    receiver->srsn_data.start = NOTIF_SRSN_START_NONE;
+    receiver->srsn.start = NOTIF_SRSN_START_NONE;
 
-    if (!receiver->srsn_data.sub_id) {
+    if (!receiver->srsn.sub_id) {
         return;
     }
 
     /* carry the excluded count over, the next srsn subscription starts counting from zero */
-    if (!srsn_oper_data_sub(receiver->srsn_data.sub_id, &state_sub)) {
+    if (!srsn_oper_data_sub(receiver->srsn.sub_id, &state_sub)) {
         receiver->excluded_base += state_sub->excluded_count;
         srsn_oper_data_subscriptions_free(state_sub, SRSN_FREE_SINGLE);
     }
 
     /* stop dispatching at once, nothing of the old subscription may be delivered from now on */
-    notifd_dispatch_detach(&notifd_ctx->dispatch, receiver->srsn_data.sub_id);
+    notifd_dispatch_detach(&notifd_ctx->dispatch, receiver->srsn.sub_id);
 
     /* CTL LOCK */
     pthread_mutex_lock(&ctl->lock);
 
     LYA_ADD_ITEM(ctl->stop_ids, stop_id, ERRMEM; goto cleanup_unlock);
-    *stop_id = receiver->srsn_data.sub_id;
+    *stop_id = receiver->srsn.sub_id;
     pthread_cond_signal(&ctl->cond);
 
 cleanup_unlock:
     /* CTL UNLOCK */
     pthread_mutex_unlock(&ctl->lock);
 
-    receiver->srsn_data.sub_id = 0;
+    receiver->srsn.sub_id = 0;
 }
 
 /**
@@ -104,7 +104,7 @@ notifd_ctl_start_fail(notifd_ctx_t *notifd_ctx, notif_sub_t *sub)
 
     /* the srsn subscriptions of the other receivers are not used either */
     LYA_FOR_EACH(sub->receivers, receiver) {
-        notif_receiver_srsn_stop(notifd_ctx, receiver);
+        notifd_control_srsn_stop(notifd_ctx, receiver);
     }
 }
 
@@ -139,7 +139,7 @@ notifd_ctl_start_take(notifd_ctx_t *notifd_ctx, notif_srsn_params_t *params)
 
     LYA_FOR_EACH(notifd_ctx->subs, sub) {
         LYA_FOR_EACH((*sub)->receivers, receiver) {
-            if (receiver->srsn_data.start != NOTIF_SRSN_START_QUEUED) {
+            if (receiver->srsn.start != NOTIF_SRSN_START_QUEUED) {
                 continue;
             }
 
@@ -163,7 +163,7 @@ notifd_ctl_start_take(notifd_ctx_t *notifd_ctx, notif_srsn_params_t *params)
                 break;
             }
 
-            receiver->srsn_data.start = NOTIF_SRSN_START_STARTING;
+            receiver->srsn.start = NOTIF_SRSN_START_STARTING;
             taken = 1;
             goto cleanup_unlock;
         }
@@ -231,7 +231,7 @@ notifd_ctl_starting_find(notifd_ctx_t *notifd_ctx)
 
     LYA_FOR_EACH(notifd_ctx->subs, sub) {
         LYA_FOR_EACH((*sub)->receivers, receiver) {
-            if (receiver->srsn_data.start == NOTIF_SRSN_START_STARTING) {
+            if (receiver->srsn.start == NOTIF_SRSN_START_STARTING) {
                 return receiver;
             }
         }
@@ -265,7 +265,7 @@ notifd_ctl_start(notifd_ctx_t *notifd_ctx, const notif_srsn_params_t *params)
         /* deleted, stopped or started again while being started */
         goto cleanup_unlock;
     }
-    receiver->srsn_data.start = NOTIF_SRSN_START_NONE;
+    receiver->srsn.start = NOTIF_SRSN_START_NONE;
     sub = receiver->sub;
 
     if (r) {
@@ -275,7 +275,7 @@ notifd_ctl_start(notifd_ctx_t *notifd_ctx, const notif_srsn_params_t *params)
         goto cleanup_unlock;
     }
 
-    receiver->srsn_data.sub_id = srsn_sub_id;
+    receiver->srsn.sub_id = srsn_sub_id;
     sub->replay_start_time = replay_start_time;
 
     if ((receiver->state != NOTIF_RECV_STATE_ACTIVE) && receiver->addr_len && (sub->state == NOTIF_SUB_STATE_VALID)) {
@@ -299,7 +299,7 @@ notifd_ctl_start(notifd_ctx_t *notifd_ctx, const notif_srsn_params_t *params)
     if (notifd_dispatch_add(&notifd_ctx->dispatch, fd, srsn_sub_id)) {
         SRNTF_LOG_ERR("Failed to add notification dispatch for subscription ID %" PRIu32 " and receiver \"%s\".",
                 sub->id, receiver->name);
-        receiver->srsn_data.sub_id = 0;
+        receiver->srsn.sub_id = 0;
         notifd_ctl_start_fail(notifd_ctx, sub);
         goto cleanup_unlock;
     }

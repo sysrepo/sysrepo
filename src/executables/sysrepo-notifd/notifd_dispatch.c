@@ -449,7 +449,7 @@ notifd_disp_disconnect_ended(notifd_ctx_t *notifd_ctx)
         SRNTF_LOG_INF("Notification subscription of receiver \"%s\" was terminated by the publisher.",
                 receiver->name);
 
-        notif_receiver_srsn_stop(notifd_ctx, receiver);
+        notifd_control_srsn_stop(notifd_ctx, receiver);
         receiver->state = NOTIF_RECV_STATE_DISCONNECTED;
     }
 }

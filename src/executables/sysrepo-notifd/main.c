@@ -1020,9 +1020,9 @@ excluded_event_records_oper_get(sr_session_ctx_t *UNUSED(session), uint32_t UNUS
     /* the srsn subscriptions this receiver is done with kept their count in the base */
     excluded = recv->excluded_base;
 
-    if (recv->srsn_data.sub_id) {
+    if (recv->srsn.sub_id) {
         /* get the oper data from srsn sub */
-        if ((rc = srsn_oper_data_sub(recv->srsn_data.sub_id, &state_sub))) {
+        if ((rc = srsn_oper_data_sub(recv->srsn.sub_id, &state_sub))) {
             SRNTF_LOG_ERR("Failed to get subscription state for \"%s\" operational data request.", path);
             goto cleanup;
         }

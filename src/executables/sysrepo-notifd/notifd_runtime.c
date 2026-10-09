@@ -522,12 +522,12 @@ notif_receiver_sync_on_start(notif_receiver_t *receiver)
 {
     notif_sub_t *sub = receiver->sub;
 
-    if ((sub->srsn_params.type != SRSN_YANG_PUSH_ON_CHANGE) || !sub->sync_on_start || !receiver->srsn_data.sub_id) {
+    if ((sub->srsn_params.type != SRSN_YANG_PUSH_ON_CHANGE) || !sub->sync_on_start || !receiver->srsn.sub_id) {
         return;
     }
 
     /* sent asynchronously by the srsn subscription */
-    if (srsn_yang_push_on_change_resync(receiver->srsn_data.sub_id)) {
+    if (srsn_yang_push_on_change_resync(receiver->srsn.sub_id)) {
         SRNTF_LOG_WRN("Failed to resync receiver \"%s\" of subscription %" PRIu32 ".", receiver->name, sub->id);
     }
 }
@@ -550,7 +550,7 @@ notif_receiver_backoff_reconnect(notifd_ctx_t *notifd_ctx, notif_receiver_t *rec
         return SR_ERR_OK;
     }
 
-    if (!receiver->srsn_data.sub_id) {
+    if (!receiver->srsn.sub_id) {
         /* "active" means the receiver is being sent every applicable notification, which is false
          * without a notification pipe, so do not reconnect it at all */
         return SR_ERR_OPERATION_FAILED;
@@ -637,7 +637,7 @@ notifd_reconnect_due_receivers(notifd_ctx_t *notifd_ctx)
             receiver = &notifd_ctx->subs[i]->receivers[j];
 
             /* skip the receivers that are connected or cannot be reconnected */
-            if (!receiver->inst || !receiver->srsn_data.sub_id || notif_receiver_is_connected(receiver)) {
+            if (!receiver->inst || !receiver->srsn.sub_id || notif_receiver_is_connected(receiver)) {
                 continue;
             }
             assert((receiver->state == NOTIF_RECV_STATE_DISCONNECTED) ||
@@ -855,7 +855,7 @@ receiver_find_by_srsn_sub_id(notifd_ctx_t *notifd_ctx, uint32_t srsn_sub_id)
 
     LYA_FOR(notifd_ctx->subs, i) {
         LYA_FOR(notifd_ctx->subs[i]->receivers, j) {
-            if (notifd_ctx->subs[i]->receivers[j].srsn_data.sub_id == srsn_sub_id) {
+            if (notifd_ctx->subs[i]->receivers[j].srsn.sub_id == srsn_sub_id) {
                 return &notifd_ctx->subs[i]->receivers[j];
             }
         }
