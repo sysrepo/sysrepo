@@ -206,9 +206,10 @@ sr_error_info_t *sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const str
  *
  * @param[in] mod_info Mod info to use.
  * @param[in] oper_data Operational data to use.
+ * @param[in] create_diff Whether to create the DS diff or just apply the oper_data.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_modinfo_oper_ds_diff(struct sr_mod_info_s *mod_info, const struct lyd_node *oper_data);
+sr_error_info_t *sr_modinfo_oper_ds_diff(struct sr_mod_info_s *mod_info, const struct lyd_node *oper_data, int create_diff);
 
 /**
  * @brief Replace mod info data with new data.
@@ -252,10 +253,12 @@ void sr_modinfo_changesub_rdunlock(struct sr_mod_info_s *mod_info);
  * for this module.
  * @param[in,out] mod_oper_data Optional module operational data to use.
  * @param[in,out] data Operational data tree.
+ * @param[in,out] oper_data_crashed Removed oper push data left behind by crashed connections, appended to. If not set,
+ * the push oper data of crashed connections are not removed but not loaded either.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_module_oper_data_load(struct sr_mod_info_mod_s *mod, sr_conn_ctx_t *conn, sr_session_ctx_t *sess,
-        struct lyd_node **mod_oper_data, struct lyd_node **data);
+        struct lyd_node **mod_oper_data, struct lyd_node **data, struct lyd_node **oper_data_crashed);
 
 /**
  * @brief Get specific oper DS data based on the params.
@@ -264,9 +267,12 @@ sr_error_info_t *sr_module_oper_data_load(struct sr_mod_info_mod_s *mod, sr_conn
  * @param[in] sess Session whose oper push data should be loaded.
  * @param[in] oper_data If set, replace the oper data of @p sess with these data, otherwise
  * use the stored data of this session.
+ * @param[out] oper_data_crashed Removed oper push data left behind by crashed connections. If not set,
+ * the push oper data of crashed connections are not removed but not loaded either.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_modinfo_get_oper_data(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sess, struct lyd_node **oper_data);
+sr_error_info_t *sr_modinfo_get_oper_data(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sess,
+        struct lyd_node **oper_data, struct lyd_node **oper_data_crashed);
 
 #define SR_MI_NEW_DEPS          0x01    /**< new modules are not required (MOD_INFO_REQ) but only dpendencies (MOD_INFO_DEP) */
 #define SR_MI_INV_DEPS          0x02    /**< add inverse dependencies for added modules */
@@ -289,9 +295,13 @@ sr_error_info_t *sr_modinfo_get_oper_data(struct sr_mod_info_s *mod_info, sr_ses
  * @param[in] timeout_ms Timeout for operational callbacks.
  * @param[in] ds_lock_timeout_ms Timeout in ms for DS-lock in case it is required and locked, if 0 no waiting is performed.
  * @param[in] get_oper_opts Get oper data options, ignored if getting only ::SR_DS_OPERATIONAL data (edit).
+ * @param[in,out] oper_data_crashed Removed oper push data left behind by crashed connections, appended to. If not set,
+ * the push oper data of crashed connections are not removed but not loaded either.
+ * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_modinfo_consolidate(struct sr_mod_info_s *mod_info, sr_lock_mode_t mod_lock, int mi_opts,
-        sr_session_ctx_t *sess, uint32_t timeout_ms, uint32_t ds_lock_timeout_ms, sr_get_oper_flag_t get_oper_opts);
+        sr_session_ctx_t *sess, uint32_t timeout_ms, uint32_t ds_lock_timeout_ms, sr_get_oper_flag_t get_oper_opts,
+        struct lyd_node **oper_data_crashed);
 
 /**
  * @brief Validate data for modules in mod info.
@@ -377,6 +387,17 @@ sr_error_info_t *sr_modinfo_change_notify_update(struct sr_mod_info_s *mod_info,
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session);
+
+/**
+ * @brief Update push oper mod data cache in the session, add new module if not yet present.
+ *
+ * @param[in] sess Session to update.
+ * @param[in] mod_name Module name.
+ * @param[in] data module data to store.
+ * @return err_info, NULL on success, only fails if out of memory.
+ */
+sr_error_info_t *sr_modinfo_push_oper_mod_update_cache(sr_session_ctx_t *sess, const char *mod_name,
+        struct lyd_node *data);
 
 /**
  * @brief Store data (persistently) from mod info.

@@ -915,14 +915,18 @@ cleanup:
  * @param[in] cid Connection ID of the push oper data.
  * @param[in] sid Session ID of the push oper data.
  * @param[in] has_data Flag set of the push oper data.
+ * @param[in,out] data Removed oper data previously stored, appended to.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_shmmod_del_module_sess_oper_data(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_mod_t *shm_mod,
-        sr_cid_t cid, uint32_t sid, int has_data)
+        sr_cid_t cid, uint32_t sid, int has_data, struct lyd_node **data)
 {
     sr_error_info_t *err_info = NULL;
     const struct sr_ds_handle_s *oper_ds_handle;
+    struct lyd_node *mod_data = NULL;
+
+    *data = NULL;
 
     if (has_data) {
         /* get DS handle */
@@ -931,7 +935,18 @@ sr_shmmod_del_module_sess_oper_data(sr_conn_ctx_t *conn, const struct lys_module
             goto cleanup;
         }
 
-        /* store the empty data */
+        /* get the current data */
+        if ((err_info = oper_ds_handle->plugin->load_cb(ly_mod, SR_DS_OPERATIONAL, cid, sid, NULL, 0,
+                oper_ds_handle->plg_data, &mod_data))) {
+            goto cleanup;
+        }
+        if ((err_info = sr_lyd_merge_module(data, mod_data, ly_mod, sr_oper_data_merge_cb, NULL,
+                LYD_MERGE_DESTRUCT | LYD_MERGE_WITH_FLAGS))) {
+            goto cleanup;
+        }
+        mod_data = NULL;
+
+        /* store empty data */
         if ((err_info = oper_ds_handle->plugin->store_prepare_cb(ly_mod, SR_DS_OPERATIONAL, cid, sid, NULL,
                 NULL, oper_ds_handle->plg_data))) {
             goto cleanup;
@@ -949,12 +964,13 @@ sr_shmmod_del_module_sess_oper_data(sr_conn_ctx_t *conn, const struct lys_module
     }
 
 cleanup:
+    lyd_free_siblings(mod_data);
     return err_info;
 }
 
 sr_error_info_t *
 sr_shmmod_del_module_oper_data(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, uint32_t *mod_state,
-        sr_mod_t *shm_mod, int dead_only)
+        sr_mod_t *shm_mod, int dead_only, struct lyd_node **data)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     struct sr_mod_lock_s *shm_lock;
@@ -1016,7 +1032,7 @@ sr_shmmod_del_module_oper_data(sr_conn_ctx_t *conn, const struct lys_module *ly_
 
         /* discard these oper changes and/or only mod SHM push oper data entry */
         if ((err_info = sr_shmmod_del_module_sess_oper_data(conn, ly_mod, shm_mod, oper_push_l[i].cid,
-                oper_push_l[i].sid, oper_push_l[i].has_data))) {
+                oper_push_l[i].sid, oper_push_l[i].has_data, data))) {
             goto cleanup_unlock;
         }
     }

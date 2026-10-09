@@ -3035,7 +3035,7 @@ sr_schema_mount_data_get(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, const
 
     /* consolidate without data */
     if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_PERM_NO | SR_MI_DATA_NO, NULL,
-            SR_OPER_CB_TIMEOUT, 0, 0))) {
+            SR_OPER_CB_TIMEOUT, 0, 0, NULL))) {
         goto cleanup;
     }
 
@@ -3048,7 +3048,7 @@ sr_schema_mount_data_get(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, const
             if ((err_info = sr_module_data_append_yanglib(mod_info.mods[i].ly_mod, &mod_info.data))) {
                 return err_info;
             }
-        } else if ((err_info = sr_module_oper_data_load(&mod_info.mods[i], conn, NULL, NULL, &mod_info.data))) {
+        } else if ((err_info = sr_module_oper_data_load(&mod_info.mods[i], conn, NULL, NULL, &mod_info.data, NULL))) {
             goto cleanup;
         }
     }
@@ -3349,6 +3349,31 @@ sr_schema_mount_session_have_oper_data_for_ctx_update(sr_session_ctx_t *sess, co
     }
 
     return 0;
+}
+
+LY_ERR
+sr_oper_data_merge_cb(struct lyd_node *trg_node, const struct lyd_node *src_node, void *UNUSED(cb_data))
+{
+    sr_error_info_t *err_info = NULL;
+    const char *or = NULL;
+
+    if (!src_node) {
+        /* trg_node subtree is merged with metadata */
+        return LY_SUCCESS;
+    }
+
+    /* get explicit origin, if any set */
+    sr_edit_diff_get_origin(src_node, 0, &or, NULL);
+
+    if (or) {
+        /* ovewrite any previous origin */
+        if ((err_info = sr_edit_diff_set_origin(trg_node, or, 1))) {
+            sr_errinfo_free(&err_info);
+            return LY_EOTHER;
+        }
+    }
+
+    return LY_SUCCESS;
 }
 
 sr_error_info_t *

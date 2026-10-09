@@ -2556,7 +2556,7 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
     }
 
     /* add modules into mod_info, READ lock */
-    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_PERM_NO, NULL, 0, 0, 0))) {
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_PERM_NO, NULL, 0, 0, 0, NULL))) {
         goto cleanup;
     }
 
@@ -2606,7 +2606,7 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
         if (ds != SR_DS_CANDIDATE) {
             mi_opts |= SR_MI_INV_DEPS;
         }
-        if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, mi_opts, NULL, 0, 0, 0))) {
+        if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, mi_opts, NULL, 0, 0, 0, NULL))) {
             goto cleanup;
         }
 
@@ -2616,8 +2616,8 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
         }
 
         /* notify all the subscribers and store the changes */
-        if ((err_info = sr_changes_notify_store(&mod_info, NULL, 0, SR_CHANGE_CB_TIMEOUT, SR_LOCK_NONE, NULL,
-                &cb_err_info)) || cb_err_info) {
+        if ((err_info = sr_changes_notify_store_conventional(&mod_info, NULL, SR_CHANGE_CB_TIMEOUT, NULL, &cb_err_info)) ||
+                cb_err_info) {
             goto cleanup;
         }
 
@@ -4069,7 +4069,7 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
     if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, 0, &mod_info))) {
         goto cleanup;
     }
-    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_NONE, SR_MI_DATA_NO | SR_MI_PERM_NO, NULL, 0, 0, 0))) {
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_NONE, SR_MI_DATA_NO | SR_MI_PERM_NO, NULL, 0, 0, 0, NULL))) {
         goto cleanup;
     }
 

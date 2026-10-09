@@ -76,10 +76,11 @@ sr_error_info_t *sr_shmmod_store_modules(sr_shm_t *shm_mod, const struct lyd_nod
  * @param[in,out] mod_state Mod info mod state to update when using mod lock.
  * @param[in] shm_mod Optional SHM mod if available.
  * @param[in] dead_only Whether to delete push oper data of only dead connection or all.
+ * @param[in,out] data Removed oper data previously stored, appended to.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmmod_del_module_oper_data(sr_conn_ctx_t *conn, const struct lys_module *ly_mod,
-        uint32_t *mod_state, sr_mod_t *shm_mod, int dead_only);
+        uint32_t *mod_state, sr_mod_t *shm_mod, int dead_only, struct lyd_node **data);
 
 /**
  * @brief Load modules stored in mod SHM into a context.

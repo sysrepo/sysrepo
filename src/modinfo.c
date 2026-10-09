@@ -627,7 +627,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_modinfo_oper_ds_diff(struct sr_mod_info_s *mod_info, const struct lyd_node *oper_data)
+sr_modinfo_oper_ds_diff(struct sr_mod_info_s *mod_info, const struct lyd_node *oper_data, int create_diff)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
@@ -658,11 +658,12 @@ sr_modinfo_oper_ds_diff(struct sr_mod_info_s *mod_info, const struct lyd_node *o
         assert(mod->state & MOD_INFO_REQ);
 
         /* merge relevant data */
-        if ((err_info = sr_oper_edit_mod_apply(oper_data, mod->ly_mod, &mod_info->data, &mod_info->ds_diff, &change))) {
+        if ((err_info = sr_oper_edit_mod_apply(oper_data, mod->ly_mod, &mod_info->data,
+                create_diff ? &mod_info->ds_diff : NULL, &change))) {
             goto cleanup;
         }
 
-        if (change) {
+        if (create_diff && change) {
             /* there is a diff for this module */
             mod->state |= MOD_INFO_CHANGED;
         }
@@ -1240,34 +1241,6 @@ cleanup:
 }
 
 /**
- * @brief Callback for merging operational data.
- */
-static LY_ERR
-sr_oper_data_merge_cb(struct lyd_node *trg_node, const struct lyd_node *src_node, void *UNUSED(cb_data))
-{
-    sr_error_info_t *err_info = NULL;
-    const char *or = NULL;
-
-    if (!src_node) {
-        /* trg_node subtree is merged with metadata */
-        return LY_SUCCESS;
-    }
-
-    /* get explicit origin, if any set */
-    sr_edit_diff_get_origin(src_node, 0, &or, NULL);
-
-    if (or) {
-        /* ovewrite any previous origin */
-        if ((err_info = sr_edit_diff_set_origin(trg_node, or, 1))) {
-            sr_errinfo_free(&err_info);
-            return LY_EOTHER;
-        }
-    }
-
-    return LY_SUCCESS;
-}
-
-/**
  * @brief Check whether the session has pushed any operational data to this module.
  *        If data exists, get it from cache if available.
  *
@@ -1326,7 +1299,7 @@ sr_modinfo_module_data_cache_get(sr_session_ctx_t *sess, const char *mod_name, i
 
 sr_error_info_t *
 sr_module_oper_data_load(struct sr_mod_info_mod_s *mod, sr_conn_ctx_t *conn, sr_session_ctx_t *sess,
-        struct lyd_node **mod_oper_data, struct lyd_node **data)
+        struct lyd_node **mod_oper_data, struct lyd_node **data, struct lyd_node **oper_data_crashed)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_oper_push_t *oper_push_dup = NULL, *oper_push_ext;
@@ -1353,8 +1326,10 @@ sr_module_oper_data_load(struct sr_mod_info_mod_s *mod, sr_conn_ctx_t *conn, sr_
             oper_push_ext = (sr_mod_oper_push_t *)(conn->ext_shm.addr + mod->shm_mod->oper_push_data);
             for (i = 0; i < mod->shm_mod->oper_push_data_count; ++i) {
                 if (!sr_conn_is_alive(oper_push_ext[i].cid)) {
-                    /* remember to remove the dead connections */
-                    dead_cid = 1;
+                    if (oper_data_crashed) {
+                        /* remember to remove the dead connections */
+                        dead_cid = 1;
+                    } /* else not a good time to notify about the changes, leave for the next caller */
                 } else {
                     oper_push_dup[oper_push_count] = oper_push_ext[i];
                     ++oper_push_count;
@@ -1372,7 +1347,7 @@ sr_module_oper_data_load(struct sr_mod_info_mod_s *mod, sr_conn_ctx_t *conn, sr_
 
     if (dead_cid) {
         /* recover oper push data of all dead connections */
-        if ((err_info = sr_shmmod_del_module_oper_data(conn, mod->ly_mod, &mod->state, mod->shm_mod, 1))) {
+        if ((err_info = sr_shmmod_del_module_oper_data(conn, mod->ly_mod, &mod->state, mod->shm_mod, 1, oper_data_crashed))) {
             goto cleanup;
         }
     }
@@ -1472,7 +1447,8 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_modinfo_get_oper_data(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sess, struct lyd_node **oper_data)
+sr_modinfo_get_oper_data(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sess, struct lyd_node **oper_data,
+        struct lyd_node **oper_data_crashed)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
@@ -1491,7 +1467,7 @@ sr_modinfo_get_oper_data(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sess,
 
         /* load the requested oper data */
         if ((err_info = sr_module_oper_data_load(mod, mod_info->conn, sess, oper_data ? &mod_oper_data : NULL,
-                &mod_info->data))) {
+                &mod_info->data, oper_data_crashed))) {
             goto cleanup;
         }
 
@@ -1519,12 +1495,13 @@ cleanup:
  * @param[in] timeout_ms Operational callback timeout in milliseconds.
  * @param[in] get_oper_opts Get oper data options.
  * @param[in,out] data Operational data tree.
+ * @param[in,out] oper_data_crashed Removed oper push data left behind by crashed connections, appended to.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, uint32_t orig_sid, const char *orig_name, const void *orig_data,
         uint32_t operation_id, sr_conn_ctx_t *conn, uint32_t timeout_ms, sr_get_oper_flag_t get_oper_opts,
-        struct lyd_node **data)
+        struct lyd_node **data, struct lyd_node **oper_data_crashed)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_oper_get_sub_t *shm_subs;
@@ -1538,7 +1515,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, uint32_t orig_sid, con
 
     if (!(get_oper_opts & SR_OPER_NO_STORED)) {
         /* process stored operational data */
-        if ((err_info = sr_module_oper_data_load(mod, conn, NULL, NULL, data))) {
+        if ((err_info = sr_module_oper_data_load(mod, conn, NULL, NULL, data, oper_data_crashed))) {
             return err_info;
         }
 
@@ -2660,11 +2637,12 @@ cleanup:
  * @param[in] timeout_ms Operational callback timeout in milliseconds.
  * @param[in] get_oper_opts Get oper data options.
  * @param[in] run_cached_data_cur Whether any cached running data in @p conn are usable and current.
+ * @param[in,out] oper_data_crashed Removed oper push data left behind by crashed connections, appended to.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_mod_s *mod, sr_session_ctx_t *sess,
-        uint32_t timeout_ms, sr_get_oper_flag_t get_oper_opts, int run_cached_data_cur)
+        uint32_t timeout_ms, sr_get_oper_flag_t get_oper_opts, int run_cached_data_cur, struct lyd_node **oper_data_crashed)
 {
     sr_error_info_t *err_info = NULL;
     sr_conn_ctx_t *conn = mod_info->conn;
@@ -2798,7 +2776,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
 
         /* append any operational data provided by clients */
         if ((err_info = sr_module_oper_data_update(mod, orig_sid, orig_name, orig_data, mod_info->operation_id, conn,
-                timeout_ms, get_oper_opts, &mod_info->data))) {
+                timeout_ms, get_oper_opts, &mod_info->data, oper_data_crashed))) {
             return err_info;
         }
     }
@@ -2967,11 +2945,12 @@ sr_modinfo_qsort_cmp(const void *ptr1, const void *ptr2)
  * @param[in] sess Session to use and read orig info from.
  * @param[in] timeout_ms Operational callback timeout in milliseconds.
  * @param[in] get_oper_opts Get oper data options, ignored if getting only ::SR_DS_OPERATIONAL data (edit).
+ * @param[out] oper_data_crashed Removed oper push data left behind by crashed connections.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int read_only, sr_session_ctx_t *sess, uint32_t timeout_ms,
-        sr_get_oper_flag_t get_oper_opts)
+        sr_get_oper_flag_t get_oper_opts, struct lyd_node **oper_data_crashed)
 {
     sr_error_info_t *err_info = NULL;
     sr_conn_ctx_t *conn;
@@ -2979,6 +2958,10 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int read_only, sr_session_c
     struct sr_mod_info_mod_s *mod;
     uint32_t i;
     int run_data_cache_cur = 0;
+
+    if (oper_data_crashed) {
+        *oper_data_crashed = NULL;
+    }
 
     conn = mod_info->conn;
 
@@ -3044,7 +3027,8 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int read_only, sr_session_c
         }
 
         /* load module data */
-        if ((err_info = sr_modinfo_module_data_load(mod_info, mod, sess, timeout_ms, get_oper_opts, run_data_cache_cur))) {
+        if ((err_info = sr_modinfo_module_data_load(mod_info, mod, sess, timeout_ms, get_oper_opts, run_data_cache_cur,
+                oper_data_crashed))) {
             goto cleanup;
         }
         if (!mod->xpath_count) {
@@ -3064,13 +3048,18 @@ cleanup:
 
 sr_error_info_t *
 sr_modinfo_consolidate(struct sr_mod_info_s *mod_info, sr_lock_mode_t mod_lock, int mi_opts, sr_session_ctx_t *sess,
-        uint32_t timeout_ms, uint32_t ds_lock_timeout_ms, sr_get_oper_flag_t get_oper_opts)
+        uint32_t timeout_ms, uint32_t ds_lock_timeout_ms, sr_get_oper_flag_t get_oper_opts,
+        struct lyd_node **oper_data_crashed)
 {
     sr_error_info_t *err_info = NULL;
     int mod_type, new = 0;
     uint32_t i, sid;
 
     assert(mi_opts & (SR_MI_PERM_NO | SR_MI_PERM_READ | SR_MI_PERM_WRITE));
+
+    if (oper_data_crashed) {
+        *oper_data_crashed = NULL;
+    }
 
     if (!mod_info->mod_count) {
         goto cleanup;
@@ -3146,7 +3135,8 @@ sr_modinfo_consolidate(struct sr_mod_info_s *mod_info, sr_lock_mode_t mod_lock, 
 
     if (!(mi_opts & SR_MI_DATA_NO)) {
         /* load all modules data */
-        if ((err_info = sr_modinfo_data_load(mod_info, mi_opts & SR_MI_DATA_RO, sess, timeout_ms, get_oper_opts))) {
+        if ((err_info = sr_modinfo_data_load(mod_info, mi_opts & SR_MI_DATA_RO, sess, timeout_ms, get_oper_opts,
+                oper_data_crashed))) {
             goto cleanup;
         }
     }
@@ -3543,7 +3533,7 @@ sr_modinfo_change_diff_merge_pred_data(struct sr_mod_info_s *mod_info)
     if (oper_mod_info && mod_info2.mod_count) {
         /* get current oper DS data */
         if ((err_info = sr_modinfo_consolidate(&mod_info2, SR_LOCK_READ, SR_MI_PERM_NO | SR_MI_DATA_RO, NULL,
-                SR_OPER_CB_TIMEOUT, 0, 0))) {
+                SR_OPER_CB_TIMEOUT, 0, 0, NULL))) {
             goto cleanup;
         }
 
@@ -3666,7 +3656,7 @@ sr_modinfo_change_notify_update(struct sr_mod_info_s *mod_info, sr_session_ctx_t
             } /* else stored oper edit or candidate data are not validated so we do not need data from other modules */
 
             /* add modules into mod_info with deps, locking, and their data */
-            if ((err_info = sr_modinfo_consolidate(mod_info, SR_LOCK_READ, mi_opts, session, 0, 0, 0))) {
+            if ((err_info = sr_modinfo_consolidate(mod_info, SR_LOCK_READ, mi_opts, session, 0, 0, 0, NULL))) {
                 goto cleanup;
             }
         }
@@ -3690,7 +3680,7 @@ sr_modinfo_change_notify_update(struct sr_mod_info_s *mod_info, sr_session_ctx_t
                 goto cleanup;
             }
             if ((err_info = sr_modinfo_consolidate(mod_info, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_PERM_NO, session,
-                    0, 0, 0))) {
+                    0, 0, 0, NULL))) {
                 goto cleanup;
             }
 
@@ -3756,6 +3746,8 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     int changes;
     LY_ERR lyrc;
 
+    assert(SR_IS_CONVENTIONAL_DS(mod_info->ds));
+
     /* make sure there are some actual node changes */
     changes = 0;
     LY_LIST_FOR(mod_info->notify_diff, root) {
@@ -3776,7 +3768,7 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
         return NULL;
     }
 
-    if ((mod_info->ds == SR_DS_CANDIDATE) || (mod_info->ds == SR_DS_OPERATIONAL)) {
+    if (mod_info->ds == SR_DS_CANDIDATE) {
         /* not supported */
         return NULL;
     }
@@ -3974,15 +3966,7 @@ sr_modinfo_push_oper_mod_learn_changes(sr_session_ctx_t *sess, const char *mod_n
     *change_has_data = 0;
 }
 
-/**
- * @brief Update push oper mod data cache in the session, add new module if not yet present.
- *
- * @param[in] sess Session to update.
- * @param[in] mod_name Module name.
- * @param[in] data module data to store.
- * @return err_info, NULL on success, only fails if out of memory.
- */
-static sr_error_info_t *
+sr_error_info_t *
 sr_modinfo_push_oper_mod_update_cache(sr_session_ctx_t *sess, const char *mod_name, struct lyd_node *data)
 {
     sr_error_info_t *err_info = NULL;

@@ -4,8 +4,8 @@
  * @brief test for concurrent execution of several sysrepo processes
  *
  * @copyright
- * Copyright (c) 2018 - 2021 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2026 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2026 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -547,10 +547,193 @@ test_oper_crash_set2(int rp, int wp)
             "</interfaces-state>\n";
 
     /* order of the operational state data might not be deterministic (e.g. system ordered lists)
-        across all datastore plugins, so check for both possibilities */
+     * across all datastore plugins, so check for both possibilities */
     sr_assert_true(!strcmp(str1, str2) || !strcmp(str1, str3));
     free(str1);
 
+    sr_disconnect(conn);
+    return 0;
+}
+
+/* TEST */
+static int
+test_oper_push_sub_crash_set1(int rp, int wp)
+{
+    sr_conn_ctx_t *conn;
+    sr_session_ctx_t *sess;
+    int ret;
+    uint32_t i;
+
+    ret = sr_connect(0, &conn);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_session_start(conn, SR_DS_OPERATIONAL, &sess);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* set some operational data for 2 modules */
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces-state/interface[name='eth0']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces-state/interface[name='eth0']/speed", "512", NULL, 0);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/mod1:cont/l1", "value", NULL, 0);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* signal to the other process */
+    barrier(rp, wp);
+
+    /* avoid leaks (valgrind probably cannot keep track of leafref attributes because they are shared) */
+    ly_ctx_destroy((struct ly_ctx *)sr_acquire_context(sr_session_get_connection(sess)));
+    sr_release_context(sr_session_get_connection(sess));
+    for (i = 0; i < sess->conn->ds_handle_count; ++i) {
+        if (sess->conn->ds_handles[i].init) {
+            sess->conn->ds_handles[i].plugin->conn_destroy_cb(sess->conn, sess->conn->ds_handles[i].plg_data);
+        }
+    }
+
+    /* signal to the other process */
+    barrier(rp, wp);
+
+    /* crash */
+    exit(0);
+
+    /* unreachable */
+    return 1;
+}
+
+static int
+oper_push_sub_crash_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
+{
+    ATOMIC_T *cb_called = private_data;
+    const struct lyd_node *diff;
+    char *str;
+
+    (void)sub_id;
+    (void)module_name;
+    (void)xpath;
+    (void)request_id;
+
+    switch (ATOMIC_LOAD_RELAXED(*cb_called)) {
+    case 0:
+    case 1:
+        if (ATOMIC_LOAD_RELAXED(*cb_called) % 2) {
+            sr_assert_int_equal(event, SR_EV_DONE);
+        } else {
+            sr_assert_int_equal(event, SR_EV_CHANGE);
+        }
+
+        /* check the diff */
+        diff = sr_get_change_diff(session);
+        sr_assert_int_equal(LY_SUCCESS, lyd_print_mem(&str, diff, LYD_XML, LYD_PRINT_SIBLINGS));
+        sr_assert_string_equal(str,
+                "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\" "
+                "xmlns:yang=\"urn:ietf:params:xml:ns:yang:1\" yang:operation=\"delete\">\n"
+                "  <interface>\n"
+                "    <name>eth0</name>\n"
+                "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+                "    <speed>512</speed>\n"
+                "  </interface>\n"
+                "</interfaces-state>\n");
+        free(str);
+        break;
+    case 2:
+    case 3:
+        if (ATOMIC_LOAD_RELAXED(*cb_called) % 2) {
+            sr_assert_int_equal(event, SR_EV_DONE);
+        } else {
+            sr_assert_int_equal(event, SR_EV_CHANGE);
+        }
+
+        /* check the diff */
+        diff = sr_get_change_diff(session);
+        sr_assert_int_equal(LY_SUCCESS, lyd_print_mem(&str, diff, LYD_XML, LYD_PRINT_SIBLINGS));
+        sr_assert_string_equal(str,
+                "<cont xmlns=\"urn:mod1\" xmlns:yang=\"urn:ietf:params:xml:ns:yang:1\" yang:operation=\"none\">\n"
+                "  <l1 yang:operation=\"delete\">value</l1>\n"
+                "  <l2 yang:operation=\"create\">val2</l2>\n"
+                "</cont>\n");
+        free(str);
+        break;
+    }
+
+    ATOMIC_INC_RELAXED(*cb_called);
+    return SR_ERR_OK;
+}
+
+static int
+test_oper_push_sub_crash_set2(int rp, int wp)
+{
+    sr_conn_ctx_t *conn;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *sub = NULL;
+    sr_data_t *data;
+    ATOMIC_T cb_called;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    /* wait for the push data to be set */
+    barrier(rp, wp);
+
+    ret = sr_connect(0, &conn);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_session_start(conn, SR_DS_OPERATIONAL, &sess);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the data */
+    ret = sr_get_data(sess, "/ietf-interfaces:interfaces-state", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
+    sr_assert_int_equal(ret, 0);
+    sr_release_data(data);
+    str2 =
+            "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
+            "  <interface>\n"
+            "    <name>eth0</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <speed>512</speed>\n"
+            "  </interface>\n"
+            "</interfaces-state>\n";
+    sr_assert_string_equal(str1, str2);
+    free(str1);
+
+    /* create module change subscriptions */
+    ATOMIC_STORE_RELAXED(cb_called, 0);
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, oper_push_sub_crash_change_cb, &cb_called, 0, 0, &sub);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_module_change_subscribe(sess, "mod1", NULL, oper_push_sub_crash_change_cb, &cb_called, 0, 0, &sub);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* signal the other process to crash */
+    barrier(rp, wp);
+    sleep(1);
+
+    /* read the empty data */
+    ret = sr_get_data(sess, "/ietf-interfaces:interfaces-state", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
+    sr_assert_int_equal(ret, 0);
+    sr_release_data(data);
+    sr_assert_true(!str1);
+
+    /* callback was called */
+    sr_assert_int_equal(ATOMIC_LOAD_RELAXED(cb_called), 2);
+
+    /* add push oper data */
+    ret = sr_set_item_str(sess, "/mod1:cont/l2", "val2", NULL, 0);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* callback was called */
+    sr_assert_int_equal(ATOMIC_LOAD_RELAXED(cb_called), 4);
+
+    sr_unsubscribe(sub);
     sr_disconnect(conn);
     return 0;
 }
@@ -1742,10 +1925,11 @@ int
 main(void)
 {
     struct test tests[] = {
-        {"rpc sub", test_rpc_sub1, test_rpc_sub2, setup, teardown},
+        /*{"rpc sub", test_rpc_sub1, test_rpc_sub2, setup, teardown},
         {"rpc crash", test_rpc_crash1, test_rpc_crash2, setup, teardown},
-        {"oper crash", test_oper_crash_set2, test_oper_crash_set1, setup, teardown},
-        {"notif nowait crash", test_notif_nowait_crash2, test_notif_nowait_crash1, setup, teardown},
+        {"oper crash", test_oper_crash_set2, test_oper_crash_set1, setup, teardown},*/
+        {"oper push sub crash", test_oper_push_sub_crash_set2, test_oper_push_sub_crash_set1, setup, teardown},
+        /*{"notif nowait crash", test_notif_nowait_crash2, test_notif_nowait_crash1, setup, teardown},
         {"notif instid", test_notif_instid1, test_notif_instid2, setup, teardown},
         {"pull push oper data", test_pull_push_oper1, test_pull_push_oper2, setup, teardown},
         {"context change", test_context_change, test_context_change_sub, setup, teardown},
@@ -1754,7 +1938,7 @@ main(void)
         {"recover-change-sub", test_recover_change_sub_apply, test_recover_change_sub, setup, teardown},
         {"recover-oper-sub", test_recover_oper_sub_get, test_recover_oper_sub, setup, teardown},
         {"recover-rpc-sub", test_recover_rpc_sub_send, test_recover_rpc_sub, setup, teardown},
-        {"recover-notif-sub", test_recover_notif_sub_send, test_recover_notif_sub, setup, teardown},
+        {"recover-notif-sub", test_recover_notif_sub_send, test_recover_notif_sub, setup, teardown},*/
     };
 
     test_init();

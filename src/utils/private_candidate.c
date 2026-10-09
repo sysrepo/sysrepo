@@ -1087,7 +1087,7 @@ sr_pc_commit(sr_session_ctx_t *session, sr_priv_cand_t *privcand, sr_pc_conflict
         goto cleanup_unlock;
     }
 
-    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_PERM_NO, session, 0, 0, 0))) {
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_PERM_NO, session, 0, 0, 0, NULL))) {
         goto cleanup_unlock;
     }
 
@@ -1117,6 +1117,7 @@ sr_pc_commit(sr_session_ctx_t *session, sr_priv_cand_t *privcand, sr_pc_conflict
     goto cleanup;
 
 cleanup_unlock:
+    /* MODULES UNLOCK */
     sr_shmmod_modinfo_unlock(&mod_info);
     sr_modinfo_erase(&mod_info);
 
@@ -1190,14 +1191,14 @@ sr_pc_edit_config(sr_session_ctx_t *session, sr_priv_cand_t *privcand, const str
     }
 
     /* init modinfo */
-    sr_modinfo_init(&mod_info, session->conn, session->ds, session->ds, 0);
+    sr_modinfo_init(&mod_info, session->conn, SR_DS_RUNNING, SR_DS_RUNNING, 0);
 
     /* collect affected modules into mod_info */
     if ((err_info = sr_modinfo_collect_edit(dup_edit, &mod_info))) {
         goto cleanup;
     }
 
-    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_PERM_NO, session, 0, 0, 0))) {
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_PERM_NO, session, 0, 0, 0, NULL))) {
         goto cleanup;
     }
 
@@ -1224,6 +1225,7 @@ cleanup:
     /* PRIVCAND UNLOCK */
     sr_munlock(&privcand->diff_lock);
 
+    /* MODULES UNLOCK */
     sr_shmmod_modinfo_unlock(&mod_info);
     sr_modinfo_erase(&mod_info);
 
@@ -1274,7 +1276,7 @@ sr_pc_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth,
     *data = NULL;
 
     /* init modinfo */
-    sr_modinfo_init(&mod_info, session->conn, session->ds, session->ds, 0);
+    sr_modinfo_init(&mod_info, session->conn, SR_DS_RUNNING, SR_DS_RUNNING, 0);
 
     /* PRIVCAND LOCK */
     if ((err_info = sr_mlock((pthread_mutex_t *)&privcand->diff_lock, SR_PRIVCAND_LOCK_TIMEOUT, __func__, NULL, NULL))) {
@@ -1307,7 +1309,7 @@ sr_pc_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth,
         goto cleanup;
     }
 
-    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_PERM_NO, session, 0, 0, 0))) {
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_PERM_NO, session, 0, 0, 0, NULL))) {
         goto cleanup;
     }
 
@@ -1516,7 +1518,7 @@ sr_pc_replace_trg_config(sr_session_ctx_t *session, sr_priv_cand_t *privcand, co
         }
 
         /* add modules with dependencies into mod_info */
-        if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_PERM_NO, session, 0, 0, 0))) {
+        if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_PERM_NO, session, 0, 0, 0, NULL))) {
             goto cleanup;
         }
 
@@ -1546,7 +1548,7 @@ sr_pc_replace_trg_config(sr_session_ctx_t *session, sr_priv_cand_t *privcand, co
         }
 
         /* add modules with dependencies into mod_info */
-        if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_PERM_NO, session, 0, 0, 0))) {
+        if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_PERM_NO, session, 0, 0, 0, NULL))) {
             goto cleanup;
         }
 
