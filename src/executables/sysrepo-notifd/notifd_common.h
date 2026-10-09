@@ -725,30 +725,6 @@ int notif_receiver_send(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver, co
  */
 int notifd_reconnect_due_receivers(notifd_ctx_t *notifd_ctx);
 
-/**
- * @brief Queue the start of the srsn subscription of a receiver.
- *
- * The control thread then connects an inactive receiver and sends it subscription-started, an active one is sent
- * subscription-modified instead, a failure invalidates the subscription.
- *
- * @warning The caller MUST hold the state write lock.
- *
- * @param[in] notifd_ctx Daemon context.
- * @param[in] receiver Receiver to start, any start queued or being executed before is discarded.
- */
-void notif_receiver_srsn_start(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver);
-
-/**
- * @brief Stop dispatching the srsn subscription of a receiver and queue its stop, a start queued or in progress is
- * discarded.
- *
- * @warning The caller MUST hold the state write lock.
- *
- * @param[in] notifd_ctx Daemon context.
- * @param[in] receiver Receiver to stop.
- */
-void notif_receiver_srsn_stop(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver);
-
 /*
  * ---------------------------------------------------------------------------
  * Control thread (notifd_control.c)
@@ -771,6 +747,30 @@ int notifd_control_start(notifd_ctx_t *notifd_ctx);
  * @param[in] notifd_ctx Daemon context.
  */
 void notifd_control_stop(notifd_ctx_t *notifd_ctx);
+
+/**
+ * @brief Queue the start of the srsn subscription of a receiver.
+ *
+ * The control thread then connects an inactive receiver and sends it subscription-started, an active one is sent
+ * subscription-modified instead, a failure invalidates the subscription.
+ *
+ * @warning The caller MUST hold the state write lock.
+ *
+ * @param[in] notifd_ctx Daemon context.
+ * @param[in] receiver Receiver to start, any start queued or being executed before is discarded.
+ */
+void notifd_control_srsn_start(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver);
+
+/**
+ * @brief Stop dispatching the srsn subscription of a receiver and queue its stop, a start queued or in progress is
+ * discarded.
+ *
+ * @warning The caller MUST hold the state write lock.
+ *
+ * @param[in] notifd_ctx Daemon context.
+ * @param[in] receiver Receiver to stop.
+ */
+void notifd_control_srsn_stop(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver);
 
 /**
  * @brief Find the receiver of an SRSN subscription.

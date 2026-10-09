@@ -1328,7 +1328,7 @@ subscription_receivers_disconnect(notifd_ctx_t *notifd_ctx, notif_sub_t *sub)
 
     LYA_FOR_EACH(sub->receivers, receiver) {
         /* disconnect the receiver */
-        notif_receiver_srsn_stop(notifd_ctx, receiver);
+        notifd_control_srsn_stop(notifd_ctx, receiver);
         notif_receiver_disconnect(receiver);
     }
 }
@@ -1500,7 +1500,7 @@ receiver_create_from_node(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, const stru
     notif_receiver_resolve(receiver);
 
     /* the receiver is connected and sent subscription-started once its srsn subscription exists */
-    notif_receiver_srsn_start(notifd_ctx, receiver);
+    notifd_control_srsn_start(notifd_ctx, receiver);
 
 cleanup:
     if (rc) {
@@ -1518,7 +1518,7 @@ receiver_destroy(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_receiver_t *r
     }
 
     /* stop dispatch for this receiver */
-    notif_receiver_srsn_stop(notifd_ctx, receiver);
+    notifd_control_srsn_stop(notifd_ctx, receiver);
 
     /* disconnect the receiver */
     notif_receiver_disconnect(receiver);
@@ -1725,15 +1725,15 @@ process_modified_subscriptions(notifd_ctx_t *notifd_ctx)
                 /* stop the srsn subscriptions and start new ones with the new params */
                 (*sub)->state = NOTIF_SUB_STATE_VALID;
                 LYA_FOR_EACH((*sub)->receivers, receiver) {
-                    notif_receiver_srsn_stop(notifd_ctx, receiver);
-                    notif_receiver_srsn_start(notifd_ctx, receiver);
+                    notifd_control_srsn_stop(notifd_ctx, receiver);
+                    notifd_control_srsn_start(notifd_ctx, receiver);
                 }
                 resubscribed = 1;
             } else {
                 /* not resubscribed, the srsn subscriptions of the old target are not used anymore */
                 sub_invalidate(*sub, NULL);
                 LYA_FOR_EACH((*sub)->receivers, receiver) {
-                    notif_receiver_srsn_stop(notifd_ctx, receiver);
+                    notifd_control_srsn_stop(notifd_ctx, receiver);
                 }
             }
             (*sub)->resubscribe = 0;
