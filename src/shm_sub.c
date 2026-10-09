@@ -2932,7 +2932,7 @@ first_sub:
 
             /* internal RPC subscription */
             if ((err_info = sr_shmsub_rpc_internal_call_callback(conn, input, operation_id, output))) {
-                goto cleanup;
+                goto cleanup_wrunlock;
             }
             goto next_sub;
         }
