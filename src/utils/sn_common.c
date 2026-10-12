@@ -289,7 +289,7 @@ srsn_stop_timer_cb(void *arg, int *freed)
      * touched afterwards */
     *freed = 1;
 
-    /* TIMER UNLOCK */
+    /* TIMER UNLOCK, before the lock below, srsn_modify_stop() takes them in the opposite order */
     pthread_mutex_unlock(&sub->stop_sntimer.lock);
 
     /* LOCK */
@@ -654,8 +654,13 @@ wait:
         /* wait until the trigger, allow its modification from another thread */
         trigger = sntimer->trigger;
 
-        /* TIMER COND WAIT */
-        r = pthread_cond_clockwait(&sntimer->cond, &sntimer->lock, CLOCK_REALTIME, &trigger);
+        if (!trigger.tv_sec && !trigger.tv_nsec) {
+            /* disarmed, wait for a new trigger */
+            r = pthread_cond_wait(&sntimer->cond, &sntimer->lock);
+        } else {
+            /* TIMER COND WAIT */
+            r = pthread_cond_clockwait(&sntimer->cond, &sntimer->lock, CLOCK_REALTIME, &trigger);
+        }
 
         if (!sntimer->tid) {
             /* we should terminate */
@@ -851,15 +856,19 @@ sr_error_info_t *
 srsn_modify_stop(struct srsn_sub *sub, const struct timespec *stop_time)
 {
     sr_error_info_t *err_info = NULL;
+    const struct timespec disarmed = {0};
 
     if ((!stop_time && sub->stop_time.tv_sec) || (stop_time && sr_time_cmp(&sub->stop_time, stop_time))) {
-        if (!sub->stop_time.tv_sec) {
+        if (!stop_time) {
+            /* only disarm the stop timer, joining its thread under the srsn lock could deadlock */
+            srsn_update_timer(&disarmed, NULL, &sub->stop_sntimer);
+        } else if (!sub->stop_sntimer.tid) {
             /* create the stop timer */
             if ((err_info = srsn_create_timer(srsn_stop_timer_cb, sub, stop_time, NULL, &sub->stop_sntimer))) {
                 goto cleanup;
             }
         } else {
-            /* update/delete the stop timer */
+            /* update the stop timer */
             srsn_update_timer(stop_time, NULL, &sub->stop_sntimer);
         }
 
