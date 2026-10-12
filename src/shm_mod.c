@@ -926,8 +926,6 @@ sr_shmmod_del_module_sess_oper_data(sr_conn_ctx_t *conn, const struct lys_module
     const struct sr_ds_handle_s *oper_ds_handle;
     struct lyd_node *mod_data = NULL;
 
-    *data = NULL;
-
     if (has_data) {
         /* get DS handle */
         if ((err_info = sr_ds_handle_find(sr_yang_ctx.mod_shm.addr + shm_mod->plugins[SR_DS_OPERATIONAL], conn,
