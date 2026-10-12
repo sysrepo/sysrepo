@@ -181,7 +181,8 @@ cleanup_unlock:
  *
  * @param[in] sess Session of the srsn subscriptions.
  * @param[in] p Parameters of the subscription.
- * @param[out] replay_start_time Actual replay start time of an event stream subscription.
+ * @param[out] replay_start_time Actual replay start time of an event stream subscription with replay, untouched
+ * otherwise.
  * @param[out] fd Notification pipe read end.
  * @param[out] srsn_sub_id srsn subscription ID.
  * @return ::SR_ERR_OK on success, error code on failure.
@@ -199,8 +200,8 @@ notifd_ctl_srsn_subscribe(sr_session_ctx_t *sess, const notif_srsn_params_t *p, 
 
     switch (p->type) {
     case SRSN_SUB_NOTIF:
-        r = srsn_subscribe(sess, p->stream, p->xpath_filter, stop_time, start_time, 0, NULL, replay_start_time, fd,
-                srsn_sub_id);
+        r = srsn_subscribe(sess, p->stream, p->xpath_filter, stop_time, start_time, 0, NULL,
+                start_time ? replay_start_time : NULL, fd, srsn_sub_id);
         break;
     case SRSN_YANG_PUSH_PERIODIC:
         /* the period is in centiseconds */

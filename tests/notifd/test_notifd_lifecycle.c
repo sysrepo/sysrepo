@@ -326,6 +326,13 @@ test_configured_replay(void **state)
     for (i = 0; i < 3; ++i) {
         lyd_free_all(notifs[i]);
     }
+
+    /* without configured-replay, there is no replay-start-time */
+    del_node(st, SUB_XP "/configured-replay", 93);
+    apply_changes(st);
+    notifs[0] = expect_notif(st, SUB_MODIFIED);
+    assert_no_notif_leaf(notifs[0], "replay-start-time");
+    lyd_free_all(notifs[0]);
 }
 
 /**
