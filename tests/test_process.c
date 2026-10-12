@@ -1925,11 +1925,11 @@ int
 main(void)
 {
     struct test tests[] = {
-        /*{"rpc sub", test_rpc_sub1, test_rpc_sub2, setup, teardown},
+        {"rpc sub", test_rpc_sub1, test_rpc_sub2, setup, teardown},
         {"rpc crash", test_rpc_crash1, test_rpc_crash2, setup, teardown},
-        {"oper crash", test_oper_crash_set2, test_oper_crash_set1, setup, teardown},*/
+        {"oper crash", test_oper_crash_set2, test_oper_crash_set1, setup, teardown},
         {"oper push sub crash", test_oper_push_sub_crash_set2, test_oper_push_sub_crash_set1, setup, teardown},
-        /*{"notif nowait crash", test_notif_nowait_crash2, test_notif_nowait_crash1, setup, teardown},
+        {"notif nowait crash", test_notif_nowait_crash2, test_notif_nowait_crash1, setup, teardown},
         {"notif instid", test_notif_instid1, test_notif_instid2, setup, teardown},
         {"pull push oper data", test_pull_push_oper1, test_pull_push_oper2, setup, teardown},
         {"context change", test_context_change, test_context_change_sub, setup, teardown},
@@ -1938,7 +1938,7 @@ main(void)
         {"recover-change-sub", test_recover_change_sub_apply, test_recover_change_sub, setup, teardown},
         {"recover-oper-sub", test_recover_oper_sub_get, test_recover_oper_sub, setup, teardown},
         {"recover-rpc-sub", test_recover_rpc_sub_send, test_recover_rpc_sub, setup, teardown},
-        {"recover-notif-sub", test_recover_notif_sub_send, test_recover_notif_sub, setup, teardown},*/
+        {"recover-notif-sub", test_recover_notif_sub_send, test_recover_notif_sub, setup, teardown},
     };
 
     test_init();
