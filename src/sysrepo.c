@@ -1933,6 +1933,7 @@ sr_apply_removed_oper_changes(sr_conn_ctx_t *conn, struct lyd_node **data)
     const struct lys_module *ly_mod;
     struct lyd_node *data_dup = NULL, *mod_data;
     struct sr_lycc_ds_data_set_s data_old = {0};
+    uint32_t i;
 
     if (!*data) {
         /* nothing to do */
@@ -1987,9 +1988,11 @@ cleanup:
     lyd_free_siblings(data_dup);
 
     /* cached data are not expected when stopping the session */
-    assert(session->oper_push_mod_count == 1);
-    lyd_free_siblings(session->oper_push_mods[0].cache);
-    free(session->oper_push_mods[0].name);
+    assert(session->oper_push_mod_count);
+    for (i = 0; i < session->oper_push_mod_count; ++i) {
+        lyd_free_siblings(session->oper_push_mods[i].cache);
+        free(session->oper_push_mods[i].name);
+    }
     free(session->oper_push_mods);
     session->oper_push_mods = NULL;
     session->oper_push_mod_count = 0;
