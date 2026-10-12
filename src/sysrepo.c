@@ -2081,15 +2081,12 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
     }
 
     /* delete operational data of the modules that will be deleted (only after preparing data update, to have
-     * schema-mount oper data) */
+     * schema-mount oper data, no need to notify any subscribers beacuse there cannot be any - modules are removed) */
     for (i = 0; i < mod_set.count; ++i) {
-        if ((err_info = sr_shmmod_del_module_oper_data(conn, mod_set.objs[i], &mod_state, NULL, 0, &data_removed))) {
+        if ((err_info = sr_shmmod_del_module_oper_data(conn, mod_set.objs[i], &mod_state, NULL, 0, NULL))) {
             goto cleanup;
         }
     }
-
-    /* notify subscribers about these oper data changes */
-    sr_apply_removed_oper_changes(conn, &data_removed);
 
     /* update lydmods data */
     if ((err_info = sr_lydmods_change_del_module(sr_yang_ctx.ly_ctx, new_ctx, &mod_set, conn, &sr_del_mods,

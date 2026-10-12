@@ -915,7 +915,7 @@ cleanup:
  * @param[in] cid Connection ID of the push oper data.
  * @param[in] sid Session ID of the push oper data.
  * @param[in] has_data Flag set of the push oper data.
- * @param[in,out] data Removed oper data previously stored, appended to.
+ * @param[in,out] data Optional, removed oper data previously stored, appended to.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
@@ -933,16 +933,18 @@ sr_shmmod_del_module_sess_oper_data(sr_conn_ctx_t *conn, const struct lys_module
             goto cleanup;
         }
 
-        /* get the current data */
-        if ((err_info = oper_ds_handle->plugin->load_cb(ly_mod, SR_DS_OPERATIONAL, cid, sid, NULL, 0,
-                oper_ds_handle->plg_data, &mod_data))) {
-            goto cleanup;
+        if (data) {
+            /* get the current data */
+            if ((err_info = oper_ds_handle->plugin->load_cb(ly_mod, SR_DS_OPERATIONAL, cid, sid, NULL, 0,
+                    oper_ds_handle->plg_data, &mod_data))) {
+                goto cleanup;
+            }
+            if ((err_info = sr_lyd_merge_module(data, mod_data, ly_mod, sr_oper_data_merge_cb, NULL,
+                    LYD_MERGE_DESTRUCT | LYD_MERGE_WITH_FLAGS))) {
+                goto cleanup;
+            }
+            mod_data = NULL;
         }
-        if ((err_info = sr_lyd_merge_module(data, mod_data, ly_mod, sr_oper_data_merge_cb, NULL,
-                LYD_MERGE_DESTRUCT | LYD_MERGE_WITH_FLAGS))) {
-            goto cleanup;
-        }
-        mod_data = NULL;
 
         /* store empty data */
         if ((err_info = oper_ds_handle->plugin->store_prepare_cb(ly_mod, SR_DS_OPERATIONAL, cid, sid, NULL,
