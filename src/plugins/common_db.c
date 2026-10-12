@@ -127,7 +127,7 @@ srpds_restore_union_member_type(const char *plg_name, struct lyd_node *node, con
     /* store the value for the stored member type, making the resolved member type persistent,
      * validation of the value happens during the final validation */
     if ((lyrc = lyplg_type_store_union_idx(LYD_CTX(node), type, type_idx, val_str, strlen(val_str) * 8,
-            LYPLG_TYPE_STORE_ONLY, LY_VALUE_CANON, NULL, hints, node->schema, &newval, NULL, &eitem)) &&
+            LYPLG_TYPE_STORE_ONLY, LY_VALUE_CANON, NULL, hints, node->schema, &newval, &eitem)) &&
             (lyrc != LY_EINCOMPLETE)) {
         ERRINFO(&err_info, plg_name, SR_ERR_LY, "lyplg_type_store_union_idx()",
                 eitem ? eitem->msg : "Failed to store the union value with the stored member type.");
