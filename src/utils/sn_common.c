@@ -955,7 +955,8 @@ srsn_sn_sr_subscribe(sr_session_ctx_t *sess, struct srsn_sub *sub, int sub_no_th
 
     /* collect modules to subscribe to */
     if ((rc = srsn_stream_collect_mods(sub->stream, sub->xpath_filter, ly_ctx, &mod_set))) {
-        sr_errinfo_new(&err_info, rc, "Failed to collect modules to subscribe to, invalid stream and/or XPath filter (%s).", sr_strerror(rc));
+        sr_errinfo_new(&err_info, rc, "Failed to collect modules to subscribe to, invalid stream and/or XPath filter (%s).",
+                sr_strerror(rc));
         goto error;
     }
 
@@ -971,9 +972,10 @@ srsn_sn_sr_subscribe(sr_session_ctx_t *sess, struct srsn_sub *sub, int sub_no_th
         ly_mod = mod_set->objs[idx];
 
         /* learn replay start time */
-        if ((rc = sr_get_module_replay_start(sr_session_get_connection(sess), ly_mod->name, &sub->start_time, &earliest_notif, &rpl_start))) {
-            sr_session_get_error(sess, &tmp_err);
-            sr_errinfo_new(&err_info, tmp_err->err[0].err_code, "%s", tmp_err->err[0].message);
+        if ((rc = sr_get_module_replay_start(sr_session_get_connection(sess), ly_mod->name, &sub->start_time,
+                &earliest_notif, &rpl_start))) {
+            sr_errinfo_new(&err_info, rc, "Failed to learn the start of module \"%s\" replay (%s).", ly_mod->name,
+                    sr_strerror(rc));
             goto error;
         }
 
