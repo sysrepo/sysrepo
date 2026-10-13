@@ -598,14 +598,15 @@ skip_notif(struct tnotifd_state *st, const char *path)
 }
 
 void
-expect_notifs(struct tnotifd_state *st, const char **paths, struct lyd_node **notifs)
+expect_notifs(struct tnotifd_state *st, const char **xpaths, struct lyd_node **notifs)
 {
     struct lyd_node *notif = NULL;
-    char *notif_path;
+    struct ly_set *set;
     uint8_t seen[8] = {0};
     uint32_t i, count, found = 0;
+    int match;
 
-    for (count = 0; paths[count]; ++count) {}
+    for (count = 0; xpaths[count]; ++count) {}
     assert_true(count <= sizeof seen);
 
     while (found < count) {
@@ -614,9 +615,14 @@ expect_notifs(struct tnotifd_state *st, const char **paths, struct lyd_node **no
             fail();
         }
 
-        notif_path = lyd_path(notif, LYD_PATH_STD, NULL, 0);
         for (i = 0; i < count; ++i) {
-            if (!seen[i] && notif_path && !strcmp(paths[i], notif_path)) {
+            if (seen[i]) {
+                continue;
+            }
+
+            match = !lyd_find_xpath(notif, xpaths[i], &set) && set->count;
+            ly_set_free(set, NULL);
+            if (match) {
                 seen[i] = 1;
                 ++found;
                 if (notifs) {
@@ -626,7 +632,6 @@ expect_notifs(struct tnotifd_state *st, const char **paths, struct lyd_node **no
                 break;
             }
         }
-        free(notif_path);
         lyd_free_all(notif);
         notif = NULL;
     }
