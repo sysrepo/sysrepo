@@ -547,13 +547,13 @@ struct lyd_node *expect_notif_src(struct tnotifd_state *st, const char *path, ch
 void skip_notif(struct tnotifd_state *st, const char *path);
 
 /**
- * @brief Assert that a notification arrives for each of the given paths, in any order.
+ * @brief Assert that a notification arrives for each of the given XPaths, in any order.
  *
  * @param[in] st Test state.
- * @param[in] paths NULL-terminated array of paths that must all arrive.
- * @param[out] notifs Optional array of the received notifications, one for each of @p paths, caller must free.
+ * @param[in] xpaths NULL-terminated array of XPaths, each must select a node of a different notification.
+ * @param[out] notifs Optional array of the received notifications, one for each of @p xpaths, caller must free.
  */
-void expect_notifs(struct tnotifd_state *st, const char **paths, struct lyd_node **notifs);
+void expect_notifs(struct tnotifd_state *st, const char **xpaths, struct lyd_node **notifs);
 
 /**
  * @brief Assert no notification with @p path arrives while the socket stays quiet.

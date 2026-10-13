@@ -304,21 +304,22 @@ test_configured_replay(void **state)
 
     /* set configured-replay before enabling replay support, this must be rejected */
     set_node(st, NULL, SUB_XP "/configured-replay", 93);
-    assert_int_equal(sr_apply_changes(st->sess, 0), SR_ERR_UNSUPPORTED);
+    apply_rejected(st, SR_ERR_UNSUPPORTED);
 
     assert_int_equal(sr_set_module_replay_support(st->conn, "ietf-netconf-notifications", 1), SR_ERR_OK);
 
-    /* make a config change, it is stored for replay (the subscription is invalid and will not
-     * receive it live) */
+    /* make a config change, it is stored for replay and also received live */
     set_node(st, "42", "/test:test-leaf");
     apply_changes(st);
+    skip_notif(st, NCC);
 
     /* set configured-replay again, now replay is supported */
     set_node(st, NULL, SUB_XP "/configured-replay", 93);
     apply_changes(st);
 
-    /* the daemon does not order these three relative to each other */
-    expect_notifs(st, (const char *[]) {SUB_MODIFIED, NCC, REPLAY_COMPLETED, NULL}, notifs);
+    /* the daemon does not order these three relative to each other, the change is the replayed one */
+    expect_notifs(st, (const char *[]) {SUB_MODIFIED, NCC "/edit[target='/test:test-leaf']", REPLAY_COMPLETED, NULL},
+            notifs);
 
     /* subscription-modified reports the start of the replay, the replay-completed record names the subscription */
     assert_int_equal(lyd_find_path(notifs[0], "replay-start-time", 0, NULL), LY_SUCCESS);
