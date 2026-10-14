@@ -83,14 +83,14 @@ This creates:
 
 Once applied, sysrepo-notifd will send a `subscription-started`
 notification to the client, followed by any NETCONF stream events.
-You can use the `notifd_send_example` binary to trigger test
+You can use the `notif_send_example` binary to trigger test
 notifications and verify they arrive at the client.
 
 To terminate the configured subscription, you can just delete it
 from the datastore. For example using `sysrepocfg`:
 
 ```bash
-$ echo '<subscriptions xmlns="urn:ietf:params:xml:ns:yang:ietf-subscribed-notifications"/>' | ./sysrepocfg -I --
+$ echo '<subscriptions xmlns="urn:ietf:params:xml:ns:yang:ietf-subscribed-notifications"/>' | sysrepocfg -I --
 ```
 
 ### Adding an XPath filter
@@ -104,13 +104,40 @@ XPath filter to the subscription:
 
 Place this inside the `<subscription>` element.
 
-### Additional subscription options
+### Example: YANG Push subscriptions
 
-Other configurable leaves include `stop-time`, `configured-replay`,
-`encoding`, `purpose`, `source-address`, `stream-filter-name`, and
-`stream-subtree-filter`. You can find more about these in the
-relevant YANG models (`ietf-subscribed-notifications`,
-`ietf-subscribed-notif-receivers`).
+Instead of a stream, a subscription can select data of a datastore
+and push it to the receiver (RFC 8641). The examples below push the
+interfaces of the running datastore, so load some first:
+
+```bash
+$ sysrepocfg -E ../examples/notifd/example_interfaces.xml -m ietf-interfaces
+```
+
+A periodic subscription, `example_yp_periodic.xml`, sends the data
+every 5 seconds:
+
+```bash
+$ sysrepocfg -E ../examples/notifd/example_yp_periodic.xml -m ietf-subscribed-notifications
+```
+
+The client receives `subscription-started` followed by a `push-update`
+with the selected data every period.
+
+An on-change subscription, `example_yp_on_change.xml`, sends the data
+once when it starts and then every change of it:
+
+```bash
+$ sysrepocfg -E ../examples/notifd/example_yp_on_change.xml -m ietf-subscribed-notifications
+```
+
+The client receives `subscription-started` and a `push-update`, then a
+`push-change-update` with a YANG patch for every edit of the data, for
+example after changing the interface description with:
+
+```bash
+$ sysrepocfg -E vim -m ietf-interfaces
+```
 
 ### Prerequisites
 
@@ -121,5 +148,12 @@ following YANG modules are installed in sysrepo:
 - `ietf-subscribed-notifications` (with features: `configured`, `xpath`, `replay`, `subtree`)
 - `ietf-subscribed-notif-receivers`
 - `ietf-udp-notif-transport`
+- `ietf-yang-push` (with feature: `on-change`) and `ietf-yang-patch`, for YANG Push
 
-Use `sysrepoctl` to install them if needed.
+Use `sysrepoctl` to install them if needed. The interfaces of the
+YANG Push examples also need `iana-if-type`, which is not installed
+with sysrepo:
+
+```bash
+$ sysrepoctl -i ../modules/subscribed_notifications/iana-if-type@2014-05-08.yang
+```
