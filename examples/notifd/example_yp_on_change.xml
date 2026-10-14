@@ -1,0 +1,28 @@
+<subscriptions xmlns="urn:ietf:params:xml:ns:yang:ietf-subscribed-notifications">
+  <receiver-instances xmlns="urn:ietf:params:xml:ns:yang:ietf-subscribed-notif-receivers">
+    <receiver-instance>
+      <name>my-udp-receiver</name>
+      <udp-notif-receiver xmlns="urn:ietf:params:xml:ns:yang:ietf-udp-notif-transport">
+        <remote-address>127.0.0.1</remote-address>
+        <remote-port>47950</remote-port>
+        <enable-segmentation>true</enable-segmentation>
+        <max-segment-size>1400</max-segment-size>
+      </udp-notif-receiver>
+    </receiver-instance>
+  </receiver-instances>
+  <subscription>
+    <id>11</id>
+    <datastore xmlns="urn:ietf:params:xml:ns:yang:ietf-yang-push" xmlns:ds="urn:ietf:params:xml:ns:yang:ietf-datastores">ds:running</datastore>
+    <datastore-xpath-filter xmlns="urn:ietf:params:xml:ns:yang:ietf-yang-push" xmlns:if="urn:ietf:params:xml:ns:yang:ietf-interfaces">/if:interfaces</datastore-xpath-filter>
+    <on-change xmlns="urn:ietf:params:xml:ns:yang:ietf-yang-push">
+      <dampening-period>0</dampening-period>
+    </on-change>
+    <transport xmlns:unt="urn:ietf:params:xml:ns:yang:ietf-udp-notif-transport">unt:udp-notif</transport>
+    <receivers>
+      <receiver>
+        <name>recv1</name>
+        <receiver-instance-ref xmlns="urn:ietf:params:xml:ns:yang:ietf-subscribed-notif-receivers">my-udp-receiver</receiver-instance-ref>
+      </receiver>
+    </receivers>
+  </subscription>
+</subscriptions>
