@@ -3,7 +3,9 @@
 A simple example client that receives YANG notifications over the
 UDP-Notif transport protocol from sysrepo-notifd.
 It listens on a configurable UDP port, decodes the notification payload,
-and prints each notification to stdout.
+and prints each notification to stdout. It is built on the UDP-Notif
+collector from `<sysrepo/udp_notif.h>` and can serve as a starting point
+for a custom receiver.
 
 ## Usage
 
@@ -15,7 +17,7 @@ Arguments:
 
 Options:
   -h            Show help
-  -a <addr>     IP address to bind to (default 0.0.0.0)
+  -a <addr>     IPv4 or IPv6 address to bind to (default any)
   -t <ms>       Receive timeout in milliseconds (default 5000, 0 for infinite)
 ```
 
