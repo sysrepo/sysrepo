@@ -35,4 +35,7 @@ delivering notifications from filterable event streams over configurable transpo
 On startup it requires the following modules to be installed:
 `ietf-subscribed-notifications`, `ietf-subscribed-notif-receivers` and `ietf-udp-notif-transport`.
 
+The notifications can be received with the collector of the [UDP-Notif API](@ref udp_notif_api), see the
+`notifd_client` example.
+
 */

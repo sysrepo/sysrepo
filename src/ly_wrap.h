@@ -191,10 +191,11 @@ sr_error_info_t *sr_lyd_parse_data(const struct ly_ctx *ctx, const char *data, c
  * @param[in] format Format of @p data.
  * @param[in] data_type Operation data type.
  * @param[out] tree Parsed operation data tree.
+ * @param[out] op Parsed operation, required by lyd_parse_op() for some @p data_type.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_lyd_parse_op(const struct ly_ctx *ctx, const char *data, LYD_FORMAT format, enum lyd_type data_type,
-        struct lyd_node **tree);
+        struct lyd_node **tree, struct lyd_node **op);
 
 /**
  * @brief Print YANG data.
