@@ -97,21 +97,6 @@
  */
 #define NOTIFD_DISPATCH_POLL_ERR_DELAY_MS 1000
 
-/**
- * @brief RFC 5277 NETCONF notification envelope namespace.
- *
- * Used for the <notification> wrapper and its <eventTime> child element.
- */
-#define NOTIFD_NOTIF_XML_NS "urn:ietf:params:xml:ns:netconf:notification:1.0"
-
-/**
- * @brief RFC 8040 Section 6.4 JSON envelope module name for the <notification> element.
- *
- * For JSON encoding, the <notification> element is placed in the "ietf-restconf"
- * module namespace, as specified in RFC 8040 Section 6.4.
- */
-#define NOTIFD_NOTIF_JSON_MODULE "ietf-restconf"
-
 /* forward declarations */
 typedef struct notifd_ctx_s notifd_ctx_t;
 typedef struct notif_sub_s notif_sub_t;
