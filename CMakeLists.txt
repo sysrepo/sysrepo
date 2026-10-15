@@ -297,7 +297,8 @@ set(LIB_SRC
     src/utils/nacm.c
     src/utils/subscribed_notifications.c
     src/utils/sn_common.c
-    src/utils/sn_yang_push.c)
+    src/utils/sn_yang_push.c
+    src/utils/udp_notif.c)
 
 set(SYSREPOCTL_SRC
     src/executables/sysrepoctl.c)
@@ -331,7 +332,8 @@ set(LIB_UTIL_HEADERS
     src/utils/xpath.h
     src/utils/error_format.h
     src/utils/netconf_acm.h
-    src/utils/subscribed_notifications.h)
+    src/utils/subscribed_notifications.h
+    src/utils/udp_notif.h)
 
 # files to generate doxygen from
 set(DOXY_FILES

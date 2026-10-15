@@ -257,6 +257,13 @@ This header provides additional functionality to simplify implementing *ietf-sub
 their imports in `modules/subscribed_notifications`.
 
 ```C
+#include <sysrepo/udp_notif.h>
+```
+UDP-Notif (*draft-ietf-netconf-udp-notif*) collector and publisher. The collector receives, reassembles and
+parses notifications sent by *sysrepo-notifd* or any other UDP-Notif publisher, the publisher part encodes
+notifications into UDP-Notif datagrams.
+
+```C
 #include <sysrepo/values.h>
 ```
 Utility header for working with `sr_val_t` Sysrepo value structures. Note that these are generally

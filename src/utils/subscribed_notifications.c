@@ -1057,7 +1057,7 @@ srsn_read_notif(int fd, const struct ly_ctx *ly_ctx, struct timespec *timestamp,
     }
 
     /* parse the notification */
-    if ((err_info = sr_lyd_parse_op(ly_ctx, buf, LYD_LYB, LYD_TYPE_NOTIF_YANG, notif))) {
+    if ((err_info = sr_lyd_parse_op(ly_ctx, buf, LYD_LYB, LYD_TYPE_NOTIF_YANG, notif, NULL))) {
         goto cleanup;
     }
 

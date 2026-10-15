@@ -2977,7 +2977,7 @@ first_sub:
         assert(sub_shm->event == SR_SUB_EV_SUCCESS);
 
         /* parse returned reply */
-        if ((err_info = sr_lyd_parse_op(LYD_CTX(input), shm_data_sub.addr, LYD_LYB, LYD_TYPE_REPLY_YANG, output))) {
+        if ((err_info = sr_lyd_parse_op(LYD_CTX(input), shm_data_sub.addr, LYD_LYB, LYD_TYPE_REPLY_YANG, output, NULL))) {
             sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, "Failed to parse returned \"RPC\" data.");
             goto cleanup_wrunlock;
         }
@@ -4566,7 +4566,7 @@ sr_shmsub_rpc_listen_process_rpc_events(struct opsub_rpc_s *rpc_subs, sr_conn_ct
             }
 
             /* parse RPC/action input */
-            if ((err_info = sr_lyd_parse_op(sr_yang_ctx.ly_ctx, shm_data_ptr, LYD_LYB, LYD_TYPE_RPC_YANG, &input))) {
+            if ((err_info = sr_lyd_parse_op(sr_yang_ctx.ly_ctx, shm_data_ptr, LYD_LYB, LYD_TYPE_RPC_YANG, &input, NULL))) {
                 SR_ERRINFO_INT(&err_info);
                 goto cleanup;
             }
@@ -4757,7 +4757,7 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
     shm_data_ptr += sizeof notif_ts_real;
 
     /* parse notification */
-    if ((err_info = sr_lyd_parse_op(sr_yang_ctx.ly_ctx, shm_data_ptr, LYD_LYB, LYD_TYPE_NOTIF_YANG, &notif))) {
+    if ((err_info = sr_lyd_parse_op(sr_yang_ctx.ly_ctx, shm_data_ptr, LYD_LYB, LYD_TYPE_NOTIF_YANG, &notif, NULL))) {
         SR_ERRINFO_INT(&err_info);
         goto cleanup_rdunlock;
     }
