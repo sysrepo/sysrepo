@@ -259,7 +259,7 @@ test_filter_ref_multiple_subs(void **state)
 {
     struct tnotifd_state *st = *state;
 
-    add_recv_inst(st, TEST_RECV_INST, st->udp_port, NULL);
+    add_recv_inst(st, TEST_RECV_INST, srudpn_get_port(st->udp), NULL);
     add_xpath_filter(st, "shared-filter", NCC);
 
     /* create two subscriptions referencing the same filter */

@@ -409,21 +409,19 @@ test_yp_on_change_modify(void **state)
 {
     struct tnotifd_state *st = *state;
     struct lyd_node *notif;
-    uint16_t recv2_port = 0;
-    int recv2_sockfd;
+    srudpn_t *udp2;
 
-    recv2_sockfd = create_udp_receiver_socket(&recv2_port);
-    assert_true(recv2_sockfd >= 0);
+    assert_int_equal(srudpn_open("127.0.0.1", 0, &udp2), SR_ERR_OK);
 
     set_node(st, "3", "/test:test-leaf");
     set_node(st, "4", "/test:cont/l2[k='a']/v");
-    add_recv_inst(st, "test-recv2", recv2_port, NULL);
+    add_recv_inst(st, "test-recv2", srudpn_get_port(udp2), NULL);
     stage_ds_sub(st, 514, "ietf-yang-push:datastore-xpath-filter", "/test:test-leaf",
             "ietf-yang-push:periodic/period", "1000", NULL);
     bind_sub_recv(st, 514, "recv2", "test-recv2");
     apply_changes(st);
     skip_notif(st, SUB_STARTED);
-    lyd_free_all(expect_notif_on(st, recv2_sockfd, SUB_STARTED));
+    lyd_free_all(expect_notif_on(st, udp2, SUB_STARTED));
 
     /* switched to on-change with another filter */
     del_node(st, SUB_XP "/ietf-yang-push:periodic", 514);
@@ -437,8 +435,8 @@ test_yp_on_change_modify(void **state)
     lyd_free_all(notif);
     lyd_free_all(expect_push_update(st, "<l2><k>a</k><v>4</v></l2>"));
 
-    lyd_free_all(expect_notif_on(st, recv2_sockfd, SUB_MODIFIED));
-    notif = expect_notif_on(st, recv2_sockfd, PUSH_UPDATE);
+    lyd_free_all(expect_notif_on(st, udp2, SUB_MODIFIED));
+    notif = expect_notif_on(st, udp2, PUSH_UPDATE);
     assert_true(notif_has(notif, "<l2><k>a</k><v>4</v></l2>"));
     lyd_free_all(notif);
 
@@ -446,9 +444,9 @@ test_yp_on_change_modify(void **state)
     set_node(st, "5", "/test:cont/l2[k='a']/v");
     apply_changes(st);
     lyd_free_all(expect_notif(st, PUSH_CHANGE_UPDATE));
-    lyd_free_all(expect_notif_on(st, recv2_sockfd, PUSH_CHANGE_UPDATE));
+    lyd_free_all(expect_notif_on(st, udp2, PUSH_CHANGE_UPDATE));
 
-    close(recv2_sockfd);
+    srudpn_close(udp2);
 }
 
 /**

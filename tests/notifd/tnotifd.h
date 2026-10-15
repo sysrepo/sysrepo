@@ -24,59 +24,13 @@
 #include <libyang/libyang.h>
 
 #include "sysrepo.h"
-
-/** UDP-Notif protocol constants */
-#define UDP_NOTIF_VERSION 1
-#define UDP_NOTIF_HDR_SIZE 12
-#define UDP_NOTIF_SEG_OPT_SIZE 4
-#define UDP_MAX_SIZE 65535
-
-/** UDP-Notif media types */
-#define UDP_NOTIF_MT_JSON 1
-#define UDP_NOTIF_MT_XML 2
+#include "utils/udp_notif.h"
 
 /** Total deadline for a notification expected to arrive (ms), spent in full only on failure, so not scaled */
 #define NOTIF_TIMEOUT_MS 50000
 
-/** Return codes of the notification receive functions */
-#define NOTIF_RECV_OK      0    /**< notification received */
-#define NOTIF_RECV_TIMEOUT 1    /**< deadline expired without a matching notification */
-#define NOTIF_RECV_ERR    (-1)  /**< socket, parse or protocol error */
-
-/** Maximum number of messages tracked for reassembly at the same time */
-#define MAX_PENDING_MESSAGES 4
-
 /** Time the socket must stay silent for a negative assertion or a drain (ms), scale it with ::scale_timeout() */
 #define QUIET_TIMEOUT_MS 300
-
-/**
- * @brief Segment buffer for message reassembly.
- */
-typedef struct {
-    uint8_t *data;              /**< segment payload data */
-    size_t len;                 /**< segment payload length */
-    int received;               /**< whether segment was received */
-} segment_buffer_t;
-
-/**
- * @brief Pending message for reassembly.
- */
-typedef struct {
-    uint32_t publisher_id;      /**< publisher ID */
-    uint32_t message_id;        /**< message ID */
-    uint8_t media_type;         /**< media type from first segment */
-    segment_buffer_t *segments; /**< array of segment buffers */
-    uint16_t total_segments;    /**< total number of segments (0 if unknown) */
-    uint16_t received_count;    /**< number of received segments */
-    int active;                 /**< whether this slot is in use */
-} pending_message_t;
-
-/**
- * @brief UDP-Notif segment reassembly context.
- */
-struct notif_reasm {
-    pending_message_t msgs[MAX_PENDING_MESSAGES];   /**< messages being reassembled */
-};
 
 /**
  * @brief Test state structure.
@@ -87,29 +41,10 @@ struct tnotifd_state {
     sr_session_ctx_t *oper_sess;    /**< operational datastore session */
     const struct ly_ctx *ly_ctx;    /**< libyang context */
     pid_t notifd_pid;               /**< PID of sysrepo-notifd process */
-    int udp_sockfd;                 /**< UDP socket for receiving notifications */
-    uint16_t udp_port;              /**< UDP port used for test */
+    srudpn_t *udp;                  /**< UDP-Notif collector receiving the notifications */
     uint32_t timeout_mul;           /**< multiplier of the fully consumed timeouts, greater than 1 under valgrind */
     sr_subscription_ctx_t *test_subscr; /**< subscription of the running test, freed by its teardown */
-    struct notif_reasm reasm;       /**< segment reassembly state */
 };
-
-/**
- * @brief Parsed UDP-Notif header.
- */
-typedef struct {
-    uint8_t version;
-    uint8_t s_flag;
-    uint8_t media_type;
-    uint8_t header_len;
-    uint16_t message_len;
-    uint32_t publisher_id;
-    uint32_t message_id;
-    int has_segmentation;
-    uint16_t segment_num;
-    int is_last_segment;
-    uint16_t seg_count;         /**< segments the message was reassembled from, 1 if unsegmented */
-} udp_notif_header_t;
 
 /** Subscription xpath prefix, takes a uint32_t subscription ID */
 #define SUB_XP "/ietf-subscribed-notifications:subscriptions/subscription[id='%" PRIu32 "']"
@@ -491,35 +426,20 @@ int tnotifd_teardown(void **state);
 int tnotifd_reset(void **state);
 
 /**
- * @brief Free a pending message slot.
- *
- * @param[in] pending Pending message to free.
- */
-void free_pending_message(pending_message_t *pending);
-
-/**
- * @brief Create a UDP socket for receiving notifications on a system-assigned loopback port.
- *
- * @param[out] port Port the socket was bound to.
- * @return Socket FD on success, -1 on error.
- */
-int create_udp_receiver_socket(uint16_t *port);
-
-/**
- * @brief Receive one notification, reassembling segmented messages.
+ * @brief Receive one notification.
  *
  * @param[in] st Test state.
- * @param[in] sockfd Socket to receive on.
+ * @param[in] udp Collector to receive on.
  * @param[in] path Path of the notification to wait for, others are discarded, NULL for any.
  * @param[in] timeout_ms Deadline of the whole call in milliseconds, already scaled.
  * @param[out] notif Received notification (caller must free), NULL on timeout.
- * @param[out] header Optional parsed UDP-Notif header (can be NULL).
- * @param[out] src_addr Optional buffer for the source address (can be NULL).
- * @param[in] src_addr_len Size of @p src_addr.
- * @return ::NOTIF_RECV_OK, ::NOTIF_RECV_TIMEOUT or ::NOTIF_RECV_ERR.
+ * @param[out] msg Optional UDP-Notif message of the notification (caller must free).
+ * @return ::SR_ERR_OK on success,
+ * @return ::SR_ERR_TIME_OUT if the deadline expired without a matching notification,
+ * @return another error code on a socket or parse error.
  */
-int recv_notif(struct tnotifd_state *st, int sockfd, const char *path, uint32_t timeout_ms,
-        struct lyd_node **notif, udp_notif_header_t *header, char *src_addr, size_t src_addr_len);
+int recv_notif(struct tnotifd_state *st, srudpn_t *udp, const char *path, uint32_t timeout_ms, struct lyd_node **notif,
+        srudpn_msg_t **msg);
 
 /**
  * @brief Assert a notification with @p path arrives; return it, caller must free.
@@ -527,19 +447,14 @@ int recv_notif(struct tnotifd_state *st, int sockfd, const char *path, uint32_t 
 struct lyd_node *expect_notif(struct tnotifd_state *st, const char *path);
 
 /**
- * @brief As expect_notif(), also outputting the UDP-Notif header.
+ * @brief As expect_notif(), also outputting the UDP-Notif message, caller must free.
  */
-struct lyd_node *expect_notif_hdr(struct tnotifd_state *st, const char *path, udp_notif_header_t *header);
+struct lyd_node *expect_notif_msg(struct tnotifd_state *st, const char *path, srudpn_msg_t **msg);
 
 /**
- * @brief As expect_notif(), on an explicit socket.
+ * @brief As expect_notif(), on an explicit collector.
  */
-struct lyd_node *expect_notif_on(struct tnotifd_state *st, int sockfd, const char *path);
-
-/**
- * @brief As expect_notif(), also outputting the source address the datagram came from.
- */
-struct lyd_node *expect_notif_src(struct tnotifd_state *st, const char *path, char *src_addr, size_t src_addr_len);
+struct lyd_node *expect_notif_on(struct tnotifd_state *st, srudpn_t *udp, const char *path);
 
 /**
  * @brief Assert a notification with @p path arrives, then free it.
@@ -590,7 +505,7 @@ void drain_notifs(struct tnotifd_state *st);
 int find_alternate_loopback_ipv4(const char *current_address, char *alternate_address, size_t alternate_address_len);
 
 /**
- * @brief Move the test to a newly bound socket, discarding everything sent to the old one.
+ * @brief Move the test to a newly bound collector, discarding everything sent to the old one.
  *
  * @param[in] st Test state.
  * @return 0 on success, 1 on error.
