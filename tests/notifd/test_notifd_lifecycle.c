@@ -50,25 +50,25 @@ test_subscription_started(void **state)
 {
     struct tnotifd_state *st = *state;
     struct lyd_node *notif;
-    udp_notif_header_t header;
+    srudpn_msg_t *msg;
 
     setup_sub(st, 1, NULL);
 
-    notif = expect_notif_hdr(st, SUB_STARTED, &header);
+    notif = expect_notif_msg(st, SUB_STARTED, &msg);
     assert_string_equal(notif->schema->name, "subscription-started");
 
-    assert_int_equal(header.version, UDP_NOTIF_VERSION);
+    assert_int_equal(srudpn_msg_get_hdr(msg)->version, SRUDPN_VERSION);
 
     /* standard space */
-    assert_int_equal(header.s_flag, 0);
-    assert_true((header.media_type == UDP_NOTIF_MT_JSON) || (header.media_type == UDP_NOTIF_MT_XML));
+    assert_int_equal(srudpn_msg_get_hdr(msg)->s_flag, 0);
+    assert_true((srudpn_msg_get_hdr(msg)->media_type == SRUDPN_MT_JSON) || (srudpn_msg_get_hdr(msg)->media_type == SRUDPN_MT_XML));
 
     /* no options, the notification fits into a single segment */
-    assert_int_equal(header.header_len, UDP_NOTIF_HDR_SIZE);
-    assert_int_equal(header.seg_count, 1);
-    assert_true(header.message_len > UDP_NOTIF_HDR_SIZE);
-    assert_true(header.publisher_id > 0);
-    assert_true(header.message_id > 0);
+    assert_int_equal(srudpn_msg_get_hdr(msg)->header_len, SRUDPN_HDR_SIZE);
+    assert_true(srudpn_msg_get_hdr(msg)->message_len > SRUDPN_HDR_SIZE);
+    assert_true(srudpn_msg_get_hdr(msg)->publisher_id > 0);
+    assert_true(srudpn_msg_get_hdr(msg)->message_id > 0);
+    srudpn_msg_free(msg);
 
     lyd_free_all(notif);
 }
@@ -131,15 +131,16 @@ test_subscription_started_json(void **state)
 {
     struct tnotifd_state *st = *state;
     struct lyd_node *notif;
-    udp_notif_header_t header;
+    srudpn_msg_t *msg;
 
     setup_sub(st, 102,
             "stream-xpath-filter", "/ietf-netconf-notifications:*",
             "encoding", ENC_JSON,
             "purpose", "test-purpose-json", NULL);
 
-    notif = expect_notif_hdr(st, SUB_STARTED, &header);
-    assert_int_equal(header.media_type, UDP_NOTIF_MT_JSON);
+    notif = expect_notif_msg(st, SUB_STARTED, &msg);
+    assert_int_equal(srudpn_msg_get_hdr(msg)->media_type, SRUDPN_MT_JSON);
+    srudpn_msg_free(msg);
     assert_string_equal(notif->schema->name, "subscription-started");
 
     assert_notif_leaf(notif, "id", "102");
@@ -197,7 +198,7 @@ test_multiple_subscriptions(void **state)
     uint32_t id, timeout_ms = NOTIF_TIMEOUT_MS;
     int i, started_count = 0, seen[3] = {0};
 
-    add_recv_inst(st, TEST_RECV_INST, st->udp_port, NULL);
+    add_recv_inst(st, TEST_RECV_INST, srudpn_get_port(st->udp), NULL);
 
     /* create 3 subscriptions; the filter keeps out the netconf-config-change that applying this
      * very change produces, the subscription state change notifications are sent regardless of it */
@@ -210,7 +211,7 @@ test_multiple_subscriptions(void **state)
 
     /* read until the socket goes quiet, so that an unexpected extra notification fails the test
      * instead of being left behind for the next one */
-    while (recv_notif(st, st->udp_sockfd, NULL, timeout_ms, &notif, NULL, NULL, 0) == NOTIF_RECV_OK) {
+    while (!recv_notif(st, st->udp, NULL, timeout_ms, &notif, NULL)) {
         /* the first notification may take a while, any further one is already waiting */
         timeout_ms = scale_timeout(st, QUIET_TIMEOUT_MS);
 
@@ -239,23 +240,25 @@ test_message_id_increment(void **state)
 {
     struct tnotifd_state *st = *state;
     struct lyd_node *notif;
-    udp_notif_header_t header1, header2;
+    srudpn_msg_t *msg1, *msg2;
 
     /* filter out netconf-config-change so that the started/terminated pair are the only two
      * notifications sent to this receiver and their message IDs must be consecutive */
     setup_sub(st, 40, "stream-xpath-filter", "/ietf-subscribed-notifications:*", NULL);
 
-    notif = expect_notif_hdr(st, SUB_STARTED, &header1);
+    notif = expect_notif_msg(st, SUB_STARTED, &msg1);
     lyd_free_all(notif);
 
     /* delete the subscription to generate another notification */
     del_node(st, SUB_XP, 40);
     apply_changes(st);
 
-    notif = expect_notif_hdr(st, SUB_TERMINATED, &header2);
+    notif = expect_notif_msg(st, SUB_TERMINATED, &msg2);
     lyd_free_all(notif);
 
-    assert_int_equal(header2.message_id, header1.message_id + 1);
+    assert_int_equal(srudpn_msg_get_hdr(msg2)->message_id, srudpn_msg_get_hdr(msg1)->message_id + 1);
+    srudpn_msg_free(msg1);
+    srudpn_msg_free(msg2);
 }
 
 /**

@@ -462,7 +462,7 @@ stage_sub(struct tnotifd_state *st, uint32_t sub_id, ...)
     char prefix[512];
     va_list ap;
 
-    add_recv_inst(st, TEST_RECV_INST, st->udp_port, NULL);
+    add_recv_inst(st, TEST_RECV_INST, srudpn_get_port(st->udp), NULL);
 
     snprintf(prefix, sizeof prefix, SUB_XP, sub_id);
     set_node(st, "NETCONF", "%s/stream", prefix);
@@ -481,7 +481,7 @@ setup_sub(struct tnotifd_state *st, uint32_t sub_id, ...)
     char prefix[512];
     va_list ap;
 
-    add_recv_inst(st, TEST_RECV_INST, st->udp_port, NULL);
+    add_recv_inst(st, TEST_RECV_INST, srudpn_get_port(st->udp), NULL);
 
     snprintf(prefix, sizeof prefix, SUB_XP, sub_id);
     set_node(st, "NETCONF", "%s/stream", prefix);
@@ -513,7 +513,7 @@ stage_ds_sub_va(struct tnotifd_state *st, uint32_t sub_id, va_list ap)
 {
     char prefix[512];
 
-    add_recv_inst(st, TEST_RECV_INST, st->udp_port, NULL);
+    add_recv_inst(st, TEST_RECV_INST, srudpn_get_port(st->udp), NULL);
 
     snprintf(prefix, sizeof prefix, SUB_XP, sub_id);
     set_node(st, DS_RUNNING, "%s/ietf-yang-push:datastore", prefix);
@@ -756,7 +756,6 @@ tnotifd_setup(void **state)
         return 1;
     }
     *state = st;
-    st->udp_sockfd = -1;
     st->timeout_mul = running_with_valgrind() ? VALGRIND_TIMEOUT_MUL : 1;
 
     /* connect to sysrepo */
@@ -788,13 +787,13 @@ tnotifd_setup(void **state)
         return 1;
     }
 
-    /* create UDP receiver socket on a free port assigned by the system */
-    st->udp_sockfd = create_udp_receiver_socket(&st->udp_port);
-    if (st->udp_sockfd < 0) {
-        TLOG_ERR("Failed to create UDP socket");
+    /* open the UDP-Notif collector on a free loopback port assigned by the system */
+    rc = srudpn_open("127.0.0.1", 0, &st->udp);
+    if (rc) {
+        TLOG_ERR("srudpn_open failed: %s", sr_strerror(rc));
         return 1;
     }
-    TLOG_INF("Receiving notifications on port %" PRIu16, st->udp_port);
+    TLOG_INF("Receiving notifications on port %" PRIu16, srudpn_get_port(st->udp));
 
     /* start sysrepo-notifd */
     if (start_notifd(&st->notifd_pid)) {
@@ -809,20 +808,13 @@ int
 tnotifd_teardown(void **state)
 {
     struct tnotifd_state *st = *state;
-    int ret = 0, i;
+    int ret = 0;
 
     /* stop sysrepo-notifd */
     stop_notifd(st->notifd_pid);
 
-    /* close UDP socket */
-    if (st->udp_sockfd >= 0) {
-        close(st->udp_sockfd);
-    }
-
-    /* cleanup pending messages */
-    for (i = 0; i < MAX_PENDING_MESSAGES; i++) {
-        free_pending_message(&st->reasm.msgs[i]);
-    }
+    /* close the collector */
+    srudpn_close(st->udp);
 
     /* release context */
     if (st->ly_ctx) {

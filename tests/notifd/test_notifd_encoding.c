@@ -45,7 +45,7 @@ test_encoding_modify(void **state)
 {
     struct tnotifd_state *st = *state;
     struct lyd_node *notif;
-    udp_notif_header_t header;
+    srudpn_msg_t *msg;
 
     setup_sub(st, 120, "stream-xpath-filter", NCC, "encoding", ENC_JSON, NULL);
     skip_notif(st, SUB_STARTED);
@@ -53,8 +53,9 @@ test_encoding_modify(void **state)
     set_node(st, "1", "/test:test-leaf");
     apply_changes(st);
 
-    notif = expect_notif_hdr(st, NCC, &header);
-    assert_int_equal(header.media_type, UDP_NOTIF_MT_JSON);
+    notif = expect_notif_msg(st, NCC, &msg);
+    assert_int_equal(srudpn_msg_get_hdr(msg)->media_type, SRUDPN_MT_JSON);
+    srudpn_msg_free(msg);
     lyd_free_all(notif);
 
     /* change the encoding to XML */
@@ -66,8 +67,9 @@ test_encoding_modify(void **state)
     set_node(st, "2", "/test:test-leaf");
     apply_changes(st);
 
-    notif = expect_notif_hdr(st, NCC, &header);
-    assert_int_equal(header.media_type, UDP_NOTIF_MT_XML);
+    notif = expect_notif_msg(st, NCC, &msg);
+    assert_int_equal(srudpn_msg_get_hdr(msg)->media_type, SRUDPN_MT_XML);
+    srudpn_msg_free(msg);
     lyd_free_all(notif);
 }
 
@@ -83,7 +85,7 @@ test_encoding_cbor_unsupported(void **state)
     /* a throwaway session, the edit of the failing apply is dropped with it */
     assert_int_equal(sr_session_start(st->conn, SR_DS_RUNNING, &tmp_sess), SR_ERR_OK);
 
-    add_recv_inst_on(tmp_sess, TEST_RECV_INST, st->udp_port, NULL);
+    add_recv_inst_on(tmp_sess, TEST_RECV_INST, srudpn_get_port(st->udp), NULL);
     add_sub_on(tmp_sess, 112, "stream", "NETCONF", "transport", UDP_TRANSPORT,
             "encoding", "ietf-udp-notif-transport:encode-cbor", NULL);
     set_node_on(tmp_sess, TEST_RECV_INST,
@@ -103,14 +105,15 @@ test_default_encoding(void **state)
 {
     struct tnotifd_state *st = *state;
     struct lyd_node *notif;
-    udp_notif_header_t header;
+    srudpn_msg_t *msg;
 
     setup_sub(st, 110, NULL);
 
-    notif = expect_notif_hdr(st, SUB_STARTED, &header);
+    notif = expect_notif_msg(st, SUB_STARTED, &msg);
 
     /* the highest-priority encoding with an enabled feature */
-    assert_int_equal(header.media_type, UDP_NOTIF_MT_XML);
+    assert_int_equal(srudpn_msg_get_hdr(msg)->media_type, SRUDPN_MT_XML);
+    srudpn_msg_free(msg);
     assert_notif_leaf(notif, "encoding", ENC_XML);
 
     lyd_free_all(notif);
@@ -124,21 +127,21 @@ test_segmentation_reassembly(void **state)
 {
     struct tnotifd_state *st = *state;
     struct lyd_node *notif;
-    udp_notif_header_t header;
+    srudpn_msg_t *msg;
 
-    add_recv_inst(st, TEST_RECV_INST, st->udp_port,
+    add_recv_inst(st, TEST_RECV_INST, srudpn_get_port(st->udp),
             "enable-segmentation", "true", "max-segment-size", SMALL_SEGMENT_SIZE, NULL);
     add_sub(st, 130, "stream", "NETCONF", "transport", UDP_TRANSPORT,
             "encoding", ENC_XML, "purpose", LONG_PURPOSE, NULL);
     bind_sub_recv(st, 130, TEST_RECV, TEST_RECV_INST);
     apply_changes(st);
 
-    notif = expect_notif_hdr(st, SUB_STARTED, &header);
+    notif = expect_notif_msg(st, SUB_STARTED, &msg);
 
     /* the segmentation option must be present and the message must have needed several segments */
-    assert_int_equal(header.has_segmentation, 1);
-    assert_int_equal(header.header_len, UDP_NOTIF_HDR_SIZE + UDP_NOTIF_SEG_OPT_SIZE);
-    assert_true(header.seg_count > 1);
+    assert_int_equal(srudpn_msg_get_hdr(msg)->segmented, 1);
+    assert_int_equal(srudpn_msg_get_hdr(msg)->header_len, SRUDPN_HDR_SIZE + SRUDPN_OPT_SEGMENTATION_SIZE);
+    srudpn_msg_free(msg);
 
     /* the reassembled payload must be exactly what was sent */
     assert_notif_leaf(notif, "id", "130");
@@ -155,7 +158,7 @@ test_segmentation_disabled(void **state)
 {
     struct tnotifd_state *st = *state;
 
-    add_recv_inst(st, TEST_RECV_INST, st->udp_port,
+    add_recv_inst(st, TEST_RECV_INST, srudpn_get_port(st->udp),
             "enable-segmentation", "false", "max-segment-size", SMALL_SEGMENT_SIZE, NULL);
     add_sub(st, 131, "stream", "NETCONF", "transport", UDP_TRANSPORT,
             "encoding", ENC_XML, "purpose", LONG_PURPOSE, NULL);
@@ -207,7 +210,7 @@ test_encoding_feature_disabled(void **state)
 {
     struct tnotifd_state *st = *state;
     struct lyd_node *notif;
-    udp_notif_header_t header;
+    srudpn_msg_t *msg;
     sr_session_ctx_t *tmp_sess = NULL;
     char xpath[512];
     int ret;
@@ -225,7 +228,7 @@ test_encoding_feature_disabled(void **state)
     /* a throwaway session, the edit of the failing apply is dropped with it */
     assert_int_equal(sr_session_start(st->conn, SR_DS_RUNNING, &tmp_sess), SR_ERR_OK);
 
-    add_recv_inst_on(tmp_sess, TEST_RECV_INST, st->udp_port, NULL);
+    add_recv_inst_on(tmp_sess, TEST_RECV_INST, srudpn_get_port(st->udp), NULL);
     add_sub_on(tmp_sess, 114, "stream", "NETCONF", "transport", UDP_TRANSPORT, NULL);
     set_node_on(tmp_sess, TEST_RECV_INST,
             RECV_XP "/ietf-subscribed-notif-receivers:receiver-instance-ref", 114, TEST_RECV);
@@ -245,7 +248,7 @@ test_encoding_feature_disabled(void **state)
     /* explicitly configuring a disabled-feature encoding must be rejected */
     assert_int_equal(sr_session_start(st->conn, SR_DS_RUNNING, &tmp_sess), SR_ERR_OK);
 
-    add_recv_inst_on(tmp_sess, TEST_RECV_INST, st->udp_port, NULL);
+    add_recv_inst_on(tmp_sess, TEST_RECV_INST, srudpn_get_port(st->udp), NULL);
     add_sub_on(tmp_sess, 113, "stream", "NETCONF", "transport", UDP_TRANSPORT, NULL);
     set_node_on(tmp_sess, TEST_RECV_INST,
             RECV_XP "/ietf-subscribed-notif-receivers:receiver-instance-ref", 113, TEST_RECV);
@@ -263,8 +266,9 @@ test_encoding_feature_disabled(void **state)
      * higher-priority encode-xml whose feature is disabled */
     setup_sub(st, 111, NULL);
 
-    notif = expect_notif_hdr(st, SUB_STARTED, &header);
-    assert_int_equal(header.media_type, UDP_NOTIF_MT_JSON);
+    notif = expect_notif_msg(st, SUB_STARTED, &msg);
+    assert_int_equal(srudpn_msg_get_hdr(msg)->media_type, SRUDPN_MT_JSON);
+    srudpn_msg_free(msg);
     assert_notif_leaf(notif, "id", "111");
     assert_notif_leaf(notif, "encoding", ENC_JSON);
     lyd_free_all(notif);

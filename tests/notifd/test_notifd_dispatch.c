@@ -59,7 +59,7 @@ test_resolve_failure(void **state)
      * name is reserved by RFC 6761 so a resolver answers it without leaving the host */
     set_node(st, "no-such-host.invalid", UDP_INST_XP "/remote-address", TEST_RECV_INST);
     set_node(st, "1", UDP_INST_XP "/remote-port", TEST_RECV_INST);
-    add_recv_inst(st, OTHER_RECV_INST, st->udp_port, NULL);
+    add_recv_inst(st, OTHER_RECV_INST, srudpn_get_port(st->udp), NULL);
 
     add_sub(st, 300, "stream", "NETCONF", "transport", UDP_TRANSPORT, NULL);
     bind_sub_recv(st, 300, TEST_RECV, TEST_RECV_INST);
@@ -102,7 +102,7 @@ test_dispatch_large_notification(void **state)
     uint32_t i;
 
     /* large segments so that the whole message fits into the socket receive buffer of the test */
-    add_recv_inst(st, TEST_RECV_INST, st->udp_port, "enable-segmentation", "true",
+    add_recv_inst(st, TEST_RECV_INST, srudpn_get_port(st->udp), "enable-segmentation", "true",
             "max-segment-size", "8192", NULL);
     add_sub(st, 305, "stream", "NETCONF", "transport", UDP_TRANSPORT, "encoding", ENC_XML, NULL);
     bind_sub_recv(st, 305, TEST_RECV, TEST_RECV_INST);
@@ -140,7 +140,7 @@ test_dispatch_sent_records_not_delivered(void **state)
     /* one receiver that can never connect and one healthy one on the test socket */
     set_node(st, "no-such-host.invalid", UDP_INST_XP "/remote-address", OTHER_RECV_INST);
     set_node(st, "1", UDP_INST_XP "/remote-port", OTHER_RECV_INST);
-    add_recv_inst(st, TEST_RECV_INST, st->udp_port, NULL);
+    add_recv_inst(st, TEST_RECV_INST, srudpn_get_port(st->udp), NULL);
     add_sub(st, 307, "stream", "NETCONF", "transport", UDP_TRANSPORT, NULL);
     bind_sub_recv(st, 307, TEST_RECV, TEST_RECV_INST);
     bind_sub_recv(st, 307, OTHER_RECV, OTHER_RECV_INST);

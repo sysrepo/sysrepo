@@ -124,6 +124,19 @@ test_receiver_reset_action(void **state)
 }
 
 /**
+ * @brief Assert the source address of a UDP-Notif message.
+ */
+static void
+assert_msg_source(const srudpn_msg_t *msg, const char *addr)
+{
+    char src_addr[SRUDPN_ADDR_STRLEN];
+    uint16_t src_port;
+
+    srudpn_msg_get_source(msg, src_addr, &src_port);
+    assert_string_equal(src_addr, addr);
+}
+
+/**
  * @brief Test: Modify subscription source-address and verify sender source IP changes.
  */
 static void
@@ -131,8 +144,7 @@ test_source_address_modify(void **state)
 {
     struct tnotifd_state *st = *state;
     struct lyd_node *notif;
-    char first_source[INET_ADDRSTRLEN] = {0};
-    char second_source[INET_ADDRSTRLEN] = {0};
+    srudpn_msg_t *msg;
     char alternate_source[INET_ADDRSTRLEN] = {0};
     const char *initial_source = "127.0.0.1";
 
@@ -145,16 +157,18 @@ test_source_address_modify(void **state)
 
     setup_sub(st, 92, "source-address", initial_source, NULL);
 
-    notif = expect_notif_src(st, SUB_STARTED, first_source, sizeof first_source);
-    assert_string_equal(first_source, initial_source);
+    notif = expect_notif_msg(st, SUB_STARTED, &msg);
+    assert_msg_source(msg, initial_source);
+    srudpn_msg_free(msg);
     lyd_free_all(notif);
 
     set_node(st, alternate_source, SUB_XP "/source-address", 92);
     apply_changes(st);
 
     /* the subscription-modified must come from the new source IP */
-    notif = expect_notif_src(st, SUB_MODIFIED, second_source, sizeof second_source);
-    assert_string_equal(second_source, alternate_source);
+    notif = expect_notif_msg(st, SUB_MODIFIED, &msg);
+    assert_msg_source(msg, alternate_source);
+    srudpn_msg_free(msg);
     lyd_free_all(notif);
 }
 
@@ -165,15 +179,13 @@ static void
 test_receiver_instance_ref_change(void **state)
 {
     struct tnotifd_state *st = *state;
-    uint16_t recv2_port = 0;
-    int recv2_sockfd;
+    srudpn_t *udp2;
 
-    /* a socket for the second receiver, its port is assigned by the system */
-    recv2_sockfd = create_udp_receiver_socket(&recv2_port);
-    assert_true(recv2_sockfd >= 0);
+    /* a collector for the second receiver, its port is assigned by the system */
+    assert_int_equal(srudpn_open("127.0.0.1", 0, &udp2), SR_ERR_OK);
 
-    add_recv_inst(st, "recv-1", st->udp_port, NULL);
-    add_recv_inst(st, "recv-2", recv2_port, NULL);
+    add_recv_inst(st, "recv-1", srudpn_get_port(st->udp), NULL);
+    add_recv_inst(st, "recv-2", srudpn_get_port(udp2), NULL);
 
     add_sub(st, 230, "stream", "NETCONF", "transport", UDP_TRANSPORT, NULL);
     bind_sub_recv(st, 230, TEST_RECV, "recv-1");
@@ -187,9 +199,9 @@ test_receiver_instance_ref_change(void **state)
 
     /* the old receiver is terminated and the new one started */
     skip_notif(st, SUB_TERMINATED);
-    lyd_free_all(expect_notif_on(st, recv2_sockfd, SUB_STARTED));
+    lyd_free_all(expect_notif_on(st, udp2, SUB_STARTED));
 
-    close(recv2_sockfd);
+    srudpn_close(udp2);
 }
 
 /**
