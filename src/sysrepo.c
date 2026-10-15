@@ -3715,6 +3715,65 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Add 'last-modif' metadata for all top-level nodes.
+ *
+ * @param[in] data Data to change.
+ * @param[in] mod_info Mod info to use.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_get_data_add_last_modif(struct lyd_node *data, const struct sr_mod_info_s *mod_info)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *prev_mod = NULL, *ly_mod, *sr_mod;
+    struct sr_mod_info_mod_s *mod;
+    const struct sr_ds_handle_s *ds_handle;
+    struct timespec mtime;
+    char *buf = NULL;
+    uint32_t i;
+
+    sr_mod = ly_ctx_get_module_implemented(sr_yang_ctx.ly_ctx, "sysrepo");
+    assert(sr_mod);
+
+    for ( ; data; data = data->next) {
+        ly_mod = lyd_owner_module(data);
+        if (ly_mod != prev_mod) {
+            free(buf);
+            buf = NULL;
+
+            /* different module, find the mod_info mod */
+            for (i = 0; i < mod_info->mod_count; ++i) {
+                mod = &mod_info->mods[i];
+                if (mod->ly_mod == ly_mod) {
+                    break;
+                }
+            }
+            assert(i < mod_info->mod_count);
+
+            /* get the last modification time */
+            ds_handle = mod->ds_handle[mod_info->ds];
+            if ((err_info = ds_handle->plugin->last_modif_cb(ly_mod, mod_info->ds, ds_handle->plg_data, &mtime))) {
+                goto cleanup;
+            }
+
+            /* print into a string */
+            ly_time_ts2str(&mtime, &buf);
+
+            prev_mod = ly_mod;
+        }
+
+        /* add last-modif metadata */
+        if ((err_info = sr_lyd_new_meta(data, sr_mod, "last-modif", buf))) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    free(buf);
+    return err_info;
+}
+
 API int
 sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, uint32_t timeout_ms,
         const uint32_t opts, sr_data_t **data)
@@ -3724,8 +3783,8 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
     struct ly_set *set = NULL;
     struct lyd_node *oper_data_crashed = NULL;
 
-    SR_CHECK_ARG_APIRET(!session || !xpath || !data || ((session->ds != SR_DS_OPERATIONAL) && (opts & SR_OPER_MASK)),
-            session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !xpath || !data || ((session->ds != SR_DS_OPERATIONAL) && (opts & SR_OPER_MASK)) ||
+            ((session->ds == SR_DS_OPERATIONAL) && (opts & SR_GET_WITH_LAST_MODIF)), session, err_info);
 
     if (!timeout_ms) {
         timeout_ms = SR_OPER_CB_TIMEOUT;
@@ -3786,6 +3845,13 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
         /* use the pruned data */
         (*data)->tree = mod_info.data;
         mod_info.data = NULL;
+    }
+
+    if (opts & SR_GET_WITH_LAST_MODIF) {
+        /* add last-modif metadata */
+        if ((err_info = sr_get_data_add_last_modif((*data)->tree, &mod_info))) {
+            goto cleanup;
+        }
     }
 
 cleanup:

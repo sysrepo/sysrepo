@@ -27,6 +27,11 @@ module sysrepo {
     description
         "Sysrepo YANG datastore internal attributes and information.";
 
+    revision "2026-10-15" {
+        description
+            "Added last-modif annotation.";
+    }
+
     revision "2025-04-04" {
         description
             "Added schema mount extension instance metadata.";
@@ -72,6 +77,12 @@ module sysrepo {
             "Additional proprietary <edit-config> operations used internally.";
         reference
             "RFC 6241 section 7.2.";
+    }
+
+    md:annotation last-modif {
+        type yang:date-and-time;
+        description
+            "The timestamp of the last modification of the specific data node or any of its descendants.";
     }
 
     identity notification {

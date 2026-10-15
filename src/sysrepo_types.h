@@ -330,9 +330,11 @@ typedef enum {
  * @brief Flags used to override default data get behavior.
  */
 typedef enum {
-    SR_GET_NO_FILTER = 0x010000      /**< Do not apply the filter and return the whole "base" data which the filter
-                                          would normally be applied on. The filter is used only when deciding what data
-                                          to retrieve from subscribers and similar optimization cases. */
+    SR_GET_NO_FILTER = 0x010000,        /**< Do not apply the filter and return the whole "base" data which the filter
+                                             would normally be applied on. The filter is used only when deciding what data
+                                             to retrieve from subscribers and similar optimization cases. */
+    SR_GET_WITH_LAST_MODIF = 0x020000   /**< Return configuration data with 'sysrepo:last-modif' metadata for all
+                                             top-level data nodes. */
 } sr_get_flag_t;
 
 /** @} getdata */

@@ -259,7 +259,7 @@ sr_ly_ctx_new(struct ly_ctx **ly_ctx)
         sr_errinfo_new_ly(&err_info, SR_ERR_LY);
         goto cleanup;
     }
-    if (!ly_ctx_load_module(*ly_ctx, "sysrepo", "2025-04-04", NULL)) {
+    if (!ly_ctx_load_module(*ly_ctx, "sysrepo", "2026-10-15", NULL)) {
         sr_errinfo_new_ly(&err_info, SR_ERR_LY);
         goto cleanup;
     }
