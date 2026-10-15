@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/random.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/uio.h>
@@ -50,7 +51,7 @@ typedef struct udp_notif_receiver_s {
     int enable_segmentation;    /**< whether payload segmentation is enabled */
     uint16_t max_segment_size;  /**< maximum segment size in bytes */
 
-    ATOMIC_T message_id;        /**< monotonically increasing message ID, starts at 1 */
+    ATOMIC_T message_id;        /**< monotonically increasing message ID, starts random */
     uint32_t publisher_id;      /**< message publisher ID, identifies this publisher instance */
 } udp_notif_receiver_t;
 
@@ -302,6 +303,7 @@ udp_transport_connect_cb(notif_receiver_t *recv, void *cfg)
     udp_conn_ctx_t *conn;
     struct sockaddr_storage local_addr;
     socklen_t local_addr_len = 0;
+    uint32_t message_id;
 
     if (!udp_recv || !udp_recv->remote_address) {
         return SR_ERR_INVAL_ARG;
@@ -323,6 +325,15 @@ udp_transport_connect_cb(notif_receiver_t *recv, void *cfg)
         }
     }
 
+    /* the first message ID is random */
+    if (!ATOMIC_LOAD_RELAXED(udp_recv->message_id)) {
+        if (getrandom(&message_id, sizeof message_id, 0) != sizeof message_id) {
+            SRNTF_LOG_ERR("Failed to generate the first UDP-Notif message ID: %s.", strerror(errno));
+            return SR_ERR_SYS;
+        }
+        ATOMIC_STORE_RELAXED(udp_recv->message_id, message_id);
+    }
+
     sockfd = udp_notif_socket_connect((const struct sockaddr *)&recv->addr, recv->addr_len,
             recv->sub ? recv->sub->local_address : NULL, &local_addr, local_addr_len);
     if (sockfd < 0) {
@@ -342,11 +353,6 @@ udp_transport_connect_cb(notif_receiver_t *recv, void *cfg)
 
     SRNTF_LOG_INF("Connected UDP-Notif receiver to %s:%" PRIu16 " on socket %d.", udp_recv->remote_address,
             udp_recv->remote_port, sockfd);
-
-    /* initialize message ID to 1 as per spec (starts at 1 with first message) */
-    if (udp_recv->message_id == 0) {
-        ATOMIC_STORE_RELAXED(udp_recv->message_id, 1);
-    }
 
     /* TODO: publisher_id should be configured or generated uniquely per publisher instance */
     if (udp_recv->publisher_id == 0) {
@@ -495,8 +501,6 @@ udp_notif_receiver_from_node(const struct lyd_node *node, udp_notif_receiver_t *
         udp_recv->max_segment_size = (uint16_t)strtoul(lyd_get_value(n), NULL, 10);
     }
 
-    ATOMIC_STORE_RELAXED(udp_recv->message_id, 1);
-
 cleanup:
     return rc;
 }
@@ -554,7 +558,6 @@ udp_transport_config_change_cb(notif_receiver_inst_t *inst, const struct lyd_nod
             if (!inst->transport_config) {
                 udp_recv = calloc(1, sizeof *udp_recv);
                 CHECK_ERRMEM_GOTO(udp_recv, rc, cleanup);
-                ATOMIC_STORE_RELAXED(udp_recv->message_id, 1);
                 inst->transport_config = udp_recv;
             }
         } else if (op == SR_OP_DELETED) {
