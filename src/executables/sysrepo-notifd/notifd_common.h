@@ -674,26 +674,6 @@ int notif_receiver_backoff_reconnect(notifd_ctx_t *notifd_ctx, notif_receiver_t 
 int notif_receiver_reconnect(notifd_ctx_t *notifd_ctx, notif_sub_t *sub, notif_receiver_t *receiver, notif_receiver_inst_t *new_inst);
 
 /**
- * @brief Encode a YANG notification into an RFC 5277 notification message.
- *
- * Wraps the given notification data tree in the RFC 5277 <notification> envelope
- * (with the mandatory <eventTime> child set from @p ts) and serializes it in the
- * requested encoding. For XML the envelope is the RFC 5277 XML structure; for
- * JSON it is the RFC 8040 Section 6.4 JSON mapping of that same structure.
- * CBOR encoding is not supported.
- *
- * @param[in] notif Notification data tree to wrap and encode.
- * @param[in] ts Event timestamp for <eventTime> (mandatory).
- * @param[in] encoding Encoding format, must be resolved by the caller (::NOTIF_ENCODING_UNSET
- *            is rejected with ::SR_ERR_INVAL_ARG).
- * @param[out] data Encoded message (caller must free).
- * @param[out] data_len Length of encoded message.
- * @return ::SR_ERR_OK on success, ::SR_ERR_UNSUPPORTED for CBOR, other error codes on failure.
- */
-int notif_rfc5277_encode(const struct lyd_node *notif, const struct timespec *ts,
-        notif_encoding_t encoding, char **data, uint32_t *data_len);
-
-/**
  * @brief Send a single notification to a specific receiver over its transport.
  *
  * Enforces protocol ordering: a `subscription-started` must have been delivered
