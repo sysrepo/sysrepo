@@ -685,20 +685,21 @@ srsn_yp_on_change_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const c
 
     /* NACM begin */
     if ((err_info = sr_nacm_check_yp_change_begin(sub->nacm_user, &groups, &group_count))) {
-        goto cleanup_unlock;
+        pthread_mutex_unlock(&sub->damp_sntimer.lock);
+        goto cleanup;
     }
 
     while (!sr_get_change_tree_next(session, iter, &op, &node, &prev_value, &prev_list, NULL)) {
         /* get the (target) node path */
         free(node_path);
         if ((err_info = srsn_yp_on_change_target_path(node, prev_value, &node_path))) {
-            goto cleanup;
+            goto cleanup_unlock;
         }
 
         /* check 'target' NACM */
         if ((err_info = sr_nacm_check_yp_change_target(sub->nacm_user, groups, group_count, node_path, node->schema,
                 &denied))) {
-            goto cleanup;
+            goto cleanup_unlock;
         }
         if (denied) {
             continue;

@@ -1869,7 +1869,7 @@ sr_notif_check_filter(sr_session_ctx_t *sess, struct lyd_node *notif_tree, const
         }
         SR_CHECK_INT_GOTO(!set->count, err_info, cleanup);
 
-        /* NACM start */
+        /* NACM start and lock */
         if ((err_info = sr_nacm_check_yp_change_begin(sess->nacm_user, &groups, &group_count))) {
             goto cleanup;
         }
@@ -1881,7 +1881,7 @@ sr_notif_check_filter(sr_session_ctx_t *sess, struct lyd_node *notif_tree, const
 
             /* check NACM for the target */
             if ((err_info = sr_nacm_check_yp_change_target(sess->nacm_user, groups, group_count, target, schema, &d))) {
-                goto cleanup;
+                goto cleanup_unlock;
             }
             if (d) {
                 /* access to the path is denied, remove the edit */
@@ -1893,14 +1893,17 @@ sr_notif_check_filter(sr_session_ctx_t *sess, struct lyd_node *notif_tree, const
         if (den_c == set->count) {
             /* NACM denied read access to all the edits, drop the notification */
             *filtered_out = 1;
-            goto cleanup;
+            goto cleanup_unlock;
         }
     }
+
+cleanup_unlock:
+    /* NACM unlock */
+    sr_nacm_check_yp_change_end(groups, group_count);
 
 cleanup:
     free(denied.rule_name);
     ly_set_free(set, NULL);
-    sr_nacm_check_yp_change_end(groups, group_count);
     return err_info;
 }
 
