@@ -42,6 +42,7 @@ static struct sr_nacm nacm;
 
 #define EMEM_CB sr_session_set_error_message(session, "Memory allocation failed (%s:%d)", __FILE__, __LINE__)
 #define EINT_CB sr_session_set_error_message(session, "Internal error (%s:%d)", __FILE__, __LINE__)
+#define ELOCK_CB sr_session_set_error_message(session, "Locking a mutex failed (%s)", strerror(r))
 
 /* /ietf-netconf-acm:nacm */
 static int
@@ -53,7 +54,7 @@ sr_nacm_nacm_params_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const
     const struct lyd_node *node;
     const struct lyd_node_term *term;
     char *xpath2;
-    int rc;
+    int rc, r;
 
     if (asprintf(&xpath2, "%s/*", xpath) == -1) {
         EMEM_CB;
@@ -67,7 +68,12 @@ sr_nacm_nacm_params_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const
     }
 
     /* NACM LOCK */
-    pthread_mutex_lock(&nacm.lock);
+    r = pthread_mutex_lock(&nacm.lock);
+    if (r) {
+        ELOCK_CB;
+        sr_free_change_iter(iter);
+        return SR_ERR_INTERNAL;
+    }
 
     while ((rc = sr_get_change_tree_next(session, iter, &op, &node, NULL, NULL, NULL)) == SR_ERR_OK) {
         term = (struct lyd_node_term *)node;
@@ -189,19 +195,23 @@ cleanup:
 
 /* /sysrepo-monitoring:sysrepo-state/connection/nacm-stats */
 static int
-sr_nacm_srmon_oper_cb(sr_session_ctx_t *UNUSED(session), uint32_t UNUSED(sub_id), const char *UNUSED(module_name),
+sr_nacm_srmon_oper_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *UNUSED(module_name),
         const char *UNUSED(path), const char *UNUSED(request_xpath), uint32_t UNUSED(request_id), struct lyd_node **parent,
         void *UNUSED(private_data))
 {
     sr_error_info_t *err_info = NULL;
-    int rc = SR_ERR_OK;
+    int rc = SR_ERR_OK, r;
     struct lyd_node *cont;
     char num_str[11];
 
     assert(*parent);
 
     /* NACM LOCK */
-    pthread_mutex_lock(&nacm.lock);
+    r = pthread_mutex_lock(&nacm.lock);
+    if (r) {
+        ELOCK_CB;
+        return SR_ERR_INTERNAL;
+    }
 
     if ((err_info = sr_lyd_new_inner(*parent, NULL, "nacm-stats", &cont))) {
         goto cleanup_unlock;
@@ -265,7 +275,7 @@ sr_nacm_group_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char 
     struct sr_nacm_group *group;
     uint32_t i, j;
     char *xpath2;
-    int rc;
+    int rc, r;
     void *mem;
 
     if (asprintf(&xpath2, "%s//.", xpath) == -1) {
@@ -280,7 +290,12 @@ sr_nacm_group_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char 
     }
 
     /* NACM LOCK */
-    pthread_mutex_lock(&nacm.lock);
+    r = pthread_mutex_lock(&nacm.lock);
+    if (r) {
+        ELOCK_CB;
+        sr_free_change_iter(iter);
+        return SR_ERR_INTERNAL;
+    }
 
     while ((rc = sr_get_change_tree_next(session, iter, &op, &node, NULL, NULL, NULL)) == SR_ERR_OK) {
         if (!strcmp(node->schema->name, "group")) {
@@ -567,7 +582,7 @@ sr_nacm_rule_list_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const c
     const char *prev_list, *rlist_name, *group_name;
     struct sr_nacm_rule_list *rlist = NULL, *prev_rlist;
     char *xpath2;
-    int rc, len;
+    int rc, len, r;
     uint32_t i;
 
     if (asprintf(&xpath2, "%s//.", xpath) == -1) {
@@ -582,7 +597,12 @@ sr_nacm_rule_list_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const c
     }
 
     /* NACM LOCK */
-    pthread_mutex_lock(&nacm.lock);
+    r = pthread_mutex_lock(&nacm.lock);
+    if (r) {
+        ELOCK_CB;
+        sr_free_change_iter(iter);
+        return SR_ERR_INTERNAL;
+    }
 
     while ((rc = sr_get_change_tree_next(session, iter, &op, &node, NULL, &prev_list, NULL)) == SR_ERR_OK) {
         if (!strcmp(node->schema->name, "rule-list")) {
@@ -727,7 +747,7 @@ sr_nacm_rule_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *
     struct sr_nacm_rule_list *rlist;
     struct sr_nacm_rule *rule = NULL, *prev_rule;
     char *xpath2;
-    int rc, len;
+    int rc, len, r;
 
     if (asprintf(&xpath2, "%s//.", xpath) == -1) {
         EMEM_CB;
@@ -741,7 +761,12 @@ sr_nacm_rule_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *
     }
 
     /* NACM LOCK */
-    pthread_mutex_lock(&nacm.lock);
+    r = pthread_mutex_lock(&nacm.lock);
+    if (r) {
+        ELOCK_CB;
+        sr_free_change_iter(iter);
+        return SR_ERR_INTERNAL;
+    }
 
     while ((rc = sr_get_change_tree_next(session, iter, &op, &node, NULL, &prev_list, NULL)) == SR_ERR_OK) {
         if (!strcmp(node->schema->name, "rule")) {
@@ -1712,13 +1737,17 @@ sr_nacm_check_op(const char *nacm_user, const struct lyd_node *data, struct sr_d
     const struct lyd_node *op = NULL;
     char **groups = NULL;
     uint32_t group_count = 0;
-    int allowed = 0;
+    int allowed = 0, r;
     enum sr_nacm_access access;
     struct sr_nacm_rule *rule = NULL;
     struct lysc_ext *def = NULL;
 
     /* NACM LOCK */
-    pthread_mutex_lock(&nacm.lock);
+    r = pthread_mutex_lock(&nacm.lock);
+    if (r) {
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Locking a mutex failed (%s: %s).", __func__, strerror(r));
+        return err_info;
+    }
 
     /* check access for the whole data tree first */
     err_info = sr_nacm_allowed_tree(data->schema, nacm_user, &allowed);
@@ -2048,7 +2077,7 @@ sr_nacm_get_node_set_read_filter(sr_session_ctx_t *session, struct ly_set *set)
     struct ly_set denied_set = {0};
     struct lyd_node *node;
     uint32_t i, j;
-    int denied;
+    int denied, r;
 
     if (!session->nacm_user) {
         /* nothing to do */
@@ -2056,7 +2085,11 @@ sr_nacm_get_node_set_read_filter(sr_session_ctx_t *session, struct ly_set *set)
     }
 
     /* NACM LOCK */
-    pthread_mutex_lock(&nacm.lock);
+    r = pthread_mutex_lock(&nacm.lock);
+    if (r) {
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Locking a mutex failed (%s: %s).", __func__, strerror(r));
+        return err_info;
+    }
 
     if ((err_info = sr_nacm_collect_groups(session->nacm_user, &groups, &group_count))) {
         goto cleanup;
@@ -2104,10 +2137,10 @@ sr_nacm_get_subtree_read_filter(sr_session_ctx_t *session, struct lyd_node *subt
 {
     sr_error_info_t *err_info = NULL;
     char **groups = NULL;
-    uint32_t group_count = 0;
+    uint32_t group_count = 0, i;
     struct ly_set denied_set = {0};
     struct lyd_node *node;
-    uint32_t i;
+    int r;
 
     *denied = 0;
 
@@ -2117,7 +2150,11 @@ sr_nacm_get_subtree_read_filter(sr_session_ctx_t *session, struct lyd_node *subt
     }
 
     /* NACM LOCK */
-    pthread_mutex_lock(&nacm.lock);
+    r = pthread_mutex_lock(&nacm.lock);
+    if (r) {
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Locking a mutex failed (%s: %s).", __func__, strerror(r));
+        goto cleanup;
+    }
 
     /* collect groups */
     err_info = sr_nacm_collect_groups(session->nacm_user, &groups, &group_count);
@@ -2158,10 +2195,10 @@ sr_nacm_filter_data_read(sr_session_ctx_t *session, struct lyd_node **data)
 {
     sr_error_info_t *err_info = NULL;
     char **groups = NULL;
-    uint32_t group_count = 0;
+    uint32_t group_count = 0, i;
     struct ly_set denied_set = {0};
     struct lyd_node *root;
-    uint32_t i;
+    int r;
 
     SR_CHECK_ARG_APIRET(!session || !data, session, err_info);
 
@@ -2170,7 +2207,11 @@ sr_nacm_filter_data_read(sr_session_ctx_t *session, struct lyd_node **data)
     }
 
     /* NACM LOCK */
-    pthread_mutex_lock(&nacm.lock);
+    r = pthread_mutex_lock(&nacm.lock);
+    if (r) {
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Locking a mutex failed (%s: %s).", __func__, strerror(r));
+        goto cleanup;
+    }
 
     /* collect groups */
     if ((err_info = sr_nacm_collect_groups(session->nacm_user, &groups, &group_count))) {
@@ -2311,10 +2352,14 @@ sr_nacm_check_diff(const char *nacm_user, const struct lyd_node *diff, struct sr
     sr_error_info_t *err_info = NULL;
     char **groups = NULL;
     uint32_t group_count = 0;
-    int allowed;
+    int allowed, r;
 
     /* NACM LOCK */
-    pthread_mutex_lock(&nacm.lock);
+    r = pthread_mutex_lock(&nacm.lock);
+    if (r) {
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Locking a mutex failed (%s: %s).", __func__, strerror(r));
+        return err_info;
+    }
 
     if ((err_info = sr_nacm_collect_groups(nacm_user, &groups, &group_count))) {
         goto cleanup;
@@ -2346,23 +2391,39 @@ cleanup:
 sr_error_info_t *
 sr_nacm_check_yp_change_begin(const char *nacm_user, char ***groups, uint32_t *group_count)
 {
+    sr_error_info_t *err_info = NULL;
+    int r;
+
     *groups = NULL;
     *group_count = 0;
 
     /* NACM LOCK */
-    pthread_mutex_lock(&nacm.lock);
+    r = pthread_mutex_lock(&nacm.lock);
+    if (r) {
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Locking a mutex failed (%s: %s).", __func__, strerror(r));
+        return err_info;
+    }
 
     if (!nacm_user) {
         /* no groups to collect */
-        return NULL;
+        goto cleanup;
     }
 
     /* NACM is off */
     if (!nacm.enabled) {
-        return NULL;
+        goto cleanup;
     }
 
-    return sr_nacm_collect_groups(nacm_user, groups, group_count);
+    if ((err_info = sr_nacm_collect_groups(nacm_user, groups, group_count))) {
+        goto cleanup;
+    }
+
+cleanup:
+    if (err_info) {
+        /* NACM UNLOCK */
+        pthread_mutex_unlock(&nacm.lock);
+    }
+    return err_info;
 }
 
 sr_error_info_t *
