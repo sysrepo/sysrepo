@@ -51,11 +51,16 @@ static sr_error_info_t *
 srpntf_writev_notif(int fd, const char *notif_json, uint32_t notif_json_len, const struct timespec *notif_ts)
 {
     sr_error_info_t *err_info = NULL;
+    srpjson_timespec_t ts_serial;
     struct iovec iov[3];
 
+    /* serialize timespec with fixed-size fields */
+    ts_serial.tv_sec = notif_ts->tv_sec;
+    ts_serial.tv_nsec = notif_ts->tv_nsec;
+
     /* timestamp */
-    iov[0].iov_base = (void *)notif_ts;
-    iov[0].iov_len = sizeof *notif_ts;
+    iov[0].iov_base = &ts_serial;
+    iov[0].iov_len = sizeof ts_serial;
 
     /* notification length */
     iov[1].iov_base = &notif_json_len;
@@ -89,9 +94,16 @@ srpntf_writev_notif(int fd, const char *notif_json, uint32_t notif_json_len, con
 static sr_error_info_t *
 srpntf_read_ts(int notif_fd, struct timespec *notif_ts)
 {
-    memset(notif_ts, 0, sizeof *notif_ts);
+    sr_error_info_t *err_info = NULL;
+    srpjson_timespec_t ts_serial = {0, 0};
 
-    return srpjson_read(srpntf_name, notif_fd, notif_ts, sizeof *notif_ts);
+    if ((err_info = srpjson_read(srpntf_name, notif_fd, &ts_serial, sizeof ts_serial))) {
+        memset(notif_ts, 0, sizeof *notif_ts);
+        return err_info;
+    }
+    notif_ts->tv_sec = ts_serial.tv_sec;
+    notif_ts->tv_nsec = ts_serial.tv_nsec;
+    return NULL;
 }
 
 /**
@@ -436,6 +448,7 @@ srpntf_json_enable(const struct lys_module *mod)
     char *path = NULL;
     int fd = -1;
     struct timespec ts;
+    srpjson_timespec_t ts_serial;
 
     /* ensure notif directory exists */
     if ((err_info = srpntf_ensure_dir(NULL))) {
@@ -461,7 +474,9 @@ srpntf_json_enable(const struct lys_module *mod)
 
     /* write the current real time */
     clock_gettime(CLOCK_REALTIME, &ts);
-    if (write(fd, &ts, sizeof ts) != (ssize_t) sizeof ts) {
+    ts_serial.tv_sec = ts.tv_sec;
+    ts_serial.tv_nsec = ts.tv_nsec;
+    if (write(fd, &ts_serial, sizeof ts_serial) != (ssize_t) sizeof ts_serial) {
         srplg_log_errinfo(&err_info, srpntf_name, NULL, SR_ERR_SYS, "Writing replay time failed (%s).", strerror(errno));
         goto cleanup;
     }
@@ -771,6 +786,7 @@ srpntf_json_replay_start_get(const struct lys_module *mod, struct timespec *ts)
     char *path = NULL;
     int fd = -1;
     ssize_t r;
+    srpjson_timespec_t ts_serial;
 
     /* create directory in case does not exist */
     if ((err_info = srpntf_ensure_dir(NULL))) {
@@ -793,13 +809,16 @@ srpntf_json_replay_start_get(const struct lys_module *mod, struct timespec *ts)
     }
 
     /* read replay timestamp */
-    r = read(fd, ts, sizeof *ts);
+    r = read(fd, &ts_serial, sizeof ts_serial);
     if (r == -1) {
         srplg_log_errinfo(&err_info, srpntf_name, NULL, SR_ERR_SYS, "Reading \"%s\" failed (%s).", path, strerror(errno));
         goto cleanup;
-    } else if (r != (ssize_t) sizeof *ts) {
+    } else if (r != (ssize_t) sizeof ts_serial) {
         srplg_log_errinfo(&err_info, srpntf_name, NULL, SR_ERR_INTERNAL, "Unexpected replay file size.");
         goto cleanup;
+    } else {
+        ts->tv_sec = ts_serial.tv_sec;
+        ts->tv_nsec = ts_serial.tv_nsec;
     }
 
 cleanup:
