@@ -4,8 +4,8 @@
  * @brief subscription common routines
  *
  * @copyright
- * Copyright (c) 2023 Deutsche Telekom AG.
- * Copyright (c) 2023 CESNET, z.s.p.o.
+ * Copyright (c) 2023 - 2026 Deutsche Telekom AG.
+ * Copyright (c) 2023 - 2026 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -1831,7 +1831,7 @@ sr_notif_check_filter(sr_session_ctx_t *sess, struct lyd_node *notif_tree, const
     sr_error_info_t *err_info = NULL;
     struct sr_denied denied = {0};
     ly_bool result = 1;
-    int d;
+    int d, nacm_lock = 0;
     struct ly_set *set = NULL;
     uint32_t i, den_c, group_count = 0;
     char **groups = NULL;
@@ -1873,6 +1873,7 @@ sr_notif_check_filter(sr_session_ctx_t *sess, struct lyd_node *notif_tree, const
         if ((err_info = sr_nacm_check_yp_change_begin(sess->nacm_user, &groups, &group_count))) {
             goto cleanup;
         }
+        nacm_lock = 1;
 
         den_c = 0;
         for (i = 0; i < set->count; ++i) {
@@ -1881,7 +1882,7 @@ sr_notif_check_filter(sr_session_ctx_t *sess, struct lyd_node *notif_tree, const
 
             /* check NACM for the target */
             if ((err_info = sr_nacm_check_yp_change_target(sess->nacm_user, groups, group_count, target, schema, &d))) {
-                goto cleanup_unlock;
+                goto cleanup;
             }
             if (d) {
                 /* access to the path is denied, remove the edit */
@@ -1893,15 +1894,16 @@ sr_notif_check_filter(sr_session_ctx_t *sess, struct lyd_node *notif_tree, const
         if (den_c == set->count) {
             /* NACM denied read access to all the edits, drop the notification */
             *filtered_out = 1;
-            goto cleanup_unlock;
+            goto cleanup;
         }
     }
 
-cleanup_unlock:
-    /* NACM unlock */
-    sr_nacm_check_yp_change_end(groups, group_count);
-
 cleanup:
+    if (nacm_lock) {
+        /* NACM unlock */
+        sr_nacm_check_yp_change_end(groups, group_count);
+    }
+
     free(denied.rule_name);
     ly_set_free(set, NULL);
     return err_info;
