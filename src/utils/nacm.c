@@ -2435,6 +2435,10 @@ cleanup:
 void
 sr_nacm_check_yp_change_end(char **groups, uint32_t group_count)
 {
+    if (!groups) {
+        return;
+    }
+
     /* NACM UNLOCK */
     pthread_mutex_unlock(&nacm.lock);
 
