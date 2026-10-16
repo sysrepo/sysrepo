@@ -272,11 +272,11 @@ struct timespec srsn_time_add_ms(const struct timespec *ts, int64_t ms);
 /**
  * @brief Create a new SRSN timer.
  *
- * @param[in] cb Callback to call on a trigger.
+ * @param[in] cb Callback to call on a trigger, called with the @p sntimer lock held.
  * @param[in] arg Argument to pass @p cb.
  * @param[in] trigger Timer trigger.
  * @param[in] interval Optional timer interval.
- * @param[out] sntimer Created timer.
+ * @param[in,out] sntimer Timer to start, its lock and cond must be initialized.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *srsn_create_timer(void (*cb)(void *arg, int *freed), void *arg, const struct timespec *trigger,

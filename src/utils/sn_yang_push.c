@@ -256,6 +256,8 @@ cleanup:
 /**
  * @brief Send a prepared yang-push on-change change notification.
  *
+ * @warning The caller MUST hold the dampening timer lock.
+ *
  * @param[in] sub Subscription to use.
  * @return err_info, NULL on success.
  */
@@ -287,7 +289,7 @@ srsn_yp_damp_timer_cb(void *arg, int *UNUSED(freed))
     struct srsn_sub *sub = arg;
     sr_error_info_t *err_info = NULL;
 
-    /* send the postponed on-change notification, unless a resync dropped it */
+    /* the timer thread holds the dampening timer lock, send the postponed notification unless a resync dropped it */
     if (sub->change_ntf && (err_info = srsn_yp_ntf_change_send(sub))) {
         sr_errinfo_free(&err_info);
     }
