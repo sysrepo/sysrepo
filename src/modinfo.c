@@ -1601,33 +1601,42 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, uint32_t orig_sid, con
         }
 
         if (parent_xpath) {
-            if (!*data) {
-                /* parent does not exist for sure */
-                goto next_iter;
+            if (*data) {
+                if ((err_info = sr_lyd_find_xpath(*data, parent_xpath, &set))) {
+                    goto cleanup_opergetsub_ext_unlock;
+                }
+
+                if (set->count) {
+                    /* nested data */
+                    for (j = 0; j < set->count; ++j) {
+                        /* get oper data from the client */
+                        if ((err_info = sr_xpath_oper_data_get(mod, sub_xpath, request_xpaths, req_xpath_count,
+                                orig_sid, orig_name, orig_data, operation_id, shm_subs, i, set->dnodes[j], timeout_ms,
+                                conn, &oper_data))) {
+                            goto cleanup_opergetsub_ext_unlock;
+                        }
+
+                        /* merge oper data into one tree */
+                        if ((err_info = sr_lyd_merge(data, oper_data, 1, LYD_MERGE_DESTRUCT))) {
+                            lyd_free_all(oper_data);
+                            goto cleanup_opergetsub_ext_unlock;
+                        }
+                    }
+
+                    goto next_iter;
+                }
             }
 
-            if ((err_info = sr_lyd_find_xpath(*data, parent_xpath, &set))) {
+            /* data parent does not exist */
+            if ((err_info = sr_xpath_oper_data_get(mod, sub_xpath, request_xpaths, req_xpath_count, orig_sid, orig_name,
+                    orig_data, operation_id, shm_subs, i, NULL, timeout_ms, conn, &oper_data))) {
                 goto cleanup_opergetsub_ext_unlock;
             }
 
-            if (!set->count) {
-                /* data parent does not exist */
-                goto next_iter;
-            }
-
-            /* nested data */
-            for (j = 0; j < set->count; ++j) {
-                /* get oper data from the client */
-                if ((err_info = sr_xpath_oper_data_get(mod, sub_xpath, request_xpaths, req_xpath_count, orig_sid,
-                        orig_name, orig_data, operation_id, shm_subs, i, set->dnodes[j], timeout_ms, conn, &oper_data))) {
-                    goto cleanup_opergetsub_ext_unlock;
-                }
-
-                /* merge into one data tree */
-                if ((err_info = sr_lyd_merge(data, oper_data, 1, LYD_MERGE_DESTRUCT))) {
-                    lyd_free_all(oper_data);
-                    goto cleanup_opergetsub_ext_unlock;
-                }
+            /* merge oper data into one tree */
+            if ((err_info = sr_lyd_merge(data, oper_data, 1, LYD_MERGE_DESTRUCT))) {
+                lyd_free_all(oper_data);
+                goto cleanup_opergetsub_ext_unlock;
             }
 
 next_iter:
@@ -3309,9 +3318,8 @@ sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, int 
     sr_error_info_t *err_info = NULL;
     struct lyd_node *top_op, *op_ext_parent = NULL, *data_ext_parent = NULL, *node;
     struct ly_set *set = NULL;
-    struct sr_mod_info_mod_s *mod;
     uint32_t i;
-    char *parent_xpath = NULL, *ext_parent_path = NULL;
+    char *ext_parent_path = NULL;
     enum lyd_type op_type;
 
     assert(op->schema->nodetype & (LYS_RPC | LYS_ACTION | LYS_NOTIF));
@@ -3323,39 +3331,6 @@ sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, int 
             op_ext_parent = lyd_parent(top_op);
         }
     }
-
-    for (i = 0; i < mod_info->mod_count; ++i) {
-        mod = &mod_info->mods[i];
-
-        if (mod->state & MOD_INFO_REQ) {
-            /* this is the module of the nested operation and we need to check that operation's parent data node exists */
-            assert((mod->ly_mod == lyd_owner_module(top_op)) && op->parent);
-            free(parent_xpath);
-            parent_xpath = lyd_path(lyd_parent(op), LYD_PATH_STD, NULL, 0);
-            SR_CHECK_MEM_GOTO(!parent_xpath, err_info, cleanup);
-
-            if (mod_info->data) {
-                if ((err_info = sr_lyd_find_xpath(mod_info->data, parent_xpath, &set))) {
-                    goto cleanup;
-                }
-            } else {
-                if ((err_info = sr_ly_set_new(&set))) {
-                    goto cleanup;
-                }
-            }
-            SR_CHECK_INT_GOTO(set->count > 1, err_info, cleanup);
-
-            if (!set->count) {
-                sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED,
-                        "Nested operation \"%s\" data parent does not exist in the operational datastore.", op->schema->name);
-                goto cleanup;
-            }
-        }
-    }
-
-    /* free set */
-    ly_set_free(set, NULL);
-    set = NULL;
 
     if (op_ext_parent) {
         /* get the ext parent in mod_info data */
@@ -3397,7 +3372,6 @@ cleanup:
         }
     }
 
-    free(parent_xpath);
     free(ext_parent_path);
     ly_set_free(set, NULL);
     return err_info;
