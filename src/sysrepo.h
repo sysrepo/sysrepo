@@ -300,6 +300,23 @@ const char *sr_yang_module_dir(void);
 int sr_set_yang_module_dir(const char *path);
 
 /**
+ * @brief Get the directory with libyang YANG modules.
+ *
+ * @return YANG module dir.
+ */
+const char *sr_ly_yang_module_dir(void);
+
+/**
+ * @brief Set the directory with libyang YANG modules.
+ *
+ * Passing NULL resets the path to the default returned by libyang.
+ *
+ * @param[in] path YANG module dir, or NULL to use the default.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_set_ly_yang_module_dir(const char *path);
+
+/**
  * @brief Start a new session.
  *
  * @param[in] conn Connection to use.

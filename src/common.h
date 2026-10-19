@@ -197,6 +197,7 @@ struct srplg_ntf_s;
  */
 
 extern char sr_internal_yang_module_dir[];
+extern char sr_internal_ly_yang_module_dir[];
 extern const struct srplg_ds_s *sr_internal_ds_plugins[];
 extern const struct srplg_ntf_s *sr_internal_ntf_plugins[];
 

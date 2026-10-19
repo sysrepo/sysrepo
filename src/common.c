@@ -74,6 +74,11 @@ static sr_error_info_t *sr_xpath_get_text_pred_atoms(const char *xpath, char ***
 char sr_internal_yang_module_dir[SR_PATH_MAX];
 
 /**
+ * @brief Path to the directory with internal libyang YANG modules.
+ */
+char sr_internal_ly_yang_module_dir[SR_PATH_MAX];
+
+/**
  * @brief Internal datastore plugin array.
  */
 const struct srplg_ds_s *sr_internal_ds_plugins[] = {

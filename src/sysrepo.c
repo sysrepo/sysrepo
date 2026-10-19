@@ -661,6 +661,38 @@ cleanup:
     return sr_api_ret(NULL, err_info);
 }
 
+API const char *
+sr_ly_yang_module_dir(void)
+{
+    if (sr_internal_ly_yang_module_dir[0]) {
+        return sr_internal_ly_yang_module_dir;
+    } else {
+        return ly_yang_module_dir();
+    }
+}
+
+API int
+sr_set_ly_yang_module_dir(const char *path)
+{
+    sr_error_info_t *err_info = NULL;
+
+    if (!path) {
+        /* clear the path */
+        sr_internal_ly_yang_module_dir[0] = '\0';
+        goto cleanup;
+    }
+
+    if (strlen(path) > SR_PATH_MAX - 1) {
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Path exceeded max length %d.", SR_PATH_MAX - 1);
+        goto cleanup;
+    }
+
+    strncpy(sr_internal_ly_yang_module_dir, path, SR_PATH_MAX - 1);
+
+cleanup:
+    return sr_api_ret(NULL, err_info);
+}
+
 /**
  * @brief Set originator name and data for a session.
  *
