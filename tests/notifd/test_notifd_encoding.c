@@ -151,12 +151,14 @@ test_segmentation_reassembly(void **state)
 }
 
 /**
- * @brief Test: a notification larger than max-segment-size is dropped when segmentation is off.
+ * @brief Test: a notification larger than max-segment-size is sent unsegmented when segmentation is off.
  */
 static void
 test_segmentation_disabled(void **state)
 {
     struct tnotifd_state *st = *state;
+    struct lyd_node *notif;
+    srudpn_msg_t *msg;
 
     add_recv_inst(st, TEST_RECV_INST, srudpn_get_port(st->udp),
             "enable-segmentation", "false", "max-segment-size", SMALL_SEGMENT_SIZE, NULL);
@@ -165,8 +167,15 @@ test_segmentation_disabled(void **state)
     bind_sub_recv(st, 131, TEST_RECV, TEST_RECV_INST);
     apply_changes(st);
 
-    /* the subscription-started does not fit into one segment, so nothing can be delivered */
-    expect_no_notif(st, NULL);
+    notif = expect_notif_msg(st, SUB_STARTED, &msg);
+
+    /* one datagram without the segmentation option, larger than max-segment-size */
+    assert_int_equal(srudpn_msg_get_hdr(msg)->segmented, 0);
+    assert_true(srudpn_msg_get_hdr(msg)->message_len > atoi(SMALL_SEGMENT_SIZE));
+    srudpn_msg_free(msg);
+
+    assert_notif_leaf(notif, "purpose", LONG_PURPOSE);
+    lyd_free_all(notif);
 }
 
 /**

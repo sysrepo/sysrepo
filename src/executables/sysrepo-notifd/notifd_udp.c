@@ -433,18 +433,13 @@ udp_transport_send_cb(notif_receiver_t *recv, void *cfg,
     /* get current message ID and increment for next message atomically */
     message_id = ATOMIC_ADD_RELAXED(udp_recv->message_id, 1);
 
-    /* determine max segment size */
-    max_segment_size = udp_recv->max_segment_size;
-    if (max_segment_size == 0) {
+    /* maximum segment size, 0 to never segment */
+    if (!udp_recv->enable_segmentation) {
+        max_segment_size = 0;
+    } else if (udp_recv->max_segment_size) {
+        max_segment_size = udp_recv->max_segment_size;
+    } else {
         max_segment_size = UDP_NOTIF_DEFAULT_MAX_SEGMENT_SIZE;
-    }
-
-    if (!udp_recv->enable_segmentation && (SRUDPN_HDR_SIZE + payload_len > max_segment_size)) {
-        /* message too large but segmentation disabled */
-        SRNTF_LOG_ERR("Notification message too large (%" PRIu32 " bytes) and segmentation is disabled.",
-                payload_len);
-        rc = SR_ERR_INVAL_ARG;
-        goto cleanup;
     }
 
     /* split the message into datagrams, segmented only if it does not fit into one */
