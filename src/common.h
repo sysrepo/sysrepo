@@ -92,8 +92,8 @@ struct srplg_ntf_s;
 /** timeout for locking remap lock; maximum time it can be continuously read/written to (ms) */
 #define SR_REMAP_LOCK_TIMEOUT 10000
 
-/** timeout for write-locking module running plugin cache (ms) */
-#define SR_RUN_CACHE_LOCK_TIMEOUT 1000
+/** timeout for write-locking module running plugin cache (updating it calls DS plugin load_cb()) (ms) */
+#define SR_RUN_CACHE_LOCK_TIMEOUT 10000
 
 /** timeout for write-locking oper cache (ms) */
 #define SR_OPER_CACHE_LOCK_TIMEOUT 50
