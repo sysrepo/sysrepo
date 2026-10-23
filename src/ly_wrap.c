@@ -1732,6 +1732,23 @@ cleanup:
 }
 
 sr_error_info_t *
+sr_ly_time_str2ts(const char *str, struct timespec *ts)
+{
+    sr_error_info_t *err_info = NULL;
+
+    sr_ly_log_setup();
+
+    if (ly_time_str2ts(str, ts)) {
+        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        goto cleanup;
+    }
+
+cleanup:
+    sr_ly_log_revert();
+    return err_info;
+}
+
+sr_error_info_t *
 sr_ly_ctx_compiled_print(const struct ly_ctx *ctx, void *mem, void **mem_end)
 {
     sr_error_info_t *err_info = NULL;

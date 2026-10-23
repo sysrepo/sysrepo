@@ -780,6 +780,15 @@ sr_error_info_t *sr_lyd_parse_opaq_error(const struct lyd_node *node);
 sr_error_info_t *sr_ly_time_ts2str(const struct timespec *ts, char **str);
 
 /**
+ * @brief Convert a date-and-time value to timespec.
+ *
+ * @param[in] str Date-and-time value to convert.
+ * @param[out] ts Converted timespec.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_ly_time_str2ts(const char *str, struct timespec *ts);
+
+/**
  * @brief Print a libyang context to memory.
  *
  * @param[in] ctx Context to print.

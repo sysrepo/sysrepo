@@ -568,7 +568,9 @@ srudpn_open(const char *address, uint16_t port, srudpn_t **udp)
 
     /* best-effort larger receive buffer for segment bursts, the kernel may cap it */
     opt = SRUDPN_RCVBUF_SIZE;
-    setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &opt, sizeof opt);
+    if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &opt, sizeof opt)) {
+        SR_LOG_WRN("Enlarging the UDP-Notif collector receive buffer failed (%s).", strerror(errno));
+    }
 
     if (bind(fd, ai->ai_addr, ai->ai_addrlen)) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, "Binding UDP-Notif collector to \"%s\" port %" PRIu16 " failed (%s).",
@@ -808,7 +810,9 @@ srudpn_msg_parse(const srudpn_msg_t *msg, const struct ly_ctx *ly_ctx, srudpn_no
     /* store the event time, already validated by the parser */
     LY_LIST_FOR(lyd_child((*notif)->env), node) {
         if (!node->schema && !strcmp(LYD_NAME(node), "eventTime")) {
-            ly_time_str2ts(lyd_get_value(node), &(*notif)->event_time);
+            if ((err_info = sr_ly_time_str2ts(lyd_get_value(node), &(*notif)->event_time))) {
+                goto cleanup;
+            }
             break;
         }
     }
