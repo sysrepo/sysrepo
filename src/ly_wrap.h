@@ -188,14 +188,15 @@ sr_error_info_t *sr_lyd_parse_data(const struct ly_ctx *ctx, const char *data, c
  *
  * @param[in] ctx Context to use.
  * @param[in] data Data to parse.
+ * @param[in] data_len Length of @p data, 0 if NUL-terminated.
  * @param[in] format Format of @p data.
  * @param[in] data_type Operation data type.
  * @param[out] tree Parsed operation data tree.
  * @param[out] op Parsed operation, required by lyd_parse_op() for some @p data_type.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lyd_parse_op(const struct ly_ctx *ctx, const char *data, LYD_FORMAT format, enum lyd_type data_type,
-        struct lyd_node **tree, struct lyd_node **op);
+sr_error_info_t *sr_lyd_parse_op(const struct ly_ctx *ctx, const char *data, uint32_t data_len, LYD_FORMAT format,
+        enum lyd_type data_type, struct lyd_node **tree, struct lyd_node **op);
 
 /**
  * @brief Print YANG data.

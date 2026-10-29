@@ -803,7 +803,7 @@ srudpn_msg_parse(const srudpn_msg_t *msg, const struct ly_ctx *ly_ctx, srudpn_no
     SR_CHECK_MEM_GOTO(!str, err_info, cleanup);
 
     /* parse the RFC 5277 envelope and the notification */
-    if ((err_info = sr_lyd_parse_op(ly_ctx, str, format, data_type, &(*notif)->env, &(*notif)->tree))) {
+    if ((err_info = sr_lyd_parse_op(ly_ctx, str, 0, format, data_type, &(*notif)->env, &(*notif)->tree))) {
         goto cleanup;
     }
 
