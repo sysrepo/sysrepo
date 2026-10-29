@@ -1008,7 +1008,6 @@ sr_error_info_t *
 srsn_sn_sr_subscribe(sr_session_ctx_t *sess, struct srsn_sub *sub, int sub_no_thread, struct timespec *replay_start)
 {
     sr_error_info_t *err_info = NULL;
-    const sr_error_info_t *tmp_err;
     const struct ly_ctx *ly_ctx;
     const struct lys_module *ly_mod;
     int rc = SR_ERR_OK;
@@ -1059,8 +1058,8 @@ srsn_sn_sr_subscribe(sr_session_ctx_t *sess, struct srsn_sub *sub, int sub_no_th
         if ((rc = sr_notif_subscribe_tree(sess, ly_mod->name, sub->xpath_filter,
                 sub->start_time.tv_sec ? &sub->start_time : NULL, NULL, srsn_sn_rpc_subscribe_cb, sub,
                 sub_no_thread ? SR_SUBSCR_NO_THREAD : 0, &sub->sr_sub))) {
-            sr_session_get_error(sess, &tmp_err);
-            sr_errinfo_new(&err_info, tmp_err->err[0].err_code, "%s", tmp_err->err[0].message);
+            err_info = sess->err_info;
+            sess->err_info = NULL;
             goto error;
         }
 
