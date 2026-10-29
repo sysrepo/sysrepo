@@ -20,6 +20,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <cmocka.h>
 #include <libyang/libyang.h>
@@ -73,6 +74,76 @@ test_encoding_modify(void **state)
     lyd_free_all(notif);
 }
 
+#ifdef LY_HAVE_CBOR
+
+/**
+ * @brief Test: notifications are sent in CBOR, also segmented.
+ */
+static void
+test_encoding_cbor(void **state)
+{
+    struct tnotifd_state *st = *state;
+    struct lyd_node *notif;
+    srudpn_msg_t *msg;
+
+    add_recv_inst(st, TEST_RECV_INST, srudpn_get_port(st->udp),
+            "enable-segmentation", "true", "max-segment-size", SMALL_SEGMENT_SIZE, NULL);
+    add_sub(st, 115, "stream", "NETCONF", "transport", UDP_TRANSPORT,
+            "encoding", ENC_CBOR, "purpose", LONG_PURPOSE, NULL);
+    bind_sub_recv(st, 115, TEST_RECV, TEST_RECV_INST);
+    apply_changes(st);
+
+    notif = expect_notif_msg(st, SUB_STARTED, &msg);
+    assert_int_equal(srudpn_msg_get_hdr(msg)->media_type, SRUDPN_MT_CBOR);
+    assert_int_equal(srudpn_msg_get_hdr(msg)->segmented, 1);
+    srudpn_msg_free(msg);
+    assert_notif_leaf(notif, "encoding", ENC_CBOR);
+    assert_notif_leaf(notif, "purpose", LONG_PURPOSE);
+    lyd_free_all(notif);
+
+    /* a stream notification */
+    set_node(st, "1", "/test:test-leaf");
+    apply_changes(st);
+
+    notif = expect_notif_msg(st, NCC, &msg);
+    assert_int_equal(srudpn_msg_get_hdr(msg)->media_type, SRUDPN_MT_CBOR);
+    srudpn_msg_free(msg);
+    lyd_free_all(notif);
+}
+
+/**
+ * @brief Test: a yang-push update with its anydata contents is sent in CBOR.
+ */
+static void
+test_encoding_cbor_yang_push(void **state)
+{
+    struct tnotifd_state *st = *state;
+    struct lyd_node *notif;
+    srudpn_msg_t *msg;
+    char *printed;
+
+    set_node(st, "7", "/test:test-leaf");
+    apply_changes(st);
+
+    setup_ds_sub(st, 116, "encoding", ENC_CBOR,
+            "ietf-yang-push:datastore-xpath-filter", "/test:test-leaf",
+            "ietf-yang-push:periodic/period", "50", NULL);
+    skip_notif(st, SUB_STARTED);
+
+    notif = expect_notif_msg(st, PUSH_UPDATE, &msg);
+    assert_int_equal(srudpn_msg_get_hdr(msg)->media_type, SRUDPN_MT_CBOR);
+    srudpn_msg_free(msg);
+    assert_notif_leaf(notif, "id", "116");
+
+    /* the datastore contents */
+    assert_int_equal(lyd_print_mem(&printed, notif, LYD_XML, LYD_PRINT_SHRINK), LY_SUCCESS);
+    assert_non_null(strstr(printed, "<test-leaf xmlns=\"urn:test\">7</test-leaf>"));
+    free(printed);
+    lyd_free_all(notif);
+}
+
+#else
+
 /**
  * @brief Test: Configuring CBOR encoding must be rejected (not implemented).
  */
@@ -96,6 +167,8 @@ test_encoding_cbor_unsupported(void **state)
 
     sr_session_stop(tmp_sess);
 }
+
+#endif /* LY_HAVE_CBOR */
 
 /**
  * @brief Test: without an encoding leaf, the highest-priority encoding with an enabled feature (XML) is used.
@@ -202,6 +275,12 @@ re_enable_encoding_features(void **state)
     if (ret) {
         TLOG_WRN("Failed to re-enable encode-json: %s", sr_strerror(ret));
     }
+#ifdef LY_HAVE_CBOR
+    ret = sr_enable_module_feature(st->conn, "ietf-udp-notif-transport", "encode-cbor");
+    if (ret) {
+        TLOG_WRN("Failed to re-enable encode-cbor: %s", sr_strerror(ret));
+    }
+#endif /* LY_HAVE_CBOR */
 
     /* re-acquire context for the global teardown */
     st->ly_ctx = sr_acquire_context(st->conn);
@@ -230,8 +309,11 @@ test_encoding_feature_disabled(void **state)
 
     assert_int_equal(sr_disable_module_feature(st->conn, "ietf-subscribed-notifications", "encode-json"), SR_ERR_OK);
     assert_int_equal(sr_disable_module_feature(st->conn, "ietf-subscribed-notifications", "encode-xml"), SR_ERR_OK);
+#ifdef LY_HAVE_CBOR
+    assert_int_equal(sr_disable_module_feature(st->conn, "ietf-udp-notif-transport", "encode-cbor"), SR_ERR_OK);
+#endif /* LY_HAVE_CBOR */
 
-    /* re-acquire the context, now with both encoding features disabled */
+    /* re-acquire the context, now with all the encoding features disabled */
     st->ly_ctx = sr_acquire_context(st->conn);
 
     /* a throwaway session, the edit of the failing apply is dropped with it */
@@ -298,7 +380,12 @@ int
 main(void)
 {
     const struct CMUnitTest tests[] = {
+#ifdef LY_HAVE_CBOR
+        cmocka_unit_test_setup(test_encoding_cbor, tnotifd_reset),
+        cmocka_unit_test_setup(test_encoding_cbor_yang_push, tnotifd_reset),
+#else
         cmocka_unit_test_setup(test_encoding_cbor_unsupported, tnotifd_reset),
+#endif /* LY_HAVE_CBOR */
         cmocka_unit_test_setup(test_default_encoding, tnotifd_reset),
         cmocka_unit_test_setup(test_encoding_modify, tnotifd_reset),
         cmocka_unit_test_setup(test_segmentation_reassembly, tnotifd_reset),

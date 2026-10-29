@@ -2,6 +2,7 @@
 
 # env variables SR_NOTIFD_MODULE_DIR, SR_NOTIFD_MODULE_PERMS must be defined
 # and SR_NOTIFD_MODULE_OWNER, SR_NOTIFD_MODULE_GROUP will be used if defined when executing this script!
+# SR_NOTIFD_ENCODE_CBOR non-empty enables the CBOR encoding feature, for a libyang with CBOR support, empty disables it
 
 if [ -z "$SR_NOTIFD_MODULE_DIR" -o -z "$SR_NOTIFD_MODULE_PERMS" ]; then
     echo "Required environment variables not defined!"
@@ -30,6 +31,12 @@ GROUP=${SR_NOTIFD_MODULE_GROUP}
 # get current modules
 SCTL_MODULES=`$SYSREPOCTL -l`
 
+# CBOR encoding feature
+UDPN_FEATURES=
+if [ -n "$SR_NOTIFD_ENCODE_CBOR" ]; then
+    UDPN_FEATURES="-e encode-cbor"
+fi
+
 # modules to install with their features
 MODULES=(
 "ietf-interfaces@2018-02-20.yang"
@@ -38,7 +45,7 @@ MODULES=(
 "ietf-yang-patch@2017-02-22.yang"
 "ietf-yang-push@2019-09-09.yang -e on-change"
 "ietf-subscribed-notif-receivers@2024-02-01.yang"
-"ietf-udp-notif-transport@2025-06-04.yang"
+"ietf-udp-notif-transport@2025-06-04.yang $UDPN_FEATURES"
 )
 
 # the install command will be stored in this variable
@@ -133,6 +140,19 @@ function SETUP_CMD() {
 
 # setup the cmd for install
 SETUP_CMD "$MODDIR" "${MODULES[@]}"
+
+# disable the CBOR encoding feature of an installed module if it is not supported
+if [ -z "$SR_NOTIFD_ENCODE_CBOR" ]; then
+    sctl_module=$(echo "$SCTL_MODULES" | grep "^ietf-udp-notif-transport \+|[^|]*| I")
+    sctl_features="`echo "$sctl_module" | sed 's/\([^|]*|\)\{6\}\(.*\)/\2/'` "
+    if [ -n "$sctl_module" ] && [ -n "$(echo "$sctl_features" | grep " encode-cbor ")" ]; then
+        "$SYSREPOCTL" -c ietf-udp-notif-transport -d encode-cbor -v2
+        rc=$?
+        if [ $rc -ne 0 ]; then
+            exit $rc
+        fi
+    fi
+fi
 
 # install all the new modules
 if [ ! -z "${CMD_INSTALL}" ]; then
