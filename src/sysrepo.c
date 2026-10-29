@@ -3140,13 +3140,8 @@ sr_get_item(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
         goto cleanup;
     }
 
-    /* filter the required data */
-    if ((err_info = sr_modinfo_get_filter(&mod_info, path, session, 0, &set))) {
-        goto cleanup;
-    }
-
-    /* apply NACM */
-    if ((err_info = sr_nacm_get_node_set_read_filter(session, set))) {
+    /* apply NACM and filter the required data */
+    if ((err_info = sr_modinfo_get_filter(&mod_info, path, 0, session, &set))) {
         goto cleanup;
     }
 
@@ -3248,9 +3243,8 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, 
         goto cleanup;
     }
 
-    /* filter the required data */
-    if ((err_info = sr_modinfo_get_filter(&mod_info, (opts & SR_GET_NO_FILTER) ? "/*" : xpath, session,
-            opts & SR_OPER_NO_NEW_CHANGES, &set))) {
+    /* apply NACM and filter the required data */
+    if ((err_info = sr_modinfo_get_filter(&mod_info, (opts & SR_GET_NO_FILTER) ? "/*" : xpath, opts, session, &set))) {
         goto cleanup;
     }
 
@@ -3269,11 +3263,6 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, 
                 ++i;
             }
         }
-    }
-
-    /* apply NACM */
-    if ((err_info = sr_nacm_get_node_set_read_filter(session, set))) {
-        goto cleanup;
     }
 
     if (set->count) {
@@ -3385,7 +3374,6 @@ sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms,
     struct ly_set *set = NULL;
     struct sr_mod_info_s mod_info;
     struct lyd_node *oper_data_crashed = NULL;
-    int denied;
 
     SR_CHECK_ARG_APIRET(!session || !path || !subtree, session, err_info);
 
@@ -3419,12 +3407,7 @@ sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms,
     }
 
     /* filter the required data */
-    if ((err_info = sr_modinfo_get_filter(&mod_info, path, session, 0, &set))) {
-        goto cleanup;
-    }
-
-    /* apply NACM #1, get rid of whole denied results */
-    if ((err_info = sr_nacm_get_node_set_read_filter(session, set))) {
+    if ((err_info = sr_modinfo_get_filter(&mod_info, path, 0, session, &set))) {
         goto cleanup;
     }
 
@@ -3446,12 +3429,6 @@ sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms,
         goto cleanup;
     }
 
-    /* apply NACM #2, filter out the selected subtree */
-    if ((err_info = sr_nacm_get_subtree_read_filter(session, (*subtree)->tree, &denied))) {
-        goto cleanup;
-    }
-    assert(!denied);
-
 cleanup:
     /* MODULES UNLOCK */
     sr_shmmod_modinfo_unlock(&mod_info);
@@ -3467,122 +3444,6 @@ cleanup:
         *subtree = NULL;
     }
     return sr_api_ret(session, err_info);
-}
-
-/**
- * @brief Get-data parent hash table record.
- */
-struct sr_lyht_get_data_rec {
-    struct lyd_node *input_parent;  /**< parent in the input (sysrepo) data */
-    struct lyd_node *result_parent; /**< parent in the result (user returned) data */
-};
-
-/**
- * @brief Get-data dup parent hash table equal callback.
- */
-static ly_bool
-sr_lyht_get_data_dup_equal_cb(void *val1_p, void *val2_p, ly_bool UNUSED(mod), void *UNUSED(cb_data))
-{
-    struct sr_lyht_get_data_rec *val1, *val2;
-
-    val1 = val1_p;
-    val2 = val2_p;
-
-    return val1->input_parent == val2->input_parent;
-}
-
-/**
- * @brief Duplicate a set of subtrees into a new data tree.
- *
- * @param[in] session Session to use.
- * @param[in] set Set with the selected (disjoint) subtrees.
- * @param[in] max_depth Max depth of the nodes to duplicate.
- * @param[in] opts Get options.
- * @param[out] tree Resulting data tree.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_get_data_dup(sr_session_ctx_t *session, const struct ly_set *set, uint32_t max_depth, const uint32_t opts,
-        struct lyd_node **tree)
-{
-    sr_error_info_t *err_info = NULL;
-    uint32_t i, hash;
-    int dup_opts, denied;
-    struct ly_ht *ht = NULL;
-    struct sr_lyht_get_data_rec rec, *rec_p;
-    struct lyd_node *node, *parent, *node_parent, *input_node;
-
-    /* create a hash table for finding existing parents */
-    ht = lyht_new(1, sizeof rec, sr_lyht_get_data_dup_equal_cb, NULL, 1);
-    SR_CHECK_MEM_GOTO(!ht, err_info, cleanup);
-
-    /* prepare duplication options */
-    dup_opts = (max_depth ? 0 : LYD_DUP_RECURSIVE) | LYD_DUP_WITH_PARENTS | LYD_DUP_WITH_FLAGS |
-            ((opts & SR_OPER_WITH_ORIGIN) ? 0 : LYD_DUP_NO_META);
-
-    for (i = 0; i < set->count; ++i) {
-        /* check whether a parent does not exist yet in the result */
-        for (parent = lyd_parent(set->dnodes[i]); parent; parent = lyd_parent(parent)) {
-            hash = lyht_hash((void *)&parent, sizeof parent);
-            rec.input_parent = parent;
-            if (!lyht_find(ht, &rec, hash, (void **)&rec_p)) {
-                /* parent exists, use the one in the result */
-                parent = rec_p->result_parent;
-                break;
-            }
-        }
-
-        /* duplicate subtree and connect it to an existing parent, if any */
-        if ((err_info = sr_lyd_dup(set->dnodes[i], parent, dup_opts, 0, &node))) {
-            goto cleanup;
-        }
-
-        /* get first created node parent (can be node itself) */
-        for (node_parent = node; lyd_parent(node_parent) != parent; node_parent = lyd_parent(node_parent)) {}
-
-        /* duplicate only to the specified depth (the selected node was already duplicated, hence -1) */
-        if (max_depth && (err_info = sr_lyd_dup_r(set->dnodes[i], max_depth - 1, dup_opts, node))) {
-            lyd_free_tree(node_parent);
-            goto cleanup;
-        }
-
-        /* apply NACM on the selected subtree */
-        if ((err_info = sr_nacm_get_subtree_read_filter(session, node, &denied))) {
-            goto cleanup;
-        }
-        if (denied) {
-            /* the whole subtree was filtered out, remove it with any new parents */
-            lyd_free_tree(node_parent);
-            continue;
-        }
-
-        if (!parent) {
-            /* connect to the result */
-            if ((err_info = sr_lyd_insert_sibling(*tree, node_parent, tree))) {
-                lyd_free_tree(node);
-                goto cleanup;
-            }
-        }
-
-        /* store all the new potential parents in the result */
-        input_node = lyd_parent(set->dnodes[i]);
-        for (node = lyd_parent(node); node != parent; node = lyd_parent(node)) {
-            hash = lyht_hash((void *)&input_node, sizeof input_node);
-            rec.input_parent = input_node;
-            rec.result_parent = node;
-            assert(rec.input_parent->schema == rec.result_parent->schema);
-            if ((err_info = sr_lyht_insert(ht, &rec, hash))) {
-                goto cleanup;
-            }
-
-            /* move input */
-            input_node = lyd_parent(input_node);
-        }
-    }
-
-cleanup:
-    lyht_free(ht, NULL);
-    return err_info;
 }
 
 /**
@@ -3646,12 +3507,10 @@ sr_get_data_prune_origin(struct lyd_node *node, const struct lys_module *or_mod)
 }
 
 sr_error_info_t *
-sr_get_data_prune(sr_session_ctx_t *session, struct lyd_node **first, const struct ly_set *set, uint32_t max_depth,
-        const uint32_t opts)
+sr_get_data_prune(struct lyd_node **first, const struct ly_set *set, uint32_t max_depth, const uint32_t opts)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
-    int denied;
     struct ly_ht *parent_ht = NULL, *set_ht = NULL;
     struct lyd_node *parent, *root, *node, *iter, *to_free;
     const struct lys_module *or_mod;
@@ -3676,15 +3535,6 @@ sr_get_data_prune(sr_session_ctx_t *session, struct lyd_node **first, const stru
 
         /* trim the depth of the subtree */
         sr_lyd_trim_depth(node, max_depth);
-
-        /* apply NACM on the selected subtree */
-        if ((err_info = sr_nacm_get_subtree_read_filter(session, node, &denied))) {
-            goto cleanup;
-        }
-        if (denied) {
-            /* the whole subtree was filtered out */
-            continue;
-        }
 
         /* store the result in HT, cannot be there yet */
         lyrc = lyht_insert_no_check(set_ht, &node, (uintptr_t)node, NULL);
@@ -3847,9 +3697,8 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
         goto cleanup;
     }
 
-    /* filter the required data */
-    if ((err_info = sr_modinfo_get_filter(&mod_info, (opts & SR_GET_NO_FILTER) ? "/*" : xpath, session,
-            opts & SR_OPER_NO_NEW_CHANGES, &set))) {
+    /* apply NACM and filter the required data */
+    if ((err_info = sr_modinfo_get_filter(&mod_info, (opts & SR_GET_NO_FILTER) ? "/*" : xpath, opts, session, &set))) {
         goto cleanup;
     }
 
@@ -3863,21 +3712,14 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
         sr_oper_data_trim(set, opts, &mod_info.data);
     }
 
-    if (mod_info.data_cached) {
-        /* duplicate all the selected data */
-        if ((err_info = sr_get_data_dup(session, set, max_depth, opts, &(*data)->tree))) {
-            goto cleanup;
-        }
-    } else {
-        /* prune all the non-selected data */
-        if ((err_info = sr_get_data_prune(session, &mod_info.data, set, max_depth, opts))) {
-            goto cleanup;
-        }
-
-        /* use the pruned data */
-        (*data)->tree = mod_info.data;
-        mod_info.data = NULL;
+    /* prune all the non-selected data */
+    if ((err_info = sr_get_data_prune(&mod_info.data, set, max_depth, opts))) {
+        goto cleanup;
     }
+
+    /* use the pruned data */
+    (*data)->tree = mod_info.data;
+    mod_info.data = NULL;
 
     if (opts & SR_GET_WITH_LAST_MODIF) {
         /* add last-modif metadata */
@@ -3942,13 +3784,8 @@ sr_get_node(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
         goto cleanup;
     }
 
-    /* filter the required data */
-    if ((err_info = sr_modinfo_get_filter(&mod_info, path, session, 0, &set))) {
-        goto cleanup;
-    }
-
-    /* apply NACM */
-    if ((err_info = sr_nacm_get_node_set_read_filter(session, set))) {
+    /* apply NACM and filter the required data */
+    if ((err_info = sr_modinfo_get_filter(&mod_info, path, 0, session, &set))) {
         goto cleanup;
     }
 

@@ -1342,18 +1342,6 @@ sr_error_info_t *sr_val_sr2ly(struct ly_ctx *ctx, const char *xpath, const char 
         struct lyd_node **root);
 
 /**
- * @brief Duplicate nodes recursively to the specified depth.
- *
- * @param[in] src_parent Source parent.
- * @param[in] depth Depth to duplicate.
- * @param[in] options libyang dup options.
- * @param[in,out] trg_parent Target parent to add children to.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_lyd_dup_r(const struct lyd_node *src_parent, uint32_t depth, uint32_t options,
-        struct lyd_node *trg_parent);
-
-/**
  * @brief Trim subtree to the specified depth.
  *
  * @param[in,out] subtree Data subtree to trim.
@@ -1669,15 +1657,13 @@ sr_error_info_t *_sr_acquire_data(sr_conn_ctx_t *conn, struct lyd_node *tree, sr
 /**
  * @brief Remove all the non-selected subtrees.
  *
- * @param[in] session Session to use.
  * @param[in,out] first First top-level node of the tree to prune, may be adjusted.
  * @param[in] set Set with the selected (disjoint) subtrees.
  * @param[in] max_depth Max depth of the selected nodes to prune.
  * @param[in] opts Get options.
- * @param[out] tree Resulting data tree.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_get_data_prune(sr_session_ctx_t *session, struct lyd_node **first, const struct ly_set *set, uint32_t max_depth,
+sr_error_info_t *sr_get_data_prune(struct lyd_node **first, const struct ly_set *set, uint32_t max_depth,
         const uint32_t opts);
 
 /**

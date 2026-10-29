@@ -148,15 +148,6 @@ struct sr_denied {
 sr_error_info_t *sr_nacm_check_op(const char *nacm_user, const struct lyd_node *data, struct sr_denied *denied);
 
 /**
- * @brief Filter out result nodes that do not have R access to.
- *
- * @param[in] session Session to use.
- * @param[in,out] set Set of nodes to filter.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_nacm_get_node_set_read_filter(sr_session_ctx_t *session, struct ly_set *set);
-
-/**
  * @brief Filter out result tree subtrees that do not have R access to.
  *
  * @param[in] session Session to use.
@@ -165,6 +156,18 @@ sr_error_info_t *sr_nacm_get_node_set_read_filter(sr_session_ctx_t *session, str
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_nacm_get_subtree_read_filter(sr_session_ctx_t *session, struct lyd_node *subtree, int *denied);
+
+/**
+ * @brief Duplicate all nodes in a tree that have R access.
+ *
+ * @param[in] session Session to use.
+ * @param[in] tree Tree to duplicate.
+ * @param[in] dup_opts Duplicate options to use.
+ * @param[out] dup Duplicated @p tree.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_nacm_dup_subtree_read_filter(sr_session_ctx_t *session, const struct lyd_node *tree, uint32_t dup_opts,
+        struct lyd_node **dup);
 
 /**
  * @brief Check whether a diff (simplified edit-config tree) can be applied by a user.

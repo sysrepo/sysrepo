@@ -1318,8 +1318,8 @@ sr_pc_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth,
         goto cleanup;
     }
 
-    if ((err_info = sr_modinfo_get_filter(&mod_info, (opts & SR_GET_NO_FILTER) ? "/*" : xpath, session,
-            opts & SR_OPER_NO_NEW_CHANGES, &set))) {
+    if ((err_info = sr_modinfo_get_filter(&mod_info, (opts & SR_GET_NO_FILTER) ? "/*" : xpath, opts, session,
+            &set))) {
         goto cleanup;
     }
 
@@ -1327,7 +1327,7 @@ sr_pc_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth,
         goto cleanup;
     }
 
-    if ((err_info = sr_get_data_prune(session, &mod_info.data, set, max_depth, opts))) {
+    if ((err_info = sr_get_data_prune(&mod_info.data, set, max_depth, opts))) {
         goto cleanup;
     }
 

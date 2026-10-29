@@ -1894,7 +1894,9 @@ cleanup:
 }
 
 /**
- * @brief Filter out any nodes in a subtree for which the user does not have R access, recursively.
+ * @brief Collect any subtrees in a subtree for which the user does not have R access, recursively.
+ *
+ * Does not check the parent nodes.
  *
  * @param[in] subtree Subtree to filter.
  * @param[in] user User for the NACM filtering.
@@ -1964,7 +1966,9 @@ sr_nacm_check_data_read_filter_r(const struct lyd_node *subtree, const char *use
 }
 
 /**
- * @brief Collect any subtrees in a selected subtree for which the user does not have R access, recursively.
+ * @brief Collect any subtrees in a selected (nested) subtree for which the user does not have R access, recursively.
+ *
+ * Checks also the parent nodes.
  *
  * @param[in] subtree Subtree to filter.
  * @param[in] user User for the NACM filtering.
@@ -2069,70 +2073,6 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_nacm_get_node_set_read_filter(sr_session_ctx_t *session, struct ly_set *set)
-{
-    sr_error_info_t *err_info = NULL;
-    char **groups = NULL;
-    uint32_t group_count = 0;
-    struct ly_set denied_set = {0};
-    struct lyd_node *node;
-    uint32_t i, j;
-    int denied, r;
-
-    if (!session->nacm_user) {
-        /* nothing to do */
-        return NULL;
-    }
-
-    /* NACM LOCK */
-    r = pthread_mutex_lock(&nacm.lock);
-    if (r) {
-        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Locking a mutex failed (%s: %s).", __func__, strerror(r));
-        return err_info;
-    }
-
-    if ((err_info = sr_nacm_collect_groups(session->nacm_user, &groups, &group_count))) {
-        goto cleanup;
-    }
-
-    i = 0;
-    while (i < set->count) {
-        if ((err_info = sr_nacm_check_data_read_filter(set->dnodes[i], session->nacm_user, groups, group_count,
-                &denied_set))) {
-            goto cleanup;
-        }
-
-        denied = 0;
-        for (j = 0; j < denied_set.count; ++j) {
-            /* any parent could have been denied instead of the node */
-            for (node = set->dnodes[i]; node; node = lyd_parent(node)) {
-                if (denied_set.dnodes[j] == node) {
-                    denied = 1;
-                    break;
-                }
-            }
-        }
-        ly_set_erase(&denied_set, NULL);
-
-        if (denied) {
-            /* result denied */
-            ly_set_rm_index_ordered(set, i, NULL);
-            continue;
-        }
-
-        ++i;
-    }
-
-cleanup:
-    /* NACM UNLOCK */
-    pthread_mutex_unlock(&nacm.lock);
-
-    sr_nacm_free_groups(groups, group_count);
-    ly_set_erase(&denied_set, NULL);
-    return err_info;
-}
-
-sr_error_info_t *
 sr_nacm_get_subtree_read_filter(sr_session_ctx_t *session, struct lyd_node *subtree, int *denied)
 {
     sr_error_info_t *err_info = NULL;
@@ -2184,6 +2124,119 @@ sr_nacm_get_subtree_read_filter(sr_session_ctx_t *session, struct lyd_node *subt
 
         lyd_free_tree(denied_set.dnodes[i]);
     }
+
+cleanup:
+    ly_set_erase(&denied_set, NULL);
+    return err_info;
+}
+
+/**
+ * @brief Duplicate nodes that were not denied R access, recursively.
+ *
+ * @param[in] subtree Subtree to duplicate.
+ * @param[in] dup_opts Duplicate options to use.
+ * @param[in] denied Set with denied subtrees.
+ * @param[in,out] denied_i Current index in @p denied.
+ * @param[in,out] dup_first First duplicated top-level node.
+ * @param[in,out] dup_parent Duplicated parent of @p subtree to insert into.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_nacm_dup_subtree_read_filter_r(const struct lyd_node *subtree, uint32_t dup_opts, const struct ly_set *denied,
+        uint32_t *denied_i, struct lyd_node **dup_first, struct lyd_node *dup_parent)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *dup = NULL, *child;
+
+    /* check whether the whole subtree was not denied */
+    if ((*denied_i < denied->count) && (denied->dnodes[*denied_i] == subtree)) {
+        /* denied node found, stop recursive duplication */
+        ++(*denied_i);
+        goto cleanup;
+    }
+
+    /* duplicate the node */
+    if ((err_info = sr_lyd_dup(subtree, NULL, dup_opts, 0, &dup))) {
+        goto cleanup;
+    }
+
+    /* insert into the dup tree */
+    if (dup_parent) {
+        if ((err_info = sr_lyd_insert_child(dup_parent, dup))) {
+            lyd_free_tree(dup);
+            goto cleanup;
+        }
+    } else {
+        if ((err_info = sr_lyd_insert_sibling(*dup_first, dup, dup_first))) {
+            lyd_free_tree(dup);
+            goto cleanup;
+        }
+    }
+
+    /* recursive duplication */
+    LY_LIST_FOR(lyd_child_no_keys(subtree), child) {
+        if ((err_info = sr_nacm_dup_subtree_read_filter_r(child, dup_opts, denied, denied_i, dup_first, dup))) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    return err_info;
+}
+
+sr_error_info_t *
+sr_nacm_dup_subtree_read_filter(sr_session_ctx_t *session, const struct lyd_node *tree, uint32_t dup_opts,
+        struct lyd_node **dup)
+{
+    sr_error_info_t *err_info = NULL;
+    char **groups = NULL;
+    uint32_t group_count = 0, i = 0;
+    enum sr_nacm_access access;
+    struct ly_set denied_set = {0};
+    int r;
+
+    assert(!tree || !tree->parent);
+    assert(!(dup_opts & LYD_DUP_RECURSIVE));
+
+    *dup = NULL;
+
+    if (!tree) {
+        /* nothing to do */
+        goto cleanup;
+    } else if (!session->nacm_user) {
+        /* duplicate the whole tree */
+        err_info = sr_lyd_dup(tree, NULL, dup_opts | LYD_DUP_RECURSIVE, 0, dup);
+        goto cleanup;
+    }
+
+    /* NACM LOCK */
+    r = pthread_mutex_lock(&nacm.lock);
+    if (r) {
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Locking a mutex failed (%s: %s).", __func__, strerror(r));
+        goto cleanup;
+    }
+
+    /* collect groups */
+    err_info = sr_nacm_collect_groups(session->nacm_user, &groups, &group_count);
+
+    if (!err_info) {
+        /* apply NACM on the tree */
+        err_info = sr_nacm_check_data_read_filter_r(tree, session->nacm_user, groups, group_count, &access, &denied_set);
+    }
+
+    /* NACM UNLOCK */
+    pthread_mutex_unlock(&nacm.lock);
+
+    sr_nacm_free_groups(groups, group_count);
+    if (err_info) {
+        goto cleanup;
+    }
+
+    /* duplicate all the nodes that were not denied R access */
+    if ((err_info = sr_nacm_dup_subtree_read_filter_r(tree, dup_opts, &denied_set, &i, dup, NULL))) {
+        goto cleanup;
+    }
+    assert(i == denied_set.count);
 
 cleanup:
     ly_set_erase(&denied_set, NULL);

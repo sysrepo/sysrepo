@@ -4661,41 +4661,6 @@ sr_val_sr2ly(struct ly_ctx *ctx, const char *xpath, const char *val_str, int dfl
     return NULL;
 }
 
-sr_error_info_t *
-sr_lyd_dup_r(const struct lyd_node *src_parent, uint32_t depth, uint32_t options, struct lyd_node *trg_parent)
-{
-    sr_error_info_t *err_info = NULL;
-    const struct lyd_node *src_child;
-    struct lyd_node *trg_child;
-
-    /* fix invalid options */
-    options &= ~(LYD_DUP_RECURSIVE | LYD_DUP_WITH_PARENTS);
-
-    if (!depth || (src_parent->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA))) {
-        return NULL;
-    }
-
-    /* skip keys, they are already duplicated */
-    src_child = lyd_child_no_keys(src_parent);
-    while (src_child) {
-        if ((err_info = sr_lyd_dup(src_child, NULL, options, 0, &trg_child))) {
-            return err_info;
-        }
-
-        if ((err_info = sr_lyd_insert_child(trg_parent, trg_child))) {
-            SR_ERRINFO_INT(&err_info);
-            return err_info;
-        }
-        if ((err_info = sr_lyd_dup_r(src_child, depth - 1, options, trg_child))) {
-            return err_info;
-        }
-
-        src_child = src_child->next;
-    }
-
-    return NULL;
-}
-
 void
 sr_lyd_trim_depth(struct lyd_node *subtree, uint32_t max_depth)
 {

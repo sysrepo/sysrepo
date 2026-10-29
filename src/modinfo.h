@@ -354,17 +354,17 @@ sr_error_info_t *sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct l
 sr_error_info_t *sr_modinfo_change_diff_merge_pred_data(struct sr_mod_info_s *mod_info);
 
 /**
- * @brief Filter data from mod info.
+ * @brief Apply read NACM check and filter data from mod info.
  *
  * @param[in] mod_info Mod info to use.
  * @param[in] xpath Selected data.
+ * @param[in] opts Get options.
  * @param[in] session Sysrepo session.
- * @param[in] ignore_new_changes If set, do not use prepared edit changes or stored diff.
  * @param[out] result Resulting set of matching nodes.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_session_ctx_t *session,
-        int ignore_new_changes, struct ly_set **result);
+sr_error_info_t *sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, const uint32_t opts,
+        sr_session_ctx_t *session, struct ly_set **result);
 
 /**
  * @brief Publish "update" event for diff in mod info and update it is needed.

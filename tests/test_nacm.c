@@ -417,44 +417,15 @@ test_filter_denied(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
-    char *str;
     int ret;
 
     /* read data #1 filtering based on denied leaf */
     ret = sr_get_data(st->sess, "/test:cont/l2[v < 21]", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
+    assert_null(data);
 
-    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
-    assert_int_equal(ret, LY_SUCCESS);
-    sr_release_data(data);
-    assert_string_equal(str,
-            "<cont xmlns=\"urn:test\">\n"
-            "  <l2>\n"
-            "    <k>k1</k>\n"
-            "  </l2>\n"
-            "  <l2>\n"
-            "    <k>k3</k>\n"
-            "  </l2>\n"
-            "</cont>\n");
-    free(str);
-
-    /* read data #1 filtering based on denied leaf */
+    /* read data #2 filtering based on denied leaf */
     ret = sr_get_data(st->sess, "/test:cont/l2[v > 21]", 0, 0, 0, &data);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SIBLINGS);
-    assert_int_equal(ret, LY_SUCCESS);
-    sr_release_data(data);
-    assert_string_equal(str,
-            "<cont xmlns=\"urn:test\">\n"
-            "  <l2>\n"
-            "    <k>k4</k>\n"
-            "  </l2>\n"
-            "</cont>\n");
-    free(str);
-
-    /* read no data */
-    ret = sr_get_data(st->sess, "/test:cont/l2[v = 22]", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     assert_null(data);
 }

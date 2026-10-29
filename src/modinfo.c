@@ -3404,16 +3404,52 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_session_ctx_t *session,
-        int ignore_new_changes, struct ly_set **result)
+sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, const uint32_t opts, sr_session_ctx_t *session,
+        struct ly_set **result)
 {
     sr_error_info_t *err_info = NULL, *val_err_info = NULL;
     struct sr_mod_info_mod_s *mod;
-    struct lyd_node *edit = NULL, *diff = NULL;
-    uint32_t i;
-    int is_oper_ds = (session->ds == SR_DS_OPERATIONAL) ? 1 : 0;
+    struct lyd_node *edit = NULL, *diff = NULL, *root, *next, *root_dup;
+    uint32_t i, dup_opts;
+    int denied, is_oper_ds = (session->ds == SR_DS_OPERATIONAL) ? 1 : 0;
 
-    if (!ignore_new_changes && (session->ds < SR_DS_COUNT)) {
+    /* apply NACM before filtering (according to RFC 8341 section 3.2.4.) */
+    if (mod_info->data_cached) {
+        dup_opts = LYD_DUP_WITH_FLAGS | ((opts & SR_OPER_WITH_ORIGIN) ? 0 : LYD_DUP_NO_META);
+
+        LY_LIST_FOR_SAFE(mod_info->data, next, root) {
+            if ((err_info = sr_nacm_dup_subtree_read_filter(session, root, dup_opts, &root_dup))) {
+                goto cleanup;
+            }
+
+            /* append */
+            if (mod_info->data_cached) {
+                mod_info->data = root_dup;
+                mod_info->data_cached = 0;
+
+                /* CACHE READ UNLOCK */
+                sr_rwunlock(&sr_run_cache.lock, SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, mod_info->conn->cid, __func__);
+            } else {
+                if ((err_info = sr_lyd_insert_sibling(mod_info->data, root_dup, &mod_info->data))) {
+                    lyd_free_tree(root_dup);
+                    goto cleanup;
+                }
+            }
+        }
+    } else {
+        LY_LIST_FOR_SAFE(mod_info->data, next, root) {
+            if ((err_info = sr_nacm_get_subtree_read_filter(session, root, &denied))) {
+                goto cleanup;
+            }
+
+            if (denied) {
+                /* the whole subtree was filtered out */
+                sr_lyd_free_tree_safe(root, &mod_info->data);
+            }
+        }
+    }
+
+    if (!(opts & SR_OPER_NO_NEW_CHANGES) && (session->ds < SR_DS_COUNT)) {
         /* collect edit/diff to be applied based on the handled event */
         switch (session->ev) {
         case SR_SUB_EV_CHANGE:
@@ -3443,15 +3479,6 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
     }
 
     if (diff || edit) {
-        if (mod_info->data_cached) {
-            /* data will be changed, we cannot use the cache anymore */
-            lyd_dup_siblings(mod_info->data, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, &mod_info->data);
-            mod_info->data_cached = 0;
-
-            /* CACHE READ UNLOCK */
-            sr_rwunlock(&sr_run_cache.lock,  SR_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, mod_info->conn->cid, __func__);
-        }
-
         for (i = 0; (i < mod_info->mod_count) && (session->ds < SR_DS_COUNT); ++i) {
             mod = &mod_info->mods[i];
             if (mod->state & MOD_INFO_REQ) {
