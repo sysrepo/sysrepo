@@ -63,7 +63,8 @@ extern "C" {
 typedef enum {
     SRUDPN_MT_JSON = 1,             /**< application/yang-data+json */
     SRUDPN_MT_XML = 2,              /**< application/yang-data+xml */
-    SRUDPN_MT_CBOR = 3,             /**< application/yang-data+cbor */
+    SRUDPN_MT_CBOR = 3,             /**< application/yang-data+cbor, encoded and parsed only if libyang was built
+                                         with CBOR support (LY_HAVE_CBOR) */
     SRUDPN_MT_PRIVATE = 16          /**< any media type of the private space (S-flag set), outside the 4-bit MT range */
 } srudpn_media_type_t;
 
@@ -199,8 +200,8 @@ const srudpn_hdr_t *srudpn_msg_get_hdr(const srudpn_msg_t *msg);
 /**
  * @brief Get the media type of a message.
  *
- * Only ::SRUDPN_MT_JSON and ::SRUDPN_MT_XML can be parsed by ::srudpn_msg_parse(), any other media type has to be
- * decoded from ::srudpn_msg_get_payload() by the caller.
+ * Only ::SRUDPN_MT_JSON, ::SRUDPN_MT_XML and ::SRUDPN_MT_CBOR can be parsed by ::srudpn_msg_parse(), any other
+ * media type has to be decoded from ::srudpn_msg_get_payload() by the caller.
  *
  * @param[in] msg Message to use.
  * @return Media type, ::SRUDPN_MT_PRIVATE for any private one, an unknown standard one as its MT value.

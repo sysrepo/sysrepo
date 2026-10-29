@@ -18,6 +18,7 @@
 #include "udp_notif.h"
 
 #include <arpa/inet.h>
+#include <assert.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <netdb.h>
@@ -769,7 +770,9 @@ srudpn_msg_parse(const srudpn_msg_t *msg, const struct ly_ctx *ly_ctx, srudpn_no
     LYD_FORMAT format;
     enum lyd_type data_type;
     const struct lyd_node *node;
+    const char *data;
     char *str = NULL;
+    uint32_t data_len;
 
     SR_CHECK_ARG_APIRET(!msg || !ly_ctx || !notif, NULL, err_info);
 
@@ -789,6 +792,12 @@ srudpn_msg_parse(const srudpn_msg_t *msg, const struct ly_ctx *ly_ctx, srudpn_no
         format = LYD_XML;
         data_type = LYD_TYPE_NOTIF_NETCONF;
         break;
+#ifdef LY_HAVE_CBOR
+    case SRUDPN_MT_CBOR:
+        format = LYD_CBOR;
+        data_type = LYD_TYPE_NOTIF_RESTCONF;
+        break;
+#endif /* LY_HAVE_CBOR */
     default:
         sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "UDP-Notif media type %" PRIu8 " is not supported.",
                 msg->hdr.media_type);
@@ -798,12 +807,19 @@ srudpn_msg_parse(const srudpn_msg_t *msg, const struct ly_ctx *ly_ctx, srudpn_no
     *notif = calloc(1, sizeof **notif);
     SR_CHECK_MEM_GOTO(!*notif, err_info, cleanup);
 
-    /* the XML and JSON parsers read until a NUL even from a bounded input */
-    str = strndup((const char *)msg->payload, msg->payload_len);
-    SR_CHECK_MEM_GOTO(!str, err_info, cleanup);
+    if (format == LYD_CBOR) {
+        data = (const char *)msg->payload;
+        data_len = msg->payload_len;
+    } else {
+        /* the XML and JSON parsers read until a NUL even from a bounded input */
+        str = strndup((const char *)msg->payload, msg->payload_len);
+        SR_CHECK_MEM_GOTO(!str, err_info, cleanup);
+        data = str;
+        data_len = 0;
+    }
 
     /* parse the RFC 5277 envelope and the notification */
-    if ((err_info = sr_lyd_parse_op(ly_ctx, str, 0, format, data_type, &(*notif)->env, &(*notif)->tree))) {
+    if ((err_info = sr_lyd_parse_op(ly_ctx, data, data_len, format, data_type, &(*notif)->env, &(*notif)->tree))) {
         goto cleanup;
     }
 
@@ -867,12 +883,40 @@ srudpn_notif_free(srudpn_notif_t *notif)
     free(notif);
 }
 
+/**
+ * @brief Write a CBOR text string.
+ *
+ * @param[in] buf Buffer to write to, with space for the string and 2 more bytes.
+ * @param[in] str String to write, shorter than 256 bytes.
+ * @return Number of bytes written.
+ */
+static uint32_t
+srudpn_cbor_tstr(uint8_t *buf, const char *str)
+{
+    uint32_t len = (uint32_t)strlen(str), off = 0;
+
+    assert(len < 256);
+
+    /* major type 3, the length in the initial byte or the next one */
+    if (len < 24) {
+        buf[off++] = 0x60 | len;
+    } else {
+        buf[off++] = 0x78;
+        buf[off++] = len;
+    }
+    memcpy(buf + off, str, len);
+
+    return off + len;
+}
+
 API int
 srudpn_encode_notification(const struct lyd_node *notif, const struct timespec *event_time, srudpn_media_type_t media_type,
         uint8_t **payload, uint32_t *payload_len)
 {
     sr_error_info_t *err_info = NULL;
     char *event_time_str = NULL, *inner = NULL, *inner_end, *str = NULL;
+    uint8_t *buf;
+    uint32_t inner_len;
     LYD_FORMAT format;
     int r;
 
@@ -888,6 +932,11 @@ srudpn_encode_notification(const struct lyd_node *notif, const struct timespec *
     case SRUDPN_MT_XML:
         format = LYD_XML;
         break;
+#ifdef LY_HAVE_CBOR
+    case SRUDPN_MT_CBOR:
+        format = LYD_CBOR;
+        break;
+#endif /* LY_HAVE_CBOR */
     default:
         sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "UDP-Notif media type %d is not supported.", (int)media_type);
         goto cleanup;
@@ -897,20 +946,45 @@ srudpn_encode_notification(const struct lyd_node *notif, const struct timespec *
         goto cleanup;
     }
 
-    /* without whitespace, the JSON object is spliced into the envelope */
-    if ((err_info = sr_lyd_print_data(notif, format, LYD_PRINT_SHRINK, -1, &inner, NULL))) {
+    /* without whitespace, the JSON object or CBOR map is spliced into the envelope */
+    if ((err_info = sr_lyd_print_data(notif, format, LYD_PRINT_SHRINK, -1, &inner, &inner_len))) {
         goto cleanup;
     }
 
     if (format == LYD_XML) {
         r = asprintf(&str, "<notification xmlns=\"%s\"><eventTime>%s</eventTime>%s</notification>",
                 SRUDPN_RFC5277_XML_NS, event_time_str, inner);
-    } else {
+    } else if (format == LYD_JSON) {
         /* the members of the printed object follow eventTime in the envelope object */
         inner_end = strrchr(inner, '}');
         SR_CHECK_INT_GOTO((inner[0] != '{') || !inner_end, err_info, cleanup);
         r = asprintf(&str, "{\"%s:notification\":{\"eventTime\":\"%s\",%.*s}}", SRUDPN_RFC5277_JSON_MODULE,
                 event_time_str, (int)(inner_end - inner - 1), inner + 1);
+    } else {
+        /* the members of the printed indefinite-length map follow eventTime, its break closes the envelope map */
+        SR_CHECK_INT_GOTO((uint8_t)inner[0] != 0xBF, err_info, cleanup);
+
+        /* payload size, a string header takes up to 2 bytes:
+         * 1                            - 0xA1, map of 1 pair
+         * 2 + strlen(envelope name)    - "ietf-restconf:notification" with its header
+         * 1                            - 0xBF, indefinite-length envelope map
+         * 2 + strlen("eventTime")      - "eventTime" with its header
+         * 2 + strlen(event_time_str)   - event time value with its header
+         * inner_len - 1                - printed map without its leading 0xBF, its 0xFF closes the envelope map */
+        buf = malloc(1 + 2 + strlen(SRUDPN_RFC5277_JSON_MODULE ":notification") + 1 + 2 + strlen("eventTime") + 2 +
+                strlen(event_time_str) + inner_len - 1);
+        SR_CHECK_MEM_GOTO(!buf, err_info, cleanup);
+
+        /* envelope, a map of 1 pair whose value is the indefinite-length map with eventTime */
+        r = 0;
+        buf[r++] = 0xA1;
+        r += srudpn_cbor_tstr(buf + r, SRUDPN_RFC5277_JSON_MODULE ":notification");
+        buf[r++] = 0xBF;
+        r += srudpn_cbor_tstr(buf + r, "eventTime");
+        r += srudpn_cbor_tstr(buf + r, event_time_str);
+        memcpy(buf + r, inner + 1, inner_len - 1);
+        r += inner_len - 1;
+        str = (char *)buf;
     }
     if (r == -1) {
         SR_ERRINFO_MEM(&err_info);
