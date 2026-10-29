@@ -92,6 +92,11 @@ print_notification(const srudpn_msg_t *msg, const srudpn_notif_t *notif)
         mt_name = "application/yang-data+json";
         format = LYD_JSON;
         break;
+    case SRUDPN_MT_CBOR:
+        /* binary, printed as JSON */
+        mt_name = "application/yang-data+cbor";
+        format = LYD_JSON;
+        break;
     default:
         fprintf(stderr, "Unsupported UDP-Notif media type %d.\n", (int)media_type);
         return;

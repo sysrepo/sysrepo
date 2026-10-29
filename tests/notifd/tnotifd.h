@@ -80,6 +80,7 @@ struct tnotifd_state {
 /** Encoding identities */
 #define ENC_XML "ietf-subscribed-notifications:encode-xml"
 #define ENC_JSON "ietf-subscribed-notifications:encode-json"
+#define ENC_CBOR "ietf-udp-notif-transport:encode-cbor"
 
 /** Paths of the notifications the tests wait for */
 #define SUB_STARTED "/ietf-subscribed-notifications:subscription-started"

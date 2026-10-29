@@ -609,6 +609,11 @@ find_package(LibYANG ${LIBYANG_DEP_SOVERSION} REQUIRED)
 target_link_libraries(sysrepo ${LIBYANG_LIBRARIES})
 include_directories(${LIBYANG_INCLUDE_DIRS})
 
+# libyang CBOR support, enables the notifd CBOR encoding feature
+list(APPEND CMAKE_REQUIRED_INCLUDES ${LIBYANG_INCLUDE_DIRS})
+check_symbol_exists(LY_HAVE_CBOR "libyang/libyang.h" SR_LY_HAVE_CBOR)
+list(REMOVE_ITEM CMAKE_REQUIRED_INCLUDES ${LIBYANG_INCLUDE_DIRS})
+
 # pkg-config
 find_package(PkgConfig)
 if(NOT PKG_CONFIG_FOUND AND NOT SYSTEMD_UNIT_DIR)
@@ -743,6 +748,7 @@ if (NOTIFD_SETUP)
         set(ENV{SR_NOTIFD_MODULE_PERMS} \"${NOTIFD_MODULE_PERMS}\")
         set(ENV{SR_NOTIFD_MODULE_OWNER} \"${NOTIFD_MODULE_OWNER}\")
         set(ENV{SR_NOTIFD_MODULE_GROUP} \"${NOTIFD_MODULE_GROUP}\")
+        set(ENV{SR_NOTIFD_ENCODE_CBOR} \"${SR_LY_HAVE_CBOR}\")
         set(ENV{SYSREPOCTL_EXECUTABLE} \"${SYSREPOCTL_EXECUTABLE}\")
         execute_process(COMMAND \"\$ENV{DESTDIR}${DATA_DIR}/scripts/setup_notifd.sh\"
                 RESULT_VARIABLE CMD_RES

@@ -106,6 +106,18 @@ XPath filter to the subscription:
 
 Place this inside the `<subscription>` element.
 
+### Choosing the encoding
+
+Without an `encoding`, notifications are sent in XML. JSON, or CBOR
+if libyang was built with libcbor, is selected inside the
+`<subscription>` element:
+
+```xml
+<encoding xmlns:unt="urn:ietf:params:xml:ns:yang:ietf-udp-notif-transport">unt:encode-cbor</encoding>
+```
+
+The client prints a CBOR notification as JSON.
+
 ### Example: YANG Push subscriptions
 
 Instead of a stream, a subscription can select data of a datastore
@@ -149,7 +161,7 @@ following YANG modules are installed in sysrepo:
 
 - `ietf-subscribed-notifications` (with features: `configured`, `xpath`, `replay`, `subtree`)
 - `ietf-subscribed-notif-receivers`
-- `ietf-udp-notif-transport`
+- `ietf-udp-notif-transport` (with feature: `encode-cbor`, for CBOR)
 - `ietf-yang-push` (with feature: `on-change`) and `ietf-yang-patch`, for YANG Push
 
 Use `sysrepoctl` to install them if needed. The interfaces of the
