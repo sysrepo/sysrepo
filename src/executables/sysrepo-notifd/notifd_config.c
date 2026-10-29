@@ -195,7 +195,11 @@ const notif_encoding_info_t notif_encoding_registry[] = {
     },
     {
         NOTIF_ENCODING_CBOR, "encode-cbor", "ietf-udp-notif-transport:encode-cbor",
+#ifdef LY_HAVE_CBOR
+        "ietf-udp-notif-transport", "encode-cbor", 1
+#else
         "ietf-udp-notif-transport", "encode-cbor", 0
+#endif /* LY_HAVE_CBOR */
     },
     /* sentinel terminator; not findable by the lookup functions (loops terminate on NULL identity) */
     {NOTIF_ENCODING_UNSET, NULL, NULL, NULL, NULL, 0}

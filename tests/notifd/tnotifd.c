@@ -108,6 +108,14 @@ static const char *yp_feats[] = {
     "on-change", NULL
 };
 
+/** Features needed from ietf-udp-notif-transport */
+static const char *udpn_feats[] = {
+#ifdef LY_HAVE_CBOR
+    "encode-cbor",
+#endif /* LY_HAVE_CBOR */
+    NULL
+};
+
 /** Modules installed for the tests, in dependency order */
 static const struct test_module test_modules[] = {
     {SN_YANG_DIR "/ietf-interfaces@2018-02-20.yang", NULL},
@@ -126,7 +134,7 @@ static const struct test_module test_modules[] = {
     {SN_YANG_DIR "/ietf-tls-common@2024-10-10.yang", NULL},
     {SN_YANG_DIR "/ietf-tls-client@2024-03-16.yang", NULL},
     {SN_YANG_DIR "/ietf-udp-client@2025-05-14.yang", NULL},
-    {SN_YANG_DIR "/ietf-udp-notif-transport@2025-06-04.yang", NULL},
+    {SN_YANG_DIR "/ietf-udp-notif-transport@2025-06-04.yang", udpn_feats},
     {TESTS_SRC_DIR "/files/test.yang", NULL},
     {TESTS_SRC_DIR "/files/notifd-other-publisher.yang", NULL},
 };
