@@ -55,7 +55,8 @@ static int
 setup(void **state)
 {
     struct state *st;
-    const char *mod = "module t {namespace urn:t; prefix t; notification notif {leaf leaf {type string;}}}";
+    const char *mod = "module t {namespace urn:t; prefix t; notification notif {leaf leaf {type string;} "
+            "leaf num {type uint8;}}}";
 
     st = calloc(1, sizeof *st);
     *state = st;
@@ -491,7 +492,7 @@ test_invalid(void **state)
 }
 
 /**
- * @brief Test: parsing fails for a private or CBOR media type and an unknown envelope.
+ * @brief Test: parsing fails for a private media type, CBOR without libyang support or invalid, and an unknown envelope.
  */
 static void
 test_parse_unsupported(void **state)
@@ -516,7 +517,11 @@ test_parse_unsupported(void **state)
     dgram_send(st, buf, dgram_build(buf, 0x23, 12, NULL, 2, "x", 1));
     assert_int_equal(srudpn_read_msg(st->udp, RECV_TIMEOUT_MS, &msg), SR_ERR_OK);
     assert_int_equal(srudpn_msg_get_media_type(msg), SRUDPN_MT_CBOR);
+#ifdef LY_HAVE_CBOR
+    assert_int_equal(srudpn_msg_parse(msg, st->ly_ctx, &notif), SR_ERR_LY);
+#else
     assert_int_equal(srudpn_msg_parse(msg, st->ly_ctx, &notif), SR_ERR_UNSUPPORTED);
+#endif /* LY_HAVE_CBOR */
     srudpn_msg_free(msg);
 
     /* unknown envelope, rejected by libyang */
@@ -546,7 +551,12 @@ roundtrip(struct state *st, srudpn_media_type_t media_type, uint16_t max_segment
 
     assert_int_equal(lyd_new_path(NULL, st->ly_ctx, "/t:notif/leaf", "a long enough value to need segments", 0,
             &notif), LY_SUCCESS);
+    assert_int_equal(lyd_new_path(notif, NULL, "/t:notif/num", "0", 0, NULL), LY_SUCCESS);
     assert_int_equal(srudpn_encode_notification(notif, &ts, media_type, &payload, &payload_len), SR_ERR_OK);
+    if (media_type == SRUDPN_MT_CBOR) {
+        /* the num leaf 0 puts a zero byte in the payload, it must not be handled as a string */
+        assert_non_null(memchr(payload, 0, payload_len));
+    }
     assert_int_equal(srudpn_build_dgrams(media_type, 5, 77, payload, payload_len, max_segment_size, &dgrams),
             SR_ERR_OK);
     if (segmented) {
@@ -601,7 +611,37 @@ test_roundtrip(void **state)
     roundtrip(st, SRUDPN_MT_XML, 1400, 0);
     roundtrip(st, SRUDPN_MT_XML, 40, 1);
     roundtrip(st, SRUDPN_MT_JSON, 40, 1);
+#ifdef LY_HAVE_CBOR
+    roundtrip(st, SRUDPN_MT_CBOR, 0, 0);
+    roundtrip(st, SRUDPN_MT_CBOR, 40, 1);
+#endif /* LY_HAVE_CBOR */
 }
+
+#ifdef LY_HAVE_CBOR
+
+/**
+ * @brief Test: a CBOR notification with eventTime after the notification is parsed.
+ */
+static void
+test_parse_cbor(void **state)
+{
+    struct state *st = *state;
+    uint8_t buf[512];
+    srudpn_msg_t *msg;
+    const char cbor[] =
+            "\xA1\x78\x1A" "ietf-restconf:notification"
+            "\xA2"
+            "\x67" "t:notif" "\xA1" "\x64" "leaf" "\x65" "value"
+            "\x69" "eventTime" "\x74" "2026-10-15T10:00:00Z";
+
+    dgram_send(st, buf, dgram_build(buf, 0x23, 12, NULL, 1, cbor, sizeof cbor - 1));
+    assert_int_equal(srudpn_read_msg(st->udp, RECV_TIMEOUT_MS, &msg), SR_ERR_OK);
+    assert_int_equal(srudpn_msg_get_media_type(msg), SRUDPN_MT_CBOR);
+    assert_notif(st, msg);
+    srudpn_msg_free(msg);
+}
+
+#endif /* LY_HAVE_CBOR */
 
 /**
  * @brief Test: the encoder rejects payloads and segment sizes that do not fit the header fields.
@@ -645,11 +685,16 @@ test_encode_limits(void **state)
 
     free(payload);
 
-    /* CBOR envelope */
+    /* unsupported media types */
     assert_int_equal(lyd_new_path(NULL, st->ly_ctx, "/t:notif/leaf", "value", 0, &notif), LY_SUCCESS);
+    assert_int_equal(srudpn_encode_notification(notif, &(struct timespec) {0}, SRUDPN_MT_PRIVATE, &payload, &len),
+            SR_ERR_UNSUPPORTED);
+    assert_null(payload);
+#ifndef LY_HAVE_CBOR
     assert_int_equal(srudpn_encode_notification(notif, &(struct timespec) {0}, SRUDPN_MT_CBOR, &payload, &len),
             SR_ERR_UNSUPPORTED);
     assert_null(payload);
+#endif /* LY_HAVE_CBOR */
     lyd_free_all(notif);
 }
 
@@ -666,6 +711,9 @@ main(void)
         cmocka_unit_test_setup_teardown(test_invalid, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_parse_unsupported, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_roundtrip, setup_f, teardown_f),
+#ifdef LY_HAVE_CBOR
+        cmocka_unit_test_setup_teardown(test_parse_cbor, setup_f, teardown_f),
+#endif /* LY_HAVE_CBOR */
         cmocka_unit_test(test_encode_limits),
     };
 
