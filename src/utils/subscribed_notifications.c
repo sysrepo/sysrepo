@@ -84,6 +84,7 @@ srsn_stream_collect_mods(const char *stream, const char *xpath_filter, const str
         struct ly_set **mod_set)
 {
     int rc = SR_ERR_OK;
+    sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
     struct ly_set *set = NULL;
     uint32_t idx;
@@ -110,8 +111,9 @@ srsn_stream_collect_mods(const char *stream, const char *xpath_filter, const str
         }
     } else if (xpath_filter) {
         /* collect only modules selected by the filter (atoms needed, it evaluates to a boolean) */
-        if (lys_find_xpath_atoms(ly_ctx, NULL, xpath_filter, 0, &set)) {
-            rc = SR_ERR_LY;
+        if ((err_info = sr_lys_find_xpath_atoms(ly_ctx, xpath_filter, 0, NULL, &set))) {
+            rc = err_info->err[0].err_code;
+            sr_errinfo_free(&err_info);
             goto cleanup;
         }
 
