@@ -2193,7 +2193,7 @@ sr_nacm_dup_subtree_read_filter(sr_session_ctx_t *session, const struct lyd_node
     uint32_t group_count = 0, i = 0;
     enum sr_nacm_access access;
     struct ly_set denied_set = {0};
-    int r;
+    int r, allowed;
 
     assert(!tree || !tree->parent);
     assert(!(dup_opts & LYD_DUP_RECURSIVE));
@@ -2220,8 +2220,15 @@ sr_nacm_dup_subtree_read_filter(sr_session_ctx_t *session, const struct lyd_node
     err_info = sr_nacm_collect_groups(session->nacm_user, &groups, &group_count);
 
     if (!err_info) {
-        /* apply NACM on the tree */
-        err_info = sr_nacm_check_data_read_filter_r(tree, session->nacm_user, groups, group_count, &access, &denied_set);
+        /* basic global checks for the whole tree */
+        if ((err_info = sr_nacm_allowed_tree(tree->schema, session->nacm_user, &allowed))) {
+            goto cleanup;
+        }
+
+        if (!allowed) {
+            /* apply NACM on the tree */
+            err_info = sr_nacm_check_data_read_filter_r(tree, session->nacm_user, groups, group_count, &access, &denied_set);
+        }
     }
 
     /* NACM UNLOCK */
