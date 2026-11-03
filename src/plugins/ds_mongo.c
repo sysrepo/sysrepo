@@ -550,6 +550,8 @@ srpds_load_all(mongoc_collection_t *module, const struct lys_module *mod, sr_dat
     sr_error_info_t *err_info = NULL;
     bson_error_t error;
     const char *path, *name, *module_name = NULL, *value = NULL, *path_no_pred = NULL;
+    const uint8_t *binary_value = NULL;
+    uint32_t binary_len = 0;
     char **keys = NULL;
     uint32_t *bit_lengths = NULL, *key_type_idxs = NULL, *key_hints = NULL, hints = 0, type_idx = SRPDS_DB_NO_TYPE_IDX;
     enum srpds_db_ly_types type;
@@ -704,8 +706,9 @@ srpds_load_all(mongoc_collection_t *module, const struct lys_module *mod, sr_dat
                 ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "bson_iter_next()", "");
                 goto cleanup;
             }
-            value = bson_iter_utf8(&iter, NULL);
-            if ((err_info = srpds_parse_keys(plugin_name, value, &keys, &bit_lengths, &key_type_idxs,
+            bson_iter_binary(&iter, NULL, &binary_len, &binary_value);
+            value = NULL;
+            if ((err_info = srpds_parse_keys(plugin_name, binary_value, &keys, &bit_lengths, &key_type_idxs,
                     &key_hints))) {
                 goto cleanup;
             }
@@ -984,7 +987,7 @@ cleanup:
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_list(const char *path, const char *name, const char *module_name, const char *keys, uint32_t keys_length,
+srpds_list(const char *path, const char *name, const char *module_name, const uint8_t *keys, uint32_t keys_length,
         const char *path_modif, const struct lyd_meta *meta, bson_t **query)
 {
     sr_error_info_t *err_info = NULL;
@@ -994,7 +997,7 @@ srpds_list(const char *path, const char *name, const char *module_name, const ch
     bson_append_utf8(*query, "name", 4, name, -1);
     bson_append_int32(*query, "type", 4, SRPDS_DB_LY_LIST);
     bson_append_utf8(*query, "module_name", 11, module_name, -1);
-    bson_append_utf8(*query, "keys", 4, keys, keys_length);
+    bson_append_binary(*query, "keys", 4, BSON_SUBTYPE_BINARY, keys, keys_length);
     bson_append_utf8(*query, "path_modif", 10, path_modif, -1);
     if ((err_info = srpds_add_meta(meta, *query))) {
         goto cleanup;
@@ -1112,7 +1115,7 @@ cleanup:
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_list_uo(const char *path, const char *name, const char *module_name, const char *keys, uint32_t keys_length,
+srpds_list_uo(const char *path, const char *name, const char *module_name, const uint8_t *keys, uint32_t keys_length,
         uint64_t order, const char *path_no_pred, const char *prev_pred, const char *path_modif,
         const struct lyd_meta *meta, bson_t **query)
 {
@@ -1123,7 +1126,7 @@ srpds_list_uo(const char *path, const char *name, const char *module_name, const
     bson_append_utf8(*query, "name", 4, name, -1);
     bson_append_int32(*query, "type", 4, SRPDS_DB_LY_LIST_UO);
     bson_append_utf8(*query, "module_name", 11, module_name, -1);
-    bson_append_utf8(*query, "keys", 4, keys, keys_length);
+    bson_append_binary(*query, "keys", 4, BSON_SUBTYPE_BINARY, keys, keys_length);
     bson_append_int64(*query, "order", 5, order);
     bson_append_utf8(*query, "path_no_pred", 12, path_no_pred, -1);
     bson_append_utf8(*query, "prev", 4, prev_pred, -1);
@@ -1988,7 +1991,8 @@ srpds_create_uo_op(mongoc_collection_t *module, sr_datastore_t ds, const struct 
     sr_error_info_t *err_info = NULL;
     bson_t *query = NULL;
     const char *module_name, *value;
-    char *path_modif = NULL, *prev = NULL, *keys = NULL;
+    char *path_modif = NULL, *prev = NULL;
+    uint8_t *keys = NULL;
     uint32_t keys_length = 0, type_idx, hints;
     struct lyd_node *match = NULL;
     uint64_t order = 0;
@@ -2279,7 +2283,8 @@ srpds_create_op(sr_datastore_t ds, const struct lyd_node *node, const char *path
     sr_error_info_t *err_info = NULL;
     bson_t *query = NULL;
     const char *module_name, *value;
-    char *any_value = NULL, *keys = NULL, *path_modif = NULL;
+    char *any_value = NULL, *path_modif = NULL;
+    uint8_t *keys = NULL;
     uint32_t keys_length = 0, type_idx, hints;
     struct lyd_node *match = NULL;
 
@@ -2482,7 +2487,7 @@ srpds_store_state_recursively(const struct ly_set *set, const struct lyd_node *n
     char *path = NULL, *path_no_pred = NULL, *path_modif = NULL;
     const char *module_name = NULL, *value = NULL;
     char *any_value = NULL;
-    char *keys = NULL;
+    uint8_t *keys = NULL;
     uint32_t keys_length = 0, type_idx, hints;
     uint64_t order = 1;
     uint32_t set_idx = 1;
@@ -3082,7 +3087,7 @@ srpds_store_data_recursively(const struct lyd_node *mod_data, mongo_bulk_data_t 
     struct lyd_node *child = NULL;
     char *path = NULL, *path_no_pred = NULL, *path_modif = NULL, *prev = NULL, *any_value = NULL;
     const char *value, *module_name;
-    char *keys = NULL;
+    uint8_t *keys = NULL;
     uint32_t keys_length = 0, type_idx, hints;
     uint64_t state_order = 1, uo_order = 1024;
 

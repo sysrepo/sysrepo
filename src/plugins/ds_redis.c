@@ -900,8 +900,8 @@ srpds_load_all(redisContext *ctx, const struct lys_module *mod, sr_datastore_t d
                 case 'f':
                     /* get keys */
                     value = partial->element[j + 1]->str;
-                    if ((err_info = srpds_parse_keys(plugin_name, value, &keys, &bit_lengths, &key_type_idxs,
-                            &key_hints))) {
+                    if ((err_info = srpds_parse_keys(plugin_name, (const uint8_t *)value, &keys, &bit_lengths,
+                            &key_type_idxs, &key_hints))) {
                         goto cleanup;
                     }
                     break;
@@ -1105,7 +1105,7 @@ cleanup:
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_list(const char *mod_ns, const char *path, const char *name, const char *module_name, const char *keys,
+srpds_list(const char *mod_ns, const char *path, const char *name, const char *module_name, const uint8_t *keys,
         uint32_t keys_length, const char *path_modif, const struct lyd_meta *meta, redis_argv_t *argv)
 {
     sr_error_info_t *err_info = NULL;
@@ -1126,7 +1126,7 @@ srpds_list(const char *mod_ns, const char *path, const char *name, const char *m
     srpds_argv_add(argv, "d_module_name", 13);
     srpds_argv_add(argv, module_name, module_name ? strlen(module_name) : 0);
     srpds_argv_add(argv, "f_keys", 6);
-    srpds_argv_add(argv, keys, keys_length);
+    srpds_argv_add(argv, (const char *)keys, keys_length);
     srpds_argv_add(argv, "m_path_modif", 12);
     srpds_argv_add(argv, path_modif, strlen(path_modif));
     if ((err_info = srpds_add_meta(meta, argv))) {
@@ -1274,7 +1274,7 @@ cleanup:
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_list_uo(const char *mod_ns, const char *path, const char *name, const char *module_name, const char *keys,
+srpds_list_uo(const char *mod_ns, const char *path, const char *name, const char *module_name, const uint8_t *keys,
         uint32_t keys_length, uint64_t order, const char *path_no_pred, const char *prev_pred, int is_prev_empty,
         const char *path_modif, const struct lyd_meta *meta, redis_argv_t *argv)
 {
@@ -1296,7 +1296,7 @@ srpds_list_uo(const char *mod_ns, const char *path, const char *name, const char
     srpds_argv_add(argv, "d_module_name", 13);
     srpds_argv_add(argv, module_name, module_name ? strlen(module_name) : 0);
     srpds_argv_add(argv, "f_keys", 6);
-    srpds_argv_add(argv, keys, keys_length);
+    srpds_argv_add(argv, (const char *)keys, keys_length);
     srpds_argv_add(argv, "i_order", 7);
     if ((err_info = srpds_argv_add_format(argv, "%" PRIu64, order))) {
         goto cleanup;
@@ -1949,7 +1949,8 @@ srpds_create_uo_op(redisContext *ctx, sr_datastore_t ds, const char *mod_ns, con
     sr_error_info_t *err_info = NULL;
     redis_argv_t argv = {0};
     const char *module_name, *value;
-    char *path_modif = NULL, *prev = NULL, *keys = NULL;
+    char *path_modif = NULL, *prev = NULL;
+    uint8_t *keys = NULL;
     uint32_t keys_length = 0, type_idx, hints;
     struct lyd_node *match = NULL;
     uint64_t order = 0;
@@ -2259,7 +2260,8 @@ srpds_create_op(redisContext *ctx, sr_datastore_t ds, const char *mod_ns, const 
     sr_error_info_t *err_info = NULL;
     redis_argv_t argv = {0};
     const char *module_name, *value;
-    char *any_value = NULL, *keys = NULL, *path_modif = NULL;
+    char *any_value = NULL, *path_modif = NULL;
+    uint8_t *keys = NULL;
     uint32_t keys_length = 0, type_idx, hints;
     struct lyd_node *match = NULL;
 
@@ -2462,7 +2464,7 @@ srpds_store_state_recursively(redisContext *ctx, const struct ly_set *set, const
     char *path = NULL, *path_no_pred = NULL, *path_modif = NULL;
     const char *module_name = NULL, *value = NULL;
     char *any_value = NULL;
-    char *keys = NULL;
+    uint8_t *keys = NULL;
     uint32_t keys_length = 0, type_idx, hints;
     uint64_t order = 1;
     uint32_t set_idx = 1;
@@ -3179,7 +3181,7 @@ srpds_store_data_recursively(redisContext *ctx, const struct lyd_node *mod_data,
     struct lyd_node *child = NULL;
     char *path = NULL, *path_no_pred = NULL, *path_modif = NULL, *prev = NULL, *any_value = NULL;
     const char *value, *module_name;
-    char *keys = NULL;
+    uint8_t *keys = NULL;
     uint32_t keys_length = 0, type_idx, hints;
     uint64_t state_order = 1, uo_order = 1024;
 

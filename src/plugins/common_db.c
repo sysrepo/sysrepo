@@ -145,11 +145,11 @@ cleanup:
 }
 
 sr_error_info_t *
-srpds_concat_key_values(const char *plg_name, const struct lyd_node *node, char **keys, uint32_t *keys_length)
+srpds_concat_key_values(const char *plg_name, const struct lyd_node *node, uint8_t **keys, uint32_t *keys_length)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *child = lyd_child(node), *iter;
-    char *tmp = NULL;
+    uint8_t *tmp = NULL;
     const char *key;
     uint32_t keylen, i, prev_keys_len = 0, num_of_keys = 0, key_type_idx, key_hints, hints_le;
 
@@ -222,7 +222,7 @@ srpds_concat_key_values(const char *plg_name, const struct lyd_node *node, char 
         prev_keys_len += 2 + keylen;
 
         /* store the union member type index (single byte) and the value hints (four bytes) */
-        tmp[prev_keys_len] = (key_type_idx == SRPDS_DB_NO_TYPE_IDX) ? (char)0xff : (char)key_type_idx;
+        tmp[prev_keys_len] = (key_type_idx == SRPDS_DB_NO_TYPE_IDX) ? (uint8_t)0xff : (uint8_t)key_type_idx;
         hints_le = htole32(key_hints);
         memcpy(tmp + prev_keys_len + 1, &hints_le, sizeof hints_le);
 
@@ -238,13 +238,13 @@ cleanup:
 }
 
 sr_error_info_t *
-srpds_parse_keys(const char *plg_name, const char *keys, char ***parsed, uint32_t **bit_lengths,
+srpds_parse_keys(const char *plg_name, const uint8_t *keys, char ***parsed, uint32_t **bit_lengths,
         uint32_t **key_type_idxs, uint32_t **key_hints)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, hints_le;
     uint8_t num_of_keys = keys[0];
-    const char *key = keys + 1;
+    const uint8_t *key = keys + 1;
 
     *parsed = malloc(num_of_keys * sizeof **parsed);
     if (!*parsed) {
@@ -273,7 +273,7 @@ srpds_parse_keys(const char *plg_name, const char *keys, char ***parsed, uint32_
     /* collect all other remaining keys and put them into the array */
     for (i = 0; i < num_of_keys; ++i) {
         /* get key (do not forget to skip length) */
-        (*parsed)[i] = ((char *)key) + SRPDS_DB_LIST_KEY_LEN_BYTES;
+        (*parsed)[i] = (char *)key + SRPDS_DB_LIST_KEY_LEN_BYTES;
 
         /* get length of the key from the first two bytes */
         (*bit_lengths)[i] = SRPDS_DB_LIST_KEY_GET_LEN(key[0], key[1]);
@@ -285,7 +285,7 @@ srpds_parse_keys(const char *plg_name, const char *keys, char ***parsed, uint32_
         (*bit_lengths)[i] *= 8;
 
         /* get the union member type index (single byte) and the value hints of the key (four bytes) */
-        (*key_type_idxs)[i] = (((uint8_t)key[0]) == 0xff) ? SRPDS_DB_NO_TYPE_IDX : (uint8_t)key[0];
+        (*key_type_idxs)[i] = (key[0] == 0xff) ? SRPDS_DB_NO_TYPE_IDX : key[0];
         memcpy(&hints_le, key + 1, sizeof hints_le);
         (*key_hints)[i] = le32toh(hints_le);
 
