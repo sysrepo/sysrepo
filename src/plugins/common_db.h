@@ -78,24 +78,24 @@ typedef struct srpds_db_userordered_lists_s {
 void srpds_get_union_info(const struct lyd_node *node, uint32_t *type_idx, uint32_t *hints);
 
 /**
- * @brief Concatenate the keys of a list instance into a single string.
+ * @brief Concatenate the keys of a list instance into a single binary blob.
  *
  * @param[in] plg_name Plugin name.
  * @param[in] node List instance.
- * @param[out] keys String containing all of the keys, their respective lengths and
+ * @param[out] keys Binary blob containing all of the keys, their respective lengths and
  *      for union-typed keys also the union member type index and value hints.
  * @param[out] keys_length Length of the @p keys .
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
-sr_error_info_t *srpds_concat_key_values(const char *plg_name, const struct lyd_node *node, char **keys,
+sr_error_info_t *srpds_concat_key_values(const char *plg_name, const struct lyd_node *node, uint8_t **keys,
         uint32_t *keys_length);
 
 /**
  * @brief Goes through concatenated keys and separates them.
  *
  * @param[in] plg_name Plugin name.
- * @param[in] keys Concatenated keys and their respective lengths and type information
+ * @param[in] keys Binary blob of the concatenated keys and their respective lengths and type information
  *      (length is the first two bytes, then the key, then one byte of the union member type index
  *      and four bytes of the value hints).
  * @param[out] parsed Array of keys.
@@ -105,7 +105,7 @@ sr_error_info_t *srpds_concat_key_values(const char *plg_name, const struct lyd_
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
-sr_error_info_t *srpds_parse_keys(const char *plg_name, const char *keys, char ***parsed, uint32_t **bit_lengths,
+sr_error_info_t *srpds_parse_keys(const char *plg_name, const uint8_t *keys, char ***parsed, uint32_t **bit_lengths,
         uint32_t **key_type_idxs, uint32_t **key_hints);
 
 /**
