@@ -108,6 +108,11 @@ static const char *yp_feats[] = {
     "on-change", NULL
 };
 
+/** Features needed from ietf-yp-notification */
+static const char *ypn_feats[] = {
+    "hostname-sequence-number", NULL
+};
+
 /** Features needed from ietf-udp-notif-transport */
 static const char *udpn_feats[] = {
 #ifdef LY_HAVE_CBOR
@@ -126,6 +131,9 @@ static const struct test_module test_modules[] = {
     {SN_YANG_DIR "/ietf-subscribed-notifications@2019-09-09.yang", sub_ntf_feats},
     {SN_YANG_DIR "/ietf-yang-patch@2017-02-22.yang", NULL},
     {SN_YANG_DIR "/ietf-yang-push@2019-09-09.yang", yp_feats},
+    {SN_YANG_DIR "/ietf-system-capabilities@2022-02-17.yang", NULL},
+    {SN_YANG_DIR "/ietf-notification-capabilities@2022-02-17.yang", NULL},
+    {SN_YANG_DIR "/ietf-yp-notification@2026-09-25.yang", ypn_feats},
     {SN_YANG_DIR "/ietf-subscribed-notif-receivers@2024-02-01.yang", NULL},
     {SN_YANG_DIR "/ietf-crypto-types@2024-10-10.yang", NULL},
     {SN_YANG_DIR "/iana-tls-cipher-suite-algs@2024-03-16.yang", NULL},
@@ -182,6 +190,9 @@ remove_test_modules(sr_conn_ctx_t *conn)
         "iana-tls-cipher-suite-algs",
         "ietf-crypto-types",
         "ietf-subscribed-notif-receivers",
+        "ietf-yp-notification",
+        "ietf-notification-capabilities",
+        "ietf-system-capabilities",
         "ietf-yang-push",
         "ietf-yang-patch",
         "ietf-subscribed-notifications",

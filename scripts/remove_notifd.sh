@@ -16,6 +16,9 @@ fi
 
 # modules to uninstall (in reverse order of their dependencies)
 MODULES=(
+"ietf-yp-notification"
+"ietf-notification-capabilities"
+"ietf-system-capabilities"
 "ietf-subscribed-notif-receivers"
 "ietf-yang-push"
 "ietf-yang-patch"
