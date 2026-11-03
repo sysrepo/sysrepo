@@ -40,6 +40,12 @@
 /** Timeout of reading when no message is expected */
 #define QUIET_TIMEOUT_MS 100
 
+/** Directory with the YANG-Push notification envelope module and its imports */
+#define SN_YANG_DIR TESTS_SRC_DIR "/../modules/subscribed_notifications"
+
+/** Directory with the internal sysrepo modules, imported by the capability modules */
+#define SR_YANG_DIR TESTS_SRC_DIR "/../modules"
+
 /** Notification payload in the RFC 5277 XML envelope */
 #define XML_PAYLOAD "<notification xmlns=\"urn:ietf:params:xml:ns:netconf:notification:1.0\">" \
         "<eventTime>2026-10-15T10:00:00Z</eventTime><notif xmlns=\"urn:t\"><leaf>value</leaf></notif></notification>"
@@ -55,13 +61,17 @@ static int
 setup(void **state)
 {
     struct state *st;
-    const char *mod = "module t {namespace urn:t; prefix t; notification notif {leaf leaf {type string;} "
-            "leaf num {type uint8;}}}";
+    const char *mod = "module t {yang-version 1.1; namespace urn:t; prefix t; notification notif {leaf leaf "
+            "{type string;} leaf num {type uint8;}} container c {notification nested {leaf leaf {type string;}}}}";
+    const char *ypn_feats[] = {"hostname-sequence-number", NULL};
+    char search_dirs[1024];
 
     st = calloc(1, sizeof *st);
     *state = st;
 
-    if (ly_ctx_new(ly_yang_module_dir(), LY_CTX_NO_YANGLIBRARY, &st->ly_ctx) || lys_parse_mem(st->ly_ctx, mod, LYS_IN_YANG, NULL)) {
+    snprintf(search_dirs, sizeof search_dirs, "%s:%s:%s", SN_YANG_DIR, SR_YANG_DIR, ly_yang_module_dir());
+    if (ly_ctx_new(search_dirs, LY_CTX_NO_YANGLIBRARY, &st->ly_ctx) || lys_parse_mem(st->ly_ctx, mod, LYS_IN_YANG, NULL) ||
+            !ly_ctx_load_module(st->ly_ctx, "ietf-yp-notification", NULL, ypn_feats)) {
         return 1;
     }
 
@@ -201,23 +211,29 @@ assert_payload(const srudpn_msg_t *msg)
 }
 
 /**
- * @brief Assert the notification of a message is the one in ::XML_PAYLOAD.
+ * @brief Assert the notification of a message is the one in ::XML_PAYLOAD, in any envelope.
+ *
+ * @param[in] st Test state.
+ * @param[in] msg Message to parse.
+ * @param[in] env_name Expected name of the envelope root.
  */
 static void
-assert_notif(struct state *st, const srudpn_msg_t *msg)
+assert_notif(struct state *st, const srudpn_msg_t *msg, const char *env_name)
 {
     srudpn_notif_t *notif;
     const struct lyd_node *node;
     struct timespec expected = {0};
 
     assert_int_equal(srudpn_msg_parse(msg, st->ly_ctx, &notif), SR_ERR_OK);
-    assert_string_equal(LYD_NAME(srudpn_notif_get_envelope(notif)), "notification");
+    assert_string_equal(LYD_NAME(srudpn_notif_get_envelope(notif)), env_name);
     node = srudpn_notif_get_tree(notif);
     assert_string_equal(LYD_NAME(node), "notif");
     assert_string_equal(lyd_get_value(lyd_child(node)), "value");
 
     assert_int_equal(ly_time_str2ts("2026-10-15T10:00:00Z", &expected), LY_SUCCESS);
     assert_int_equal(srudpn_notif_get_event_time(notif)->tv_sec, expected.tv_sec);
+    assert_null(srudpn_notif_get_hostname(notif));
+    assert_null(srudpn_notif_get_sequence_number(notif));
 
     srudpn_notif_free(notif);
 }
@@ -254,7 +270,7 @@ test_unsegmented(void **state)
     assert_string_equal(addr, "127.0.0.1");
     assert_int_equal(getsockname(st->fd, (struct sockaddr *)&sa, &sa_len), 0);
     assert_int_equal(port, ntohs(sa.sin_port));
-    assert_notif(st, msg);
+    assert_notif(st, msg, "notification");
     srudpn_msg_free(msg);
 
     /* nothing else */
@@ -312,7 +328,7 @@ test_segments(void **state)
     assert_int_equal(srudpn_msg_get_hdr(msg)->segment_num, 0);
     assert_int_equal(srudpn_msg_get_hdr(msg)->header_len, 16);
     assert_payload(msg);
-    assert_notif(st, msg);
+    assert_notif(st, msg, "notification");
     srudpn_msg_free(msg);
 
     stats = srudpn_get_stats(st->udp);
@@ -492,14 +508,23 @@ test_invalid(void **state)
 }
 
 /**
- * @brief Test: parsing fails for a private media type, CBOR without libyang support or invalid, and an unknown envelope.
+ * @brief Test: parsing fails for a private media type, CBOR without libyang support or invalid, and an invalid
+ * YANG-Push envelope.
  */
 static void
 test_parse_unsupported(void **state)
 {
     struct state *st = *state;
     uint8_t buf[512];
-    const char *json_unknown = "{\"ietf-yp-notification:envelope\":{\"event-time\":\"2026-10-15T10:00:00Z\"}}";
+    const char *json_empty = "{\"ietf-yp-notification:envelope\":{\"event-time\":\"2026-10-15T10:00:00Z\"}}";
+    const char *json_two = "{\"ietf-yp-notification:envelope\":{\"event-time\":\"2026-10-15T10:00:00Z\","
+            "\"contents\":{\"t:notif\":{\"leaf\":\"a\"},\"t:c\":{\"nested\":{\"leaf\":\"b\"}}}}}";
+    const char *json_value = "{\"ietf-yp-notification:envelope\":{\"event-time\":\"2026-10-15T10:00:00Z\","
+            "\"contents\":{\"t:notif\":{\"num\":300}}}}";
+    const char *json_no_time = "{\"ietf-yp-notification:envelope\":{\"contents\":{\"t:notif\":{\"leaf\":\"a\"}}}}";
+    const char *json_invalid[] = {json_empty, json_two, json_value, json_no_time};
+    int expected_rc[] = {SR_ERR_LY, SR_ERR_LY, SR_ERR_LY, SR_ERR_VALIDATION_FAILED};
+    uint32_t i;
     srudpn_msg_t *msg;
     srudpn_notif_t *notif;
 
@@ -524,11 +549,14 @@ test_parse_unsupported(void **state)
 #endif /* LY_HAVE_CBOR */
     srudpn_msg_free(msg);
 
-    /* unknown envelope, rejected by libyang */
-    dgram_send(st, buf, dgram_build(buf, 0x21, 12, NULL, 3, json_unknown, strlen(json_unknown)));
-    assert_int_equal(srudpn_read_msg(st->udp, RECV_TIMEOUT_MS, &msg), SR_ERR_OK);
-    assert_int_equal(srudpn_msg_parse(msg, st->ly_ctx, &notif), SR_ERR_LY);
-    srudpn_msg_free(msg);
+    /* YANG-Push envelope without a notification, with two, with an invalid value and without the event time */
+    for (i = 0; i < sizeof json_invalid / sizeof *json_invalid; ++i) {
+        dgram_send(st, buf, dgram_build(buf, 0x21, 12, NULL, 3 + i, json_invalid[i], strlen(json_invalid[i])));
+        assert_int_equal(srudpn_read_msg(st->udp, RECV_TIMEOUT_MS, &msg), SR_ERR_OK);
+        assert_int_equal(srudpn_msg_parse(msg, st->ly_ctx, &notif), expected_rc[i]);
+        assert_null(notif);
+        srudpn_msg_free(msg);
+    }
 }
 
 /**
@@ -617,6 +645,121 @@ test_roundtrip(void **state)
 #endif /* LY_HAVE_CBOR */
 }
 
+/**
+ * @brief Encode a notification in the YANG-Push envelope, send it and assert it is received unchanged.
+ *
+ * @param[in] st Test state.
+ * @param[in] path Path of the notification leaf to create.
+ * @param[in] media_type Media type to encode in.
+ * @param[in] hostname Hostname to send, NULL for no metadata.
+ */
+static void
+envelope_roundtrip(struct state *st, const char *path, srudpn_media_type_t media_type, const char *hostname)
+{
+    struct lyd_node *tree, *notif;
+    const struct lyd_node *env, *node;
+    srudpn_notif_t *recv_notif;
+    struct timespec ts = {.tv_sec = 1760522400};
+    uint8_t *payload;
+    uint32_t payload_len;
+    srudpn_dgram_t *dgrams;
+    srudpn_msg_t *msg;
+    struct iovec iov[2];
+    struct msghdr mh = {0};
+
+    assert_int_equal(lyd_new_path2(NULL, st->ly_ctx, path, "value", 0, 0, 0, &tree, &notif), LY_SUCCESS);
+    notif = lyd_parent(notif);
+    assert_int_equal(srudpn_encode_envelope(notif, &ts, hostname, 4294967295U, media_type, &payload, &payload_len),
+            SR_ERR_OK);
+    assert_int_equal(srudpn_build_dgrams(media_type, 5, 77, payload, payload_len, 0, &dgrams), SR_ERR_OK);
+    assert_int_equal(LYA_COUNT(dgrams), 1);
+
+    mh.msg_name = &st->addr;
+    mh.msg_namelen = sizeof st->addr;
+    mh.msg_iov = iov;
+    mh.msg_iovlen = 2;
+    iov[0].iov_base = dgrams[0].hdr;
+    iov[0].iov_len = dgrams[0].hdr_len;
+    iov[1].iov_base = (void *)dgrams[0].data;
+    iov[1].iov_len = dgrams[0].data_len;
+    assert_int_equal(sendmsg(st->fd, &mh, 0), dgrams[0].hdr_len + dgrams[0].data_len);
+    LYA_FREE(dgrams);
+    free(payload);
+
+    assert_int_equal(srudpn_read_msg(st->udp, RECV_TIMEOUT_MS, &msg), SR_ERR_OK);
+    assert_int_equal(srudpn_msg_parse(msg, st->ly_ctx, &recv_notif), SR_ERR_OK);
+    assert_int_equal(srudpn_notif_get_event_time(recv_notif)->tv_sec, ts.tv_sec);
+
+    /* the envelope with its metadata */
+    env = srudpn_notif_get_envelope(recv_notif);
+    assert_string_equal(LYD_NAME(env), "envelope");
+    if (hostname) {
+        assert_string_equal(srudpn_notif_get_hostname(recv_notif), hostname);
+        assert_int_equal(*srudpn_notif_get_sequence_number(recv_notif), 4294967295U);
+    } else {
+        assert_null(srudpn_notif_get_hostname(recv_notif));
+        assert_null(srudpn_notif_get_sequence_number(recv_notif));
+    }
+
+    /* the notification, a tree of its own */
+    node = srudpn_notif_get_tree(recv_notif);
+    assert_string_equal(LYD_NAME(node), LYD_NAME(notif));
+    for ( ; lyd_parent(node); node = lyd_parent(node)) {}
+    assert_int_equal(lyd_compare_single(tree, node, LYD_COMPARE_FULL_RECURSION), LY_SUCCESS);
+    srudpn_notif_free(recv_notif);
+    srudpn_msg_free(msg);
+
+    lyd_free_all(tree);
+}
+
+/**
+ * @brief Test: a notification encoded in the YANG-Push envelope is received and parsed unchanged.
+ */
+static void
+test_envelope_roundtrip(void **state)
+{
+    struct state *st = *state;
+
+    envelope_roundtrip(st, "/t:notif/leaf", SRUDPN_MT_XML, NULL);
+    envelope_roundtrip(st, "/t:notif/leaf", SRUDPN_MT_XML, "router.example.com");
+    envelope_roundtrip(st, "/t:notif/leaf", SRUDPN_MT_JSON, NULL);
+    envelope_roundtrip(st, "/t:notif/leaf", SRUDPN_MT_JSON, "router.example.com");
+    envelope_roundtrip(st, "/t:c/nested/leaf", SRUDPN_MT_XML, "router");
+    envelope_roundtrip(st, "/t:c/nested/leaf", SRUDPN_MT_JSON, "router");
+#ifdef LY_HAVE_CBOR
+    envelope_roundtrip(st, "/t:notif/leaf", SRUDPN_MT_CBOR, NULL);
+    envelope_roundtrip(st, "/t:notif/leaf", SRUDPN_MT_CBOR, "router.example.com");
+    envelope_roundtrip(st, "/t:c/nested/leaf", SRUDPN_MT_CBOR, "router");
+#endif /* LY_HAVE_CBOR */
+}
+
+/**
+ * @brief Test: hand-written YANG-Push envelopes are recognized despite a prefix, an XML declaration, a comment and
+ * whitespace.
+ */
+static void
+test_envelope_parse(void **state)
+{
+    struct state *st = *state;
+    uint8_t buf[512];
+    srudpn_msg_t *msg;
+    const char *xml = "<?xml version=\"1.0\"?>\n<!-- <notification> -->\n<ypn:envelope xmlns:ypn=\"urn:ietf:params:xml:ns:yang:ietf-yp-notification\">"
+            "<ypn:event-time>2026-10-15T10:00:00Z</ypn:event-time><ypn:contents><notif xmlns=\"urn:t\">"
+            "<leaf>value</leaf></notif></ypn:contents></ypn:envelope>";
+    const char *json = " {\n  \"ietf-yp-notification:envelope\": {\n    \"event-time\": \"2026-10-15T10:00:00Z\",\n"
+            "    \"contents\": {\"t:notif\": {\"leaf\": \"value\"}}\n  }\n}\n";
+
+    dgram_send(st, buf, dgram_build(buf, 0x22, 12, NULL, 1, xml, strlen(xml)));
+    assert_int_equal(srudpn_read_msg(st->udp, RECV_TIMEOUT_MS, &msg), SR_ERR_OK);
+    assert_notif(st, msg, "envelope");
+    srudpn_msg_free(msg);
+
+    dgram_send(st, buf, dgram_build(buf, 0x21, 12, NULL, 2, json, strlen(json)));
+    assert_int_equal(srudpn_read_msg(st->udp, RECV_TIMEOUT_MS, &msg), SR_ERR_OK);
+    assert_notif(st, msg, "envelope");
+    srudpn_msg_free(msg);
+}
+
 #ifdef LY_HAVE_CBOR
 
 /**
@@ -633,11 +776,34 @@ test_parse_cbor(void **state)
             "\xA2"
             "\x67" "t:notif" "\xA1" "\x64" "leaf" "\x65" "value"
             "\x69" "eventTime" "\x74" "2026-10-15T10:00:00Z";
+    const char cbor_envelope[] =
+            "\xA1\x78\x1D" "ietf-yp-notification:envelope"
+            "\xA2"
+            "\x6A" "event-time" "\x74" "2026-10-15T10:00:00Z"
+            "\x68" "contents" "\xA1" "\x67" "t:notif" "\xA1" "\x64" "leaf" "\x65" "value";
+    const char cbor_envelope_long[] =
+            "\xBF\x79\x00\x1D" "ietf-yp-notification:envelope"
+            "\xA2"
+            "\x6A" "event-time" "\x74" "2026-10-15T10:00:00Z"
+            "\x68" "contents" "\xA1" "\x67" "t:notif" "\xA1" "\x64" "leaf" "\x65" "value"
+            "\xFF";
 
     dgram_send(st, buf, dgram_build(buf, 0x23, 12, NULL, 1, cbor, sizeof cbor - 1));
     assert_int_equal(srudpn_read_msg(st->udp, RECV_TIMEOUT_MS, &msg), SR_ERR_OK);
     assert_int_equal(srudpn_msg_get_media_type(msg), SRUDPN_MT_CBOR);
-    assert_notif(st, msg);
+    assert_notif(st, msg, "notification");
+    srudpn_msg_free(msg);
+
+    /* the YANG-Push envelope as a map with a count */
+    dgram_send(st, buf, dgram_build(buf, 0x23, 12, NULL, 2, cbor_envelope, sizeof cbor_envelope - 1));
+    assert_int_equal(srudpn_read_msg(st->udp, RECV_TIMEOUT_MS, &msg), SR_ERR_OK);
+    assert_notif(st, msg, "envelope");
+    srudpn_msg_free(msg);
+
+    /* of indefinite length and the first key with a 2-byte length */
+    dgram_send(st, buf, dgram_build(buf, 0x23, 12, NULL, 3, cbor_envelope_long, sizeof cbor_envelope_long - 1));
+    assert_int_equal(srudpn_read_msg(st->udp, RECV_TIMEOUT_MS, &msg), SR_ERR_OK);
+    assert_notif(st, msg, "envelope");
     srudpn_msg_free(msg);
 }
 
@@ -695,7 +861,48 @@ test_encode_limits(void **state)
             SR_ERR_UNSUPPORTED);
     assert_null(payload);
 #endif /* LY_HAVE_CBOR */
+    assert_int_equal(srudpn_encode_envelope(notif, &(struct timespec) {0}, NULL, 0, SRUDPN_MT_PRIVATE, &payload, &len),
+            SR_ERR_UNSUPPORTED);
+    assert_null(payload);
     lyd_free_all(notif);
+}
+
+/**
+ * @brief Test: the YANG-Push envelope is not encoded without its module, nor the metadata without its feature.
+ */
+static void
+test_encode_envelope_unsupported(void **state)
+{
+    struct ly_ctx *ly_ctx;
+    struct lyd_node *notif;
+    uint8_t *payload;
+    uint32_t len;
+    char search_dirs[1024];
+
+    (void)state;
+
+    snprintf(search_dirs, sizeof search_dirs, "%s:%s:%s", SN_YANG_DIR, SR_YANG_DIR, ly_yang_module_dir());
+    assert_int_equal(ly_ctx_new(search_dirs, LY_CTX_NO_YANGLIBRARY, &ly_ctx), LY_SUCCESS);
+    assert_int_equal(lys_parse_mem(ly_ctx, "module t {namespace urn:t; prefix t; notification notif {leaf leaf "
+            "{type string;}}}", LYS_IN_YANG, NULL), LY_SUCCESS);
+    assert_int_equal(lyd_new_path(NULL, ly_ctx, "/t:notif/leaf", "value", 0, &notif), LY_SUCCESS);
+
+    /* no module */
+    assert_int_equal(srudpn_encode_envelope(notif, &(struct timespec) {0}, NULL, 0, SRUDPN_MT_JSON, &payload, &len),
+            SR_ERR_UNSUPPORTED);
+    assert_null(payload);
+
+    /* no feature */
+    assert_non_null(ly_ctx_load_module(ly_ctx, "ietf-yp-notification", NULL, NULL));
+    assert_int_equal(srudpn_encode_envelope(notif, &(struct timespec) {0}, "router", 1, SRUDPN_MT_JSON, &payload, &len),
+            SR_ERR_UNSUPPORTED);
+    assert_null(payload);
+    assert_int_equal(srudpn_encode_envelope(notif, &(struct timespec) {0}, NULL, 0, SRUDPN_MT_JSON, &payload, &len),
+            SR_ERR_OK);
+    free(payload);
+
+    lyd_free_all(notif);
+    ly_ctx_destroy(ly_ctx);
 }
 
 int
@@ -711,10 +918,13 @@ main(void)
         cmocka_unit_test_setup_teardown(test_invalid, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_parse_unsupported, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_roundtrip, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_envelope_roundtrip, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_envelope_parse, setup_f, teardown_f),
 #ifdef LY_HAVE_CBOR
         cmocka_unit_test_setup_teardown(test_parse_cbor, setup_f, teardown_f),
 #endif /* LY_HAVE_CBOR */
         cmocka_unit_test(test_encode_limits),
+        cmocka_unit_test(test_encode_envelope_unsupported),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

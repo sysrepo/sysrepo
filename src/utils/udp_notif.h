@@ -125,6 +125,19 @@ typedef struct srudpn_msg_s srudpn_msg_t;
  *   </link-down>
  * </notification>
  * @endcode
+ * or in the YANG-Push notification envelope (draft-ietf-netconf-notif-envelope):
+ * @code{.xml}
+ * <envelope xmlns="urn:ietf:params:xml:ns:yang:ietf-yp-notification">      <- srudpn_notif_get_envelope()
+ *   <event-time>2026-10-23T10:00:00Z</event-time>                           <- srudpn_notif_get_event_time()
+ *   <hostname>router.example.com</hostname>                                 <- srudpn_notif_get_hostname()
+ *   <sequence-number>1</sequence-number>                                    <- srudpn_notif_get_sequence_number()
+ *   <contents>
+ *     <link-down xmlns="urn:example:interfaces">                            <- srudpn_notif_get_tree()
+ *       <if-name>eth0</if-name>
+ *     </link-down>
+ *   </contents>
+ * </envelope>
+ * @endcode
  */
 typedef struct srudpn_notif_s srudpn_notif_t;
 
@@ -256,10 +269,12 @@ const struct lyd_node *srudpn_notif_get_tree(const srudpn_notif_t *notif);
 /**
  * @brief Get the envelope of a parsed notification.
  *
- * The envelope is the outer notification element of RFC 5277 (RFC 8040 for JSON) with the eventTime, without the
- * notification data itself, see ::srudpn_notif_t.
+ * The envelope is the outer element with the event time and any other metadata, without the notification data itself,
+ * see ::srudpn_notif_t.
  *
- * @note The envelope nodes are opaque (no schema), read them with LYD_NAME() and lyd_get_value().
+ * @note The RFC 5277 (RFC 8040 for JSON) envelope nodes are opaque (no schema), read them with LYD_NAME() and
+ * lyd_get_value(). The YANG-Push envelope is the 'envelope' structure of 'ietf-yp-notification' with an empty
+ * 'contents'.
  *
  * @param[in] notif Parsed notification to use.
  * @return Envelope data tree.
@@ -273,6 +288,22 @@ const struct lyd_node *srudpn_notif_get_envelope(const srudpn_notif_t *notif);
  * @return Event time from the notification envelope.
  */
 const struct timespec *srudpn_notif_get_event_time(const srudpn_notif_t *notif);
+
+/**
+ * @brief Get the hostname of the publisher from the YANG-Push envelope of a parsed notification.
+ *
+ * @param[in] notif Parsed notification to use.
+ * @return Hostname, NULL if it was not sent or the notification is in the RFC 5277 envelope.
+ */
+const char *srudpn_notif_get_hostname(const srudpn_notif_t *notif);
+
+/**
+ * @brief Get the sequence number of the message from the YANG-Push envelope of a parsed notification.
+ *
+ * @param[in] notif Parsed notification to use.
+ * @return Sequence number, NULL if it was not sent or the notification is in the RFC 5277 envelope.
+ */
+const uint32_t *srudpn_notif_get_sequence_number(const srudpn_notif_t *notif);
 
 /**
  * @brief Free a parsed notification.
@@ -313,6 +344,24 @@ typedef struct {
  */
 int srudpn_encode_notification(const struct lyd_node *notif, const struct timespec *event_time,
         srudpn_media_type_t media_type, uint8_t **payload, uint32_t *payload_len);
+
+/**
+ * @brief Encode a notification in the YANG-Push notification envelope (draft-ietf-netconf-notif-envelope).
+ *
+ * The context of @p notif must implement the 'ietf-yp-notification' module, with its 'hostname-sequence-number'
+ * feature enabled for @p hostname.
+ *
+ * @param[in] notif Notification to encode.
+ * @param[in] event_time Event time of the notification.
+ * @param[in] hostname Hostname of the publisher, NULL to send neither it nor @p sequence_number.
+ * @param[in] sequence_number Sequence number of the message, sent only with @p hostname.
+ * @param[in] media_type Media type to encode in.
+ * @param[out] payload Encoded payload.
+ * @param[out] payload_len Length of @p payload.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int srudpn_encode_envelope(const struct lyd_node *notif, const struct timespec *event_time, const char *hostname,
+        uint32_t sequence_number, srudpn_media_type_t media_type, uint8_t **payload, uint32_t *payload_len);
 
 /**
  * @brief Encode a payload into UDP-Notif datagrams.
