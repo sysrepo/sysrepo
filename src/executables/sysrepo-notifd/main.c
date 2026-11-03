@@ -1173,6 +1173,26 @@ cleanup:
 }
 
 static int
+envelope_capabilities_oper_get(sr_session_ctx_t *UNUSED(session), uint32_t UNUSED(sub_id), const char *UNUSED(module_name),
+        const char *UNUSED(path), const char *UNUSED(request_xpath), uint32_t UNUSED(operation_id),
+        struct lyd_node **parent, void *private_data)
+{
+    notifd_ctx_t *notifd_ctx = (notifd_ctx_t *)private_data;
+
+    if (lyd_new_path(*parent, NULL, "ietf-yp-notification:notification-metadata/envelope", "true", 0, NULL)) {
+        return SR_ERR_LY;
+    }
+
+    /* the hostname is known only if the hostname and sequence number are sent */
+    if (notifd_ctx->envelope.hostname && lyd_new_path(*parent, NULL,
+            "ietf-yp-notification:notification-metadata/metadata/hostname-sequence-number", "true", 0, NULL)) {
+        return SR_ERR_LY;
+    }
+
+    return SR_ERR_OK;
+}
+
+static int
 receiver_state_oper_get(sr_session_ctx_t *UNUSED(session), uint32_t UNUSED(sub_id), const char *UNUSED(module_name),
         const char *path, const char *UNUSED(request_xpath), uint32_t UNUSED(operation_id),
         struct lyd_node **parent, void *private_data)
@@ -1273,6 +1293,17 @@ register_oper_data_providers(notifd_ctx_t *notifd_ctx, sr_subscription_ctx_t **s
     if ((r = sr_oper_get_subscribe(sess, module, path, receiver_state_oper_get, notifd_ctx, SR_SUBSCR_OPER_MERGE, subscr))) {
         SRNTF_LOG_ERR("Failed to subscribe for receiver state operational data.");
         return r;
+    }
+
+    /* notification envelope capabilities */
+    if (envelope_is_supported(sess)) {
+        path = "/ietf-system-capabilities:system-capabilities/ietf-notification-capabilities:subscription-capabilities"
+                "/ietf-yp-notification:notification-metadata";
+        if ((r = sr_oper_get_subscribe(sess, "ietf-system-capabilities", path, envelope_capabilities_oper_get, notifd_ctx,
+                SR_SUBSCR_OPER_MERGE, subscr))) {
+            SRNTF_LOG_ERR("Failed to subscribe for notification envelope capabilities operational data.");
+            return r;
+        }
     }
 
     return SR_ERR_OK;
