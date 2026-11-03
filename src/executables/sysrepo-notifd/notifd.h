@@ -224,6 +224,14 @@ typedef void (*notif_transport_disconnect_cb)(notif_receiver_t *recv);
 typedef int (*notif_transport_is_connected_cb)(const notif_receiver_t *recv);
 
 /**
+ * @brief Metadata of a message in the YANG-Push notification envelope.
+ */
+typedef struct {
+    const char *hostname;               /**< hostname of the publisher, NULL to send no metadata */
+    uint32_t sequence_number;           /**< sequence number of the message, sent only with the hostname */
+} notif_envelope_t;
+
+/**
  * @brief Send a notification over the transport to a receiver.
  *
  * Encodes and transmits a single notification using the given encoding.
@@ -234,12 +242,14 @@ typedef int (*notif_transport_is_connected_cb)(const notif_receiver_t *recv);
  * @param[in] notif Notification data tree to send.
  * @param[in] ts Notification event timestamp.
  * @param[in] encoding Encoding format for the notification payload.
+ * @param[in] env Metadata of the YANG-Push notification envelope to send the notification in, NULL for the RFC 5277
+ * one.
  * @return SR_ERR_OK on success,
  * @return SR_ERR_TIME_OUT if the transport would have blocked and the notification was dropped,
  * @return another error code on failure.
  */
 typedef int (*notif_transport_send_cb)(notif_receiver_t *recv, void *cfg, const struct lyd_node *notif,
-        const struct timespec *ts, notif_encoding_t encoding);
+        const struct timespec *ts, notif_encoding_t encoding, const notif_envelope_t *env);
 
 /**
  * @brief Parse transport configuration from a YANG data node.
@@ -534,6 +544,14 @@ struct notifd_ctx_s {
 
     notif_sub_t **subs;                     /**< configured subscriptions (sized-array, see libyang docs) */
     notif_receiver_inst_t **recv_insts;     /**< configured receiver instances (sized-array, see libyang docs) */
+
+    struct {
+        int enabled;                        /**< whether the notifications are sent in the YANG-Push notification
+                                                 envelope */
+        char *hostname;                     /**< hostname sent in the envelope, NULL if the metadata are not
+                                                 supported */
+        uint32_t seq_number;                /**< sequence number of the last message sent in the envelope */
+    } envelope;                             /**< YANG-Push notification envelope */
 };
 
 #endif /* NOTIFD_H_ */
