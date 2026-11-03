@@ -354,6 +354,67 @@ cleanup:
     return rc;
 }
 
+/**
+ * @brief Get the hostname to send in the notification envelope, if its metadata are supported.
+ *
+ * @param[in] conn Sysrepo connection.
+ * @param[out] hostname Hostname, NULL if the metadata are not supported.
+ * @return SR_ERR_OK on success, error code on failure.
+ */
+static int
+envelope_hostname_get(sr_conn_ctx_t *conn, char **hostname)
+{
+    const struct ly_ctx *ly_ctx;
+    const struct lys_module *ly_mod;
+    char buf[256];
+    int rc = SR_ERR_OK;
+
+    *hostname = NULL;
+
+    if (!(ly_ctx = sr_acquire_context(conn))) {
+        SRNTF_LOG_ERR("Failed to acquire libyang context");
+        return SR_ERR_INTERNAL;
+    }
+
+    ly_mod = ly_ctx_get_module_implemented(ly_ctx, "ietf-yp-notification");
+    if (!ly_mod || lys_feature_value(ly_mod, "hostname-sequence-number")) {
+        goto cleanup;
+    }
+
+    if (gethostname(buf, sizeof buf)) {
+        SRNTF_LOG_ERR("gethostname() failed (%s).", strerror(errno));
+        rc = SR_ERR_SYS;
+        goto cleanup;
+    }
+    buf[sizeof buf - 1] = '\0';
+
+    *hostname = strdup(buf);
+    CHECK_ERRMEM_GOTO(*hostname, rc, cleanup);
+
+cleanup:
+    sr_release_context(conn);
+    return rc;
+}
+
+/**
+ * @brief Learn whether the notification envelope is supported.
+ *
+ * @param[in] sess Sysrepo session.
+ * @return Whether ietf-yp-notification is implemented.
+ */
+static int
+envelope_is_supported(sr_session_ctx_t *sess)
+{
+    const struct ly_ctx *ly_ctx;
+    int supported;
+
+    ly_ctx = sr_session_acquire_context(sess);
+    supported = ly_ctx_get_module_implemented(ly_ctx, "ietf-yp-notification") ? 1 : 0;
+    sr_session_release_context(sess);
+
+    return supported;
+}
+
 /*
  * =========================================================================
  * Sysrepo change callbacks
@@ -851,6 +912,74 @@ cleanup:
         /* STATE UNLOCK */
         notifd_rwlock_unlock(&notifd_ctx->state_rwlock, __func__);
     }
+    sr_free_change_iter(iter);
+    return rc;
+}
+
+static int
+envelope_change_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *UNUSED(module_name),
+        const char *xpath, sr_event_t event, uint32_t operation_id, void *private_data)
+{
+    int rc = SR_ERR_OK, prev_dflt, enabled;
+    notifd_ctx_t *notifd_ctx = (notifd_ctx_t *)private_data;
+    sr_change_iter_t *iter = NULL;
+    sr_change_oper_t op;
+    const struct lyd_node *node;
+    const char *prev_value, *prev_list;
+    notif_sub_t **sub;
+    notif_receiver_t *receiver;
+
+    SRNTF_LOG_INF("Notification envelope change callback with ID %" PRIu32 " invoked for event \"%s\".",
+            operation_id, sr_event2str(event));
+
+    if (event != SR_EV_DONE) {
+        /* nothing to validate nor roll back */
+        return SR_ERR_OK;
+    }
+
+    /* STATE WR LOCK */
+    if ((rc = notifd_rwlock_lock(&notifd_ctx->state_rwlock, 1, NOTIFD_CONTEXT_LOCK_TIMEOUT_MS, __func__))) {
+        return rc;
+    }
+
+    /* the current state, kept if the switch is not among the changes */
+    enabled = notifd_ctx->envelope.enabled;
+
+    if ((rc = sr_get_changes_iter(session, xpath, &iter))) {
+        goto cleanup;
+    }
+    while (!sr_get_change_tree_next(session, iter, &op, &node, &prev_value, &prev_list, &prev_dflt)) {
+        if (op == SR_OP_DELETED) {
+            /* back to the default false */
+            enabled = 0;
+        } else {
+            enabled = ((struct lyd_node_term *)node)->value.boolean;
+        }
+    }
+    if (enabled == notifd_ctx->envelope.enabled) {
+        /* nothing changed */
+        goto cleanup;
+    }
+
+    LYA_FOR_EACH(notifd_ctx->subs, sub) {
+        /* terminate in the old envelope */
+        subscription_terminated_notif_send(notifd_ctx, *sub, NULL, "ietf-yp-notification:notification-envelope-changed");
+        LYA_FOR_EACH((*sub)->receivers, receiver) {
+            if (receiver->state == NOTIF_RECV_STATE_ACTIVE) {
+                notif_receiver_disconnect(receiver);
+                receiver->state = NOTIF_RECV_STATE_CONNECTING;
+            }
+        }
+
+        /* restart as if just created, the receivers get subscription-started once it is started */
+        (*sub)->resubscribe = 1;
+    }
+    notifd_ctx->envelope.enabled = enabled;
+    process_modified_subscriptions(notifd_ctx);
+
+cleanup:
+    /* STATE UNLOCK */
+    notifd_rwlock_unlock(&notifd_ctx->state_rwlock, __func__);
     sr_free_change_iter(iter);
     return rc;
 }
@@ -1355,6 +1484,12 @@ main(int argc, char **argv)
         goto cleanup;
     }
 
+    /* get the parameters of the notification envelope */
+    if (envelope_hostname_get(conn, &notifd_ctx.envelope.hostname)) {
+        rc = EXIT_FAILURE;
+        goto cleanup;
+    }
+
     /* start the notification dispatch loop, it must run before the first SR_SUBSCR_ENABLED sub */
     if (notifd_dispatch_start(&notifd_ctx)) {
         rc = EXIT_FAILURE;
@@ -1378,6 +1513,16 @@ main(int argc, char **argv)
             "/ietf-subscribed-notifications:subscriptions/subscription/receivers/receiver/reset",
             receiver_reset_rpc_cb, &notifd_ctx, 0, 0, &sr_subscr)) {
         SRNTF_LOG_ERR("Failed to subscribe for receiver reset action.");
+        rc = EXIT_FAILURE;
+        goto cleanup;
+    }
+
+    /* subscribe for envelope switch changes (highest priority), the subscriptions start in its envelope */
+    if (envelope_is_supported(notifd_ctx.sr_sess) && sr_module_change_subscribe(notifd_ctx.sr_sess,
+            "ietf-subscribed-notifications", "/ietf-subscribed-notifications:subscriptions/"
+            "ietf-yp-notification:enable-notification-envelope", envelope_change_cb, &notifd_ctx, 3,
+            SR_SUBSCR_ENABLED, &sr_subscr)) {
+        SRNTF_LOG_ERR("Failed to subscribe for notification envelope changes");
         rc = EXIT_FAILURE;
         goto cleanup;
     }
@@ -1450,6 +1595,7 @@ cleanup:
     notifd_control_stop(&notifd_ctx);
     notifd_dispatch_stop(&notifd_ctx.dispatch);
     sr_disconnect(conn);
+    free(notifd_ctx.envelope.hostname);
 
     if (shutdown_rfd > -1) {
         close(shutdown_rfd);
