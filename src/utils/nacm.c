@@ -2217,33 +2217,39 @@ sr_nacm_dup_subtree_read_filter(sr_session_ctx_t *session, const struct lyd_node
     }
 
     /* collect groups */
-    err_info = sr_nacm_collect_groups(session->nacm_user, &groups, &group_count);
+    if ((err_info = sr_nacm_collect_groups(session->nacm_user, &groups, &group_count))) {
+        goto nacm_cleanup;
+    }
 
-    if (!err_info) {
-        /* basic global checks for the whole tree */
-        if ((err_info = sr_nacm_allowed_tree(tree->schema, session->nacm_user, &allowed))) {
-            goto cleanup;
-        }
+    /* basic global checks for the whole tree */
+    if ((err_info = sr_nacm_allowed_tree(tree->schema, session->nacm_user, &allowed))) {
+        goto nacm_cleanup;
+    }
 
-        if (!allowed) {
-            /* apply NACM on the tree */
-            err_info = sr_nacm_check_data_read_filter_r(tree, session->nacm_user, groups, group_count, &access, &denied_set);
+    if (!allowed) {
+        /* apply NACM on the tree */
+        if ((err_info = sr_nacm_check_data_read_filter_r(tree, session->nacm_user, groups, group_count, &access,
+                &denied_set))) {
+            goto nacm_cleanup;
         }
     }
 
     /* NACM UNLOCK */
     pthread_mutex_unlock(&nacm.lock);
-
     sr_nacm_free_groups(groups, group_count);
-    if (err_info) {
-        goto cleanup;
-    }
 
     /* duplicate all the nodes that were not denied R access */
     if ((err_info = sr_nacm_dup_subtree_read_filter_r(tree, dup_opts, &denied_set, &i, dup, NULL))) {
         goto cleanup;
     }
     assert(i == denied_set.count);
+
+    goto cleanup;
+
+nacm_cleanup:
+    /* NACM UNLOCK */
+    pthread_mutex_unlock(&nacm.lock);
+    sr_nacm_free_groups(groups, group_count);
 
 cleanup:
     ly_set_erase(&denied_set, NULL);
