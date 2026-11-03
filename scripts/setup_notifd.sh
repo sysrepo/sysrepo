@@ -44,6 +44,9 @@ MODULES=(
 "ietf-subscribed-notifications@2019-09-09.yang -e configured -e replay -e subtree -e xpath -e encode-xml -e encode-json"
 "ietf-yang-patch@2017-02-22.yang"
 "ietf-yang-push@2019-09-09.yang -e on-change"
+"ietf-system-capabilities@2022-02-17.yang"
+"ietf-notification-capabilities@2022-02-17.yang"
+"ietf-yp-notification@2026-09-25.yang -e hostname-sequence-number"
 "ietf-subscribed-notif-receivers@2024-02-01.yang"
 "ietf-udp-notif-transport@2025-06-04.yang $UDPN_FEATURES"
 )
