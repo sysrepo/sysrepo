@@ -94,26 +94,25 @@ srsn_stream_collect_mods(const char *stream, const char *xpath_filter, const str
     }
 
     if (ly_set_new(mod_set)) {
-        return SR_ERR_NO_MEMORY;
+        SR_ERRINFO_MEM(&err_info);
+        goto cleanup;
     }
 
     if (strcmp(stream, "NETCONF")) {
         /* subscribing to a specific module */
         ly_mod = ly_ctx_get_module_implemented(ly_ctx, stream);
         if (!ly_mod) {
-            rc = SR_ERR_NOT_FOUND;
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Stream module \"%s\" to subscribe to not found.", stream);
             goto cleanup;
         }
 
         if (ly_set_add(*mod_set, (void *)ly_mod, 1, NULL)) {
-            rc = SR_ERR_INTERNAL;
+            SR_ERRINFO_MEM(&err_info);
             goto cleanup;
         }
     } else if (xpath_filter) {
         /* collect only modules selected by the filter (atoms needed, it evaluates to a boolean) */
-        if ((err_info = sr_lys_find_xpath_atoms(ly_ctx, xpath_filter, 0, NULL, &set))) {
-            rc = err_info->err[0].err_code;
-            sr_errinfo_free(&err_info);
+        if ((err_info = sr_lys_find_xpath_atoms(ly_ctx, xpath_filter, LYS_FIND_NO_MATCH_ERROR, NULL, &set))) {
             goto cleanup;
         }
 
@@ -126,7 +125,7 @@ srsn_stream_collect_mods(const char *stream, const char *xpath_filter, const str
 
             /* handles duplicates */
             if (ly_set_add(*mod_set, (void *)ly_mod, 0, NULL)) {
-                rc = SR_ERR_INTERNAL;
+                SR_ERRINFO_MEM(&err_info);
                 goto cleanup;
             }
         }
@@ -140,7 +139,7 @@ srsn_stream_collect_mods(const char *stream, const char *xpath_filter, const str
 
             if (srsn_ly_mod_has_notif(ly_mod)) {
                 if (ly_set_add(*mod_set, (void *)ly_mod, 1, NULL)) {
-                    rc = SR_ERR_INTERNAL;
+                    SR_ERRINFO_MEM(&err_info);
                     goto cleanup;
                 }
             }
@@ -149,9 +148,12 @@ srsn_stream_collect_mods(const char *stream, const char *xpath_filter, const str
 
 cleanup:
     ly_set_free(set, NULL);
-    if (rc) {
+    if (err_info) {
         ly_set_free(*mod_set, NULL);
         *mod_set = NULL;
+
+        rc = err_info->err[0].err_code;
+        sr_errinfo_free(&err_info);
     }
     return rc;
 }
