@@ -763,16 +763,48 @@ srudpn_msg_get_source(const srudpn_msg_t *msg, char *addr, uint16_t *port)
     getnameinfo((const struct sockaddr *)&msg->src, sa_len, addr, SRUDPN_ADDR_STRLEN, NULL, 0, NI_NUMERICHOST);
 }
 
+/**
+ * @brief Get the libyang format of a media type.
+ *
+ * @param[in] media_type Media type.
+ * @param[out] format Libyang format.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+srudpn_media_type2format(srudpn_media_type_t media_type, LYD_FORMAT *format)
+{
+    sr_error_info_t *err_info = NULL;
+
+    switch (media_type) {
+    case SRUDPN_MT_JSON:
+        *format = LYD_JSON;
+        break;
+    case SRUDPN_MT_XML:
+        *format = LYD_XML;
+        break;
+#ifdef LY_HAVE_CBOR
+    case SRUDPN_MT_CBOR:
+        *format = LYD_CBOR;
+        break;
+#endif /* LY_HAVE_CBOR */
+    default:
+        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "UDP-Notif media type %d is not supported.", (int)media_type);
+        break;
+    }
+
+    return err_info;
+}
+
 API int
 srudpn_msg_parse(const srudpn_msg_t *msg, const struct ly_ctx *ly_ctx, srudpn_notif_t **notif)
 {
     sr_error_info_t *err_info = NULL;
     LYD_FORMAT format;
-    enum lyd_type data_type;
     const struct lyd_node *node;
-    const char *data;
+    const char *data, *time_name;
     char *str = NULL;
     uint32_t data_len;
+    int yp_envelope;
 
     SR_CHECK_ARG_APIRET(!msg || !ly_ctx || !notif, NULL, err_info);
 
@@ -783,24 +815,7 @@ srudpn_msg_parse(const srudpn_msg_t *msg, const struct ly_ctx *ly_ctx, srudpn_no
                 msg->hdr.media_type);
         goto cleanup;
     }
-    switch (msg->hdr.media_type) {
-    case SRUDPN_MT_JSON:
-        format = LYD_JSON;
-        data_type = LYD_TYPE_NOTIF_RESTCONF;
-        break;
-    case SRUDPN_MT_XML:
-        format = LYD_XML;
-        data_type = LYD_TYPE_NOTIF_NETCONF;
-        break;
-#ifdef LY_HAVE_CBOR
-    case SRUDPN_MT_CBOR:
-        format = LYD_CBOR;
-        data_type = LYD_TYPE_NOTIF_RESTCONF;
-        break;
-#endif /* LY_HAVE_CBOR */
-    default:
-        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "UDP-Notif media type %" PRIu8 " is not supported.",
-                msg->hdr.media_type);
+    if ((err_info = srudpn_media_type2format(msg->hdr.media_type, &format))) {
         goto cleanup;
     }
 
@@ -818,14 +833,24 @@ srudpn_msg_parse(const srudpn_msg_t *msg, const struct ly_ctx *ly_ctx, srudpn_no
         data_len = 0;
     }
 
-    /* parse the RFC 5277 envelope and the notification */
-    if ((err_info = sr_lyd_parse_op(ly_ctx, data, data_len, format, data_type, &(*notif)->env, &(*notif)->tree))) {
+    /* parse the envelope and the notification */
+    if ((err_info = sr_lyd_parse_op(ly_ctx, data, data_len, format, LYD_TYPE_NOTIF_AUTO, &(*notif)->env,
+            &(*notif)->tree))) {
         goto cleanup;
     }
+    yp_envelope = (*notif)->env->schema && !strcmp((*notif)->env->schema->module->name, SRUDPN_YPN_MODULE);
 
-    /* store the event time, already validated by the parser */
+    if (yp_envelope) {
+        /* validate the header of the YANG-Push envelope, the notification needs data a collector does not have */
+        if ((err_info = sr_lyd_validate_all(&(*notif)->env, NULL, LYD_VALIDATE_PRESENT))) {
+            goto cleanup;
+        }
+    }
+
+    /* store the event time, the opaque eventTime of the RFC 5277 envelope or the event-time of the YANG-Push one */
+    time_name = yp_envelope ? "event-time" : "eventTime";
     LY_LIST_FOR(lyd_child((*notif)->env), node) {
-        if (!node->schema && !strcmp(LYD_NAME(node), "eventTime")) {
+        if (!strcmp(LYD_NAME(node), time_name)) {
             if ((err_info = sr_ly_time_str2ts(lyd_get_value(node), &(*notif)->event_time))) {
                 goto cleanup;
             }
@@ -869,6 +894,34 @@ API const struct timespec *
 srudpn_notif_get_event_time(const srudpn_notif_t *notif)
 {
     return notif ? &notif->event_time : NULL;
+}
+
+API const char *
+srudpn_notif_get_hostname(const srudpn_notif_t *notif)
+{
+    struct lyd_node *node;
+
+    /* only in the YANG-Push envelope */
+    if (!notif || !notif->env->schema || strcmp(notif->env->schema->module->name, SRUDPN_YPN_MODULE) ||
+            lyd_find_path(notif->env, "hostname", 0, &node)) {
+        return NULL;
+    }
+
+    return lyd_get_value(node);
+}
+
+API const uint32_t *
+srudpn_notif_get_sequence_number(const srudpn_notif_t *notif)
+{
+    struct lyd_node *node;
+
+    /* only in the YANG-Push envelope */
+    if (!notif || !notif->env->schema || strcmp(notif->env->schema->module->name, SRUDPN_YPN_MODULE) ||
+            lyd_find_path(notif->env, "sequence-number", 0, &node)) {
+        return NULL;
+    }
+
+    return &((struct lyd_node_term *)node)->value.uint32;
 }
 
 API void
@@ -925,20 +978,7 @@ srudpn_encode_notification(const struct lyd_node *notif, const struct timespec *
     *payload = NULL;
     *payload_len = 0;
 
-    switch (media_type) {
-    case SRUDPN_MT_JSON:
-        format = LYD_JSON;
-        break;
-    case SRUDPN_MT_XML:
-        format = LYD_XML;
-        break;
-#ifdef LY_HAVE_CBOR
-    case SRUDPN_MT_CBOR:
-        format = LYD_CBOR;
-        break;
-#endif /* LY_HAVE_CBOR */
-    default:
-        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "UDP-Notif media type %d is not supported.", (int)media_type);
+    if ((err_info = srudpn_media_type2format(media_type, &format))) {
         goto cleanup;
     }
 
@@ -996,6 +1036,81 @@ srudpn_encode_notification(const struct lyd_node *notif, const struct timespec *
 cleanup:
     free(event_time_str);
     free(inner);
+    return sr_api_ret(NULL, err_info);
+}
+
+API int
+srudpn_encode_envelope(const struct lyd_node *notif, const struct timespec *event_time, const char *hostname,
+        uint32_t sequence_number, srudpn_media_type_t media_type, uint8_t **payload, uint32_t *payload_len)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *mod;
+    const struct lyd_node *top;
+    struct lyd_node *env = NULL, *contents = NULL;
+    char *event_time_str = NULL, *str = NULL, seq_str[11];
+    uint32_t len;
+    LYD_FORMAT format;
+
+    SR_CHECK_ARG_APIRET(!notif || !event_time || !payload || !payload_len, NULL, err_info);
+
+    *payload = NULL;
+    *payload_len = 0;
+
+    mod = ly_ctx_get_module_implemented(LYD_CTX(notif), SRUDPN_YPN_MODULE);
+    if (!mod) {
+        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Module \"%s\" is not implemented.", SRUDPN_YPN_MODULE);
+        goto cleanup;
+    }
+    if (hostname && lys_feature_value(mod, "hostname-sequence-number")) {
+        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Feature \"hostname-sequence-number\" of module \"%s\" is not enabled.",
+                SRUDPN_YPN_MODULE);
+        goto cleanup;
+    }
+
+    if ((err_info = srudpn_media_type2format(media_type, &format))) {
+        goto cleanup;
+    }
+
+    /* the envelope with its metadata */
+    if ((err_info = sr_ly_time_ts2str(event_time, &event_time_str))) {
+        goto cleanup;
+    }
+    if ((err_info = sr_lyd_new_inner(NULL, mod, "envelope", &env))) {
+        goto cleanup;
+    }
+    if ((err_info = sr_lyd_new_term(env, mod, "event-time", event_time_str))) {
+        goto cleanup;
+    }
+    if (hostname) {
+        if ((err_info = sr_lyd_new_term(env, mod, "hostname", hostname))) {
+            goto cleanup;
+        }
+        sprintf(seq_str, "%" PRIu32, sequence_number);
+        if ((err_info = sr_lyd_new_term(env, mod, "sequence-number", seq_str))) {
+            goto cleanup;
+        }
+    }
+
+    /* a copy of the whole notification tree in the contents */
+    for (top = notif; top->parent; top = top->parent) {}
+    if ((err_info = sr_lyd_dup(top, NULL, LYD_DUP_RECURSIVE, 0, &contents))) {
+        goto cleanup;
+    }
+    if ((err_info = sr_lyd_new_any(env, "contents", contents, NULL))) {
+        goto cleanup;
+    }
+    contents = NULL;
+
+    if ((err_info = sr_lyd_print_data(env, format, LYD_PRINT_SHRINK, -1, &str, &len))) {
+        goto cleanup;
+    }
+    *payload = (uint8_t *)str;
+    *payload_len = len;
+
+cleanup:
+    free(event_time_str);
+    lyd_free_all(contents);
+    lyd_free_all(env);
     return sr_api_ret(NULL, err_info);
 }
 
