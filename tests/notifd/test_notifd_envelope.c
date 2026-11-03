@@ -34,6 +34,10 @@
 /** The envelope switch */
 #define ENVELOPE_XP "/ietf-subscribed-notifications:subscriptions/ietf-yp-notification:enable-notification-envelope"
 
+/** The envelope capabilities */
+#define CAPAB_XP "/ietf-system-capabilities:system-capabilities/ietf-notification-capabilities:subscription-capabilities" \
+        "/ietf-yp-notification:notification-metadata"
+
 /** Reason of the subscription-terminated sent on an envelope switch */
 #define ENVELOPE_CHANGED "ietf-yp-notification:notification-envelope-changed"
 
@@ -281,6 +285,18 @@ test_envelope_restart(void **state)
     expect_no_notif(st, SUB_TERMINATED);
 }
 
+/**
+ * @brief Test: the envelope and its metadata are reported as supported.
+ */
+static void
+test_envelope_capabilities(void **state)
+{
+    struct tnotifd_state *st = *state;
+
+    assert_oper(st, "true", CAPAB_XP "/envelope");
+    assert_oper(st, "true", CAPAB_XP "/metadata/hostname-sequence-number");
+}
+
 int
 main(void)
 {
@@ -291,6 +307,7 @@ main(void)
         cmocka_unit_test_setup(test_envelope_yang_push, tnotifd_reset),
         cmocka_unit_test_setup(test_envelope_sequence, tnotifd_reset),
         cmocka_unit_test_setup(test_envelope_restart, tnotifd_reset),
+        cmocka_unit_test_setup(test_envelope_capabilities, tnotifd_reset),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
