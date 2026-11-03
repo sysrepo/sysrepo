@@ -20,6 +20,7 @@
 #include "compat.h"
 
 #include <assert.h>
+#include <ctype.h>
 #include <endian.h>
 #include <errno.h>
 #include <grp.h>
@@ -531,45 +532,93 @@ cleanup:
     return err_info;
 }
 
-void
-srpds_normalize_path_quotes(char *path)
+sr_error_info_t *
+srpds_normalize_path(const char *plg_name, const char *path, char **norm_path)
 {
-    uint32_t i = 0, lit_start, len = strlen(path);
+    sr_error_info_t *err_info = NULL;
+    char *buf = NULL, *mem, quote;
+    uint32_t path_idx = 0, path_size = strlen(path), buf_idx = 0, buf_size, j;
     int convert;
 
-    while (i < len) {
-        if (path[i] == '\'') {
-            /* skip a single-quoted literal (it may contain double quotes) */
-            ++i;
-            while (i < len) {
-                if (path[i] == '\'') {
-                    break;
-                }
-                ++i;
-            }
-        } else if (path[i] == '"') {
-            /* a double-quoted literal, check whether it contains a single quote */
-            lit_start = i;
-            ++i;
-            convert = 1;
-            while (i < len) {
-                if (path[i] == '\'') {
+    /* +1 for the optional leading '/' of a relative path, +1 for the terminating byte */
+    buf_size = path_size + 2;
+    buf = malloc(buf_size);
+    if (!buf) {
+        ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "malloc()", strerror(errno));
+        goto cleanup;
+    }
+
+    /* all relative paths are transformed into absolute */
+    for (j = 0; isspace(path[j]); ++j) {}
+    if (path[j] != '/') {
+        buf[buf_idx++] = '/';
+    }
+
+    while (path_idx < path_size) {
+        if ((path[path_idx] == '\'') || (path[path_idx] == '"')) {
+            /* check whether we should convert double quotes to single quotes */
+            quote = path[path_idx];
+            convert = (quote == '"');
+            for (j = path_idx + 1; path[j] != quote; ++j) {
+                if (path[j] == '\'') {
                     /* the literal can be expressed only with double quotes, just like lyd_path() does */
                     convert = 0;
-                } else if (path[i] == '"') {
-                    break;
                 }
-                ++i;
             }
-            if (convert) {
-                /* use single quotes if possible, that is the canonical form used by lyd_path() */
-                path[lit_start] = '\'';
-                assert(i < len);
-                path[i] = '\'';
+
+            /* copy the literal, use single quotes if possible,
+             * this is the canonical form used by lyd_path() */
+            buf[buf_idx++] = convert ? '\'' : quote;
+            ++path_idx;
+            memcpy(buf + buf_idx, path + path_idx, j - path_idx);
+            buf_idx += j - path_idx;
+            path_idx = j;
+            buf[buf_idx++] = convert ? '\'' : quote;
+            ++path_idx;
+        } else if (path[path_idx] == '=') {
+            /* skip any whitespace before the literal */
+            for (j = path_idx + 1; isspace(path[j]); ++j) {}
+
+            if ((path[j] != '\'') && (path[j] != '"')) {
+                /* put an unquoted literal into single quotes like lyd_path() does,
+                 * allocate space for the quotes */
+                mem = realloc(buf, buf_size + 2);
+                if (!mem) {
+                    ERRINFO(&err_info, plg_name, SR_ERR_NO_MEMORY, "realloc()", strerror(errno));
+                    goto cleanup;
+                }
+                buf = mem;
+                buf_size += 2;
+
+                buf[buf_idx++] = path[path_idx++];
+                buf[buf_idx++] = '\'';
+                while (path[path_idx] != ']') {
+                    if (!isspace(path[path_idx])) {
+                        buf[buf_idx++] = path[path_idx];
+                    }
+                    ++path_idx;
+                }
+                buf[buf_idx++] = '\'';
+            } else {
+                /* a quoted literal, keep just the '=' */
+                buf[buf_idx++] = path[path_idx++];
             }
+        } else if (isspace(path[path_idx])) {
+            /* skip whitespace outside of the literals */
+            ++path_idx;
+        } else {
+            buf[buf_idx++] = path[path_idx++];
         }
-        ++i;
     }
+    buf[buf_idx] = '\0';
+
+    *norm_path = buf;
+
+cleanup:
+    if (err_info) {
+        free(buf);
+    }
+    return err_info;
 }
 
 sr_error_info_t *
