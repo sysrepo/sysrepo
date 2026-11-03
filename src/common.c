@@ -7137,6 +7137,39 @@ sr_filter_xpath_create_top(const struct lyd_node *node, const struct lys_module 
     return err_info;
 }
 
+/**
+ * @brief Check if a node has no namespace for the purpose of filtering.
+ *
+ * @param[in] node Subtree filter node to check.
+ * @return 1 if node has no namespace;
+ * @return 0 if node has a namespace.
+ */
+static int
+sr_filter_has_no_ns(const struct lyd_node *node)
+{
+    const struct lys_module *mod;
+
+    if (node->schema) {
+        /* only opaque nodes can be without a namespace */
+        return 0;
+    }
+
+    if (((const struct lyd_node_opaq *)node)->name.prefix) {
+        /* explicit prefix */
+        return 0;
+    }
+
+    mod = lyd_node_module(node);
+    if (mod && strcmp(mod->name, "ietf-netconf") && strcmp(mod->name, "ietf-netconf-nmda") &&
+            strcmp(mod->name, "notifications") && strcmp(mod->name, "ietf-subscribed-notifications")) {
+        /* not inherited the default parent namespace of <get>, <get-config>, <get-data>, <create-subscription>,
+         * <establish-subscription> */
+        return 0;
+    }
+
+    return 1;
+}
+
 sr_error_info_t *
 sr_filter_create_subtree(const struct lyd_node *node, struct sr_filter *filter)
 {
@@ -7148,7 +7181,7 @@ sr_filter_create_subtree(const struct lyd_node *node, struct sr_filter *filter)
     uint32_t idx;
 
     LY_LIST_FOR(node, iter) {
-        if (!iter->schema && !((struct lyd_node_opaq *)iter)->name.prefix) {
+        if (sr_filter_has_no_ns(iter)) {
             /* no top-level namespace, generate all possible XPaths */
             match = 0;
             idx = 0;
