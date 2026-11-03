@@ -486,6 +486,118 @@ test_store_example(void **state)
 }
 
 static void
+store_and_load_xpath(test_data_t *tdata)
+{
+    int rc;
+    sr_val_t *val = NULL;
+    struct lyd_node *node = NULL;
+    const char *str2 =
+            "<simple-cont xmlns=\"s\">\n"
+            "  <simple-cont2>\n"
+            "    <ac1>\n"
+            "      <acl1>\n"
+            "        <acs1>9</acs1>\n"
+            "        <acs2>first</acs2>\n"
+            "      </acl1>\n"
+            "      <acl1>\n"
+            "        <acs1>1.5</acs1>\n"
+            "        <acs3>second</acs3>\n"
+            "      </acl1>\n"
+            "      <acl3>\n"
+            "        <acs1>1</acs1>\n"
+            "        <acs2>2</acs2>\n"
+            "        <acs3>3</acs3>\n"
+            "        <inner>\n"
+            "          <inner-leaf>third</inner-leaf>\n"
+            "        </inner>\n"
+            "      </acl3>\n"
+            "    </ac1>\n"
+            "  </simple-cont2>\n"
+            "</simple-cont>\n";
+
+    rc = lyd_parse_data_mem(tdata->ctx, str2, LYD_XML, LYD_PARSE_STRICT | LYD_PARSE_ONLY, 0, &node);
+    assert_int_equal(rc, LY_SUCCESS);
+
+    rc = sr_replace_config(tdata->sess, "plugin", node, 0);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* load the stored nodes using unquoted literals */
+    rc = sr_get_item(tdata->sess, "/plugin:simple-cont/simple-cont2/ac1/acl1[acs1=9]/acs2", 0, &val);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* compare */
+    assert_string_equal(val->data.string_val, "first");
+    sr_free_val(val);
+
+    rc = sr_get_item(tdata->sess, "/plugin:simple-cont/simple-cont2/ac1/acl1[acs1=1.5]/acs3", 0, &val);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* compare */
+    assert_string_equal(val->data.string_val, "second");
+    sr_free_val(val);
+
+    rc = sr_get_item(tdata->sess,
+            "/plugin:simple-cont/simple-cont2/ac1/acl3[acs1=1][acs2=2][acs3=3]/inner/inner-leaf", 0, &val);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* compare */
+    assert_string_equal(val->data.string_val, "third");
+    sr_free_val(val);
+
+    /* non-matching unquoted literal */
+    rc = sr_get_item(tdata->sess, "/plugin:simple-cont/simple-cont2/ac1/acl1[acs1=8]/acs2", 0, &val);
+    assert_int_equal(rc, SR_ERR_NOT_FOUND);
+
+    /* load the stored nodes also with variable whitespace between the path parts */
+    rc = sr_get_item(tdata->sess, " /plugin:simple-cont / simple-cont2 / ac1 / acl1 [ acs1 = 9 ] / acs2", 0, &val);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* compare */
+    assert_string_equal(val->data.string_val, "first");
+    sr_free_val(val);
+
+    rc = sr_get_item(tdata->sess,
+            "/plugin:simple-cont/simple-cont2/ac1/acl3 [ acs1 = 1 ] [ acs2 = 2 ] [ acs3 = 3 ] / inner / inner-leaf",
+            0, &val);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* compare */
+    assert_string_equal(val->data.string_val, "third");
+    sr_free_val(val);
+
+    /* load a node without the list predicates (all the data must be loaded and filtered) */
+    rc = sr_get_item(tdata->sess, "/plugin:simple-cont/simple-cont2/ac1/acl3/inner/inner-leaf", 0, &val);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    /* compare */
+    assert_string_equal(val->data.string_val, "third");
+    sr_free_val(val);
+}
+
+/* TEST */
+static void
+test_load_xpath(void **state)
+{
+    int rc;
+    test_data_t *tdata = *state;
+
+    /* STARTUP */
+    rc = sr_session_switch_ds(tdata->sess, SR_DS_STARTUP);
+    assert_int_equal(rc, SR_ERR_OK);
+    store_and_load_xpath(tdata);
+
+    /* RUNNING */
+    rc = sr_session_switch_ds(tdata->sess, SR_DS_RUNNING);
+    assert_int_equal(rc, SR_ERR_OK);
+    store_and_load_xpath(tdata);
+
+    /* CANDIDATE */
+    rc = sr_session_switch_ds(tdata->sess, SR_DS_CANDIDATE);
+    assert_int_equal(rc, SR_ERR_OK);
+    store_and_load_xpath(tdata);
+}
+
+static void
 store_and_load_complex(test_data_t *tdata)
 {
     int rc;
@@ -1514,6 +1626,7 @@ main(void)
         cmocka_unit_test(test_dummy),
         cmocka_unit_test_teardown(test_load_empty, teardown_store_oper),
         cmocka_unit_test_teardown(test_store_example, teardown_store),
+        cmocka_unit_test_teardown(test_load_xpath, teardown_store),
         cmocka_unit_test_teardown(test_store_complex, teardown_store),
         cmocka_unit_test_teardown(test_store_oper, teardown_store_oper),
         cmocka_unit_test_teardown(test_remove_same_prefix, teardown_all_stores),
