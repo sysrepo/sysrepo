@@ -78,6 +78,8 @@ print_notification(const srudpn_msg_t *msg, const srudpn_notif_t *notif)
     srudpn_media_type_t media_type = srudpn_msg_get_media_type(msg);
     const struct lyd_node *node = srudpn_notif_get_tree(notif), *top;
     const struct timespec *event_time = srudpn_notif_get_event_time(notif);
+    const char *hostname = srudpn_notif_get_hostname(notif);
+    const uint32_t *seq_number = srudpn_notif_get_sequence_number(notif);
     char *path = NULL, *data = NULL, *time_str = NULL, src_addr[SRUDPN_ADDR_STRLEN], src_str[SRUDPN_ADDR_STRLEN + 8];
     const char *mt_name, *line, *next;
     LYD_FORMAT format;
@@ -120,6 +122,12 @@ print_notification(const srudpn_msg_t *msg, const srudpn_notif_t *notif)
     printf("\n--- Notification ---\n");
     printf("  Path:          %s\n", path ? path : "(unknown-path)");
     printf("  Event Time:    %s\n", time_str ? time_str : "(unknown)");
+    if (hostname) {
+        printf("  Hostname:      %s\n", hostname);
+    }
+    if (seq_number) {
+        printf("  Sequence:      %" PRIu32 "\n", *seq_number);
+    }
     printf("  Source:        %s\n", src_str);
     printf("  Publisher ID:  %" PRIu32 "\n", hdr->publisher_id);
     printf("  Message ID:    %" PRIu32 "\n", hdr->message_id);
