@@ -1369,9 +1369,13 @@ sr_edit_diff_add(const struct lyd_node *node, const struct lyd_node *node_new, c
     } else {
         /* insert node into diff, not there */
         if (diff_parent) {
-            lyd_insert_child(diff_parent, node_dup);
+            if ((err_info = sr_lyd_insert_child(diff_parent, node_dup))) {
+                goto cleanup;
+            }
         } else {
-            lyd_insert_sibling(*diff_root, node_dup, diff_root);
+            if ((err_info = sr_lyd_insert_sibling(*diff_root, node_dup, diff_root))) {
+                goto cleanup;
+            }
         }
 
         /* add diff metadata for the node, after it was connected to the diff */

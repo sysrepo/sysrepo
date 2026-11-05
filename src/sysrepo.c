@@ -4725,6 +4725,11 @@ sr_changes_notify_store_conventional(struct sr_mod_info_s *mod_info, sr_session_
     }
 
 store:
+    if (*err_info2) {
+        /* applying the edit failed, the data may still have been changed */
+        goto cleanup;
+    }
+
     if (!mod_info->notify_diff && !sr_modinfo_is_changed(mod_info)) {
         /* there is no diff and no changed modules, nothing to store */
         if (changes_stored) {
