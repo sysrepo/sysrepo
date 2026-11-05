@@ -499,6 +499,8 @@ static void
 test_write(void **state)
 {
     struct state *st = (struct state *)*state;
+    const struct ly_ctx *ctx;
+    struct lyd_node *edit;
     sr_data_t *data;
     char *str;
     int ret;
@@ -555,6 +557,24 @@ test_write(void **state)
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_UNAUTHORIZED);
     sr_discard_changes(st->sess);
+
+    /* create existing list with list v deny, the edit fails and nothing must be stored */
+    ctx = sr_acquire_context(st->conn);
+    ret = lyd_parse_data_mem(ctx,
+            "<cont xmlns=\"urn:test\">\n"
+            "  <l2 xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\" nc:operation=\"create\">\n"
+            "    <k>k2</k>\n"
+            "    <v>15</v>\n"
+            "  </l2>\n"
+            "</cont>\n", LYD_XML, LYD_PARSE_ONLY, 0, &edit);
+    assert_int_equal(ret, LY_SUCCESS);
+    ret = sr_edit_batch(st->sess, edit, "merge");
+    assert_int_equal(ret, SR_ERR_OK);
+    lyd_free_siblings(edit);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_EXISTS);
+    sr_discard_changes(st->sess);
+    sr_release_context(st->conn);
 
     /* read data */
     ret = sr_get_data(st->sess, "/test:*", 0, 0, 0, &data);
