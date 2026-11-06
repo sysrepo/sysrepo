@@ -47,6 +47,9 @@
 /** RFC 8040 notification envelope JSON module */
 #define SRUDPN_RFC5277_JSON_MODULE "ietf-restconf"
 
+/** YANG-Push notification envelope module */
+#define SRUDPN_YPN_MODULE "ietf-yp-notification"
+
 /**
  * @brief Received segment of a message being reassembled.
  */

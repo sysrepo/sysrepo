@@ -691,11 +691,12 @@ notif_is_subscription_state_change(const struct lyd_node *notif)
 }
 
 int
-notif_receiver_send(notifd_ctx_t *UNUSED(notifd_ctx), notif_receiver_t *receiver, const struct lyd_node *notif,
+notif_receiver_send(notifd_ctx_t *notifd_ctx, notif_receiver_t *receiver, const struct lyd_node *notif,
         const struct timespec *timestamp, notif_encoding_t encoding)
 {
     int rc = SR_ERR_OK;
     struct timespec ts = {0};
+    notif_envelope_t env, *env_p = NULL;
     int is_sub_started;
     char *notif_path = NULL;
 
@@ -756,7 +757,14 @@ notif_receiver_send(notifd_ctx_t *UNUSED(notifd_ctx), notif_receiver_t *receiver
         goto cleanup;
     }
 
-    rc = receiver->ops->send(receiver, receiver->inst->transport_config, notif, &ts, encoding);
+    if (notifd_ctx->envelope.enabled) {
+        /* every message handed to the transport takes a sequence number */
+        env.hostname = notifd_ctx->envelope.hostname;
+        env.sequence_number = ++notifd_ctx->envelope.seq_number;
+        env_p = &env;
+    }
+
+    rc = receiver->ops->send(receiver, receiver->inst->transport_config, notif, &ts, encoding, env_p);
     if (rc == SR_ERR_TIME_OUT) {
         /* the transport would have blocked, the notification was dropped, which is not an error of
          * the receiver, so it stays connected */

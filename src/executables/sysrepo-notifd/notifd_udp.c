@@ -393,7 +393,8 @@ udp_transport_is_connected_cb(const notif_receiver_t *recv)
 
 static int
 udp_transport_send_cb(notif_receiver_t *recv, void *cfg,
-        const struct lyd_node *notif, const struct timespec *timestamp, notif_encoding_t encoding)
+        const struct lyd_node *notif, const struct timespec *timestamp, notif_encoding_t encoding,
+        const notif_envelope_t *env)
 {
     int rc;
     uint8_t *payload = NULL;
@@ -425,8 +426,14 @@ udp_transport_send_cb(notif_receiver_t *recv, void *cfg,
         goto cleanup;
     }
 
-    /* encode the notification in the RFC 5277 <notification> envelope */
-    if ((rc = srudpn_encode_notification(notif, timestamp, media_type, &payload, &payload_len))) {
+    /* encode the notification in the YANG-Push or RFC 5277 envelope */
+    if (env) {
+        rc = srudpn_encode_envelope(notif, timestamp, env->hostname, env->sequence_number, media_type, &payload,
+                &payload_len);
+    } else {
+        rc = srudpn_encode_notification(notif, timestamp, media_type, &payload, &payload_len);
+    }
+    if (rc) {
         goto cleanup;
     }
 

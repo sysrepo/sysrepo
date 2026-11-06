@@ -163,6 +163,8 @@ following YANG modules are installed in sysrepo:
 - `ietf-subscribed-notif-receivers`
 - `ietf-udp-notif-transport` (with feature: `encode-cbor`, for CBOR)
 - `ietf-yang-push` (with feature: `on-change`) and `ietf-yang-patch`, for YANG Push
+- `ietf-yp-notification` (with feature: `hostname-sequence-number`), optionally, to send the notifications in the
+  YANG-Push notification envelope enabled by its `enable-notification-envelope` leaf
 
 Use `sysrepoctl` to install them if needed. The interfaces of the
 YANG Push examples also need `iana-if-type`, which is not installed
