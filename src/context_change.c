@@ -1265,6 +1265,10 @@ sr_lycc_store_context(sr_shm_t *shm, struct ly_ctx *ctx)
         sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to map the printed context (%s).", strerror(errno));
         mem = NULL;
         goto cleanup;
+    } else if (mem != SR_PRINTED_LYCTX_ADDRESS) {
+        /* kernels without MAP_FIXED_NOREPLACE support use the address only as a hint */
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to map the printed context to address %p.", SR_PRINTED_LYCTX_ADDRESS);
+        goto cleanup;
     }
 
     /* print the context into the allocated memory */
@@ -1365,6 +1369,12 @@ sr_lycc_load_context(sr_shm_t *shm, struct ly_ctx **ctx)
         shm->addr = mmap((void *)SR_PRINTED_LYCTX_ADDRESS, shm_file_size, PROT_READ, MAP_PRIVATE | MAP_FIXED_NOREPLACE, shm->fd, 0);
         if (shm->addr == MAP_FAILED) {
             sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to map the printed context (%s).", strerror(errno));
+            shm->addr = NULL;
+            goto cleanup;
+        } else if (shm->addr != SR_PRINTED_LYCTX_ADDRESS) {
+            /* kernels without MAP_FIXED_NOREPLACE support use the address only as a hint */
+            sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to map the printed context to address %p.", SR_PRINTED_LYCTX_ADDRESS);
+            munmap(shm->addr, shm_file_size);
             shm->addr = NULL;
             goto cleanup;
         }
