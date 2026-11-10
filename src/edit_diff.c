@@ -1710,7 +1710,14 @@ sr_edit_apply_replace(struct lyd_node *data_match, int val_equal, const struct l
     }
 
     if (val_equal) {
-        *next_op = EDIT_NONE;
+        if ((data_match->schema->nodetype == LYS_LEAF) && (data_match->flags & LYD_DEFAULT) &&
+                !(edit_node->flags & LYD_DEFAULT)) {
+            /* only changing the default flag of the node */
+            *next_op = EDIT_DFLT_CHANGE;
+            return NULL;
+        } else {
+            *next_op = EDIT_NONE;
+        }
     } else {
         switch (data_match->schema->nodetype) {
         case LYS_LIST:
@@ -1771,7 +1778,6 @@ sr_edit_apply_replace(struct lyd_node *data_match, int val_equal, const struct l
  * @param[in,out] data_root First top-level sibling of the data tree.
  * @param[in] data_parent Data tree node parent.
  * @param[in,out] data_match Matching data tree node, may be created.
- * @param[in] val_equal Whether even values of the nodes match.
  * @param[in] edit_node Current edit node.
  * @param[in] diff_parent Current sysrepo diff parent.
  * @param[in,out] diff_root Sysrepo diff root node.
@@ -1783,7 +1789,7 @@ sr_edit_apply_replace(struct lyd_node *data_match, int val_equal, const struct l
  */
 static sr_error_info_t *
 sr_edit_apply_create(struct lyd_node **data_root, struct lyd_node *data_parent, struct lyd_node **data_match,
-        int val_equal, const struct lyd_node *edit_node, struct lyd_node *diff_parent, struct lyd_node **diff_root,
+        const struct lyd_node *edit_node, struct lyd_node *diff_parent, struct lyd_node **diff_root,
         struct lyd_node **diff_node, enum edit_op *next_op, int *change, sr_error_info_t **val_err_info)
 {
     sr_error_info_t *err_info = NULL;
@@ -1803,11 +1809,7 @@ sr_edit_apply_create(struct lyd_node **data_root, struct lyd_node *data_parent, 
 
         if ((edit_node->schema->nodetype == LYS_LEAF) && ((*data_match)->flags & LYD_DEFAULT)) {
             /* allow creating existing default leaves */
-            if (val_equal) {
-                *next_op = EDIT_DFLT_CHANGE;
-            } else {
-                *next_op = EDIT_REPLACE;
-            }
+            *next_op = EDIT_REPLACE;
             return NULL;
         }
 
@@ -2078,8 +2080,8 @@ reapply:
             }
             break;
         case EDIT_CREATE:
-            if ((err_info = sr_edit_apply_create(data_root, data_parent, &data_match, val_equal, edit_node, diff_parent,
-                    diff_root, &diff_node, &next_op, change, val_err_info))) {
+            if ((err_info = sr_edit_apply_create(data_root, data_parent, &data_match, edit_node, diff_parent, diff_root,
+                    &diff_node, &next_op, change, val_err_info))) {
                 goto cleanup;
             }
             break;
