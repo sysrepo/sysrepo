@@ -1,4 +1,4 @@
-# - Try to find LibSystemd, it is expected find_package(PkgConfig) was called before
+# - Try to find LibSystemd
 #
 # Once done this will define
 #
@@ -8,7 +8,7 @@
 #  SYSTEMD_UNIT_DIR - directory with systemd system unit files
 #
 #  Author Michal Vasko <mvasko@cesnet.cz>
-#  Copyright (c) 2022 CESNET, z.s.p.o.
+#  Copyright (c) 2022 - 2026 CESNET, z.s.p.o.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions
@@ -66,10 +66,33 @@ else()
         ${CMAKE_INSTALL_PREFIX}/lib
     )
 
-    if(NOT SYSTEMD_UNIT_DIR)
+    # try pkg-config
+    find_package(PkgConfig QUIET)
+    if(PKG_CONFIG_FOUND AND NOT SYSTEMD_UNIT_DIR)
         execute_process(COMMAND ${PKG_CONFIG_EXECUTABLE} --define-variable=rootprefix=${CMAKE_INSTALL_PREFIX} --variable=systemdsystemunitdir systemd
-                OUTPUT_VARIABLE SYSTEMD_UNIT_DIR)
-        string(REGEX REPLACE "[ \t\n]+" "" SYSTEMD_UNIT_DIR "${SYSTEMD_UNIT_DIR}")
+                RESULT_VARIABLE RET
+                OUTPUT_VARIABLE PKGC_OUTPUT)
+        if(NOT RET)
+            string(REGEX REPLACE "[ \t\n]+" "" SYSTEMD_UNIT_DIR "${PKGC_OUTPUT}")
+        endif()
+    endif()
+
+    # try systemd-analyze
+    find_program(SYSTEMD_ANALYZE_EXECUTABLE systemd-analyze)
+    if(SYSTEMD_ANALYZE_EXECUTABLE AND NOT SYSTEMD_UNIT_DIR)
+        execute_process(COMMAND ${SYSTEMD_ANALYZE_EXECUTABLE} --system unit-paths
+                RESULT_VARIABLE RET
+                OUTPUT_VARIABLE PKGC_OUTPUT)
+        if(NOT RET)
+            # try a path in install prefix, then some standard paths
+            string(REGEX MATCH "${CMAKE_INSTALL_PREFIX}[^\n]+" SYSTEMD_UNIT_DIR "${PKGC_OUTPUT}")
+            if(NOT SYSTEMD_UNIT_DIR)
+                string(REGEX MATCH "/usr/lib/systemd/system" SYSTEMD_UNIT_DIR "${PKGC_OUTPUT}")
+            endif()
+            if(NOT SYSTEMD_UNIT_DIR)
+                string(REGEX MATCH "/etc/systemd/system" SYSTEMD_UNIT_DIR "${PKGC_OUTPUT}")
+            endif()
+        endif()
     endif()
 
     set(LIBSYSTEMD_INCLUDE_DIRS ${LIBSYSTEMD_INCLUDE_DIR})

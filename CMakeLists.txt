@@ -614,12 +614,6 @@ list(APPEND CMAKE_REQUIRED_INCLUDES ${LIBYANG_INCLUDE_DIRS})
 check_symbol_exists(LY_HAVE_CBOR "libyang/libyang.h" SR_LY_HAVE_CBOR)
 list(REMOVE_ITEM CMAKE_REQUIRED_INCLUDES ${LIBYANG_INCLUDE_DIRS})
 
-# pkg-config
-find_package(PkgConfig)
-if(NOT PKG_CONFIG_FOUND AND NOT SYSTEMD_UNIT_DIR)
-    set(SYSTEMD_UNIT_DIR "/usr/lib/systemd/system")
-endif()
-
 # libsystemd
 find_package(LibSystemd)
 if(LIBSYSTEMD_FOUND)
