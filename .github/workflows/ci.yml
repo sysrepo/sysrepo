@@ -108,7 +108,7 @@ jobs:
             dep-build-type: "Debug",
             cc: "gcc",
             options: "-DENABLE_DS_MONGO=ON -DDEFAULT_STARTUP_DS_PLG=\"MONGO DS\" -DDEFAULT_RUNNING_DS_PLG=\"MONGO DS\" -DDEFAULT_CANDIDATE_DS_PLG=\"MONGO DS\" -DDEFAULT_OPERATIONAL_DS_PLG=\"MONGO DS\" -DDEFAULT_FACTORY_DEFAULT_DS_PLG=\"MONGO DS\"",
-            packages: "libcmocka-dev valgrind",
+            packages: "libcmocka-dev valgrind python3-venv",
             snaps: "",
             make-target: ""
           }
@@ -229,14 +229,16 @@ jobs:
       - name: Deps-libmongoc
         shell: bash
         run: |
+          python3 -m venv /tmp/mongo-cmake
+          /tmp/mongo-cmake/bin/pip install cmake==3.31.6
           wget https://github.com/mongodb/mongo-c-driver/releases/download/1.24.0/mongo-c-driver-1.24.0.tar.gz
           tar xzf mongo-c-driver-1.24.0.tar.gz
           cd mongo-c-driver-1.24.0
           mkdir cmake-build
           cd cmake-build
-          cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DENABLE_AUTOMATIC_INIT_AND_CLEANUP=OFF ..
-          cmake --build .
-          sudo cmake --build . --target install
+          /tmp/mongo-cmake/bin/cmake -DENABLE_AUTOMATIC_INIT_AND_CLEANUP=OFF ..
+          /tmp/mongo-cmake/bin/cmake --build .
+          sudo /tmp/mongo-cmake/bin/cmake --build . --target install
         if: ${{ matrix.config.name == 'MONGO DS plugin' }}
 
       - name: Deps-libmongoc-latest
