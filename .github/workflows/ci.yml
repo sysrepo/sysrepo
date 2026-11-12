@@ -62,7 +62,7 @@ jobs:
             dep-build-type: "Debug",
             cc: "gcc",
             options: "",
-            packages: "libcmocka-dev valgrind",
+            packages: "libcmocka-dev uncrustify valgrind",
             snaps: "",
             make-target: ""
           }
@@ -178,19 +178,6 @@ jobs:
             pip install apkg
             apkg system-setup
           fi
-
-      - name: Deps-uncrustify
-        shell: bash
-        working-directory: ${{ github.workspace }}
-        run: |
-          git clone --branch uncrustify-0.77.1 https://github.com/uncrustify/uncrustify
-          cd uncrustify
-          mkdir build
-          cd build
-          CC=${{ matrix.config.cc }} cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
-          make
-          sudo make install
-        if: ${{ matrix.config.name == 'Debug, gcc' }}
 
       - name: Deps-libyang
         shell: bash
