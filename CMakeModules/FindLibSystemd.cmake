@@ -85,7 +85,7 @@ else()
                 OUTPUT_VARIABLE PKGC_OUTPUT)
         if(NOT RET)
             # try a path in install prefix, then some standard paths
-            string(REGEX MATCH "${CMAKE_INSTALL_PREFIX}[^\n]+" SYSTEMD_UNIT_DIR "${PKGC_OUTPUT}")
+            string(REGEX MATCH "${CMAKE_INSTALL_PREFIX}/lib[^\n]+" SYSTEMD_UNIT_DIR "${PKGC_OUTPUT}")
             if(NOT SYSTEMD_UNIT_DIR)
                 string(REGEX MATCH "/usr/lib/systemd/system" SYSTEMD_UNIT_DIR "${PKGC_OUTPUT}")
             endif()
