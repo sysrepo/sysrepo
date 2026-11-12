@@ -3609,7 +3609,7 @@ sr_get_data_add_last_modif(struct lyd_node *data, const struct sr_mod_info_s *mo
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *prev_mod = NULL, *ly_mod, *sr_mod;
-    struct sr_mod_info_mod_s *mod;
+    struct sr_mod_info_mod_s *mod = NULL;
     const struct sr_ds_handle_s *ds_handle;
     struct timespec mtime;
     char *buf = NULL;

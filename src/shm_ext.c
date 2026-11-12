@@ -289,7 +289,7 @@ sr_shmext_print(sr_mod_shm_t *mod_shm, sr_shm_t *shm_ext)
     size_t idx, i, j, item_count = 0, printed;
     sr_datastore_t ds;
     int msg_len = 0;
-    char *msg;
+    char *msg = NULL;
     sr_ext_hole_t *hole;
     sr_ext_shm_t *ext_shm = (sr_ext_shm_t *)shm_ext->addr;
 

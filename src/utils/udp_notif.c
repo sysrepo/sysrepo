@@ -296,6 +296,8 @@ srudpn_reasm_get(srudpn_t *udp, const srudpn_hdr_t *hdr, const struct sockaddr_s
     sr_error_info_t *err_info = NULL;
     LYA_COUNT_T i;
 
+    *reasm = NULL;
+
     LYA_FOR(udp->reasms, i) {
         if ((udp->reasms[i].publisher_id == hdr->publisher_id) && (udp->reasms[i].message_id == hdr->message_id) &&
                 srudpn_src_eq(&udp->reasms[i].src, src)) {
