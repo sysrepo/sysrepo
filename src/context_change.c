@@ -274,7 +274,7 @@ sr_lycc_append_data(sr_conn_ctx_t *conn, const struct ly_ctx *ctx, struct sr_lyc
     uint32_t idx = 0;
 
     while ((ly_mod = ly_ctx_get_module_iter(ctx, &idx))) {
-        if (!ly_mod->implemented || !strcmp(ly_mod->name, "sysrepo")) {
+        if (!ly_mod->implemented || !strcmp(ly_mod->name, "sysrepo") || !sr_module_has_data(ly_mod, 0)) {
             /* we need data of only implemented modules and never from internal SR module */
             continue;
         }
