@@ -41,8 +41,8 @@ Description: YANG-based configuration and operational data store - development f
  data consistency of the data stored in the datastore and enforce data
  constraints defined by YANG model.
  .
- This package contains the C headers, a pkgconfig file, and .so entry point
- for sysrepo.
+ This package contains the C headers, a pkgconfig file, a CMake package, and
+ .so entry point for sysrepo.
 
 Package: sysrepo-tools
 Depends: libsysrepo8 (= ${binary:Version}),

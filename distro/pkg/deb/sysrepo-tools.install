@@ -8,3 +8,4 @@ usr/lib/*/sysrepo-plugind/plugins
 usr/lib/systemd/system/sysrepo-plugind.service
 usr/lib/systemd/system/sysrepo-notifd.service
 usr/share/sysrepo/scripts
+usr/lib/*/cmake/Sysrepo/SysrepoToolsTargets*.cmake

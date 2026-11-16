@@ -1,5 +1,7 @@
 usr/lib/*/*.so
 usr/lib/*/pkgconfig/sysrepo.pc
+usr/lib/*/cmake/Sysrepo/SysrepoConfig*.cmake
+usr/lib/*/cmake/Sysrepo/SysrepoTargets*.cmake
 usr/include/*.h
 usr/include/sysrepo/*.h
 
