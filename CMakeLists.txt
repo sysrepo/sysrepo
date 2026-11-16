@@ -16,6 +16,7 @@ include(SourceFormat)
 include(GenDoc)
 include(GenCoverage)
 include(SetupPrintedContext)
+include(GenConfigPackage)
 if(POLICY CMP0075)
     cmake_policy(SET CMP0075 NEW)
 endif()
@@ -723,7 +724,7 @@ file(GLOB sn_yangs "${PROJECT_SOURCE_DIR}/modules/subscribed_notifications/*.yan
 install(FILES ${sn_yangs} DESTINATION ${YANG_MODULE_DIR})
 install(DIRECTORY "${PROJECT_SOURCE_DIR}/scripts/" DESTINATION ${DATA_DIR}/scripts USE_SOURCE_PERMISSIONS)
 
-install(TARGETS sysrepo DESTINATION ${CMAKE_INSTALL_LIBDIR})
+install(TARGETS sysrepo EXPORT SysrepoTargets DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(FILES ${PROJECT_BINARY_DIR}/include/sysrepo.h ${PROJECT_BINARY_DIR}/include/sysrepo_types.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(DIRECTORY ${PROJECT_BINARY_DIR}/include/sysrepo DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
@@ -732,12 +733,12 @@ install(DIRECTORY DESTINATION ${REPO_PATH}
         DIRECTORY_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_WRITE GROUP_EXECUTE WORLD_READ WORLD_WRITE WORLD_EXECUTE)
 
 if(ENABLE_SYSREPOCTL)
-    install(TARGETS sysrepoctl DESTINATION ${CMAKE_INSTALL_BINDIR})
+    install(TARGETS sysrepoctl EXPORT SysrepoToolsTargets RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
     install(FILES ${PROJECT_SOURCE_DIR}/src/executables/sysrepoctl.1
             DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
 endif()
 if(ENABLE_SYSREPOCFG)
-    install(TARGETS sysrepocfg DESTINATION ${CMAKE_INSTALL_BINDIR})
+    install(TARGETS sysrepocfg EXPORT SysrepoToolsTargets RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
     install(FILES ${PROJECT_SOURCE_DIR}/src/executables/sysrepocfg.1
             DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
 endif()
@@ -763,6 +764,28 @@ endif()
 
 if(INSTALL_SYSCTL_CONF)
     install(FILES "${PROJECT_SOURCE_DIR}/zz-sysrepo-disable-fs-protected_regular.conf" DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/sysctl.d/")
+endif()
+
+# CMake config package, for the build tree and the installation
+if(BUILD_SHARED_LIBS)
+    # libyang for the installed package, under the same prefix
+    set(SR_LIBYANG_HINT ${CMAKE_INSTALL_LIBDIR}/cmake/LibYANG)
+    # libyang for the build tree package, the one sysrepo was built with
+    set(SR_LIBYANG_HINT_BUILD ${LibYANG_DIR})
+
+    # export the tools into a separate file, so that the package also works without them installed
+    if(TARGET sysrepoctl OR TARGET sysrepocfg)
+        set(SR_TOOLS_EXPORT EXPORTS SysrepoToolsTargets)
+    else()
+        # no tools, remove their export file left by a previous configuration
+        set(SR_TOOLS_EXPORT "")
+        file(REMOVE ${PROJECT_BINARY_DIR}/SysrepoToolsTargets.cmake)
+    endif()
+
+    # the package version is the SO version
+    gen_config_package(Sysrepo ${SYSREPO_SOVERSION_FULL} ${SR_TOOLS_EXPORT} PATH_VARS SR_LIBYANG_HINT)
+else()
+    message(STATUS "Static build, CMake config package is not installed")
 endif()
 
 if(REPO_SHM_SETUP)
