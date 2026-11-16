@@ -77,7 +77,7 @@ other users.
 ### Build Requirements
 
 * C compiler (gcc >= 4.8.4, clang >= 3.0, ...)
-* cmake >= 2.8.12
+* cmake >= 3.12
 * [libyang](https://github.com/CESNET/libyang)
 * tar(1)
 

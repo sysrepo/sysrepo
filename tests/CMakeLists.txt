@@ -44,21 +44,19 @@ configure_file("${PROJECT_SOURCE_DIR}/tests/scripts/kill_notifd.sh.in" "${PROJEC
 set(TEST_KILL_NOTIFD_CMD ${PROJECT_BINARY_DIR}/tests/scripts/kill_notifd.sh)
 set(TEST_CLEAR_REPOS_CMD rm -rf ${PROJECT_BINARY_DIR}/test_repositories)
 set(TEST_CLEAR_SHM_CMD find /dev/shm/ -maxdepth 1 -readable -name _tests_sr_* -delete)
-if(${CMAKE_VERSION} VERSION_GREATER "3.7")
-    # tests cleanup fixtures, the daemons must be killed before their SHM is removed
-    add_test(NAME tests_kill_notifd
-        COMMAND ${TEST_KILL_NOTIFD_CMD}
-    )
-    set_tests_properties(tests_kill_notifd PROPERTIES FIXTURES_CLEANUP tests_cleanup)
-    add_test(NAME tests_clear_repos
-        COMMAND ${TEST_CLEAR_REPOS_CMD}
-    )
-    set_tests_properties(tests_clear_repos PROPERTIES FIXTURES_CLEANUP tests_cleanup DEPENDS tests_kill_notifd)
-    add_test(NAME tests_clear_shm
-        COMMAND ${TEST_CLEAR_SHM_CMD}
-    )
-    set_tests_properties(tests_clear_shm PROPERTIES FIXTURES_CLEANUP tests_cleanup DEPENDS tests_kill_notifd)
-endif()
+# tests cleanup fixtures, the daemons must be killed before their SHM is removed
+add_test(NAME tests_kill_notifd
+    COMMAND ${TEST_KILL_NOTIFD_CMD}
+)
+set_tests_properties(tests_kill_notifd PROPERTIES FIXTURES_CLEANUP tests_cleanup)
+add_test(NAME tests_clear_repos
+    COMMAND ${TEST_CLEAR_REPOS_CMD}
+)
+set_tests_properties(tests_clear_repos PROPERTIES FIXTURES_CLEANUP tests_cleanup DEPENDS tests_kill_notifd)
+add_test(NAME tests_clear_shm
+    COMMAND ${TEST_CLEAR_SHM_CMD}
+)
+set_tests_properties(tests_clear_shm PROPERTIES FIXTURES_CLEANUP tests_cleanup DEPENDS tests_kill_notifd)
 
 if(ENABLE_TESTS)
     # format
@@ -111,9 +109,7 @@ if(ENABLE_TESTS)
             )
         endif()
 
-        if(${CMAKE_VERSION} VERSION_GREATER "3.7")
-            set_tests_properties(${test_name} PROPERTIES FIXTURES_REQUIRED tests_cleanup)
-        endif()
+        set_tests_properties(${test_name} PROPERTIES FIXTURES_REQUIRED tests_cleanup)
     endforeach()
 endif()
 
@@ -141,9 +137,7 @@ if(ENABLE_VALGRIND_TESTS)
             )
         endif()
 
-        if(${CMAKE_VERSION} VERSION_GREATER "3.7")
-            set_tests_properties(${test_name} PROPERTIES FIXTURES_REQUIRED tests_cleanup)
-        endif()
+        set_tests_properties(${test_name} PROPERTIES FIXTURES_REQUIRED tests_cleanup)
     endforeach()
 endif()
 
