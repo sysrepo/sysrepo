@@ -455,6 +455,9 @@ endif()
 list(REMOVE_ITEM CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
 list(REMOVE_ITEM CMAKE_REQUIRED_DEFINITIONS -D_DEFAULT_SOURCE)
 
+# private dependencies of a static build, for Libs.private of sysrepo.pc
+set(PC_LIBS_PRIVATE "")
+
 # libmongoc - optional
 if(ENABLE_DS_MONGO)
     find_package(mongoc 2.0.2 CONFIG)
@@ -467,6 +470,11 @@ if(ENABLE_DS_MONGO)
         list(APPEND LIB_SRC src/plugins/ds_mongo.c)
         set(SR_ENABLED_DS_PLG_MONGO 1)
         message(STATUS "Datastore plugin ds_mongo supported.")
+        if(TARGET mongoc::shared)
+            string(APPEND PC_LIBS_PRIVATE " -lmongoc2 -lbson2")
+        else()
+            string(APPEND PC_LIBS_PRIVATE " -lmongoc-1.0 -lbson-1.0")
+        endif()
 
         # try running a command in MongoDB database (should not be possible) and check authentication
         if(MONGO_SOCKET)
@@ -500,6 +508,7 @@ if(ENABLE_DS_REDIS)
         list(APPEND LIB_SRC src/plugins/ds_redis.c)
         set(SR_ENABLED_DS_PLG_REDIS 1)
         message(STATUS "Datastore plugin ds_redis supported.")
+        string(APPEND PC_LIBS_PRIVATE " -lhiredis")
 
         # try running a command in Redis database and check authentication
         if(REDIS_SOCKET)
@@ -593,16 +602,21 @@ include_directories(${PROJECT_BINARY_DIR})
 find_library(LIBATOMIC_LIBRARIES NAMES libatomic.so libatomic.so.1)
 if(LIBATOMIC_LIBRARIES)
     target_link_libraries(sysrepo ${LIBATOMIC_LIBRARIES})
+    string(APPEND PC_LIBS_PRIVATE " -latomic")
 endif()
 
 # librt (shm_open, shm_unlink, not required on QNX or OSX)
 find_library(LIBRT_LIBRARIES rt)
 if(LIBRT_LIBRARIES)
     target_link_libraries(sysrepo ${LIBRT_LIBRARIES})
+    string(APPEND PC_LIBS_PRIVATE " -lrt")
 endif()
 
 # libdl
 target_link_libraries(sysrepo ${CMAKE_DL_LIBS})
+if(CMAKE_DL_LIBS)
+    string(APPEND PC_LIBS_PRIVATE " -l${CMAKE_DL_LIBS}")
+endif()
 
 # libyang, check version
 find_package(LibYANG ${LIBYANG_DEP_SOVERSION} REQUIRED)
@@ -634,6 +648,10 @@ endif()
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 find_package(Threads REQUIRED)
 target_link_libraries(sysrepo ${CMAKE_THREAD_LIBS_INIT})
+if(CMAKE_THREAD_LIBS_INIT)
+    # the thread library flag for the .pc file
+    string(APPEND PC_LIBS_PRIVATE " ${CMAKE_THREAD_LIBS_INIT}")
+endif()
 set(CMAKE_REQUIRED_LIBRARIES pthread)
 
 # tar
@@ -656,6 +674,19 @@ if(NOTIFD_SETUP)
         endif()
     endif()
 endif()
+
+# pkg-config file paths, the install directories may be absolute
+if(IS_ABSOLUTE "${CMAKE_INSTALL_INCLUDEDIR}")
+    set(PC_INCLUDEDIR "${CMAKE_INSTALL_INCLUDEDIR}")
+else()
+    set(PC_INCLUDEDIR "\${prefix}/${CMAKE_INSTALL_INCLUDEDIR}")
+endif()
+if(IS_ABSOLUTE "${CMAKE_INSTALL_LIBDIR}")
+    set(PC_LIBDIR "${CMAKE_INSTALL_LIBDIR}")
+else()
+    set(PC_LIBDIR "\${prefix}/${CMAKE_INSTALL_LIBDIR}")
+endif()
+string(STRIP "${PC_LIBS_PRIVATE}" PC_LIBS_PRIVATE)
 
 # generate files
 configure_file("${PROJECT_SOURCE_DIR}/src/config.h.in" "${PROJECT_BINARY_DIR}/config.h" ESCAPE_QUOTES @ONLY)
