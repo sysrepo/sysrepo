@@ -706,9 +706,15 @@ configure_file("${PROJECT_SOURCE_DIR}/src/executables/bin_common.h.in" "${PROJEC
 configure_file("${PROJECT_SOURCE_DIR}/src/executables/sysrepo-plugind.service.in" "${PROJECT_BINARY_DIR}/sysrepo-plugind.service" @ONLY)
 configure_file("${PROJECT_SOURCE_DIR}/src/executables/sysrepo-notifd/sysrepo-notifd.service.in" "${PROJECT_BINARY_DIR}/sysrepo-notifd.service" @ONLY)
 
-# copy public headers
-file(COPY ${LIB_MAIN_HEADERS} DESTINATION "${PROJECT_BINARY_DIR}/include")
-file(COPY ${LIB_UTIL_HEADERS} DESTINATION "${PROJECT_BINARY_DIR}/include/sysrepo")
+# copy public headers, configure_file() refreshes the copies whenever they change
+foreach(h IN LISTS LIB_MAIN_HEADERS)
+    get_filename_component(h_name ${h} NAME)
+    configure_file(${PROJECT_SOURCE_DIR}/${h} ${PROJECT_BINARY_DIR}/include/${h_name} COPYONLY)
+endforeach()
+foreach(h IN LISTS LIB_UTIL_HEADERS)
+    get_filename_component(h_name ${h} NAME)
+    configure_file(${PROJECT_SOURCE_DIR}/${h} ${PROJECT_BINARY_DIR}/include/sysrepo/${h_name} COPYONLY)
+endforeach()
 
 # installation
 file(GLOB yangs "${PROJECT_SOURCE_DIR}/modules/*.yang")
