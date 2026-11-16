@@ -15,6 +15,9 @@ include_directories(SYSTEM ${CMOCKA_INCLUDE_DIR})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 include_directories(${PROJECT_BINARY_DIR}/tests)
 
+# the private sysrepo dependencies, needed by the binaries that link srobj objects
+get_target_property(SR_LINK_LIBRARIES sysrepo LINK_LIBRARIES)
+
 # headers test for including compat.h
 add_test(NAME headers
     COMMAND ${CMAKE_SOURCE_DIR}/compat/check_includes.sh
@@ -89,9 +92,11 @@ if(ENABLE_TESTS)
     endforeach()
     list(APPEND tests ${notifd_tests})
 
-    # set common attributes of all tests
+    target_link_libraries(test_plugin ${SR_LINK_LIBRARIES})
+
+    # set common attributes of all tests, they call the system libraries of sysrepo directly
     foreach(test_name IN LISTS tests)
-        target_link_libraries(${test_name} ${CMOCKA_LIBRARIES} sysrepo)
+        target_link_libraries(${test_name} ${CMOCKA_LIBRARIES} sysrepo ${SR_SYS_LIBS})
 
         add_test(NAME ${test_name} COMMAND $<TARGET_FILE:${test_name}>)
         set_property(TEST ${test_name} APPEND PROPERTY ENVIRONMENT
@@ -116,7 +121,7 @@ endif()
 # sr_perf benchmark binary, link srobj to get the number of DS plugins available
 # (this number can fluctuate depending on the presence of optional libraries)
 add_executable(sr_perf ${CMAKE_CURRENT_SOURCE_DIR}/perf.c $<TARGET_OBJECTS:srobj>)
-target_link_libraries(sr_perf sysrepo)
+target_link_libraries(sr_perf sysrepo ${SR_LINK_LIBRARIES})
 
 # valgrind tests
 if(ENABLE_VALGRIND_TESTS)

@@ -468,9 +468,13 @@ if(ENABLE_DS_MONGO)
         list(APPEND LIB_SRC src/plugins/ds_mongo.c)
         set(SR_ENABLED_DS_PLG_MONGO 1)
         message(STATUS "Datastore plugin ds_mongo supported.")
+
+        # imported target and pkg-config libraries of the found mongoc version
         if(TARGET mongoc::shared)
+            set(MONGOC_TARGET mongoc::shared)
             string(APPEND PC_LIBS_PRIVATE " -lmongoc2 -lbson2")
         else()
+            set(MONGOC_TARGET mongo::mongoc_shared)
             string(APPEND PC_LIBS_PRIVATE " -lmongoc-1.0 -lbson-1.0")
         endif()
 
@@ -543,51 +547,49 @@ add_library(srobj OBJECT ${LIB_SRC} ${compatsrc})
 set_target_properties(srobj PROPERTIES COMPILE_FLAGS "-fvisibility=hidden")
 add_library(sysrepo $<TARGET_OBJECTS:srobj>)
 set_target_properties(sysrepo PROPERTIES VERSION ${SYSREPO_SOVERSION_FULL} SOVERSION ${SYSREPO_SOVERSION})
+target_include_directories(sysrepo PUBLIC $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include> $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 if(SR_ENABLED_DS_PLG_MONGO)
-    # cannot separately include and link mongoc library, thus add include to srobj and link with sysrepo
-    # to add include directories
-    if (TARGET mongoc::shared)
-        get_target_property(BSON_INTERFACE_INCLUDE_DIR bson::shared INTERFACE_INCLUDE_DIRECTORIES)
-        get_target_property(MONGOC_INTERFACE_INCLUDE_DIR mongoc::shared INTERFACE_INCLUDE_DIRECTORIES)
-    elseif(TARGET mongo::mongoc_shared)
-        get_target_property(BSON_INTERFACE_INCLUDE_DIR mongo::bson_shared INTERFACE_INCLUDE_DIRECTORIES)
-        get_target_property(MONGOC_INTERFACE_INCLUDE_DIR mongo::mongoc_shared INTERFACE_INCLUDE_DIRECTORIES)
-    endif()
-    set_property(TARGET srobj APPEND PROPERTY INCLUDE_DIRECTORIES ${BSON_INTERFACE_INCLUDE_DIR} ${MONGOC_INTERFACE_INCLUDE_DIR})
-    if (TARGET mongoc::shared)
-        target_link_libraries(sysrepo mongoc::shared)
-    elseif(TARGET mongo::mongoc_shared)
-        target_link_libraries(sysrepo mongo::mongoc_shared)
-    endif()
+    # srobj gets the include directories, sysrepo links the library
+    target_link_libraries(srobj PRIVATE ${MONGOC_TARGET})
+    target_link_libraries(sysrepo PRIVATE ${MONGOC_TARGET})
 endif()
-if (SR_ENABLED_DS_PLG_REDIS)
-    # to add include directories
-    target_link_libraries(sysrepo ${LIBHIREDIS_LIBRARIES})
+
+if(SR_ENABLED_DS_PLG_REDIS)
+    target_link_libraries(sysrepo PRIVATE ${LIBHIREDIS_LIBRARIES})
     include_directories(${LIBHIREDIS_INCLUDE_DIRS})
 endif()
 
+# compat functions of the executables
+add_library(srcompat OBJECT ${compatsrc})
+
+# sysrepo for the executables of this project. They call compat and system library
+# functions directly and need their own compat objects, because those in sysrepo are hidden.
+add_library(srbin INTERFACE)
+target_sources(srbin INTERFACE $<TARGET_OBJECTS:srcompat>)
+target_link_libraries(srbin INTERFACE sysrepo)
+
 if(ENABLE_SYSREPOCTL)
     # sysrepoctl tool
-    add_executable(sysrepoctl ${SYSREPOCTL_SRC} ${compatsrc})
-    target_link_libraries(sysrepoctl sysrepo)
+    add_executable(sysrepoctl ${SYSREPOCTL_SRC})
+    target_link_libraries(sysrepoctl srbin)
 endif()
 
 if(ENABLE_SYSREPOCFG)
     # sysrepocfg tool
-    add_executable(sysrepocfg ${SYSREPOCFG_SRC} ${compatsrc})
-    target_link_libraries(sysrepocfg sysrepo)
+    add_executable(sysrepocfg ${SYSREPOCFG_SRC})
+    target_link_libraries(sysrepocfg srbin)
 endif()
 
 if(ENABLE_SYSREPO_PLUGIND)
     # sysrepo-plugind daemon
-    add_executable(sysrepo-plugind ${SYSREPOPLUGIND_SRC} ${compatsrc})
-    target_link_libraries(sysrepo-plugind sysrepo)
+    add_executable(sysrepo-plugind ${SYSREPOPLUGIND_SRC})
+    target_link_libraries(sysrepo-plugind srbin)
 endif()
 
 if(ENABLE_SYSREPO_NOTIFD)
     # sysrepo-notifd daemon
-    add_executable(sysrepo-notifd ${SYSREPONOTIFD_SRC} ${compatsrc})
-    target_link_libraries(sysrepo-notifd sysrepo)
+    add_executable(sysrepo-notifd ${SYSREPONOTIFD_SRC})
+    target_link_libraries(sysrepo-notifd srbin)
 endif()
 
 # include repository files with highest priority
@@ -596,23 +598,27 @@ include_directories("${PROJECT_SOURCE_DIR}/src/plugins")
 include_directories(${PROJECT_BINARY_DIR})
 
 # dependencies
+
+# system libraries, collected by the sections below and linked after them
+set(SR_SYS_LIBS "")
+
 # libatomic
 find_library(LIBATOMIC_LIBRARIES NAMES libatomic.so libatomic.so.1)
 if(LIBATOMIC_LIBRARIES)
-    target_link_libraries(sysrepo ${LIBATOMIC_LIBRARIES})
+    list(APPEND SR_SYS_LIBS ${LIBATOMIC_LIBRARIES})
     string(APPEND PC_LIBS_PRIVATE " -latomic")
 endif()
 
 # librt (shm_open, shm_unlink, not required on QNX or OSX)
 find_library(LIBRT_LIBRARIES rt)
 if(LIBRT_LIBRARIES)
-    target_link_libraries(sysrepo ${LIBRT_LIBRARIES})
+    list(APPEND SR_SYS_LIBS ${LIBRT_LIBRARIES})
     string(APPEND PC_LIBS_PRIVATE " -lrt")
 endif()
 
 # libdl
-target_link_libraries(sysrepo ${CMAKE_DL_LIBS})
 if(CMAKE_DL_LIBS)
+    list(APPEND SR_SYS_LIBS ${CMAKE_DL_LIBS})
     string(APPEND PC_LIBS_PRIVATE " -l${CMAKE_DL_LIBS}")
 endif()
 
@@ -620,7 +626,7 @@ endif()
 find_package(LibYANG ${LIBYANG_DEP_SOVERSION} CONFIG REQUIRED)
 message(STATUS "Found LibYANG ${LibYANG_VERSION}: ${LibYANG_DIR}")
 target_link_libraries(srobj PRIVATE LibYANG::yang)
-target_link_libraries(sysrepo LibYANG::yang)
+target_link_libraries(sysrepo PUBLIC LibYANG::yang)
 
 # libyang CBOR support, enables the notifd CBOR encoding feature
 if(LibYANG_HAVE_CBOR)
@@ -648,12 +654,16 @@ endif()
 # pthread
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 find_package(Threads REQUIRED)
-target_link_libraries(sysrepo ${CMAKE_THREAD_LIBS_INIT})
+list(APPEND SR_SYS_LIBS Threads::Threads)
 if(CMAKE_THREAD_LIBS_INIT)
     # the thread library flag for the .pc file
     string(APPEND PC_LIBS_PRIVATE " ${CMAKE_THREAD_LIBS_INIT}")
 endif()
 set(CMAKE_REQUIRED_LIBRARIES pthread)
+
+# link the collected system libraries
+target_link_libraries(sysrepo PRIVATE ${SR_SYS_LIBS})
+target_link_libraries(srbin INTERFACE ${SR_SYS_LIBS})
 
 # tar
 find_program(TAR_BINARY "tar")
