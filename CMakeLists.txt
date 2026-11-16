@@ -67,10 +67,8 @@ set(SYSREPO_MICRO_SOVERSION 1)
 set(SYSREPO_SOVERSION_FULL ${SYSREPO_MAJOR_SOVERSION}.${SYSREPO_MINOR_SOVERSION}.${SYSREPO_MICRO_SOVERSION})
 set(SYSREPO_SOVERSION ${SYSREPO_MAJOR_SOVERSION})
 
-# Version of libyang library that this sysrepo depends on
-set(LIBYANG_DEP_VERSION 6.4.35)
+# SO version of libyang library that this sysrepo depends on
 set(LIBYANG_DEP_SOVERSION 5.13.8)
-set(LIBYANG_DEP_SOVERSION_MAJOR 5)
 
 # generate only version header, it is needed for docs
 configure_file("${PROJECT_SOURCE_DIR}/src/version.h.in" "${PROJECT_BINARY_DIR}/include/sysrepo/version.h" ESCAPE_QUOTES @ONLY)
@@ -619,14 +617,17 @@ if(CMAKE_DL_LIBS)
 endif()
 
 # libyang, check version
-find_package(LibYANG ${LIBYANG_DEP_SOVERSION} REQUIRED)
-target_link_libraries(sysrepo ${LIBYANG_LIBRARIES})
-include_directories(${LIBYANG_INCLUDE_DIRS})
+find_package(LibYANG ${LIBYANG_DEP_SOVERSION} CONFIG REQUIRED)
+message(STATUS "Found LibYANG ${LibYANG_VERSION}: ${LibYANG_DIR}")
+target_link_libraries(srobj PRIVATE LibYANG::yang)
+target_link_libraries(sysrepo LibYANG::yang)
 
 # libyang CBOR support, enables the notifd CBOR encoding feature
-list(APPEND CMAKE_REQUIRED_INCLUDES ${LIBYANG_INCLUDE_DIRS})
-check_symbol_exists(LY_HAVE_CBOR "libyang/libyang.h" SR_LY_HAVE_CBOR)
-list(REMOVE_ITEM CMAKE_REQUIRED_INCLUDES ${LIBYANG_INCLUDE_DIRS})
+if(LibYANG_HAVE_CBOR)
+    set(SR_LY_HAVE_CBOR 1)
+else()
+    set(SR_LY_HAVE_CBOR "")
+endif()
 
 # libsystemd
 find_package(LibSystemd)
