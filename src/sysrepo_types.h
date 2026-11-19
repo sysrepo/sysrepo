@@ -188,6 +188,7 @@ typedef struct {
     union {
         const char *schema_path;    /**< Path to the schema file. */
         const char *schema_yang;    /**< YANG data of the schema. */
+        const char *schema_name;    /**< YANG module name with optional revision. */
     };
     const char **features;          /**< Optional array of features to enable ('*' enables all) terminated by NULL. */
     sr_module_ds_t module_ds;       /**< Optional datastore implementation plugin names for each datastore. If NULL

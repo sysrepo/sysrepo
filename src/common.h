@@ -280,6 +280,16 @@ typedef struct sr_oper_cache_s sr_oper_cache_t;
 extern sr_oper_cache_t sr_oper_cache;
 
 /**
+ * @brief Internal install module format.
+ */
+enum sr_int_schema_format {
+    SR_SCHEMA_UNKNOWN = 0,
+    SR_SCHEMA_PATH,
+    SR_SCHEMA_YANG,
+    SR_SCHEMA_NAME
+};
+
+/**
  * @brief Internal information about a module to be installed.
  */
 typedef struct {
@@ -287,6 +297,7 @@ typedef struct {
     union {
         const char *schema_path;
         const char *schema_yang;
+        const char *schema_name;
     };
     const char **features;
     sr_module_ds_t module_ds;
@@ -295,8 +306,10 @@ typedef struct {
     mode_t perm;
 
     /* additional members */
-    int is_schema_yang;
+    enum sr_int_schema_format schema_format;
+    char *name;
     LYS_INFORMAT format;
+    const char *revision;
     const struct lys_module *ly_mod;
     const char **enable_features;       /**< set if module is installed and only some of its features should be enabled */
     int installed[SR_DS_READ_COUNT];    /**< install_cb was called for the DS */
@@ -1196,15 +1209,17 @@ char *sr_get_first_ns(const char *expr);
 sr_error_info_t *sr_get_trim_predicates(const char *expr, char **expr2);
 
 /**
- * @brief Learn schema file module name and format.
+ * @brief Learn schema internal format, module name, and YANG/YIN format.
  *
- * @param[in] schema_path Path to the module file.
- * @param[in] is_schema_yang Set when @p schema_path are actually YANG module data.
+ * @param[in] schema_union Path/YANG/name to the module.
+ * @param[out] int_schema_format Detected internal schema format of @p schema_union.
  * @param[out] module_name Name of the module.
- * @param[out] format Module format.
+ * @param[out] revision Revision of the module, if @p schema_union is name.
+ * @param[out] format Module format, if @p schema_union is path or YANG.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_get_schema_name_format(const char *schema_path, int is_schema_yang, char **module_name, LYS_INFORMAT *format);
+sr_error_info_t *sr_get_schema_name_format(const char *schema_union, enum sr_int_schema_format *int_schema_format,
+        char **module_name, const char **revision, LYS_INFORMAT *format);
 
 /**
  * @brief Get datastore string name.

@@ -4038,89 +4038,129 @@ sr_get_trim_predicates(const char *expr, char **expr2)
 }
 
 sr_error_info_t *
-sr_get_schema_name_format(const char *schema_path, int is_schema_yang, char **module_name, LYS_INFORMAT *format)
+sr_get_schema_name_format(const char *schema_union, enum sr_int_schema_format *int_schema_format, char **module_name,
+        const char **revision, LYS_INFORMAT *format)
 {
     sr_error_info_t *err_info = NULL;
-    const char *ptr;
-    int index;
-    char quot;
+    const char *ptr, *ptr2;
+    size_t len;
+    const char *end_chars;
 
-    if (is_schema_yang) {
-        ptr = schema_path;
+    *int_schema_format = SR_SCHEMA_UNKNOWN;
+    *module_name = NULL;
+    *revision = NULL;
+    *format = LYS_IN_UNKNOWN;
 
-        /* skip leading spaces */
-        while (isspace(ptr[0])) {
+    /* detect schema format, try path */
+    if ((strlen(schema_union) > 4) && !strcmp(schema_union + strlen(schema_union) - 4, ".yin")) {
+        *int_schema_format = SR_SCHEMA_PATH;
+        *format = LYS_IN_YIN;
+    } else if ((strlen(schema_union) > 5) && !strcmp(schema_union + strlen(schema_union) - 5, ".yang")) {
+        *int_schema_format = SR_SCHEMA_PATH;
+        *format = LYS_IN_YANG;
+    }
+
+    if (*int_schema_format == SR_SCHEMA_PATH) {
+        /* format can only be path */
+        if (access(schema_union, F_OK)) {
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "File \"%s\" does not exist (%s).", schema_union, strerror(errno));
+            return err_info;
+        }
+
+        /* parse module name */
+        ptr = strrchr(schema_union, '/');
+        ptr = (ptr ? ptr + 1 : schema_union);
+        ptr2 = strrchr(ptr, '@');
+        if (!ptr2) {
+            ptr2 = ptr + strlen(ptr);
+            ptr2 = (*format == LYS_IN_YIN) ? ptr2 - 4 : ptr2 - 5;
+        }
+
+        *module_name = strndup(ptr, ptr2 - ptr);
+        SR_CHECK_MEM_RET(!*module_name, err_info);
+        return NULL;
+    }
+
+    /* detect schema format, try name and optional revision */
+    ptr = schema_union;
+
+    /* check first char */
+    if (((ptr[0] >= 'a') && (ptr[0] <= 'z')) || ((ptr[0] >= 'A') && (ptr[0] <= 'Z')) || (ptr[0] == '_')) {
+        ++ptr;
+
+        /* check all the following chars */
+        while (((ptr[0] >= 'a') && (ptr[0] <= 'z')) || ((ptr[0] >= 'A') && (ptr[0] <= 'Z')) ||
+                ((ptr[0] >= '0') && (ptr[0] <= '9')) || (ptr[0] == '_') || (ptr[0] == '-') || (ptr[0] == '.')) {
             ++ptr;
         }
 
-        if (strncmp(ptr, "module", 6)) {
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Invalid YANG module data (\"%.20s\").", schema_path);
-            return err_info;
+        if ((ptr[0] == '\0') || (ptr[0] == '@')) {
+            *int_schema_format = SR_SCHEMA_NAME;
         }
+    }
+
+    if (*int_schema_format == SR_SCHEMA_NAME) {
+        /* format can only be module name */
+        *module_name = strndup(schema_union, ptr - schema_union);
+        SR_CHECK_MEM_RET(!*module_name, err_info);
+
+        if (ptr[0] == '@') {
+            /* basic revision check */
+            ++ptr;
+            if (!isdigit(ptr[0]) || !isdigit(ptr[1]) || !isdigit(ptr[2]) || !isdigit(ptr[3]) || (ptr[4] != '-') ||
+                    !isdigit(ptr[5]) || !isdigit(ptr[6]) || (ptr[7] != '-') || !isdigit(ptr[8]) || !isdigit(ptr[9]) ||
+                    (ptr[10] != '\0')) {
+                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Module revision \"%s\" is invalid.", ptr);
+                return err_info;
+            }
+
+            *revision = ptr;
+        }
+        return NULL;
+    }
+
+    /* detect schema format, try YANG data */
+    ptr = schema_union;
+    while (isspace(ptr[0])) {
+        ++ptr;
+    }
+    if (!strncmp(ptr, "module", 6)) {
         ptr += 6;
 
-        /* skip more spaces */
+        /* mandatory sep */
+        if ((ptr[0] == '\n') || (ptr[0] == ' ') || (ptr[0] == '\t')) {
+            *int_schema_format = SR_SCHEMA_YANG;
+        }
+    }
+
+    if (*int_schema_format == SR_SCHEMA_YANG) {
+        /* skip spaces */
         while (isspace(ptr[0])) {
             ++ptr;
         }
 
         /* optional quotes */
         if ((ptr[0] == '\'') || (ptr[0] == '\"')) {
-            quot = ptr[0];
+            end_chars = "\'\"";
             ++ptr;
         } else {
-            quot = 0;
+            end_chars = " \f\n\r\t\v{";
         }
 
-        /* parse module name */
-        index = 0;
-        if (quot) {
-            /* quoted */
-            do {
-                ++index;
-            } while (ptr[index] != quot);
-        } else {
-            /* unquoted */
-            do {
-                ++index;
-            } while (!isspace(ptr[index]) && (ptr[index] != '{'));
-        }
+        /* find module name end */
+        len = strcspn(ptr, end_chars);
 
-        /* out params */
-        *module_name = strndup(ptr, index);
+        *module_name = strndup(ptr, len);
         SR_CHECK_MEM_RET(!*module_name, err_info);
-        *format = LYS_IN_YANG;
 
+        *format = LYS_IN_YANG;
         return NULL;
     }
 
-    /* learn the format */
-    if ((strlen(schema_path) > 4) && !strcmp(schema_path + strlen(schema_path) - 4, ".yin")) {
-        *format = LYS_IN_YIN;
-        ptr = schema_path + strlen(schema_path) - 4;
-    } else if ((strlen(schema_path) > 5) && !strcmp(schema_path + strlen(schema_path) - 5, ".yang")) {
-        *format = LYS_IN_YANG;
-        ptr = schema_path + strlen(schema_path) - 5;
-    } else {
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Unknown format of module \"%s\".", schema_path);
-        return err_info;
-    }
-
-    /* parse module name */
-    for (index = 0; (ptr != schema_path) && (ptr[0] != '/'); ++index, --ptr) {}
-    if (ptr[0] == '/') {
-        ++ptr;
-        --index;
-    }
-    *module_name = strndup(ptr, index);
-    SR_CHECK_MEM_RET(!*module_name, err_info);
-    ptr = strchr(*module_name, '@');
-    if (ptr) {
-        /* truncate revision */
-        ((char *)ptr)[0] = '\0';
-    }
-
-    return NULL;
+    /* unknown schema format */
+    sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Unable to detect input schema format (\"%.20s\"%s).", schema_union,
+            (strlen(schema_union) > 20) ? "..." : "");
+    return err_info;
 }
 
 const char *

@@ -1559,16 +1559,28 @@ sr_install_modules_prepare_mod(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, sr_i
     }
 
     /* parse the module with the features */
-    if (new_mod->is_schema_yang) {
-        if ((err_info = sr_lys_parse(new_ctx, new_mod->schema_yang, NULL, new_mod->format, new_mod->features,
-                (struct lys_module **)&new_mod->ly_mod))) {
-            goto cleanup;
-        }
-    } else {
+    switch (new_mod->schema_format) {
+    case SR_SCHEMA_PATH:
         if ((err_info = sr_lys_parse(new_ctx, NULL, new_mod->schema_path, new_mod->format, new_mod->features,
                 (struct lys_module **)&new_mod->ly_mod))) {
             goto cleanup;
         }
+        break;
+    case SR_SCHEMA_YANG:
+        if ((err_info = sr_lys_parse(new_ctx, new_mod->schema_yang, NULL, new_mod->format, new_mod->features,
+                (struct lys_module **)&new_mod->ly_mod))) {
+            goto cleanup;
+        }
+        break;
+    case SR_SCHEMA_NAME:
+        if ((err_info = sr_ly_ctx_load_module(new_ctx, new_mod->name, new_mod->revision, new_mod->features,
+                &new_mod->ly_mod))) {
+            goto cleanup;
+        }
+        break;
+    case SR_SCHEMA_UNKNOWN:
+        SR_ERRINFO_INT(&err_info);
+        goto cleanup;
     }
 
     if (!new_mod->perm) {
@@ -1620,7 +1632,6 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
     uint32_t i, j, search_dir_count = 0;
     int no_changes;
     struct ly_set mod_set = {0}, feat_set = {0};
-    char *mod_name = NULL;
 
     /* create new temporary context */
     if ((err_info = sr_ly_ctx_new(&new_ctx))) {
@@ -1651,15 +1662,13 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
         nmod = &(*new_mods)[i];
 
         /* learn module name and format */
-        if ((err_info = sr_get_schema_name_format(nmod->schema_path, nmod->is_schema_yang, &mod_name, &nmod->format))) {
+        if ((err_info = sr_get_schema_name_format(nmod->schema_path, &nmod->schema_format, &nmod->name, &nmod->revision,
+                &nmod->format))) {
             goto cleanup;
         }
 
         /* try to find the module (before any are parsed to not get new modules) */
-        nmod->ly_mod = ly_ctx_get_module_implemented(new_ctx, mod_name);
-
-        free(mod_name);
-        mod_name = NULL;
+        nmod->ly_mod = ly_ctx_get_module_implemented(new_ctx, nmod->name);
     }
 
     i = 0;
@@ -1672,6 +1681,8 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
         }
         if (no_changes) {
             /* module already installed with the features, remove it from the array */
+            free(nmod->name);
+            free(nmod->enable_features);
             if (i < (*new_mod_count) - 1) {
                 memmove(nmod, nmod + 1, (*new_mod_count - i - 1) * sizeof *nmod);
             }
@@ -1771,7 +1782,6 @@ cleanup:
 
     sr_lycc_clear_data(&cc_info);
     sr_ly_ctx_destroy(new_ctx);
-    free(mod_name);
 
     /* CONTEXT UNLOCK */
     sr_lycc_unlock(conn, ctx_mode, 1, __func__);
@@ -1795,6 +1805,7 @@ sr_free_int_install_mods(sr_int_install_mod_t *new_mods, uint32_t new_mod_count)
     }
 
     for (i = 0; i < new_mod_count; ++i) {
+        free(new_mods[i].name);
         free(new_mods[i].enable_features);
     }
     free(new_mods);
@@ -1900,19 +1911,13 @@ sr_install_modules2(sr_conn_ctx_t *conn, const sr_install_mod_t *modules, uint32
     /* copy all the items */
     for (i = 0; i < module_count; ++i) {
         /* cannot use memcpy, memory alignment of C structures (padding) could cause overwrite of unwanted fields,
-           possibility of memory corruption */
+         * possibility of memory corruption */
         new_mods[i].schema_path = modules[i].schema_path;
-        new_mods[i].schema_yang = modules[i].schema_yang;
         new_mods[i].features = modules[i].features;
         new_mods[i].module_ds = modules[i].module_ds;
         new_mods[i].owner = modules[i].owner;
         new_mods[i].group = modules[i].group;
         new_mods[i].perm = modules[i].perm;
-
-        /* detect schema format */
-        if (strchr(modules[i].schema_yang, '{')) {
-            new_mods[i].is_schema_yang = 1;
-        }
     }
 
     /* install */
@@ -2225,8 +2230,9 @@ sr_update_modules_prepare(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, const cha
 {
     sr_error_info_t *err_info = NULL;
     sr_int_update_mod_t *upd_mods = NULL;
+    enum sr_int_schema_format schema_format;
     const struct lys_module *old_mod, *upd_mod;
-    const char **features = NULL;
+    const char **features = NULL, *revision;
     uint32_t i, schema_path_count = 0;
 
     /* get schema path count */
@@ -2241,7 +2247,13 @@ sr_update_modules_prepare(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, const cha
     for (i = 0; i < schema_path_count; ++i) {
         /* learn about the module */
         upd_mods[i].schema_path = schema_paths[i];
-        if ((err_info = sr_get_schema_name_format(upd_mods[i].schema_path, 0, &upd_mods[i].name, &upd_mods[i].format))) {
+        if ((err_info = sr_get_schema_name_format(upd_mods[i].schema_path, &schema_format, &upd_mods[i].name,
+                &revision, &upd_mods[i].format))) {
+            goto cleanup;
+        }
+        if (schema_format != SR_SCHEMA_PATH) {
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Path \"%s\" is not a YANG/YIN module file.",
+                    upd_mods[i].schema_path);
             goto cleanup;
         }
 
