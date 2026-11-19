@@ -41,7 +41,6 @@ struct state {
     sr_conn_ctx_t *conn;
     ATOMIC_T cb_called, cb_called2, cb_called3;
     pthread_barrier_t barrier, barrier2, barrier4;
-    ATOMIC_T running;
 };
 
 static int
@@ -114,7 +113,6 @@ setup_f(void **state)
     pthread_barrier_init(&st->barrier, NULL, 2);
     pthread_barrier_init(&st->barrier2, NULL, 2);
     pthread_barrier_init(&st->barrier4, NULL, 4);
-    ATOMIC_STORE_RELAXED(st->running, 1);
     return 0;
 }
 
@@ -8462,7 +8460,7 @@ apply_changes_enabled_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
-    int ret;
+    int ret, i;
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -8470,7 +8468,7 @@ apply_changes_enabled_thread(void *arg)
     /* signal that thread was started */
     pthread_barrier_wait(&st->barrier);
 
-    while (ATOMIC_LOAD_RELAXED(st->running)) {
+    for (i = 0; i < TEST_ITERATIONS; i++) {
         ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
         assert_int_equal(ret, SR_ERR_OK);
         ret = sr_apply_changes(sess, 0);
@@ -8515,8 +8513,6 @@ subscribe_change_enabled_race_thread(void *arg)
         subscr = NULL;
         assert_int_equal(ret, SR_ERR_OK);
     }
-    /* signal other thread to stop */
-    ATOMIC_STORE_RELAXED(st->running, 0);
 
     return NULL;
 }
