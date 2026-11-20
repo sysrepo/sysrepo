@@ -1601,33 +1601,42 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, uint32_t orig_sid, con
         }
 
         if (parent_xpath) {
-            if (!*data) {
-                /* parent does not exist for sure */
-                goto next_iter;
+            if (*data) {
+                if ((err_info = sr_lyd_find_xpath(*data, parent_xpath, &set))) {
+                    goto cleanup_opergetsub_ext_unlock;
+                }
+
+                if (set->count) {
+                    /* nested data */
+                    for (j = 0; j < set->count; ++j) {
+                        /* get oper data from the client */
+                        if ((err_info = sr_xpath_oper_data_get(mod, sub_xpath, request_xpaths, req_xpath_count,
+                                orig_sid, orig_name, orig_data, operation_id, shm_subs, i, set->dnodes[j], timeout_ms,
+                                conn, &oper_data))) {
+                            goto cleanup_opergetsub_ext_unlock;
+                        }
+
+                        /* merge oper data into one tree */
+                        if ((err_info = sr_lyd_merge(data, oper_data, 1, LYD_MERGE_DESTRUCT))) {
+                            lyd_free_all(oper_data);
+                            goto cleanup_opergetsub_ext_unlock;
+                        }
+                    }
+
+                    goto next_iter;
+                }
             }
 
-            if ((err_info = sr_lyd_find_xpath(*data, parent_xpath, &set))) {
+            /* data parent does not exist */
+            if ((err_info = sr_xpath_oper_data_get(mod, sub_xpath, request_xpaths, req_xpath_count, orig_sid, orig_name,
+                    orig_data, operation_id, shm_subs, i, NULL, timeout_ms, conn, &oper_data))) {
                 goto cleanup_opergetsub_ext_unlock;
             }
 
-            if (!set->count) {
-                /* data parent does not exist */
-                goto next_iter;
-            }
-
-            /* nested data */
-            for (j = 0; j < set->count; ++j) {
-                /* get oper data from the client */
-                if ((err_info = sr_xpath_oper_data_get(mod, sub_xpath, request_xpaths, req_xpath_count, orig_sid,
-                        orig_name, orig_data, operation_id, shm_subs, i, set->dnodes[j], timeout_ms, conn, &oper_data))) {
-                    goto cleanup_opergetsub_ext_unlock;
-                }
-
-                /* merge into one data tree */
-                if ((err_info = sr_lyd_merge(data, oper_data, 1, LYD_MERGE_DESTRUCT))) {
-                    lyd_free_all(oper_data);
-                    goto cleanup_opergetsub_ext_unlock;
-                }
+            /* merge oper data into one tree */
+            if ((err_info = sr_lyd_merge(data, oper_data, 1, LYD_MERGE_DESTRUCT))) {
+                lyd_free_all(oper_data);
+                goto cleanup_opergetsub_ext_unlock;
             }
 
 next_iter:
