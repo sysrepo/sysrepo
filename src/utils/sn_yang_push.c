@@ -407,31 +407,21 @@ srsn_yp_op2str(srsn_yp_change_t op)
 static sr_error_info_t *
 srsn_yp_ntf_change_edit_clear_target(struct lyd_node *ly_yp, const char *target)
 {
-    sr_error_info_t *err_info = NULL;
-    struct ly_set *set = NULL;
-    char quot, *xpath = NULL;
+    struct lyd_node *edit, *leaf;
 
-    /* find the edit of this target, be careful with the quotes in the XPath */
-    quot = strchr(target, '\'') ? '\"' : '\'';
-    if (asprintf(&xpath, "/ietf-yang-push:push-change-update/datastore-changes/yang-patch/edit[target=%c%s%c]",
-            quot, target, quot) == -1) {
-        SR_ERRINFO_MEM(&err_info);
-        goto cleanup;
-    }
-    if ((err_info = sr_lyd_find_xpath(ly_yp, xpath, &set))) {
-        goto cleanup;
-    }
-    assert((set->count == 0) || (set->count == 1));
-
-    /* remove the previous change of this target */
-    if (set->count) {
-        lyd_free_tree(set->dnodes[0]);
+    /* compare the values, a target with both kinds of quotes cannot be an XPath literal */
+    LY_LIST_FOR(lyd_child(ly_yp), edit) {
+        if (strcmp(LYD_NAME(edit), "edit") || lyd_find_path(edit, "target", 0, &leaf)) {
+            continue;
+        }
+        if (!strcmp(lyd_get_value(leaf), target)) {
+            /* remove the previous change of this target */
+            lyd_free_tree(edit);
+            break;
+        }
     }
 
-cleanup:
-    free(xpath);
-    ly_set_free(set, NULL);
-    return err_info;
+    return NULL;
 }
 
 /**
