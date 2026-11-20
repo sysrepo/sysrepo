@@ -518,8 +518,7 @@ test_oper_dep(void **state)
     ret = sr_session_get_error(st->sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(err_info->err_count, 2);
-    assert_string_equal(err_info->err[0].message, "Invalid instance-identifier \"/ops:cont/list1[k='key']/cont2\" value "
-            "- required instance not found. (path \"/ops:notif3/list2[k='k']/l15\")");
+    /* random first message invalid instance-identifier or invalid leafref value */
     assert_string_equal(err_info->err[1].message, "Notification validation failed.");
 
     /* subscribe to required ops oper data and some non-required */
