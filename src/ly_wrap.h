@@ -199,7 +199,7 @@ sr_error_info_t *sr_lyd_parse_op(const struct ly_ctx *ctx, const char *data, uin
         enum lyd_type data_type, struct lyd_node **tree, struct lyd_node **op);
 
 /**
- * @brief Print YANG data.
+ * @brief Print all YANG data.
  *
  * @param[in] data Data to print.
  * @param[in] format Data print format.
@@ -211,6 +211,18 @@ sr_error_info_t *sr_lyd_parse_op(const struct ly_ctx *ctx, const char *data, uin
  */
 sr_error_info_t *sr_lyd_print_data(const struct lyd_node *data, LYD_FORMAT format, uint32_t print_options, int fd,
         char **str, uint32_t *len);
+
+/**
+ * @brief Print YANG data tree.
+ *
+ * @param[in] data Data to print.
+ * @param[in] format Data print format.
+ * @param[in] print_options Print options.
+ * @param[out] str Memory printed to.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lyd_print_tree(const struct lyd_node *sibling, LYD_FORMAT format, uint32_t print_options,
+        char **str);
 
 /**
  * @brief Validate a whole data tree.

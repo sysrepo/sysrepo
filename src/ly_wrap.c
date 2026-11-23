@@ -689,6 +689,27 @@ cleanup:
 }
 
 sr_error_info_t *
+sr_lyd_print_tree(const struct lyd_node *data, LYD_FORMAT format, uint32_t print_options, char **str)
+{
+    sr_error_info_t *err_info = NULL;
+    struct ly_out *out = NULL;
+
+    sr_ly_log_setup();
+
+    ly_out_new_memory(str, 0, &out);
+
+    if (lyd_print_tree(out, data, format, print_options)) {
+        sr_errinfo_new_ly(&err_info, SR_ERR_LY);
+        goto cleanup;
+    }
+
+cleanup:
+    ly_out_free(out, NULL, 0);
+    sr_ly_log_revert();
+    return err_info;
+}
+
+sr_error_info_t *
 sr_lyd_validate_all(struct lyd_node **data, const struct ly_ctx *ctx, uint32_t options)
 {
     sr_error_info_t *err_info = NULL;

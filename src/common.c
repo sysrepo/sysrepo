@@ -4542,7 +4542,7 @@ store_value:
             ptr = strdup(any->value);
             SR_CHECK_MEM_GOTO(!ptr, err_info, error);
         } else {
-            if ((err_info = sr_lyd_print_data(any->child, LYD_XML, 0, -1, &ptr, NULL))) {
+            if ((err_info = sr_lyd_print_tree(any->child, LYD_XML, LYD_PRINT_SIBLINGS, &ptr))) {
                 sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Failed to print anyxml/anydata into XML.");
                 goto error;
             }
