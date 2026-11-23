@@ -97,7 +97,7 @@ else()
 
     set(LIBSYSTEMD_INCLUDE_DIRS ${LIBSYSTEMD_INCLUDE_DIR})
     set(LIBSYSTEMD_LIBRARIES ${LIBSYSTEMD_LIBRARY})
-    mark_as_advanced(LIBSYSTEMD_INCLUDE_DIRS LIBSYSTEMD_LIBRARIES)
+    mark_as_advanced(LIBSYSTEMD_INCLUDE_DIR LIBSYSTEMD_LIBRARY)
 
     # handle the QUIETLY and REQUIRED arguments and set LIBSYSTEMD_FOUND to TRUE
     # if all listed variables are TRUE

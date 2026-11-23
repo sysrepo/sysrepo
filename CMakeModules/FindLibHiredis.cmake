@@ -67,9 +67,9 @@ else()
 
     set(LIBHIREDIS_INCLUDE_DIRS ${LIBHIREDIS_INCLUDE_DIR})
     set(LIBHIREDIS_LIBRARIES ${LIBHIREDIS_LIBRARY})
-    mark_as_advanced(LIBHIREDIS_INCLUDE_DIRS LIBHIREDIS_LIBRARIES)
+    mark_as_advanced(LIBHIREDIS_INCLUDE_DIR LIBHIREDIS_LIBRARY)
 
-    # handle the QUIETLY and REQUIRED arguments and set LIBSYSTEMD_FOUND to TRUE
+    # handle the QUIETLY and REQUIRED arguments and set LIBHIREDIS_FOUND to TRUE
     # if all listed variables are TRUE
     find_package_handle_standard_args(LibHiredis FOUND_VAR LIBHIREDIS_FOUND
         REQUIRED_VARS LIBHIREDIS_LIBRARY LIBHIREDIS_INCLUDE_DIR)
