@@ -3572,7 +3572,7 @@ sr_shmsub_change_listen_relock(sr_sub_shm_t *sub_shm, sr_lock_mode_t mode, struc
                     module_name, sr_ev2str(SR_SUB_EV_ABORT), sub_info->operation_id, sub_info->priority);
 
             /* call callback */
-            sub->cb(ev_sess, sub->sub_id, module_name, sub->xpath, sr_ev2api(SR_SUB_EV_ABORT), sub_info->request_id,
+            sub->cb(ev_sess, sub->sub_id, module_name, sub->xpath, sr_ev2api(SR_SUB_EV_ABORT), sub_info->operation_id,
                     sub->private_data);
         }
 

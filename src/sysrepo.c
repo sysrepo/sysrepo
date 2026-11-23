@@ -7865,8 +7865,8 @@ _sr_rpc_send_tree(sr_session_ctx_t *session, struct sr_mod_info_s *mod_info, con
 
     sr_modinfo_erase(mod_info);
 
-    /* init modinfo */
-    sr_modinfo_init(mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, 0);
+    /* init modinfo with the same operation ID */
+    sr_modinfo_init(mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, mod_info->operation_id);
 
     if (!strcmp(path, SR_RPC_FACTORY_RESET_PATH)) {
         /* update the input as needed */

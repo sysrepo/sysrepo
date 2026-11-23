@@ -3529,7 +3529,7 @@ sr_modinfo_change_diff_merge_pred_data(struct sr_mod_info_s *mod_info)
     /* learn whether we need to use the additional oper mod_info */
     oper_mod_info = (mod_info->ds == SR_DS_OPERATIONAL) && (mod_info->ds2 == SR_DS_OPERATIONAL) ? 1 : 0;
 
-    sr_modinfo_init(&mod_info2, mod_info->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, 0);
+    sr_modinfo_init(&mod_info2, mod_info->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING, mod_info->operation_id);
 
     /* collect all the xpaths of the subscriptions */
     for (i = 0; i < mod_info->mod_count; ++i) {
