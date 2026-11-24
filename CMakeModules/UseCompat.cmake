@@ -1,7 +1,7 @@
 # - Use compat library providing various functions and macros that may be missing on some systems
 # Once done this will define
 #
-# compatsrc - sources to add to compilation
+# srcompat - OBJECT library with the compat functions
 #
 # Additionally, "compat.h" include directory is added and can be included.
 #
@@ -82,8 +82,11 @@ macro(USE_COMPAT)
     list(REMOVE_ITEM CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
     list(REMOVE_ITEM CMAKE_REQUIRED_DEFINITIONS -D__BSD_VISIBLE=1)
 
-    # header and source file (adding the source directly allows for hiding its symbols)
+    # compat.h
     configure_file(${PROJECT_SOURCE_DIR}/compat/compat.h.in ${PROJECT_BINARY_DIR}/compat/compat.h @ONLY)
     include_directories(${PROJECT_BINARY_DIR}/compat)
-    set(compatsrc ${PROJECT_SOURCE_DIR}/compat/compat.c)
+
+    # compat functions, hidden so that a shared library does not export them
+    add_library(srcompat OBJECT ${PROJECT_SOURCE_DIR}/compat/compat.c)
+    set_target_properties(srcompat PROPERTIES POSITION_INDEPENDENT_CODE ON COMPILE_FLAGS "-fvisibility=hidden")
 endmacro()

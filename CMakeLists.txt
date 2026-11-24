@@ -544,14 +544,12 @@ endif()
 
 # sysrepo
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
-add_library(srobj OBJECT ${LIB_SRC} ${compatsrc})
-set_target_properties(srobj PROPERTIES COMPILE_FLAGS "-fvisibility=hidden")
-add_library(sysrepo $<TARGET_OBJECTS:srobj>)
-set_target_properties(sysrepo PROPERTIES VERSION ${SYSREPO_SOVERSION_FULL} SOVERSION ${SYSREPO_SOVERSION})
+add_library(sysrepo ${LIB_SRC})
+set_target_properties(sysrepo PROPERTIES COMPILE_FLAGS "-fvisibility=hidden" VERSION ${SYSREPO_SOVERSION_FULL} SOVERSION ${SYSREPO_SOVERSION})
 target_include_directories(sysrepo PUBLIC $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include> $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+target_link_libraries(sysrepo PRIVATE srcompat)
+
 if(SR_ENABLED_DS_PLG_MONGO)
-    # srobj gets the include directories, sysrepo links the library
-    target_link_libraries(srobj PRIVATE ${MONGOC_TARGET})
     target_link_libraries(sysrepo PRIVATE ${MONGOC_TARGET})
 endif()
 
@@ -560,10 +558,7 @@ if(SR_ENABLED_DS_PLG_REDIS)
     include_directories(${LIBHIREDIS_INCLUDE_DIRS})
 endif()
 
-# compat functions of the executables
-add_library(srcompat OBJECT ${compatsrc})
-
-# sysrepo for the executables of this project. They call compat and system library
+# sysrepo for the executables and tests of this project. They call compat and system library
 # functions directly and need their own compat objects, because those in sysrepo are hidden.
 add_library(srbin INTERFACE)
 target_sources(srbin INTERFACE $<TARGET_OBJECTS:srcompat>)
@@ -626,7 +621,6 @@ endif()
 # libyang, check version
 find_package(LibYANG ${LIBYANG_DEP_SOVERSION} CONFIG REQUIRED)
 message(STATUS "Found LibYANG ${LibYANG_VERSION}: ${LibYANG_DIR}")
-target_link_libraries(srobj PRIVATE LibYANG::yang)
 target_link_libraries(sysrepo PUBLIC LibYANG::yang)
 
 # libyang CBOR support, enables the notifd CBOR encoding feature
