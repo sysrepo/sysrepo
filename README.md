@@ -83,7 +83,7 @@ other users.
 
 #### Optional
 
-* pkg-config & libsystemd (to support `sysrepo-plugind` systemd service)
+* libsystemd and pkg-config or systemd-analyze (to support `sysrepo-plugind` and `sysrepo-notifd` systemd services)
 * [mongodb-org](https://www.mongodb.com/docs/manual/installation/); [libmongoc](https://mongoc.org/libmongoc) >= 1.24.0; libbson >= 1.24.0 (for MONGO DS datastore plugin)
 * [redis-stack-server](https://redis.io/docs/latest/operate/oss_and_stack/install/install-stack/); [hiredis](https://github.com/redis/hiredis) >= 1.1.0 (for REDIS DS datastore plugin)
 * doxygen (for generating documentation)
