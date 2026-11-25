@@ -128,7 +128,10 @@ srpntf_read_notif(int notif_fd, struct ly_ctx *ly_ctx, struct lyd_node **notif)
     }
 
     /* size sanity check */
-    assert(notif_json_len <= (UINT32_MAX - 1));
+    if (notif_json_len > UINT32_MAX - 1) {
+        srplg_log_errinfo(&err_info, srpntf_name, NULL, SR_ERR_UNSUPPORTED, "Invalid stored notification size.");
+        goto cleanup;
+    }
 
     /* read the notification */
     notif_json = malloc(notif_json_len + 1);
