@@ -3518,8 +3518,8 @@ sr_error_info_t *
 sr_modinfo_change_diff_merge_pred_data(struct sr_mod_info_s *mod_info)
 {
     sr_error_info_t *err_info = NULL;
-    char **xpaths = NULL;
-    uint32_t i, j, prev_xp_count = 0, xp_count;
+    char **xpaths = NULL, **atoms = NULL;
+    uint32_t i, j, k, prev_xp_count = 0, xp_count, atom_count = 0;
     int diff_same, oper_mod_info = 0;
     struct sr_mod_info_s mod_info2;
 
@@ -3541,11 +3541,26 @@ sr_modinfo_change_diff_merge_pred_data(struct sr_mod_info_s *mod_info)
             /* count xpaths */
             for (xp_count = 0; xpaths && xpaths[xp_count]; ++xp_count) {}
 
-            /* add any new ones with the module into the oper mod_info */
+            /* only the data of the predicates are merged into the diff, so add only their atoms of any new xpaths
+             * into the oper mod_info, the oper get callbacks are then not called for subscriptions without predicates */
             for (j = prev_xp_count; j < xp_count; ++j) {
-                if ((err_info = sr_modinfo_add(mod_info->mods[i].ly_mod, xpaths[j], 0, 0, 0, &mod_info2))) {
+                if ((err_info = sr_xpath_get_text_pred_atoms(xpaths[j], &atoms, &atom_count))) {
                     goto cleanup;
                 }
+
+                for (k = 0; k < atom_count; ++k) {
+                    if ((err_info = sr_modinfo_collect_xpath(mod_info->mods[i].ly_mod->ctx, atoms[k], SR_DS_OPERATIONAL,
+                            NULL, MOD_INFO_XPATH_STORE_ALL | MOD_INFO_XPATH_STORE_DUP, &mod_info2))) {
+                        goto cleanup;
+                    }
+                }
+
+                for (k = 0; k < atom_count; ++k) {
+                    free(atoms[k]);
+                }
+                free(atoms);
+                atoms = NULL;
+                atom_count = 0;
             }
 
             prev_xp_count = xp_count;
@@ -3580,6 +3595,10 @@ cleanup:
     sr_shmmod_modinfo_unlock(&mod_info2);
     sr_modinfo_erase(&mod_info2);
     sr_shmsub_change_xpath_free(xpaths);
+    for (k = 0; k < atom_count; ++k) {
+        free(atoms[k]);
+    }
+    free(atoms);
     return err_info;
 }
 

@@ -7676,6 +7676,69 @@ test_oper_ds_filter(void **state)
 
 /* TEST */
 static int
+oper_ds_filter_no_pred_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+
+    (void)session;
+    (void)sub_id;
+    (void)module_name;
+    (void)xpath;
+    (void)request_xpath;
+    (void)request_id;
+    (void)parent;
+
+    ATOMIC_INC_RELAXED(st->cb_called2);
+    return SR_ERR_OK;
+}
+
+static void
+test_oper_ds_filter_no_pred(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr = NULL;
+    sr_session_ctx_t *sess;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_OPERATIONAL, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* provide operational data of the same subtree */
+    ret = sr_oper_get_subscribe(sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state",
+            oper_ds_filter_no_pred_oper_cb, st, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* create a subscription without any predicate */
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state/interface/oper-status",
+            module_oper_ds_filter_cb, st, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* push operational data */
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces-state/interface[name='myname']/oper-status", "up", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* change callback called, but no operational data needed to filter the changes */
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called2), 0);
+
+    /* cleanup */
+    ret = sr_unsubscribe(subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_discard_items(sess, "/ietf-interfaces:interfaces-state");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_session_stop(sess);
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
+/* TEST */
+static int
 module_list_replace_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
         sr_event_t event, uint32_t request_id, void *private_data)
 {
@@ -8557,6 +8620,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_sub_xpath_data, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_diff_reuse, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_oper_ds_filter, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_oper_ds_filter_no_pred, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_order, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_userord, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_enabled, setup_f, teardown_f),

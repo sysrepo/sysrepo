@@ -1495,6 +1495,16 @@ sr_error_info_t *sr_xpath_first_prefix(const char *xpath, char **prefix);
 sr_error_info_t *sr_xpath_set_filter_subtrees(struct ly_set *set);
 
 /**
+ * @brief Get all text atoms (simple paths) for all XPath predicate nodes.
+ *
+ * @param[in] xpath XPath to parse.
+ * @param[out] xp_atoms Array of collected text predicate atoms.
+ * @param[out] xp_atom_count Count of @p xp_atoms.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_xpath_get_text_pred_atoms(const char *xpath, char ***xp_atoms, uint32_t *xp_atom_count);
+
+/**
  * @brief Merge all data subtrees required for evaluating predicates in XPaths into a diff with 'none' operation.
  *
  * @param[in] mod_data All data of a module.
