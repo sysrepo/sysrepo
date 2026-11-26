@@ -66,8 +66,6 @@
 
 #define SR_IS_YANG_ID_CHAR(c) (isalpha(c) || isdigit(c) || ((c) == '_') || ((c) == '-') || ((c) == '.'))
 
-static sr_error_info_t *sr_xpath_get_text_pred_atoms(const char *xpath, char ***xp_atoms, uint32_t *xp_atom_count);
-
 /**
  * @brief Path to the directory with internal sysrepo YANG modules.
  */
@@ -5828,15 +5826,7 @@ cleanup:
     return err_info;
 }
 
-/**
- * @brief Get all text atoms (simple paths) for all XPath predicate nodes.
- *
- * @param[in] xpath XPath to parse.
- * @param[out] xp_atoms Array of collected text predicate atoms.
- * @param[out] xp_atom_count Count of @p xp_atoms.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
+sr_error_info_t *
 sr_xpath_get_text_pred_atoms(const char *xpath, char ***xp_atoms, uint32_t *xp_atom_count)
 {
     sr_error_info_t *err_info = NULL;
