@@ -77,13 +77,13 @@ other users.
 ### Build Requirements
 
 * C compiler (gcc >= 4.8.4, clang >= 3.0, ...)
-* cmake >= 2.8.12
+* cmake >= 3.12
 * [libyang](https://github.com/CESNET/libyang)
 * tar(1)
 
 #### Optional
 
-* pkg-config & libsystemd (to support `sysrepo-plugind` systemd service)
+* libsystemd and pkg-config or systemd-analyze (to support `sysrepo-plugind` and `sysrepo-notifd` systemd services)
 * [mongodb-org](https://www.mongodb.com/docs/manual/installation/); [libmongoc](https://mongoc.org/libmongoc) >= 1.24.0; libbson >= 1.24.0 (for MONGO DS datastore plugin)
 * [redis-stack-server](https://redis.io/docs/latest/operate/oss_and_stack/install/install-stack/); [hiredis](https://github.com/redis/hiredis) >= 1.1.0 (for REDIS DS datastore plugin)
 * doxygen (for generating documentation)
@@ -230,6 +230,29 @@ Note, that it may be necessary to call `ldconfig(8)` after library installation 
 library was installed into a non-standard path, the path to it must be specified to the
 linker. To help with setting all the compiler's options, there is `sysrepo.pc` file for
 `pkg-config(1)` available in the source tree. The file is installed with the library.
+
+A CMake project finds sysrepo by its CMake package, installed into `LIBDIR/cmake/Sysrepo`
+(`LIBDIR` is the library directory under the install prefix, e.g. `/usr/local/lib`):
+```
+find_package(Sysrepo 8 CONFIG REQUIRED)
+target_link_libraries(myapp PRIVATE Sysrepo::sysrepo)
+```
+
+The version passed to `find_package()` is the SO version of the library (`SR_VERSION`). The
+package also defines the following variables, holding the values sysrepo was built with:
+
+* `Sysrepo_PROJECT_VERSION` - project version of sysrepo,
+* `Sysrepo_REPO_PATH` - default repository path,
+* `Sysrepo_PLUGINS_PATH` - directory with datastore and notification plugins,
+* `Sysrepo_SRPD_PLUGINS_PATH` - directory with `sysrepo-plugind` plugins,
+* `Sysrepo_GROUP` - system group owning all sysrepo files, empty if not set,
+* `Sysrepo_UMASK` - umask used for all files created by sysrepo.
+
+If the tools are installed, the package also provides the imported executables
+`Sysrepo::sysrepoctl` and `Sysrepo::sysrepocfg`.
+
+To use sysrepo from its build directory, pass `-DSysrepo_DIR=<sysrepo build directory>`.
+Static builds and older sysrepo releases provide no CMake package, use `pkg-config` with them.
 
 ## Utils
 

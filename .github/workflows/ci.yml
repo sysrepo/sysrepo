@@ -280,9 +280,10 @@ jobs:
       - name: Build in 32-bit container
         run: |
           docker run --rm \
+            --platform linux/386 \
             -v ${{ github.workspace }}:${{ github.workspace }} \
             -w ${{ github.workspace }} \
-            i386/ubuntu \
+            debian:13 \
             /bin/bash -c " \
               apt-get update -q && \
               apt-get install -y -q git cmake gcc g++ libcmocka-dev valgrind libxxhash-dev libpcre2-dev && \
@@ -385,9 +386,11 @@ jobs:
           $HOME/.local/bin/apkg build
           $HOME/.local/bin/apkg install
 
+      - uses: actions/checkout@main
+
       - name: Build-and-install-package
         run: |
-          git clone -b ${{ needs.git-branch.outputs.branch-name }} https://github.com/sysrepo/sysrepo.git
-          cd sysrepo
+          # the container runs as root, the checked out workspace belongs to the runner user
+          git config --global --add safe.directory $GITHUB_WORKSPACE
           $HOME/.local/bin/apkg build
           $HOME/.local/bin/apkg install

@@ -44,21 +44,19 @@ configure_file("${PROJECT_SOURCE_DIR}/tests/scripts/kill_notifd.sh.in" "${PROJEC
 set(TEST_KILL_NOTIFD_CMD ${PROJECT_BINARY_DIR}/tests/scripts/kill_notifd.sh)
 set(TEST_CLEAR_REPOS_CMD rm -rf ${PROJECT_BINARY_DIR}/test_repositories)
 set(TEST_CLEAR_SHM_CMD find /dev/shm/ -maxdepth 1 -readable -name _tests_sr_* -delete)
-if(${CMAKE_VERSION} VERSION_GREATER "3.7")
-    # tests cleanup fixtures, the daemons must be killed before their SHM is removed
-    add_test(NAME tests_kill_notifd
-        COMMAND ${TEST_KILL_NOTIFD_CMD}
-    )
-    set_tests_properties(tests_kill_notifd PROPERTIES FIXTURES_CLEANUP tests_cleanup)
-    add_test(NAME tests_clear_repos
-        COMMAND ${TEST_CLEAR_REPOS_CMD}
-    )
-    set_tests_properties(tests_clear_repos PROPERTIES FIXTURES_CLEANUP tests_cleanup DEPENDS tests_kill_notifd)
-    add_test(NAME tests_clear_shm
-        COMMAND ${TEST_CLEAR_SHM_CMD}
-    )
-    set_tests_properties(tests_clear_shm PROPERTIES FIXTURES_CLEANUP tests_cleanup DEPENDS tests_kill_notifd)
-endif()
+# tests cleanup fixtures, the daemons must be killed before their SHM is removed
+add_test(NAME tests_kill_notifd
+    COMMAND ${TEST_KILL_NOTIFD_CMD}
+)
+set_tests_properties(tests_kill_notifd PROPERTIES FIXTURES_CLEANUP tests_cleanup)
+add_test(NAME tests_clear_repos
+    COMMAND ${TEST_CLEAR_REPOS_CMD}
+)
+set_tests_properties(tests_clear_repos PROPERTIES FIXTURES_CLEANUP tests_cleanup DEPENDS tests_kill_notifd)
+add_test(NAME tests_clear_shm
+    COMMAND ${TEST_CLEAR_SHM_CMD}
+)
+set_tests_properties(tests_clear_shm PROPERTIES FIXTURES_CLEANUP tests_cleanup DEPENDS tests_kill_notifd)
 
 if(ENABLE_TESTS)
     # format
@@ -77,13 +75,7 @@ if(ENABLE_TESTS)
     set(notifd_test_sources notifd/tnotifd.c notifd/tnotifd_udp.c)
 
     foreach(test_name IN LISTS tests)
-        # link srobj to get the number of DS plugins available
-        # this number can fluctuate depending on the presence of optional libraries
-        if(${test_name} STREQUAL "test_plugin")
-            add_executable(${test_name} ${test_sources} ${test_name}.c $<TARGET_OBJECTS:srobj>)
-        else()
-            add_executable(${test_name} ${test_sources} ${test_name}.c)
-        endif()
+        add_executable(${test_name} ${test_sources} ${test_name}.c)
     endforeach()
 
     foreach(test_name IN LISTS notifd_tests)
@@ -93,7 +85,7 @@ if(ENABLE_TESTS)
 
     # set common attributes of all tests
     foreach(test_name IN LISTS tests)
-        target_link_libraries(${test_name} ${CMOCKA_LIBRARIES} sysrepo)
+        target_link_libraries(${test_name} ${CMOCKA_LIBRARIES} srbin)
 
         add_test(NAME ${test_name} COMMAND $<TARGET_FILE:${test_name}>)
         set_property(TEST ${test_name} APPEND PROPERTY ENVIRONMENT
@@ -111,16 +103,13 @@ if(ENABLE_TESTS)
             )
         endif()
 
-        if(${CMAKE_VERSION} VERSION_GREATER "3.7")
-            set_tests_properties(${test_name} PROPERTIES FIXTURES_REQUIRED tests_cleanup)
-        endif()
+        set_tests_properties(${test_name} PROPERTIES FIXTURES_REQUIRED tests_cleanup)
     endforeach()
 endif()
 
-# sr_perf benchmark binary, link srobj to get the number of DS plugins available
-# (this number can fluctuate depending on the presence of optional libraries)
-add_executable(sr_perf ${CMAKE_CURRENT_SOURCE_DIR}/perf.c $<TARGET_OBJECTS:srobj>)
-target_link_libraries(sr_perf sysrepo)
+# sr_perf benchmark binary
+add_executable(sr_perf ${CMAKE_CURRENT_SOURCE_DIR}/perf.c)
+target_link_libraries(sr_perf srbin)
 
 # valgrind tests
 if(ENABLE_VALGRIND_TESTS)
@@ -141,9 +130,7 @@ if(ENABLE_VALGRIND_TESTS)
             )
         endif()
 
-        if(${CMAKE_VERSION} VERSION_GREATER "3.7")
-            set_tests_properties(${test_name} PROPERTIES FIXTURES_REQUIRED tests_cleanup)
-        endif()
+        set_tests_properties(${test_name} PROPERTIES FIXTURES_REQUIRED tests_cleanup)
     endforeach()
 endif()
 

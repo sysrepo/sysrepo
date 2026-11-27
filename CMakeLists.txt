@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8.12...3.28.1)
+cmake_minimum_required(VERSION 3.12...3.28.1)
 
 project(sysrepo C)
 set(SYSREPO_DESC "YANG-based system repository for all-around configuration management.")
@@ -16,6 +16,7 @@ include(SourceFormat)
 include(GenDoc)
 include(GenCoverage)
 include(SetupPrintedContext)
+include(GenConfigPackage)
 if(POLICY CMP0075)
     cmake_policy(SET CMP0075 NEW)
 endif()
@@ -67,10 +68,8 @@ set(SYSREPO_MICRO_SOVERSION 2)
 set(SYSREPO_SOVERSION_FULL ${SYSREPO_MAJOR_SOVERSION}.${SYSREPO_MINOR_SOVERSION}.${SYSREPO_MICRO_SOVERSION})
 set(SYSREPO_SOVERSION ${SYSREPO_MAJOR_SOVERSION})
 
-# Version of libyang library that this sysrepo depends on
-set(LIBYANG_DEP_VERSION 6.4.35)
+# SO version of libyang library that this sysrepo depends on
 set(LIBYANG_DEP_SOVERSION 5.13.8)
-set(LIBYANG_DEP_SOVERSION_MAJOR 5)
 
 # generate only version header, it is needed for docs
 configure_file("${PROJECT_SOURCE_DIR}/src/version.h.in" "${PROJECT_BINARY_DIR}/include/sysrepo/version.h" ESCAPE_QUOTES @ONLY)
@@ -455,6 +454,9 @@ endif()
 list(REMOVE_ITEM CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
 list(REMOVE_ITEM CMAKE_REQUIRED_DEFINITIONS -D_DEFAULT_SOURCE)
 
+# private dependencies of a static build, for Libs.private of sysrepo.pc
+set(PC_LIBS_PRIVATE "")
+
 # libmongoc - optional
 if(ENABLE_DS_MONGO)
     find_package(mongoc 2.0.2 CONFIG)
@@ -467,6 +469,15 @@ if(ENABLE_DS_MONGO)
         list(APPEND LIB_SRC src/plugins/ds_mongo.c)
         set(SR_ENABLED_DS_PLG_MONGO 1)
         message(STATUS "Datastore plugin ds_mongo supported.")
+
+        # imported target and pkg-config libraries of the found mongoc version
+        if(TARGET mongoc::shared)
+            set(MONGOC_TARGET mongoc::shared)
+            string(APPEND PC_LIBS_PRIVATE " -lmongoc2 -lbson2")
+        else()
+            set(MONGOC_TARGET mongo::mongoc_shared)
+            string(APPEND PC_LIBS_PRIVATE " -lmongoc-1.0 -lbson-1.0")
+        endif()
 
         # try running a command in MongoDB database (should not be possible) and check authentication
         if(MONGO_SOCKET)
@@ -500,6 +511,7 @@ if(ENABLE_DS_REDIS)
         list(APPEND LIB_SRC src/plugins/ds_redis.c)
         set(SR_ENABLED_DS_PLG_REDIS 1)
         message(STATUS "Datastore plugin ds_redis supported.")
+        string(APPEND PC_LIBS_PRIVATE " -lhiredis")
 
         # try running a command in Redis database and check authentication
         if(REDIS_SOCKET)
@@ -532,55 +544,48 @@ endif()
 
 # sysrepo
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
-add_library(srobj OBJECT ${LIB_SRC} ${compatsrc})
-set_target_properties(srobj PROPERTIES COMPILE_FLAGS "-fvisibility=hidden")
-add_library(sysrepo $<TARGET_OBJECTS:srobj>)
-set_target_properties(sysrepo PROPERTIES VERSION ${SYSREPO_SOVERSION_FULL} SOVERSION ${SYSREPO_SOVERSION})
+add_library(sysrepo ${LIB_SRC})
+set_target_properties(sysrepo PROPERTIES COMPILE_FLAGS "-fvisibility=hidden" VERSION ${SYSREPO_SOVERSION_FULL} SOVERSION ${SYSREPO_SOVERSION})
+target_include_directories(sysrepo PUBLIC $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include> $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+target_link_libraries(sysrepo PRIVATE srcompat)
+
 if(SR_ENABLED_DS_PLG_MONGO)
-    # cannot separately include and link mongoc library, thus add include to srobj and link with sysrepo
-    # to add include directories
-    if (TARGET mongoc::shared)
-        get_target_property(BSON_INTERFACE_INCLUDE_DIR bson::shared INTERFACE_INCLUDE_DIRECTORIES)
-        get_target_property(MONGOC_INTERFACE_INCLUDE_DIR mongoc::shared INTERFACE_INCLUDE_DIRECTORIES)
-    elseif(TARGET mongo::mongoc_shared)
-        get_target_property(BSON_INTERFACE_INCLUDE_DIR mongo::bson_shared INTERFACE_INCLUDE_DIRECTORIES)
-        get_target_property(MONGOC_INTERFACE_INCLUDE_DIR mongo::mongoc_shared INTERFACE_INCLUDE_DIRECTORIES)
-    endif()
-    set_property(TARGET srobj APPEND PROPERTY INCLUDE_DIRECTORIES ${BSON_INTERFACE_INCLUDE_DIR} ${MONGOC_INTERFACE_INCLUDE_DIR})
-    if (TARGET mongoc::shared)
-        target_link_libraries(sysrepo mongoc::shared)
-    elseif(TARGET mongo::mongoc_shared)
-        target_link_libraries(sysrepo mongo::mongoc_shared)
-    endif()
+    target_link_libraries(sysrepo PRIVATE ${MONGOC_TARGET})
 endif()
-if (SR_ENABLED_DS_PLG_REDIS)
-    # to add include directories
-    target_link_libraries(sysrepo ${LIBHIREDIS_LIBRARIES})
+
+if(SR_ENABLED_DS_PLG_REDIS)
+    target_link_libraries(sysrepo PRIVATE ${LIBHIREDIS_LIBRARIES})
     include_directories(${LIBHIREDIS_INCLUDE_DIRS})
 endif()
 
+# sysrepo for the executables and tests of this project. They call compat and system library
+# functions directly and need their own compat objects, because those in sysrepo are hidden.
+add_library(srbin INTERFACE)
+target_sources(srbin INTERFACE $<TARGET_OBJECTS:srcompat>)
+target_link_libraries(srbin INTERFACE sysrepo)
+
 if(ENABLE_SYSREPOCTL)
     # sysrepoctl tool
-    add_executable(sysrepoctl ${SYSREPOCTL_SRC} ${compatsrc})
-    target_link_libraries(sysrepoctl sysrepo)
+    add_executable(sysrepoctl ${SYSREPOCTL_SRC})
+    target_link_libraries(sysrepoctl srbin)
 endif()
 
 if(ENABLE_SYSREPOCFG)
     # sysrepocfg tool
-    add_executable(sysrepocfg ${SYSREPOCFG_SRC} ${compatsrc})
-    target_link_libraries(sysrepocfg sysrepo)
+    add_executable(sysrepocfg ${SYSREPOCFG_SRC})
+    target_link_libraries(sysrepocfg srbin)
 endif()
 
 if(ENABLE_SYSREPO_PLUGIND)
     # sysrepo-plugind daemon
-    add_executable(sysrepo-plugind ${SYSREPOPLUGIND_SRC} ${compatsrc})
-    target_link_libraries(sysrepo-plugind sysrepo)
+    add_executable(sysrepo-plugind ${SYSREPOPLUGIND_SRC})
+    target_link_libraries(sysrepo-plugind srbin)
 endif()
 
 if(ENABLE_SYSREPO_NOTIFD)
     # sysrepo-notifd daemon
-    add_executable(sysrepo-notifd ${SYSREPONOTIFD_SRC} ${compatsrc})
-    target_link_libraries(sysrepo-notifd sysrepo)
+    add_executable(sysrepo-notifd ${SYSREPONOTIFD_SRC})
+    target_link_libraries(sysrepo-notifd srbin)
 endif()
 
 # include repository files with highest priority
@@ -589,30 +594,41 @@ include_directories("${PROJECT_SOURCE_DIR}/src/plugins")
 include_directories(${PROJECT_BINARY_DIR})
 
 # dependencies
+
+# system libraries, collected by the sections below and linked after them
+set(SR_SYS_LIBS "")
+
 # libatomic
 find_library(LIBATOMIC_LIBRARIES NAMES libatomic.so libatomic.so.1)
 if(LIBATOMIC_LIBRARIES)
-    target_link_libraries(sysrepo ${LIBATOMIC_LIBRARIES})
+    list(APPEND SR_SYS_LIBS ${LIBATOMIC_LIBRARIES})
+    string(APPEND PC_LIBS_PRIVATE " -latomic")
 endif()
 
 # librt (shm_open, shm_unlink, not required on QNX or OSX)
 find_library(LIBRT_LIBRARIES rt)
 if(LIBRT_LIBRARIES)
-    target_link_libraries(sysrepo ${LIBRT_LIBRARIES})
+    list(APPEND SR_SYS_LIBS ${LIBRT_LIBRARIES})
+    string(APPEND PC_LIBS_PRIVATE " -lrt")
 endif()
 
 # libdl
-target_link_libraries(sysrepo ${CMAKE_DL_LIBS})
+if(CMAKE_DL_LIBS)
+    list(APPEND SR_SYS_LIBS ${CMAKE_DL_LIBS})
+    string(APPEND PC_LIBS_PRIVATE " -l${CMAKE_DL_LIBS}")
+endif()
 
 # libyang, check version
-find_package(LibYANG ${LIBYANG_DEP_SOVERSION} REQUIRED)
-target_link_libraries(sysrepo ${LIBYANG_LIBRARIES})
-include_directories(${LIBYANG_INCLUDE_DIRS})
+find_package(LibYANG ${LIBYANG_DEP_SOVERSION} CONFIG REQUIRED)
+message(STATUS "Found LibYANG ${LibYANG_VERSION}: ${LibYANG_DIR}")
+target_link_libraries(sysrepo PUBLIC LibYANG::yang)
 
 # libyang CBOR support, enables the notifd CBOR encoding feature
-list(APPEND CMAKE_REQUIRED_INCLUDES ${LIBYANG_INCLUDE_DIRS})
-check_symbol_exists(LY_HAVE_CBOR "libyang/libyang.h" SR_LY_HAVE_CBOR)
-list(REMOVE_ITEM CMAKE_REQUIRED_INCLUDES ${LIBYANG_INCLUDE_DIRS})
+if(LibYANG_HAVE_CBOR)
+    set(SR_LY_HAVE_CBOR 1)
+else()
+    set(SR_LY_HAVE_CBOR "")
+endif()
 
 # libsystemd
 find_package(LibSystemd)
@@ -633,8 +649,16 @@ endif()
 # pthread
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 find_package(Threads REQUIRED)
-target_link_libraries(sysrepo ${CMAKE_THREAD_LIBS_INIT})
+list(APPEND SR_SYS_LIBS Threads::Threads)
+if(CMAKE_THREAD_LIBS_INIT)
+    # the thread library flag for the .pc file
+    string(APPEND PC_LIBS_PRIVATE " ${CMAKE_THREAD_LIBS_INIT}")
+endif()
 set(CMAKE_REQUIRED_LIBRARIES pthread)
+
+# link the collected system libraries
+target_link_libraries(sysrepo PRIVATE ${SR_SYS_LIBS})
+target_link_libraries(srbin INTERFACE ${SR_SYS_LIBS})
 
 # tar
 find_program(TAR_BINARY "tar")
@@ -657,6 +681,19 @@ if(NOTIFD_SETUP)
     endif()
 endif()
 
+# pkg-config file paths, the install directories may be absolute
+if(IS_ABSOLUTE "${CMAKE_INSTALL_INCLUDEDIR}")
+    set(PC_INCLUDEDIR "${CMAKE_INSTALL_INCLUDEDIR}")
+else()
+    set(PC_INCLUDEDIR "\${prefix}/${CMAKE_INSTALL_INCLUDEDIR}")
+endif()
+if(IS_ABSOLUTE "${CMAKE_INSTALL_LIBDIR}")
+    set(PC_LIBDIR "${CMAKE_INSTALL_LIBDIR}")
+else()
+    set(PC_LIBDIR "\${prefix}/${CMAKE_INSTALL_LIBDIR}")
+endif()
+string(STRIP "${PC_LIBS_PRIVATE}" PC_LIBS_PRIVATE)
+
 # generate files
 configure_file("${PROJECT_SOURCE_DIR}/src/config.h.in" "${PROJECT_BINARY_DIR}/config.h" ESCAPE_QUOTES @ONLY)
 configure_file("${PROJECT_SOURCE_DIR}/sysrepo.pc.in" "${PROJECT_BINARY_DIR}/sysrepo.pc" @ONLY)
@@ -664,9 +701,15 @@ configure_file("${PROJECT_SOURCE_DIR}/src/executables/bin_common.h.in" "${PROJEC
 configure_file("${PROJECT_SOURCE_DIR}/src/executables/sysrepo-plugind.service.in" "${PROJECT_BINARY_DIR}/sysrepo-plugind.service" @ONLY)
 configure_file("${PROJECT_SOURCE_DIR}/src/executables/sysrepo-notifd/sysrepo-notifd.service.in" "${PROJECT_BINARY_DIR}/sysrepo-notifd.service" @ONLY)
 
-# copy public headers
-file(COPY ${LIB_MAIN_HEADERS} DESTINATION "${PROJECT_BINARY_DIR}/include")
-file(COPY ${LIB_UTIL_HEADERS} DESTINATION "${PROJECT_BINARY_DIR}/include/sysrepo")
+# copy public headers, configure_file() refreshes the copies whenever they change
+foreach(h IN LISTS LIB_MAIN_HEADERS)
+    get_filename_component(h_name ${h} NAME)
+    configure_file(${PROJECT_SOURCE_DIR}/${h} ${PROJECT_BINARY_DIR}/include/${h_name} COPYONLY)
+endforeach()
+foreach(h IN LISTS LIB_UTIL_HEADERS)
+    get_filename_component(h_name ${h} NAME)
+    configure_file(${PROJECT_SOURCE_DIR}/${h} ${PROJECT_BINARY_DIR}/include/sysrepo/${h_name} COPYONLY)
+endforeach()
 
 # installation
 file(GLOB yangs "${PROJECT_SOURCE_DIR}/modules/*.yang")
@@ -675,7 +718,7 @@ file(GLOB sn_yangs "${PROJECT_SOURCE_DIR}/modules/subscribed_notifications/*.yan
 install(FILES ${sn_yangs} DESTINATION ${YANG_MODULE_DIR})
 install(DIRECTORY "${PROJECT_SOURCE_DIR}/scripts/" DESTINATION ${DATA_DIR}/scripts USE_SOURCE_PERMISSIONS)
 
-install(TARGETS sysrepo DESTINATION ${CMAKE_INSTALL_LIBDIR})
+install(TARGETS sysrepo EXPORT SysrepoTargets DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(FILES ${PROJECT_BINARY_DIR}/include/sysrepo.h ${PROJECT_BINARY_DIR}/include/sysrepo_types.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(DIRECTORY ${PROJECT_BINARY_DIR}/include/sysrepo DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
@@ -684,12 +727,12 @@ install(DIRECTORY DESTINATION ${REPO_PATH}
         DIRECTORY_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_WRITE GROUP_EXECUTE WORLD_READ WORLD_WRITE WORLD_EXECUTE)
 
 if(ENABLE_SYSREPOCTL)
-    install(TARGETS sysrepoctl DESTINATION ${CMAKE_INSTALL_BINDIR})
+    install(TARGETS sysrepoctl EXPORT SysrepoToolsTargets RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
     install(FILES ${PROJECT_SOURCE_DIR}/src/executables/sysrepoctl.1
             DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
 endif()
 if(ENABLE_SYSREPOCFG)
-    install(TARGETS sysrepocfg DESTINATION ${CMAKE_INSTALL_BINDIR})
+    install(TARGETS sysrepocfg EXPORT SysrepoToolsTargets RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
     install(FILES ${PROJECT_SOURCE_DIR}/src/executables/sysrepocfg.1
             DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
 endif()
@@ -715,6 +758,28 @@ endif()
 
 if(INSTALL_SYSCTL_CONF)
     install(FILES "${PROJECT_SOURCE_DIR}/zz-sysrepo-disable-fs-protected_regular.conf" DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/sysctl.d/")
+endif()
+
+# CMake config package, for the build tree and the installation
+if(BUILD_SHARED_LIBS)
+    # libyang for the installed package, under the same prefix
+    set(SR_LIBYANG_HINT ${CMAKE_INSTALL_LIBDIR}/cmake/LibYANG)
+    # libyang for the build tree package, the one sysrepo was built with
+    set(SR_LIBYANG_HINT_BUILD ${LibYANG_DIR})
+
+    # export the tools into a separate file, so that the package also works without them installed
+    if(TARGET sysrepoctl OR TARGET sysrepocfg)
+        set(SR_TOOLS_EXPORT EXPORTS SysrepoToolsTargets)
+    else()
+        # no tools, remove their export file left by a previous configuration
+        set(SR_TOOLS_EXPORT "")
+        file(REMOVE ${PROJECT_BINARY_DIR}/SysrepoToolsTargets.cmake)
+    endif()
+
+    # the package version is the SO version
+    gen_config_package(Sysrepo ${SYSREPO_SOVERSION_FULL} ${SR_TOOLS_EXPORT} PATH_VARS SR_LIBYANG_HINT)
+else()
+    message(STATUS "Static build, CMake config package is not installed")
 endif()
 
 if(REPO_SHM_SETUP)

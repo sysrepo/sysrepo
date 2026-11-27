@@ -23,3 +23,7 @@ override_dh_auto_configure:
 		-DNACM_SRMON_DATA_PERM=660 \
 		-DREPO_SHM_SETUP=OFF \
 		-DNOTIFD_SETUP=OFF
+
+# fail on installed files that no package lists
+override_dh_missing:
+	dh_missing --fail-missing

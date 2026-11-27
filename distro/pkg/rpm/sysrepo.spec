@@ -155,6 +155,9 @@ fi
 %{_includedir}/sysrepo*.h
 %{_includedir}/sysrepo/*.h
 %dir %{_includedir}/sysrepo/
+%{_libdir}/cmake/Sysrepo/SysrepoConfig*.cmake
+%{_libdir}/cmake/Sysrepo/SysrepoTargets*.cmake
+%dir %{_libdir}/cmake/Sysrepo/
 
 %files plugind
 %{_unitdir}/sysrepo-plugind.service
@@ -176,6 +179,8 @@ fi
 %{_bindir}/sysrepoctl
 %{_datadir}/man/man1/sysrepocfg.1.gz
 %{_datadir}/man/man1/sysrepoctl.1.gz
+%{_libdir}/cmake/Sysrepo/SysrepoToolsTargets*.cmake
+%dir %{_libdir}/cmake/Sysrepo/
 
 
 %changelog

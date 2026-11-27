@@ -1109,10 +1109,11 @@ int
 main(int argc, char **argv)
 {
     int ret = 0;
-    uint32_t i, j, count, tries, plg_cnt, test_cnt;
-    const char *plg_name;
+    uint32_t i, j, count, tries, test_cnt;
+    const char *plg_name, **ds_plugins = NULL;
     int64_t *times = NULL, time;
     struct test_state state = {0};
+    sr_conn_ctx_t *conn = NULL;
 
     /* handle arguments */
     if (argc < 3) {
@@ -1132,15 +1133,21 @@ main(int argc, char **argv)
         return SR_ERR_INVAL_ARG;
     }
 
-    /* establish the number of plugins and tests */
-    plg_cnt = sr_ds_plugin_int_count();
+    /* learn the DS plugins and the number of tests */
+    if ((ret = sr_connect(0, &conn))) {
+        goto cleanup;
+    }
+    if ((ret = sr_get_plugins(conn, &ds_plugins, NULL))) {
+        goto cleanup;
+    }
     test_cnt = (sizeof tests / sizeof(struct test));
 
     /* allocate a time var for every test of the default plugin */
     times = calloc(test_cnt, sizeof *times);
     if (!times) {
         fprintf(stderr, "Out of memory.\n");
-        return SR_ERR_NO_MEMORY;
+        ret = SR_ERR_NO_MEMORY;
+        goto cleanup;
     }
 
     /* change print color */
@@ -1151,9 +1158,9 @@ main(int argc, char **argv)
     printf("\n| Performance tests\n");
 
     /* for every plugin run a set of tests */
-    for (i = 0; i < plg_cnt; ++i) {
+    for (i = 0; ds_plugins[i]; ++i) {
         /* plugin name */
-        plg_name = sr_internal_ds_plugins[i]->name;
+        plg_name = ds_plugins[i];
 
         print_top_table_boundary(plg_name);
 
@@ -1192,5 +1199,7 @@ cleanup:
     printf(" \033[0;37m");
 
     free(times);
+    free(ds_plugins);
+    sr_disconnect(conn);
     return ret;
 }

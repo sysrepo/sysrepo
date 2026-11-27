@@ -1,7 +1,7 @@
 # - Use compat library providing various functions and macros that may be missing on some systems
 # Once done this will define
 #
-# compatsrc - sources to add to compilation
+# srcompat - OBJECT library with the compat functions
 #
 # Additionally, "compat.h" include directory is added and can be included.
 #
@@ -34,13 +34,17 @@ macro(USE_COMPAT)
 
     set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
     find_package(Threads)
-    list(APPEND CMAKE_REQUIRED_LIBRARIES ${CMAKE_THREAD_LIBS_INIT})
+    if(CMAKE_THREAD_LIBS_INIT)
+        list(APPEND CMAKE_REQUIRED_LIBRARIES ${CMAKE_THREAD_LIBS_INIT})
+    endif()
     check_symbol_exists(pthread_mutex_timedlock "pthread.h" HAVE_PTHREAD_MUTEX_TIMEDLOCK)
     check_symbol_exists(pthread_mutex_clocklock "pthread.h" HAVE_PTHREAD_MUTEX_CLOCKLOCK)
     check_symbol_exists(pthread_rwlock_clockrdlock "pthread.h" HAVE_PTHREAD_RWLOCK_CLOCKRDLOCK)
     check_symbol_exists(pthread_rwlock_clockwrlock "pthread.h" HAVE_PTHREAD_RWLOCK_CLOCKWRLOCK)
     check_symbol_exists(pthread_cond_clockwait "pthread.h" HAVE_PTHREAD_COND_CLOCKWAIT)
-    list(REMOVE_ITEM CMAKE_REQUIRED_LIBRARIES ${CMAKE_THREAD_LIBS_INIT})
+    if(CMAKE_THREAD_LIBS_INIT)
+        list(REMOVE_ITEM CMAKE_REQUIRED_LIBRARIES ${CMAKE_THREAD_LIBS_INIT})
+    endif()
 
     if(HAVE_PTHREAD_MUTEX_CLOCKLOCK)
         # can use CLOCK_MONOTONIC only if we have pthread_mutex_clocklock()
@@ -78,8 +82,11 @@ macro(USE_COMPAT)
     list(REMOVE_ITEM CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
     list(REMOVE_ITEM CMAKE_REQUIRED_DEFINITIONS -D__BSD_VISIBLE=1)
 
-    # header and source file (adding the source directly allows for hiding its symbols)
+    # compat.h
     configure_file(${PROJECT_SOURCE_DIR}/compat/compat.h.in ${PROJECT_BINARY_DIR}/compat/compat.h @ONLY)
     include_directories(${PROJECT_BINARY_DIR}/compat)
-    set(compatsrc ${PROJECT_SOURCE_DIR}/compat/compat.c)
+
+    # compat functions, hidden so that a shared library does not export them
+    add_library(srcompat OBJECT ${PROJECT_SOURCE_DIR}/compat/compat.c)
+    set_target_properties(srcompat PROPERTIES POSITION_INDEPENDENT_CODE ON COMPILE_FLAGS "-fvisibility=hidden")
 endmacro()

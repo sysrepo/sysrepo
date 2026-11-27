@@ -1641,12 +1641,20 @@ main(void)
     int rc;
     int err = 0;
     uint32_t i;
-    uint32_t plgnum = sr_ds_plugin_int_count();
+    sr_conn_ctx_t *conn = NULL;
+    const char **ds_plugins = NULL;
     struct timeval start, end;
 
     test_init();
-    for (i = 0; i < plgnum; ++i) {
-        plg_name = sr_internal_ds_plugins[i]->name;
+
+    /* learn the DS plugins */
+    if (sr_connect(SR_CONN_DEFAULT, &conn) || sr_get_plugins(conn, &ds_plugins, NULL)) {
+        sr_disconnect(conn);
+        return 1;
+    }
+
+    for (i = 0; ds_plugins[i]; ++i) {
+        plg_name = ds_plugins[i];
         printf("\nTesting plugin %s\n", plg_name);
         gettimeofday(&start, NULL);
         if ((rc = cmocka_run_group_tests(tests, setup, teardown))) {
@@ -1660,5 +1668,7 @@ main(void)
         }
     }
 
+    free(ds_plugins);
+    sr_disconnect(conn);
     return err;
 }
